@@ -21,6 +21,9 @@ The schema is one file, or a folder of scopes (see
   `Record<string, T>` in TypeScript.
 - An `OPTIONAL` field is an `Option`, and `?` in TypeScript, unless it has a
   `DEFAULT`: the reader fills that in, so the field is always there.
+- A struct around the type underneath per named `TYPE`, with `From` both
+  ways: `TYPE file id: TEXT` is `pub struct FileId(pub String)`, so a
+  `FileId` can't be passed where a `ShareId` goes.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 - A `Server` trait with an `async fn` per method. A method with errors
@@ -76,6 +79,11 @@ The wasm functions take and give every call of a request at once:
 An `INSTANT` is a `Date`: the client turns the text JSON carries into one,
 and `JSON.stringify` writes a `Date` back as that text. A `DURATION` is a
 `number` of whole milliseconds.
+
+A named `TYPE` is a branded type, with a function of the same name that
+brands a value: `TYPE file id: TEXT` is
+`type FileId = string & { readonly __brand: "file id" }` and
+`FileId("a")`. Its JSON is the value underneath.
 
 In TypeScript every type shares one namespace, so a scoped type's name starts
 with its scope: `diagnostic` in `common` is `CommonDiagnostic`, and the errors

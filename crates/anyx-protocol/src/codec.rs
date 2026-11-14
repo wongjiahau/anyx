@@ -292,6 +292,7 @@ pub(crate) fn describe(node: &Node) -> String {
 
 /// Reads `node` as a value of `type`.
 pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Value, Mismatch> {
+    let r#type = schema.underlying(r#type);
     let mismatch = |expected: String| Mismatch {
         span: node.span,
         message: format!("found {}; expected {expected}", describe(node)),
@@ -391,6 +392,7 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
                         &format!("a variant of `{}`", definition.name),
                     )
                 }
+                TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
             }
         }
     }
@@ -674,6 +676,7 @@ pub(crate) fn write(
     form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
+    let r#type = schema.underlying(r#type);
     match value {
         Value::Text(text) => write_text(text, form, out),
         Value::Bytes(bytes) => write_text(&crate::bytes::encode(bytes), form, out),

@@ -69,6 +69,11 @@ pub enum TypeKind {
     Record(Vec<Field>),
     /// Variants, each written in its own shape.
     Choice(Vec<Shaped>),
+    /// A named type, `TYPE file id: TEXT`: the type underneath, under a name
+    /// of its own. Generated code keeps it distinct from that type and from
+    /// other named types over it; the wire and JSON write it exactly like
+    /// the type underneath.
+    Distinct(Type),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -299,6 +304,25 @@ impl Schema {
                 scoped(&definition.scope, &definition.name)
             }
         }
+    }
+
+    /// `type` with every named type (`TYPE file id: TEXT`) it stands for
+    /// replaced by the type underneath, which is how the wire and JSON
+    /// write it: `TEXT` for `file id`.
+    pub fn underlying<'t>(&'t self, r#type: &'t Type) -> &'t Type {
+        let mut underlying = r#type;
+        // The checker rejects named types that lead back to themselves, so
+        // this ends within as many steps as there are types.
+        for _ in 0..=self.types.len() {
+            match underlying {
+                Type::Named(index) => match &self.types[*index].kind {
+                    TypeKind::Distinct(inner) => underlying = inner,
+                    TypeKind::Record(_) | TypeKind::Choice(_) => break,
+                },
+                _ => break,
+            }
+        }
+        underlying
     }
 
     /// The method a request calls by `full_name`, such as `files/read _`,

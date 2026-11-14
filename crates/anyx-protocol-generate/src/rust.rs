@@ -79,6 +79,7 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
         match &definition.kind {
             TypeKind::Record(fields) => record(out, schema, scope, &doc, &name, fields),
             TypeKind::Choice(variants) => choice(out, schema, scope, &doc, &name, variants),
+            TypeKind::Distinct(underlying) => newtype(out, schema, scope, &doc, &name, underlying),
         }
     }
     let methods = methods_in(schema, scope);
@@ -202,6 +203,28 @@ fn record(
         "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name} {{\n{declared}}}\n\n\
          impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        Value::Record(FieldsBuilder::new(){built}.build())\n    }}\n}}\n\n\
          impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Record(fields) = value else {{ return None }};\n        let mut fields = FieldsReader::new(fields);\n        Some(Self {{ {read} }})\n    }}\n}}\n\n"
+    )
+    .unwrap();
+}
+
+/// A named type: a struct around the type underneath, which converts to and
+/// from it, and is written on the wire exactly like it.
+fn newtype(
+    out: &mut String,
+    schema: &Schema,
+    scope: &[String],
+    doc: &str,
+    name: &str,
+    underlying: &Type,
+) {
+    let underlying = rust_type(schema, scope, underlying);
+    write!(
+        out,
+        "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name}(pub {underlying});\n\n\
+         impl From<{underlying}> for {name} {{\n    fn from(value: {underlying}) -> Self {{\n        Self(value)\n    }}\n}}\n\n\
+         impl From<{name}> for {underlying} {{\n    fn from(value: {name}) -> Self {{\n        value.0\n    }}\n}}\n\n\
+         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        self.0.into_value()\n    }}\n}}\n\n\
+         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        FromValue::from_value(value).map(Self)\n    }}\n}}\n\n"
     )
     .unwrap();
 }

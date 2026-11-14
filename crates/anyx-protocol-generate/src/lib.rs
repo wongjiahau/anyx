@@ -237,6 +237,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                     )
                 }),
             )?,
+            TypeKind::Distinct(_) => {}
         }
     }
     for method in &schema.methods {
@@ -263,7 +264,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                     TypeKind::Choice(variants) => {
                         variants.iter().map(|variant| &variant.shape).collect()
                     }
-                    TypeKind::Record(_) => Vec::new(),
+                    TypeKind::Record(_) | TypeKind::Distinct(_) => Vec::new(),
                 }),
         )
     {

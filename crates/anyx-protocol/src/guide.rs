@@ -70,7 +70,7 @@ Every call runs, in order, and the response has one result per call.
   after the field's name: `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
-- In a slot, a value written as words goes in parentheses so that it doesn't
+{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
 
@@ -112,7 +112,37 @@ words are names; all-caps words belong to the schema language. `ERRORS name
             _ => SCOPES,
         },
         source = sources(schema),
+        named_types = named_types(schema),
     )
+}
+
+/// The rule for named types, and each of them with the type it is written
+/// as: "`file id`: `TEXT`", then its doc. Empty for a schema without any.
+fn named_types(schema: &Schema) -> String {
+    let named: Vec<String> = schema
+        .types
+        .iter()
+        .filter_map(|definition| {
+            let TypeKind::Distinct(underlying) = &definition.kind else {
+                return None;
+            };
+            let doc = definition.doc.as_deref().map_or(String::new(), |doc| {
+                format!(" {}", doc.split_whitespace().collect::<Vec<_>>().join(" "))
+            });
+            Some(format!(
+                "  - `{}`: `{}`.{doc}\n",
+                scoped(&definition.scope, &definition.name),
+                schema.type_name(underlying)
+            ))
+        })
+        .collect();
+    match named.is_empty() {
+        true => String::new(),
+        false => format!(
+            "- A named TYPE is written exactly like the type it names, but holds\n  only what its name says:\n{}",
+            named.concat()
+        ),
+    }
 }
 
 const SCOPES: &str = "
@@ -174,7 +204,7 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
 
 /// A value of `type` as an example fills a slot with it.
 fn sample(schema: &Schema, r#type: &Type) -> String {
-    match r#type {
+    match schema.underlying(r#type) {
         Type::Text => "\"a\"".to_string(),
         Type::Bytes => "\"AQI=\"".to_string(),
         Type::Integer => "3".to_string(),
@@ -187,6 +217,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Named(index) => match schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
             TypeKind::Choice(_) => "(…)".to_string(),
+            TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
         },
     }
 }

@@ -22,6 +22,9 @@ CHOICE shade { dark, light },
 
 CHOICE colour { dark, light, custom hue (hue: NUMBER), (base: shade) dimmed },
 
+# Which file, among every account's.
+TYPE file id: TEXT,
+
 ERRORS file errors [
     # The owner moved this file to the trash.
     trashed,
@@ -48,8 +51,13 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `NUMBER` (a finite float),
   `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
   `LIST: T`, `MAP: T` (text keys, each to a `T`), and the name of a
-  `RECORD` or `CHOICE`. A type may hold itself only through a `LIST` or a
-  `MAP`, which may be empty.
+  `RECORD`, `CHOICE` or `TYPE`. A type may hold itself only through a
+  `LIST` or a `MAP`, which may be empty.
+- **`TYPE name: T`** names a type, `TYPE file id: TEXT`, so that values that
+  share a representation but mean different things can't be mixed up. It is
+  written exactly like `T`, on the wire and in JSON, and generated code
+  keeps it distinct from `T` and from other named types over `T`. `T` is any
+  type, `TYPE tags: LIST: TEXT`, but can't lead back to the named type.
 - **`RECORD name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
   may be left out. `DEFAULT value` after its type gives it the value it
   holds when left out: `limit: OPTIONAL: INTEGER DEFAULT 50`, or
@@ -156,8 +164,8 @@ A file or folder name is one lowercase word, letters and digits.
   `files/export/pdf "a.note"`. A method's own shape has no `/`.
 - **Types and error groups are private** to the scope that declares them;
   folders give no special access, so `files/export` can't see what `files`
-  keeps to itself. **`PUBLIC`** before `RECORD`, `CHOICE` or `ERRORS` shares
-  it, and another scope then names it by its full path:
+  keeps to itself. **`PUBLIC`** before `RECORD`, `CHOICE`, `TYPE` or
+  `ERRORS` shares it, and another scope then names it by its full path:
 
 ```anyx
 ## common.anyx

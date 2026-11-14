@@ -1,8 +1,8 @@
 //! The code generated from Poentaro's schema, from the schema of scopes in
-//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx`, kept in
-//! `tests/generated` so a change to the generator shows up as a diff.
-//! `round_trip.rs`, `scoped_round_trip.rs` and `types_round_trip.rs` compile
-//! the Rust modules.
+//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx` and
+//! `tests/fixtures/named.anyx`, kept in `tests/generated` so a change to the
+//! generator shows up as a diff. `round_trip.rs`, `scoped_round_trip.rs`,
+//! `types_round_trip.rs` and `named_round_trip.rs` compile the Rust modules.
 
 use anyx_protocol::{Schema, SchemaFile};
 
@@ -66,6 +66,24 @@ fn the_rust_module_of_every_type_is_up_to_date() {
 fn the_typescript_client_of_every_type_is_up_to_date() {
     let code = anyx_protocol_generate::typescript(&types()).unwrap();
     assert_snapshot("tests/generated/types.ts", &code);
+}
+
+/// Named types, each over a type of another kind.
+fn named() -> Schema {
+    Schema::parse(&read("tests/fixtures/named.anyx")).unwrap()
+}
+
+#[test]
+fn the_rust_module_of_named_types_is_up_to_date() {
+    let code = anyx_protocol_generate::rust(&named()).unwrap();
+    let code = anyx_protocol_generate::format_rust(&code).expect("rustfmt is installed");
+    assert_snapshot("tests/generated/named.rs", &code);
+}
+
+#[test]
+fn the_typescript_client_of_named_types_is_up_to_date() {
+    let code = anyx_protocol_generate::typescript(&named()).unwrap();
+    assert_snapshot("tests/generated/named.ts", &code);
 }
 
 #[test]

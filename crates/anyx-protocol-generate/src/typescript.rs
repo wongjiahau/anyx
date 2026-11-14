@@ -9,7 +9,7 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind};
+use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind, scoped};
 
 use crate::names::camel_case;
 use crate::{Error, children, has_methods, methods_in, scoped_pascal_case, typescript_error_name};
@@ -29,6 +29,13 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         match &definition.kind {
             TypeKind::Record(fields) => record(&mut out, schema, &name, fields),
             TypeKind::Choice(variants) => union(&mut out, schema, &name, variants),
+            TypeKind::Distinct(underlying) => branded(
+                &mut out,
+                schema,
+                &name,
+                &scoped(&definition.scope, &definition.name),
+                underlying,
+            ),
         }
     }
     for method in &schema.methods {
@@ -49,6 +56,8 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 TypeKind::Choice(variants) => {
                     revive_union(&mut out, schema, &revivers, &name, variants)
                 }
+                // Revived by the reviver of the type underneath, in `of`.
+                TypeKind::Distinct(_) => {}
             }
         }
     }
@@ -365,6 +374,24 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
     out.push_str("}\n\n");
 }
 
+/// A named type: the type underneath, branded with the named type's full
+/// name so that another named type over the same type doesn't fit it, and a
+/// function of the same name that brands a value. The JSON is the value
+/// underneath.
+fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, underlying: &Type) {
+    let underlying = ts_type(schema, underlying);
+    writeln!(
+        out,
+        "export type {name} = {underlying} & {{ readonly __brand: {full_name:?} }};\n"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "/** Makes a `{name}` of a value, which the schema writes as its own. */\nexport function {name}(value: {underlying}): {name} {{\n  return value as {name};\n}}\n"
+    )
+    .unwrap();
+}
+
 /// A choice, or a method's errors: a union discriminated by `kind`.
 fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
     writeln!(out, "export type {name} =").unwrap();
@@ -394,7 +421,8 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 }
 
 /// Which of the schema's types hold an `INSTANT`, directly or through
-/// another type, and so need reviving.
+/// another type (a named `TYPE` through the type underneath), and so need
+/// reviving.
 struct Revivers {
     holds: Vec<bool>,
 }
@@ -412,6 +440,7 @@ impl Revivers {
                         .iter()
                         .any(|field| revivers.type_holds(&field.r#type)),
                     TypeKind::Choice(variants) => revivers.union_holds(variants),
+                    TypeKind::Distinct(underlying) => revivers.type_holds(underlying),
                 })
                 .collect();
             if found.is_empty() {
@@ -461,6 +490,11 @@ impl Revivers {
             }),
             Type::Named(index) if self.holds[*index] => {
                 let definition = &schema.types[*index];
+                if let TypeKind::Distinct(underlying) = &definition.kind {
+                    // A brand is only a type, so the value underneath is
+                    // revived as it is.
+                    return self.of(schema, underlying);
+                }
                 Some(format!(
                     "revive{}",
                     scoped_pascal_case(&definition.scope, &definition.name)

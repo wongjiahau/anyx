@@ -95,6 +95,21 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, ast::ChoiceBody> {
     }
 }
 
+fn named_type(named: &ast::NamedType) -> Declaration<'_, ast::NamedTypeBody> {
+    match named {
+        ast::NamedType::Public { doc, body, .. } => Declaration {
+            doc,
+            public: true,
+            body,
+        },
+        ast::NamedType::Private { doc, body, .. } => Declaration {
+            doc,
+            public: false,
+            body,
+        },
+    }
+}
+
 fn errors(errors: &ast::Errors) -> Declaration<'_, ast::ErrorList> {
     match errors {
         ast::Errors::Public { doc, body, .. } => Declaration {
@@ -197,6 +212,10 @@ impl<'a> Checker<'a> {
                         let found = choice(found);
                         self.declare_type(&found.body.name, found.public);
                     }
+                    ast::Definition::NamedType(found) => {
+                        let found = named_type(found);
+                        self.declare_type(&found.body.name, found.public);
+                    }
                     ast::Definition::Errors(found) => {
                         let found = errors(found);
                         self.declare_group(found.body, found.public);
@@ -233,6 +252,16 @@ impl<'a> Checker<'a> {
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
                             kind: TypeKind::Choice(variants),
+                        });
+                    }
+                    ast::Definition::NamedType(found) => {
+                        let found = named_type(found);
+                        types.push(TypeDefinition {
+                            scope: file.scope.clone(),
+                            public: found.public,
+                            doc: doc(found.doc),
+                            name: found.body.name.value.clone(),
+                            kind: TypeKind::Distinct(self.r#type(&found.body.r#type)),
                         });
                     }
                     ast::Definition::Errors(_) | ast::Definition::Method(_) => {}
@@ -604,11 +633,11 @@ impl<'a> Checker<'a> {
             None => {
                 let message = match path.full {
                     true => format!(
-                        "found `{}`, which names no type; expected the full path of a `PUBLIC` `RECORD` or `CHOICE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`",
+                        "found `{}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`",
                         scoped(&path.scope, &path.name)
                     ),
                     false => format!(
-                        "found `{text}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD` or `CHOICE` defined here; define `{text}`, or fix the name{hint}",
+                        "found `{text}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{text}`, or fix the name{hint}",
                         text = path.name,
                         scope = self.this_scope(),
                         hint = self.elsewhere(self.types.iter(), &path.name),
@@ -1017,8 +1046,48 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A type that holds itself, other than through a `LIST` or a `MAP`, has no
-    /// finite value.
+    /// A named type that leads back to itself, as in `TYPE a: LIST: a` or
+    /// `TYPE a: b, TYPE b: a`, names no type at all. Returns the types it
+    /// reported.
+    fn check_named_cycles(&mut self, schema: &Schema) -> Vec<usize> {
+        fn mentioned(r#type: &Type, found: &mut Vec<usize>) {
+            match r#type {
+                Type::Named(index) => found.push(*index),
+                Type::List(item) | Type::Map(item) => mentioned(item, found),
+                _ => {}
+            }
+        }
+        let edges: Vec<Vec<usize>> = schema
+            .types
+            .iter()
+            .map(|definition| {
+                let mut found = Vec::new();
+                if let TypeKind::Distinct(underlying) = &definition.kind {
+                    mentioned(underlying, &mut found);
+                }
+                found
+                    .into_iter()
+                    .filter(|index| matches!(schema.types[*index].kind, TypeKind::Distinct(_)))
+                    .collect()
+            })
+            .collect();
+        let cycles = cycles(&edges);
+        for start in &cycles {
+            let declared = &self.types[*start];
+            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+            self.file = file;
+            self.error(
+                span,
+                format!(
+                    "found the named type `{name}` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE {name}: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`"
+                ),
+            );
+        }
+        cycles
+    }
+
+    /// A type that holds itself, other than through a `LIST` or a `MAP`, has
+    /// no finite value. A named type holds the type underneath it.
     fn check_recursion(&mut self, schema: &Schema) {
         fn held(r#type: &Type) -> Option<usize> {
             match r#type {
@@ -1026,6 +1095,7 @@ impl<'a> Checker<'a> {
                 _ => None,
             }
         }
+        let reported = self.check_named_cycles(schema);
         let edges: Vec<Vec<usize>> = schema
             .types
             .iter()
@@ -1039,28 +1109,41 @@ impl<'a> Checker<'a> {
                     .flat_map(|variant| &variant.shape.parameters)
                     .filter_map(|parameter| held(&parameter.r#type))
                     .collect(),
+                TypeKind::Distinct(underlying) => held(underlying).into_iter().collect(),
             })
             .collect();
-        for start in 0..schema.types.len() {
-            let mut seen = vec![false; schema.types.len()];
-            let mut pending = edges[start].clone();
+        for start in cycles(&edges) {
+            if reported.contains(&start) {
+                continue;
+            }
+            let declared = &self.types[start];
+            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+            self.file = file;
+            self.error(
+                span,
+                format!(
+                    "found the type `{name}` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`"
+                ),
+            );
+        }
+    }
+}
+
+/// The nodes of `edges` that lead back to themselves, in order.
+fn cycles(edges: &[Vec<usize>]) -> Vec<usize> {
+    (0..edges.len())
+        .filter(|start| {
+            let mut seen = vec![false; edges.len()];
+            let mut pending = edges[*start].clone();
             while let Some(next) = pending.pop() {
-                if next == start {
-                    let declared = &self.types[start];
-                    let (file, span, name) = (declared.file, declared.span, declared.name.clone());
-                    self.file = file;
-                    self.error(
-                        span,
-                        format!(
-                            "found the type `{name}` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`"
-                        ),
-                    );
-                    break;
+                if next == *start {
+                    return true;
                 }
                 if !std::mem::replace(&mut seen[next], true) {
                     pending.extend(&edges[next]);
                 }
             }
-        }
-    }
+            false
+        })
+        .collect()
 }

@@ -24,6 +24,7 @@ pub struct Protocol {
 pub enum Definition {
     Record(Record),
     Choice(Choice),
+    NamedType(NamedType),
     Errors(Errors),
     Method(Method),
 }
@@ -147,6 +148,27 @@ pub struct ChoiceBody {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum NamedType {
+    Public {
+        doc: Option<Spanned<StringLiteral>>,
+        body: NamedTypeBody,
+        span: Span,
+    },
+    Private {
+        doc: Option<Spanned<StringLiteral>>,
+        body: NamedTypeBody,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedTypeBody {
+    pub name: Spanned<String>,
+    pub r#type: Type,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variant {
     pub name: CallName,
     pub arguments: Vec<VariantSlot>,
@@ -264,6 +286,7 @@ impl Definition {
         match self {
             Definition::Record(value) => value.span(),
             Definition::Choice(value) => value.span(),
+            Definition::NamedType(value) => value.span(),
             Definition::Errors(value) => value.span(),
             Definition::Method(value) => value.span(),
         }
@@ -320,6 +343,14 @@ impl Choice {
     pub fn span(&self) -> Span {
         match self {
             Choice::Public { span, .. } | Choice::Private { span, .. } => *span,
+        }
+    }
+}
+
+impl NamedType {
+    pub fn span(&self) -> Span {
+        match self {
+            NamedType::Public { span, .. } | NamedType::Private { span, .. } => *span,
         }
     }
 }
@@ -398,6 +429,7 @@ impl support::Errors for Definition {
         match self {
             Definition::Record(value) => support::Errors::errors(value, found),
             Definition::Choice(value) => support::Errors::errors(value, found),
+            Definition::NamedType(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
         }
@@ -522,6 +554,28 @@ impl support::Errors for ChoiceBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.variants, found);
+    }
+}
+
+impl support::Errors for NamedType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            NamedType::Public { doc, body, .. } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(body, found);
+            }
+            NamedType::Private { doc, body, .. } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(body, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for NamedTypeBody {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.r#type, found);
     }
 }
 
@@ -699,6 +753,7 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
     decode_record(node)
         .map(Definition::Record)
         .or_else(|error| error.or(decode_choice(node).map(Definition::Choice)))
+        .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
 }
@@ -1013,6 +1068,51 @@ fn decode_choice_body_variants(node: &Node) -> Result<Spanned<Vec<Variant>>, Dec
         value,
         span: node.span,
     })
+}
+
+pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
+    decode_named_type_public(node).or_else(|error| error.or(decode_named_type_private(node)))
+}
+
+fn decode_named_type_public(node: &Node) -> Result<NamedType, DecodeError> {
+    let mut parts = support::call(node, "the call `_? PUBLIC TYPE _`")?;
+    let decoded = NamedType::Public {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        body: parts
+            .word("PUBLIC")?
+            .word("TYPE")?
+            .one(decode_named_type_body, "a named type body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_named_type_private(node: &Node) -> Result<NamedType, DecodeError> {
+    let mut parts = support::call(node, "the call `_? TYPE _`")?;
+    let decoded = NamedType::Private {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        body: parts
+            .word("TYPE")?
+            .one(decode_named_type_body, "a named type body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError> {
+    let mut parts = support::call(node, "the call `… _`")?;
+    let decoded = NamedTypeBody {
+        name: parts.words(
+            |text| !text.split(' ').any(anyx::is_keyword),
+            "words whose text has no keyword",
+        )?,
+        r#type: parts.one(decode_type, "a type")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_variant(node: &Node) -> Result<Variant, DecodeError> {

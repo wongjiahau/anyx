@@ -1,0 +1,37 @@
+# Shares files by link.
+PROTOCOL sharing VERSION 1,
+
+# Which file, among every account's.
+TYPE file id: TEXT,
+
+TYPE share id: TEXT,
+
+TYPE tags: LIST: TEXT,
+
+RECORD file link { share id: share id, file id: file id, tags: tags },
+
+# A link someone may open.
+TYPE link: file link,
+
+CHOICE access { read, write },
+
+TYPE level: access,
+
+METHOD share (id: file id) tagged (tags: tags)
+    RETURNS (link: link)
+    ERRORS [missing (id: file id)],
+
+METHOD revoke (id: share id) RETURNS NOTHING,
+
+METHOD links RETURNS (ids: LIST: share id),
+
+METHOD grant (level: level) on (id: file id) RETURNS (granted: level),
+
+# When a link was last opened.
+TYPE opened at: INSTANT,
+
+TYPE openings: MAP: opened at,
+
+RECORD visit { at: opened at, by person: openings, label: OPTIONAL: share id DEFAULT "none" },
+
+METHOD visits RETURNS (visits: LIST: visit),

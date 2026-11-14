@@ -265,6 +265,7 @@ fn method_index(schema: &Schema, full_name: &str) -> Result<usize, String> {
 
 /// `value` as JSON.
 pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
+    let r#type = schema.underlying(r#type);
     match value {
         Value::Text(text) => Json::String(text.clone()),
         Value::Bytes(bytes) => Json::String(crate::bytes::encode(bytes)),
@@ -305,7 +306,7 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
             let fields = match r#type {
                 Type::Named(index) => match &schema.types[*index].kind {
                     TypeKind::Record(fields) => &fields[..],
-                    TypeKind::Choice(_) => &[],
+                    TypeKind::Choice(_) | TypeKind::Distinct(_) => &[],
                 },
                 _ => &[],
             };
@@ -317,7 +318,7 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                     TypeKind::Choice(variants) => {
                         variants.iter().map(|variant| &variant.shape).collect()
                     }
-                    TypeKind::Record(_) => Vec::new(),
+                    TypeKind::Record(_) | TypeKind::Distinct(_) => Vec::new(),
                 },
                 _ => Vec::new(),
             };
@@ -366,6 +367,7 @@ fn fields_to_json(
 
 /// Reads JSON as a value of `type`, checking it against the schema.
 pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, String> {
+    let r#type = schema.underlying(r#type);
     let mismatch = |expected: &str| Err(format!("found {json}; expected {expected}"));
     match r#type {
         Type::Text => match json {
@@ -433,6 +435,7 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                         variants.iter().map(|variant| &variant.shape).collect();
                     variant_from_json(schema, &shapes, object)
                 }
+                TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
             }
         }
     }

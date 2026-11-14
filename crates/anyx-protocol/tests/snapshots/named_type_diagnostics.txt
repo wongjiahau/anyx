@@ -1,0 +1,38 @@
+== a named type referring to itself
+PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
+schema:1:28: found the named type `a` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE a: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
+                             ^
+schema:1:45: found the named type `b` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE b: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
+                                              ^
+schema:1:56: found the named type `c` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE c: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
+                                                         ^
+
+== a named type holding a record that holds it
+PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
+schema:1:30: found the type `r` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
+                               ^
+schema:1:47: found the type `a` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
+                                                ^
+
+== a named type defined twice
+PROTOCOL a VERSION 1, TYPE a: TEXT, RECORD a { b: TEXT },
+schema:1:44: found a second type named `a`; expected each type to be defined once in a scope; rename or remove one of them
+  PROTOCOL a VERSION 1, TYPE a: TEXT, RECORD a { b: TEXT },
+                                             ^
+
+== a named type over an unknown type
+PROTOCOL a VERSION 1, TYPE a: thing,
+schema:1:31: found `thing`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+  PROTOCOL a VERSION 1, TYPE a: thing,
+                                ^^^^^
+
+== a named type over an optional type
+PROTOCOL a VERSION 1, TYPE a: OPTIONAL: TEXT,
+schema:1:31: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
+  PROTOCOL a VERSION 1, TYPE a: OPTIONAL: TEXT,
+                                ^^^^^^^^

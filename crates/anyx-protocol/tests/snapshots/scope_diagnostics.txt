@@ -4,12 +4,12 @@ files.anyx:1:18: found `common/secret`, which is private to the scope `common`; 
                    ^^^^^^^^^^^^^
 
 == a full path that names nothing
-files.anyx:1:18: found `common/nothing`, which names no type; expected the full path of a `PUBLIC` `RECORD` or `CHOICE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`
+files.anyx:1:18: found `common/nothing`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`
   RECORD file { a: common/nothing },
                    ^^^^^^^^^^^^^^
 
 == a public type written without its path
-files.anyx:1:18: found `diagnostic`, which is not a type of the scope `files`; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD` or `CHOICE` defined here; define `diagnostic`, or fix the name; another scope has `common/diagnostic`, so write its full path
+files.anyx:1:18: found `diagnostic`, which is not a type of the scope `files`; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `diagnostic`, or fix the name; another scope has `common/diagnostic`, so write its full path
   RECORD file { a: diagnostic },
                    ^^^^^^^^^^
 
