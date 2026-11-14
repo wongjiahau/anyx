@@ -15,19 +15,11 @@ protocol: ANYFIX CALL [
 
 definition: ONE OF [record, choice, named type, errors, method],
 
-record: ONE OF [
-  public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "RECORD", body: record body],
-  private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "RECORD", body: record body],
-  public generic: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "PUBLIC", WORD "GENERIC", parameters: type parameters,
-    WORD "RECORD", body: record body,
-  ],
-  generic: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "GENERIC", parameters: type parameters,
-    WORD "RECORD", body: record body,
-  ],
+record: ANYFIX CALL [
+  doc: OPTIONAL: STRING,
+  public: OPTIONAL: WORD "PUBLIC",
+  parameters: OPTIONAL [WORD "GENERIC", type parameters],
+  WORD "RECORD", body: record body,
 ],
 
 ## A generic `RECORD` or `CHOICE` names its type parameters after `GENERIC`:
@@ -83,19 +75,11 @@ defaulted: ONE OF [
   other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
 ],
 
-choice: ONE OF [
-  public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "CHOICE", body: choice body],
-  private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "CHOICE", body: choice body],
-  public generic: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "PUBLIC", WORD "GENERIC", parameters: type parameters,
-    WORD "CHOICE", body: choice body,
-  ],
-  generic: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "GENERIC", parameters: type parameters,
-    WORD "CHOICE", body: choice body,
-  ],
+choice: ANYFIX CALL [
+  doc: OPTIONAL: STRING,
+  public: OPTIONAL: WORD "PUBLIC",
+  parameters: OPTIONAL [WORD "GENERIC", type parameters],
+  WORD "CHOICE", body: choice body,
 ],
 
 choice body: ANYFIX CALL [
@@ -106,9 +90,8 @@ choice body: ANYFIX CALL [
 ## A named type gives a type its own name, `TYPE file id: TEXT`, so values
 ## that share a representation but mean different things can't be mixed up.
 ## On the wire it is written exactly like the type underneath.
-named type: ONE OF [
-  public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "TYPE", body: named type body],
-  private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "TYPE", body: named type body],
+named type: ANYFIX CALL [
+  doc: OPTIONAL: STRING, public: OPTIONAL: WORD "PUBLIC", WORD "TYPE", body: named type body,
 ],
 
 named type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
@@ -123,64 +106,19 @@ variant slot: ONE OF [doc: STRING, parameter],
 ## other groups joined with `+`, as in
 ## `ERRORS export errors [unreadable (diagnostics: LIST diagnostic)] + file errors`.
 ## `PUBLIC` lets other scopes use a type or a group, by its full path.
-errors: ONE OF [
-  public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "ERRORS", body: error list],
-  private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "ERRORS", body: error list],
+errors: ANYFIX CALL [
+  doc: OPTIONAL: STRING, public: OPTIONAL: WORD "PUBLIC", WORD "ERRORS", body: error list,
 ],
 
-## A method's clauses come in this order, and `ERRORS` and `EXAMPLES` may be
-## left out. The grammar language has no optional words, so each combination
-## is a form of its own.
-method: ONE OF [
-  value with errors and examples: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", returns: returns,
-    WORD "ERRORS", errors: error list,
-    WORD "EXAMPLES", examples: examples,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
-  value with errors: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", returns: returns,
-    WORD "ERRORS", errors: error list,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS"],
-  value with examples: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", returns: returns,
-    WORD "EXAMPLES", examples: examples,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "EXAMPLES"],
-  value: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", returns: returns,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS"],
-  nothing with errors and examples: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", WORD "NOTHING",
-    WORD "ERRORS", errors: error list,
-    WORD "EXAMPLES", examples: examples,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
-  nothing with errors: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", WORD "NOTHING",
-    WORD "ERRORS", errors: error list,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS"],
-  nothing with examples: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", WORD "NOTHING",
-    WORD "EXAMPLES", examples: examples,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "EXAMPLES"],
-  nothing: ANYFIX CALL [
-    doc: OPTIONAL: STRING,
-    WORD "METHOD", shape: shape,
-    WORD "RETURNS", WORD "NOTHING",
-  ] FORMAT [BREAK BEFORE WORD "RETURNS"],
-],
+## A method's clauses come in this order. It returns a value or `NOTHING`,
+## and `ERRORS` and `EXAMPLES` may be left out.
+method: ANYFIX CALL [
+  doc: OPTIONAL: STRING,
+  WORD "METHOD", shape: shape,
+  WORD "RETURNS", returns: ONE OF [value: returns, nothing: WORD "NOTHING"],
+  errors: OPTIONAL [WORD "ERRORS", error list],
+  examples: OPTIONAL [WORD "EXAMPLES", examples],
+] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
 
 ## Examples of a method, each a call of it and its outcome side by side, the
 ## call as a request writes it and the outcome as a response writes it:

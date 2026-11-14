@@ -30,29 +30,12 @@ pub enum Definition {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Record {
-    Public {
-        doc: Option<Spanned<StringLiteral>>,
-        body: RecordBody,
-        span: Span,
-    },
-    Private {
-        doc: Option<Spanned<StringLiteral>>,
-        body: RecordBody,
-        span: Span,
-    },
-    PublicGeneric {
-        doc: Option<Spanned<StringLiteral>>,
-        parameters: TypeParameters,
-        body: RecordBody,
-        span: Span,
-    },
-    Generic {
-        doc: Option<Spanned<StringLiteral>>,
-        parameters: TypeParameters,
-        body: RecordBody,
-        span: Span,
-    },
+pub struct Record {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub parameters: Option<TypeParameters>,
+    pub body: RecordBody,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -157,29 +140,12 @@ pub enum Defaulted {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Choice {
-    Public {
-        doc: Option<Spanned<StringLiteral>>,
-        body: ChoiceBody,
-        span: Span,
-    },
-    Private {
-        doc: Option<Spanned<StringLiteral>>,
-        body: ChoiceBody,
-        span: Span,
-    },
-    PublicGeneric {
-        doc: Option<Spanned<StringLiteral>>,
-        parameters: TypeParameters,
-        body: ChoiceBody,
-        span: Span,
-    },
-    Generic {
-        doc: Option<Spanned<StringLiteral>>,
-        parameters: TypeParameters,
-        body: ChoiceBody,
-        span: Span,
-    },
+pub struct Choice {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub parameters: Option<TypeParameters>,
+    pub body: ChoiceBody,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -190,17 +156,11 @@ pub struct ChoiceBody {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum NamedType {
-    Public {
-        doc: Option<Spanned<StringLiteral>>,
-        body: NamedTypeBody,
-        span: Span,
-    },
-    Private {
-        doc: Option<Spanned<StringLiteral>>,
-        body: NamedTypeBody,
-        span: Span,
-    },
+pub struct NamedType {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub body: NamedTypeBody,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -224,73 +184,27 @@ pub enum VariantSlot {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Errors {
-    Public {
-        doc: Option<Spanned<StringLiteral>>,
-        body: ErrorList,
-        span: Span,
-    },
-    Private {
-        doc: Option<Spanned<StringLiteral>>,
-        body: ErrorList,
-        span: Span,
-    },
+pub struct Errors {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub body: ErrorList,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Method {
-    ValueWithErrorsAndExamples {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        returns: Returns,
-        errors: ErrorList,
-        examples: Examples,
-        span: Span,
-    },
-    ValueWithErrors {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        returns: Returns,
-        errors: ErrorList,
-        span: Span,
-    },
-    ValueWithExamples {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        returns: Returns,
-        examples: Examples,
-        span: Span,
-    },
-    Value {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        returns: Returns,
-        span: Span,
-    },
-    NothingWithErrorsAndExamples {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        errors: ErrorList,
-        examples: Examples,
-        span: Span,
-    },
-    NothingWithErrors {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        errors: ErrorList,
-        span: Span,
-    },
-    NothingWithExamples {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        examples: Examples,
-        span: Span,
-    },
-    Nothing {
-        doc: Option<Spanned<StringLiteral>>,
-        shape: Shape,
-        span: Span,
-    },
+pub struct Method {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub shape: Shape,
+    pub returns: MethodReturns,
+    pub errors: Option<ErrorList>,
+    pub examples: Option<Examples>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MethodReturns {
+    Value(Returns),
+    Nothing(Span),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -384,22 +298,11 @@ pub struct TypeName {
 impl Definition {
     pub fn span(&self) -> Span {
         match self {
-            Definition::Record(value) => value.span(),
-            Definition::Choice(value) => value.span(),
-            Definition::NamedType(value) => value.span(),
-            Definition::Errors(value) => value.span(),
-            Definition::Method(value) => value.span(),
-        }
-    }
-}
-
-impl Record {
-    pub fn span(&self) -> Span {
-        match self {
-            Record::Public { span, .. }
-            | Record::Private { span, .. }
-            | Record::PublicGeneric { span, .. }
-            | Record::Generic { span, .. } => *span,
+            Definition::Record(value) => value.span,
+            Definition::Choice(value) => value.span,
+            Definition::NamedType(value) => value.span,
+            Definition::Errors(value) => value.span,
+            Definition::Method(value) => value.span,
         }
     }
 }
@@ -452,25 +355,6 @@ impl Defaulted {
     }
 }
 
-impl Choice {
-    pub fn span(&self) -> Span {
-        match self {
-            Choice::Public { span, .. }
-            | Choice::Private { span, .. }
-            | Choice::PublicGeneric { span, .. }
-            | Choice::Generic { span, .. } => *span,
-        }
-    }
-}
-
-impl NamedType {
-    pub fn span(&self) -> Span {
-        match self {
-            NamedType::Public { span, .. } | NamedType::Private { span, .. } => *span,
-        }
-    }
-}
-
 impl VariantSlot {
     pub fn span(&self) -> Span {
         match self {
@@ -480,25 +364,11 @@ impl VariantSlot {
     }
 }
 
-impl Errors {
+impl MethodReturns {
     pub fn span(&self) -> Span {
         match self {
-            Errors::Public { span, .. } | Errors::Private { span, .. } => *span,
-        }
-    }
-}
-
-impl Method {
-    pub fn span(&self) -> Span {
-        match self {
-            Method::ValueWithErrorsAndExamples { span, .. }
-            | Method::ValueWithErrors { span, .. }
-            | Method::ValueWithExamples { span, .. }
-            | Method::Value { span, .. }
-            | Method::NothingWithErrorsAndExamples { span, .. }
-            | Method::NothingWithErrors { span, .. }
-            | Method::NothingWithExamples { span, .. }
-            | Method::Nothing { span, .. } => *span,
+            MethodReturns::Nothing(span) => *span,
+            MethodReturns::Value(value) => value.span,
         }
     }
 }
@@ -578,36 +448,10 @@ impl support::Errors for Definition {
 
 impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            Record::Public { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            Record::Private { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            Record::PublicGeneric {
-                doc,
-                parameters,
-                body,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(parameters, found);
-                support::Errors::errors(body, found);
-            }
-            Record::Generic {
-                doc,
-                parameters,
-                body,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(parameters, found);
-                support::Errors::errors(body, found);
-            }
-        }
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.parameters, found);
+        support::Errors::errors(&self.body, found);
     }
 }
 
@@ -722,36 +566,10 @@ impl support::Errors for Defaulted {
 
 impl support::Errors for Choice {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            Choice::Public { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            Choice::Private { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            Choice::PublicGeneric {
-                doc,
-                parameters,
-                body,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(parameters, found);
-                support::Errors::errors(body, found);
-            }
-            Choice::Generic {
-                doc,
-                parameters,
-                body,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(parameters, found);
-                support::Errors::errors(body, found);
-            }
-        }
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.parameters, found);
+        support::Errors::errors(&self.body, found);
     }
 }
 
@@ -764,16 +582,9 @@ impl support::Errors for ChoiceBody {
 
 impl support::Errors for NamedType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            NamedType::Public { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            NamedType::Private { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-        }
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.body, found);
     }
 }
 
@@ -802,103 +613,27 @@ impl support::Errors for VariantSlot {
 
 impl support::Errors for Errors {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            Errors::Public { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-            Errors::Private { doc, body, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(body, found);
-            }
-        }
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.body, found);
     }
 }
 
 impl support::Errors for Method {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.shape, found);
+        support::Errors::errors(&self.returns, found);
+        support::Errors::errors(&self.errors, found);
+        support::Errors::errors(&self.examples, found);
+    }
+}
+
+impl support::Errors for MethodReturns {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Method::ValueWithErrorsAndExamples {
-                doc,
-                shape,
-                returns,
-                errors,
-                examples,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(returns, found);
-                support::Errors::errors(errors, found);
-                support::Errors::errors(examples, found);
-            }
-            Method::ValueWithErrors {
-                doc,
-                shape,
-                returns,
-                errors,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(returns, found);
-                support::Errors::errors(errors, found);
-            }
-            Method::ValueWithExamples {
-                doc,
-                shape,
-                returns,
-                examples,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(returns, found);
-                support::Errors::errors(examples, found);
-            }
-            Method::Value {
-                doc,
-                shape,
-                returns,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(returns, found);
-            }
-            Method::NothingWithErrorsAndExamples {
-                doc,
-                shape,
-                errors,
-                examples,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(errors, found);
-                support::Errors::errors(examples, found);
-            }
-            Method::NothingWithErrors {
-                doc, shape, errors, ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(errors, found);
-            }
-            Method::NothingWithExamples {
-                doc,
-                shape,
-                examples,
-                ..
-            } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-                support::Errors::errors(examples, found);
-            }
-            Method::Nothing { doc, shape, .. } => {
-                support::Errors::errors(doc, found);
-                support::Errors::errors(shape, found);
-            }
+            MethodReturns::Value(value) => support::Errors::errors(value, found),
+            MethodReturns::Nothing(_) => {}
         }
     }
 }
@@ -1053,63 +788,37 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
 }
 
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
-    decode_record_public(node)
-        .or_else(|error| error.or(decode_record_private(node)))
-        .or_else(|error| error.or(decode_record_public_generic(node)))
-        .or_else(|error| error.or(decode_record_generic(node)))
-}
-
-fn decode_record_public(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC RECORD _`")?;
-    let decoded = Record::Public {
+    let mut parts = support::call_of(
+        node,
+        &[
+            "the call `_? PUBLIC GENERIC _ RECORD _`",
+            "the call `_? PUBLIC RECORD _`",
+            "the call `_? GENERIC _ RECORD _`",
+            "the call `_? RECORD _`",
+        ],
+    )?;
+    let decoded = Record {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("PUBLIC")?
-            .word("RECORD")?
-            .one(decode_record_body, "a record body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_record_private(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? RECORD _`")?;
-    let decoded = Record::Private {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("RECORD")?
-            .one(decode_record_body, "a record body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_record_public_generic(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC GENERIC _ RECORD _`")?;
-    let decoded = Record::PublicGeneric {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        parameters: parts
-            .word("PUBLIC")?
-            .word("GENERIC")?
-            .one(decode_type_parameters, "type parameters")?,
-        body: parts
-            .word("RECORD")?
-            .one(decode_record_body, "a record body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_record_generic(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? GENERIC _ RECORD _`")?;
-    let decoded = Record::Generic {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        parameters: parts
-            .word("GENERIC")?
-            .one(decode_type_parameters, "type parameters")?,
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("PUBLIC")?)
+        } else {
+            None
+        },
+        parameters: if parts
+            .choose(&["GENERIC"], false, true, &["the word `GENERIC`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("GENERIC")?
+                    .one(decode_type_parameters, "type parameters")?,
+            )
+        } else {
+            None
+        },
         body: parts
             .word("RECORD")?
             .one(decode_record_body, "a record body")?,
@@ -1390,63 +1099,37 @@ fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
 }
 
 pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
-    decode_choice_public(node)
-        .or_else(|error| error.or(decode_choice_private(node)))
-        .or_else(|error| error.or(decode_choice_public_generic(node)))
-        .or_else(|error| error.or(decode_choice_generic(node)))
-}
-
-fn decode_choice_public(node: &Node) -> Result<Choice, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC CHOICE _`")?;
-    let decoded = Choice::Public {
+    let mut parts = support::call_of(
+        node,
+        &[
+            "the call `_? PUBLIC GENERIC _ CHOICE _`",
+            "the call `_? PUBLIC CHOICE _`",
+            "the call `_? GENERIC _ CHOICE _`",
+            "the call `_? CHOICE _`",
+        ],
+    )?;
+    let decoded = Choice {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("PUBLIC")?
-            .word("CHOICE")?
-            .one(decode_choice_body, "a choice body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_choice_private(node: &Node) -> Result<Choice, DecodeError> {
-    let mut parts = support::call(node, "the call `_? CHOICE _`")?;
-    let decoded = Choice::Private {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("CHOICE")?
-            .one(decode_choice_body, "a choice body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_choice_public_generic(node: &Node) -> Result<Choice, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC GENERIC _ CHOICE _`")?;
-    let decoded = Choice::PublicGeneric {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        parameters: parts
-            .word("PUBLIC")?
-            .word("GENERIC")?
-            .one(decode_type_parameters, "type parameters")?,
-        body: parts
-            .word("CHOICE")?
-            .one(decode_choice_body, "a choice body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_choice_generic(node: &Node) -> Result<Choice, DecodeError> {
-    let mut parts = support::call(node, "the call `_? GENERIC _ CHOICE _`")?;
-    let decoded = Choice::Generic {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        parameters: parts
-            .word("GENERIC")?
-            .one(decode_type_parameters, "type parameters")?,
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("PUBLIC")?)
+        } else {
+            None
+        },
+        parameters: if parts
+            .choose(&["GENERIC"], false, true, &["the word `GENERIC`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("GENERIC")?
+                    .one(decode_type_parameters, "type parameters")?,
+            )
+        } else {
+            None
+        },
         body: parts
             .word("CHOICE")?
             .one(decode_choice_body, "a choice body")?,
@@ -1481,27 +1164,20 @@ fn decode_choice_body_variants(node: &Node) -> Result<Spanned<Vec<Variant>>, Dec
 }
 
 pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
-    decode_named_type_public(node).or_else(|error| error.or(decode_named_type_private(node)))
-}
-
-fn decode_named_type_public(node: &Node) -> Result<NamedType, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC TYPE _`")?;
-    let decoded = NamedType::Public {
+    let mut parts = support::call_of(
+        node,
+        &["the call `_? PUBLIC TYPE _`", "the call `_? TYPE _`"],
+    )?;
+    let decoded = NamedType {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("PUBLIC")?
-            .word("TYPE")?
-            .one(decode_named_type_body, "a named type body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_named_type_private(node: &Node) -> Result<NamedType, DecodeError> {
-    let mut parts = support::call(node, "the call `_? TYPE _`")?;
-    let decoded = NamedType::Private {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("PUBLIC")?)
+        } else {
+            None
+        },
         body: parts
             .word("TYPE")?
             .one(decode_named_type_body, "a named type body")?,
@@ -1548,27 +1224,20 @@ pub fn decode_variant_slot(node: &Node) -> Result<VariantSlot, DecodeError> {
 }
 
 pub fn decode_errors(node: &Node) -> Result<Errors, DecodeError> {
-    decode_errors_public(node).or_else(|error| error.or(decode_errors_private(node)))
-}
-
-fn decode_errors_public(node: &Node) -> Result<Errors, DecodeError> {
-    let mut parts = support::call(node, "the call `_? PUBLIC ERRORS _`")?;
-    let decoded = Errors::Public {
+    let mut parts = support::call_of(
+        node,
+        &["the call `_? PUBLIC ERRORS _`", "the call `_? ERRORS _`"],
+    )?;
+    let decoded = Errors {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        body: parts
-            .word("PUBLIC")?
-            .word("ERRORS")?
-            .one(decode_error_list, "an error list")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_errors_private(node: &Node) -> Result<Errors, DecodeError> {
-    let mut parts = support::call(node, "the call `_? ERRORS _`")?;
-    let decoded = Errors::Private {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("PUBLIC")?)
+        } else {
+            None
+        },
         body: parts
             .word("ERRORS")?
             .one(decode_error_list, "an error list")?,
@@ -1579,132 +1248,56 @@ fn decode_errors_private(node: &Node) -> Result<Errors, DecodeError> {
 }
 
 pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
-    decode_method_value_with_errors_and_examples(node)
-        .or_else(|error| error.or(decode_method_value_with_errors(node)))
-        .or_else(|error| error.or(decode_method_value_with_examples(node)))
-        .or_else(|error| error.or(decode_method_value(node)))
-        .or_else(|error| error.or(decode_method_nothing_with_errors_and_examples(node)))
-        .or_else(|error| error.or(decode_method_nothing_with_errors(node)))
-        .or_else(|error| error.or(decode_method_nothing_with_examples(node)))
-        .or_else(|error| error.or(decode_method_nothing(node)))
-}
-
-fn decode_method_value_with_errors_and_examples(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _ ERRORS _ EXAMPLES _`")?;
-    let decoded = Method::ValueWithErrorsAndExamples {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
-        errors: parts
-            .word("ERRORS")?
-            .one(decode_error_list, "an error list")?,
-        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_value_with_errors(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _ ERRORS _`")?;
-    let decoded = Method::ValueWithErrors {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
-        errors: parts
-            .word("ERRORS")?
-            .one(decode_error_list, "an error list")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_value_with_examples(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _ EXAMPLES _`")?;
-    let decoded = Method::ValueWithExamples {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
-        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_value(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _`")?;
-    let decoded = Method::Value {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_nothing_with_errors_and_examples(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(
+    let mut parts = support::call_of(
         node,
-        "the call `_? METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+        &[
+            "the call `_? METHOD _ RETURNS _ ERRORS _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS _ ERRORS _`",
+            "the call `_? METHOD _ RETURNS _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS _`",
+            "the call `_? METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS NOTHING ERRORS _`",
+            "the call `_? METHOD _ RETURNS NOTHING EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS NOTHING`",
+        ],
     )?;
-    let decoded = Method::NothingWithErrorsAndExamples {
+    let decoded = Method {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
         shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        errors: parts
-            .word("RETURNS")?
-            .word("NOTHING")?
-            .word("ERRORS")?
-            .one(decode_error_list, "an error list")?,
-        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
+        returns: {
+            parts.word("RETURNS")?;
+            match parts.choose(
+                &["NOTHING"],
+                true,
+                false,
+                &["returns", "the word `NOTHING`"],
+            )? {
+                Some(0) => MethodReturns::Nothing(parts.word_span("NOTHING")?),
+                _ => MethodReturns::Value(parts.one(decode_returns, "returns")?),
+            }
+        },
+        errors: if parts
+            .choose(&["ERRORS"], false, true, &["the word `ERRORS`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("ERRORS")?
+                    .one(decode_error_list, "an error list")?,
+            )
+        } else {
+            None
+        },
+        examples: if parts
+            .choose(&["EXAMPLES"], false, true, &["the word `EXAMPLES`"])?
+            .is_some()
+        {
+            Some(parts.word("EXAMPLES")?.one(decode_examples, "examples")?)
+        } else {
+            None
+        },
         span: node.span,
     };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_nothing_with_errors(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS NOTHING ERRORS _`")?;
-    let decoded = Method::NothingWithErrors {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        errors: parts
-            .word("RETURNS")?
-            .word("NOTHING")?
-            .word("ERRORS")?
-            .one(decode_error_list, "an error list")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_nothing_with_examples(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS NOTHING EXAMPLES _`")?;
-    let decoded = Method::NothingWithExamples {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        examples: parts
-            .word("RETURNS")?
-            .word("NOTHING")?
-            .word("EXAMPLES")?
-            .one(decode_examples, "examples")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_method_nothing(node: &Node) -> Result<Method, DecodeError> {
-    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS NOTHING`")?;
-    let decoded = Method::Nothing {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
-        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
-        span: node.span,
-    };
-    parts.word("RETURNS")?.word("NOTHING")?;
     parts.finish()?;
     Ok(decoded)
 }

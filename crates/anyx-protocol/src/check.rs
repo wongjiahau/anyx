@@ -71,118 +71,42 @@ struct Declaration<'b, T> {
 }
 
 fn record(record: &ast::Record) -> Declaration<'_, ast::RecordBody> {
-    match record {
-        ast::Record::Public { doc, body, .. } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: None,
-        },
-        ast::Record::Private { doc, body, .. } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: None,
-        },
-        ast::Record::PublicGeneric {
-            doc,
-            parameters,
-            body,
-            ..
-        } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: Some(parameters),
-        },
-        ast::Record::Generic {
-            doc,
-            parameters,
-            body,
-            ..
-        } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: Some(parameters),
-        },
+    Declaration {
+        doc: &record.doc,
+        public: record.public.is_some(),
+        body: &record.body,
+        parameters: record.parameters.as_ref(),
     }
 }
 
 fn choice(choice: &ast::Choice) -> Declaration<'_, ast::ChoiceBody> {
-    match choice {
-        ast::Choice::Public { doc, body, .. } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: None,
-        },
-        ast::Choice::Private { doc, body, .. } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: None,
-        },
-        ast::Choice::PublicGeneric {
-            doc,
-            parameters,
-            body,
-            ..
-        } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: Some(parameters),
-        },
-        ast::Choice::Generic {
-            doc,
-            parameters,
-            body,
-            ..
-        } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: Some(parameters),
-        },
+    Declaration {
+        doc: &choice.doc,
+        public: choice.public.is_some(),
+        body: &choice.body,
+        parameters: choice.parameters.as_ref(),
     }
 }
 
 fn named_type(named: &ast::NamedType) -> Declaration<'_, ast::NamedTypeBody> {
-    match named {
-        ast::NamedType::Public { doc, body, .. } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: None,
-        },
-        ast::NamedType::Private { doc, body, .. } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: None,
-        },
+    Declaration {
+        doc: &named.doc,
+        public: named.public.is_some(),
+        body: &named.body,
+        parameters: None,
     }
 }
 
 fn errors(errors: &ast::Errors) -> Declaration<'_, ast::ErrorList> {
-    match errors {
-        ast::Errors::Public { doc, body, .. } => Declaration {
-            doc,
-            public: true,
-            body,
-            parameters: None,
-        },
-        ast::Errors::Private { doc, body, .. } => Declaration {
-            doc,
-            public: false,
-            body,
-            parameters: None,
-        },
+    Declaration {
+        doc: &errors.doc,
+        public: errors.public.is_some(),
+        body: &errors.body,
+        parameters: None,
     }
 }
 
-/// A method's clauses, whichever of its forms it is written in.
+/// A method's clauses.
 struct MethodParts<'b> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
     shape: &'b ast::Shape,
@@ -193,100 +117,15 @@ struct MethodParts<'b> {
 }
 
 fn method_parts(method: &ast::Method) -> MethodParts<'_> {
-    match method {
-        ast::Method::ValueWithErrorsAndExamples {
-            doc,
-            shape,
-            returns,
-            errors,
-            examples,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: Some(returns),
-            errors: Some(errors),
-            examples: Some(examples),
+    MethodParts {
+        doc: &method.doc,
+        shape: &method.shape,
+        returns: match &method.returns {
+            ast::MethodReturns::Value(returns) => Some(returns),
+            ast::MethodReturns::Nothing(_) => None,
         },
-        ast::Method::ValueWithErrors {
-            doc,
-            shape,
-            returns,
-            errors,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: Some(returns),
-            errors: Some(errors),
-            examples: None,
-        },
-        ast::Method::ValueWithExamples {
-            doc,
-            shape,
-            returns,
-            examples,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: Some(returns),
-            errors: None,
-            examples: Some(examples),
-        },
-        ast::Method::Value {
-            doc,
-            shape,
-            returns,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: Some(returns),
-            errors: None,
-            examples: None,
-        },
-        ast::Method::NothingWithErrorsAndExamples {
-            doc,
-            shape,
-            errors,
-            examples,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: None,
-            errors: Some(errors),
-            examples: Some(examples),
-        },
-        ast::Method::NothingWithErrors {
-            doc, shape, errors, ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: None,
-            errors: Some(errors),
-            examples: None,
-        },
-        ast::Method::NothingWithExamples {
-            doc,
-            shape,
-            examples,
-            ..
-        } => MethodParts {
-            doc,
-            shape,
-            returns: None,
-            errors: None,
-            examples: Some(examples),
-        },
-        ast::Method::Nothing { doc, shape, .. } => MethodParts {
-            doc,
-            shape,
-            returns: None,
-            errors: None,
-            examples: None,
-        },
+        errors: method.errors.as_ref(),
+        examples: method.examples.as_ref(),
     }
 }
 
