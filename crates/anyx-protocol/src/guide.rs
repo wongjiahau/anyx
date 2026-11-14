@@ -55,14 +55,21 @@ Every call runs, in order, and the response has one result per call.
 - BYTES is base64 in a string: `\"TVRoZA==\"`.
 - INTEGER is a whole number, NUMBER any number: `3`, `-1.5`.
 - BOOLEAN is `true` or `false`.
+- INSTANT is a point in time, in UTC to the millisecond, as a string:
+  `\"2026-11-14T06:00:08.000Z\"`.
+- DURATION is whole numbers each followed by its unit, the largest first:
+  `90 seconds`, `1 hour 30 minutes`. The units are `days`, `hours`,
+  `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
 - `LIST: T` is `[a, b, c]`.
 - A RECORD is its fields in braces, each its name and value, in any order:
   `{{ path \"a\", revision 3 }}`. An `OPTIONAL` field may be left out. When a
-  value is a word, put `:` after the field's name: `{{ status: done }}`.
+  value is words, put `:` after the field's name: `{{ status: done }}`,
+  `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 - In a slot, a value written as words goes in parentheses so that it doesn't
-  join the words around it: `set (true)`, `pick (custom hue 0.5)`.
+  join the words around it: `set (true)`, `pick (custom hue 0.5)`,
+  `wait (5 minutes)`.
 
 ## Responses
 
@@ -170,6 +177,8 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Integer => "3".to_string(),
         Type::Number => "1.5".to_string(),
         Type::Boolean => "(true)".to_string(),
+        Type::Instant => "\"2026-11-14T06:00:08.000Z\"".to_string(),
+        Type::Duration => "(5 minutes)".to_string(),
         Type::List(_) => "[…]".to_string(),
         Type::Named(index) => match schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),

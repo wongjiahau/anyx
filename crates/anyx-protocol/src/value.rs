@@ -1,6 +1,7 @@
 //! Values as the schema sees them, between the wire and an app's own types.
 
 use std::collections::BTreeMap;
+use std::time::{Duration, SystemTime};
 
 /// A value of some schema type. The codec checks values against the schema
 /// both ways, so a `Value` that came out of it fits its type.
@@ -11,6 +12,10 @@ pub enum Value {
     Integer(i64),
     Number(f64),
     Boolean(bool),
+    /// An `INSTANT`. The wire keeps it to the millisecond, rounded down.
+    Instant(SystemTime),
+    /// A `DURATION`. The wire keeps it to the millisecond, rounded down.
+    Duration(Duration),
     List(Vec<Value>),
     /// A record's fields by name. An `OPTIONAL` field left out is absent.
     Record(BTreeMap<String, Value>),
@@ -126,6 +131,36 @@ impl FromValue for bool {
     fn from_value(value: Value) -> Option<Self> {
         match value {
             Value::Boolean(boolean) => Some(boolean),
+            _ => None,
+        }
+    }
+}
+
+impl IntoValue for SystemTime {
+    fn into_value(self) -> Value {
+        Value::Instant(self)
+    }
+}
+
+impl FromValue for SystemTime {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Instant(instant) => Some(instant),
+            _ => None,
+        }
+    }
+}
+
+impl IntoValue for Duration {
+    fn into_value(self) -> Value {
+        Value::Duration(self)
+    }
+}
+
+impl FromValue for Duration {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Duration(duration) => Some(duration),
             _ => None,
         }
     }

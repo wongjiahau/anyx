@@ -323,6 +323,35 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
             }
         }
         (Type::Boolean, _) => Err(mismatch("`true` or `false`".to_string())),
+        (Type::Instant, NodeKind::String(literal)) => crate::time::parse_instant(&literal.value)
+            .map(Value::Instant)
+            .ok_or_else(|| {
+                mismatch(format!(
+                    "an instant in UTC in the string, as in `\"{INSTANT_EXAMPLE}\"`"
+                ))
+            }),
+        (Type::Instant, _) => Err(mismatch(format!(
+            "an instant in UTC in a string, as in `\"{INSTANT_EXAMPLE}\"`"
+        ))),
+        (Type::Duration, NodeKind::Call(call)) => {
+            let pairs = duration_pairs(call).ok_or_else(|| {
+                mismatch(format!(
+                    "a duration, whole numbers each with a unit, as in `{DURATION_EXAMPLE}`"
+                ))
+            })?;
+            crate::time::parse_duration(&pairs)
+                .map(Value::Duration)
+                .map_err(|found| Mismatch {
+                    span: node.span,
+                    message: format!(
+                        "found {found}; expected a duration, whole numbers each with a unit, the largest first, as in `{DURATION_EXAMPLE}`; the units are {}",
+                        duration_units()
+                    ),
+                })
+        }
+        (Type::Duration, _) => Err(mismatch(format!(
+            "a duration, as in `{DURATION_EXAMPLE}`, which goes in parentheses in a slot"
+        ))),
         (Type::List(item), NodeKind::Brackets(items)) => items
             .iter()
             .map(|node| decode(schema, item, node))
@@ -358,6 +387,37 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
             }
         }
     }
+}
+
+pub(crate) const INSTANT_EXAMPLE: &str = "2026-11-14T06:00:08.000Z";
+pub(crate) const DURATION_EXAMPLE: &str = "1 hour 30 minutes";
+
+/// The units of a duration, as a message lists them.
+fn duration_units() -> String {
+    crate::time::UNITS
+        .iter()
+        .map(|(_, plural, _)| format!("`{plural}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A duration's numbers and units, `[("1", "hour"), ("30", "minutes")]`,
+/// if `call` alternates a number and a word: `1 hour 30 minutes` is the
+/// call `_ hour _ minutes` of `1` and `30`.
+fn duration_pairs(call: &anyx::Call) -> Option<Vec<(&str, &str)>> {
+    if call.name.len() != call.arguments.len() * 2 {
+        return None;
+    }
+    call.name
+        .chunks(2)
+        .zip(&call.arguments)
+        .map(|(parts, argument)| match (parts, &argument.kind) {
+            ([NamePart::Slot, NamePart::Word { text, .. }], NodeKind::Number(count)) => {
+                Some((count.as_str(), text.as_str()))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Reads `node` as one of `shapes`, written as a variant: `missing`,
@@ -535,7 +595,10 @@ fn write_slot(
     form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
-    let call = matches!(value, Value::Boolean(_) | Value::Variant { .. });
+    let call = matches!(
+        value,
+        Value::Boolean(_) | Value::Duration(_) | Value::Variant { .. }
+    );
     if call {
         out.push('(');
     }
@@ -564,6 +627,26 @@ pub(crate) fn write(
             });
         }
         Value::Boolean(boolean) => out.push_str(if *boolean { "true" } else { "false" }),
+        Value::Instant(instant) => match crate::time::format_instant(*instant) {
+            Some(text) => write_text(&text, form, out),
+            None => {
+                return Err(EncodeError {
+                    message: format!(
+                        "found the instant {instant:?}; expected one in the years 0000 to 9999, which RFC 3339 writes"
+                    ),
+                });
+            }
+        },
+        Value::Duration(duration) => match crate::time::format_duration(*duration) {
+            Some(text) => out.push_str(&text),
+            None => {
+                return Err(EncodeError {
+                    message: format!(
+                        "found the duration {duration:?}; expected one whose milliseconds fit in 64 bits"
+                    ),
+                });
+            }
+        },
         Value::Nothing => {
             return Err(EncodeError {
                 message: "found nothing where a value goes; expected a value, since only a method that `RETURNS NOTHING` returns nothing".to_string(),

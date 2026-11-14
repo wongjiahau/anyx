@@ -1,7 +1,8 @@
-//! The code generated from Poentaro's schema, and from the schema of scopes
-//! in `anyx-protocol`'s fixtures, kept in `tests/generated` so a change to
-//! the generator shows up as a diff. `round_trip.rs` and
-//! `scoped_round_trip.rs` compile the Rust modules.
+//! The code generated from Poentaro's schema, from the schema of scopes in
+//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx`, kept in
+//! `tests/generated` so a change to the generator shows up as a diff.
+//! `round_trip.rs`, `scoped_round_trip.rs` and `types_round_trip.rs` compile
+//! the Rust modules.
 
 use anyx_protocol::{Schema, SchemaFile};
 
@@ -47,6 +48,24 @@ fn scoped() -> Schema {
         .map(|(path, source)| SchemaFile { path, source })
         .collect();
     Schema::parse_files(&files).unwrap()
+}
+
+/// Every kind of type.
+fn types() -> Schema {
+    Schema::parse(&read("tests/fixtures/types.anyx")).unwrap()
+}
+
+#[test]
+fn the_rust_module_of_every_type_is_up_to_date() {
+    let code = anyx_protocol_generate::rust(&types()).unwrap();
+    let code = anyx_protocol_generate::format_rust(&code).expect("rustfmt is installed");
+    assert_snapshot("tests/generated/types.rs", &code);
+}
+
+#[test]
+fn the_typescript_client_of_every_type_is_up_to_date() {
+    let code = anyx_protocol_generate::typescript(&types()).unwrap();
+    assert_snapshot("tests/generated/types.ts", &code);
 }
 
 #[test]

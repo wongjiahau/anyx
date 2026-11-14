@@ -108,6 +108,8 @@ type: ONE OF [
   WORD "INTEGER",
   WORD "NUMBER",
   WORD "BOOLEAN",
+  WORD "INSTANT",
+  WORD "DURATION",
   list: ANYFIX CALL [WORD "LIST", item: type],
   named: reference,
 ],

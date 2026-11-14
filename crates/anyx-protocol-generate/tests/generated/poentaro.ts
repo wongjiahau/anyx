@@ -89,10 +89,27 @@ export interface Codec {
   decodeResponse(methods: string, response: string): string;
 }
 
+/** Turns the JSON of a type that holds an `INSTANT` into its value, with a
+ * `Date` for each instant. */
+type Reviver = (json: any) => unknown;
+
+function reviveInstant(json: string): Date {
+  return new Date(json);
+}
+
+/** `outcome` with its value or error revived. */
+function revive(outcome: Outcome<never, never>, value?: Reviver, error?: Reviver): Outcome<never, never> {
+  if (outcome.kind === "value" && value) return { ...outcome, value: value(outcome.value) as never };
+  if (outcome.kind === "error" && error) return { ...outcome, error: error(outcome.error) as never };
+  return outcome;
+}
+
 /** A call waiting for its request to be sent. */
 interface QueuedCall {
   method: string;
   arguments: unknown[];
+  value?: Reviver;
+  error?: Reviver;
   resolve: (outcome: Outcome<never, never>) => void;
   reject: (reason: unknown) => void;
 }
@@ -126,10 +143,16 @@ export class Client {
     return Promise.all(outcomes);
   }
 
-  /** Calls a method by its full name, such as `files/read _`. */
-  private call<T, E>(method: string, args: unknown[]): Promise<Outcome<T, E>> {
+  /** Calls a method by its full name, such as `files/read _`. `value` and
+   * `error` revive what it returns and its error. */
+  private call<T, E>(
+    method: string,
+    args: unknown[],
+    value?: Reviver,
+    error?: Reviver,
+  ): Promise<Outcome<T, E>> {
     return new Promise<Outcome<T, E>>((resolve, reject) => {
-      const call = { method, arguments: args, resolve, reject };
+      const call = { method, arguments: args, value, error, resolve, reject };
       if (this.queue) this.queue.push(call);
       else void this.sendCalls([call]);
     });
@@ -146,7 +169,7 @@ export class Client {
       ) as Outcome<never, never>[];
       for (const [index, call] of calls.entries()) {
         const outcome = outcomes[index];
-        if (outcome) call.resolve(outcome);
+        if (outcome) call.resolve(revive(outcome, call.value, call.error));
         else call.reject(new Error(`no outcome for ${call.method}`));
       }
     } catch (error) {

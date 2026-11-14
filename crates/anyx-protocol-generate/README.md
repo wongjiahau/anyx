@@ -15,6 +15,8 @@ The schema is one file, or a folder of scopes (see
 
 - A struct per `RECORD` and an enum per `CHOICE`, with a variant per shape:
   `custom hue (hue: NUMBER)` is `CustomHue { hue: f64 }`.
+- `INSTANT` is `std::time::SystemTime` and `DURATION` is
+  `std::time::Duration`; the wire keeps both to the millisecond.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 - A `Server` trait with an `async fn` per method. A method with errors
@@ -66,6 +68,10 @@ const [a, b] = await client.batch((calls) => [calls.read("a"), calls.read("b")])
 The wasm functions take and give every call of a request at once:
 `encodePoentaroRequest('[{"method":"read _","arguments":["a"]}]')` and
 `decodePoentaroResponse('["read _"]', response)`, one outcome per call.
+
+An `INSTANT` is a `Date`: the client turns the text JSON carries into one,
+and `JSON.stringify` writes a `Date` back as that text. A `DURATION` is a
+`number` of whole milliseconds.
 
 In TypeScript every type shares one namespace, so a scoped type's name starts
 with its scope: `diagnostic` in `common` is `CommonDiagnostic`, and the errors

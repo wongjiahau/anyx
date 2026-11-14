@@ -1,0 +1,20 @@
+## Every kind of type, for the tests of the generated code.
+PROTOCOL types VERSION 1,
+
+# When to remind the owner.
+RECORD reminder {
+    note: TEXT,
+    at: INSTANT,
+    every: OPTIONAL: DURATION,
+},
+
+CHOICE schedule { never, once at (at: INSTANT), every (period: DURATION) },
+
+METHOD remind (reminder: reminder) RETURNS (schedule: schedule),
+
+METHOD snooze (reminder: reminder) for (duration: DURATION)
+    RETURNS (reminders: LIST: reminder)
+    ERRORS [
+        # Snoozed past its next time.
+        overdue since (since: INSTANT),
+    ],

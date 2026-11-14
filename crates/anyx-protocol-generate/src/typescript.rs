@@ -1,6 +1,10 @@
 //! The TypeScript client of a schema: its types as JSON, and a `Client` that
 //! encodes and decodes through the wasm functions of [`crate::wasm`]. A
 //! scope's methods are an object on the client, named after the scope.
+//!
+//! JSON carries an `INSTANT` as text, and the client gives it as a `Date`:
+//! for each type that holds one, a `revive` function turns its JSON into
+//! its value.
 
 use std::fmt::Write;
 
@@ -34,19 +38,46 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             union(&mut out, schema, &typescript_error_name(method), &errors);
         }
     }
+    let revivers = Revivers::new(schema);
+    for (index, definition) in schema.types.iter().enumerate() {
+        if revivers.holds[index] {
+            let name = scoped_pascal_case(&definition.scope, &definition.name);
+            match &definition.kind {
+                TypeKind::Record(fields) => {
+                    revive_record(&mut out, schema, &revivers, &name, fields)
+                }
+                TypeKind::Choice(variants) => {
+                    revive_union(&mut out, schema, &revivers, &name, variants)
+                }
+            }
+        }
+    }
+    for method in &schema.methods {
+        let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
+        if revivers.union_holds(&errors) {
+            revive_union(
+                &mut out,
+                schema,
+                &revivers,
+                &typescript_error_name(method),
+                &errors,
+            );
+        }
+    }
     out.push_str(PRELUDE);
     let root_methods: Vec<String> = methods_in(schema, &[])
         .into_iter()
         .map(|(_, method)| {
-            let signature = signature(schema, method);
+            let signature = signature(schema, &revivers, method);
             format!(
-                "{}  {}({}): {} {{\n    return this.call({:?}, [{}]);\n  }}\n",
+                "{}  {}({}): {} {{\n    return this.call({:?}, [{}]{});\n  }}\n",
                 doc(&method.doc, "  "),
                 camel_case(&method.shape.text),
                 signature.parameters,
                 signature.returned,
                 method.full_name(),
                 signature.arguments,
+                signature.revivers,
             )
         })
         .collect();
@@ -57,7 +88,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             format!(
                 "  readonly {} = {};\n",
                 camel_case(child.last().expect("a child scope has a name")),
-                scope_object(schema, &child, "  ")
+                scope_object(schema, &revivers, &child, "  ")
             )
         })
         .collect();
@@ -78,9 +109,28 @@ struct Signature {
     parameters: String,
     arguments: String,
     returned: String,
+    /// What `call` takes after the arguments to revive the value and the
+    /// error: `, reviveFile`, or nothing when neither holds an `INSTANT`.
+    revivers: String,
 }
 
-fn signature(schema: &Schema, method: &Method) -> Signature {
+fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature {
+    let value = method
+        .returns
+        .as_ref()
+        .and_then(|returns| revivers.of(schema, &returns.r#type));
+    let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
+    let error = revivers
+        .union_holds(&errors)
+        .then(|| format!("revive{}", typescript_error_name(method)));
+    let revive = match (value, error) {
+        (None, None) => String::new(),
+        (Some(value), None) => format!(", {value}"),
+        (value, Some(error)) => format!(
+            ", {}, {error}",
+            value.unwrap_or_else(|| "undefined".to_string())
+        ),
+    };
     let parameters = &method.shape.parameters;
     let errors = match method.errors.is_empty() {
         true => "never".to_string(),
@@ -110,23 +160,25 @@ fn signature(schema: &Schema, method: &Method) -> Signature {
                 |returns| ts_type(schema, &returns.r#type)
             )
         ),
+        revivers: revive,
     }
 }
 
 /// The object of a scope's methods, and the objects of the scopes in it, on
 /// the client: `client.files.export.pdf(path)`.
-fn scope_object(schema: &Schema, scope: &[String], indent: &str) -> String {
+fn scope_object(schema: &Schema, revivers: &Revivers, scope: &[String], indent: &str) -> String {
     let inner = format!("{indent}  ");
     let methods = methods_in(schema, scope).into_iter().map(|(_, method)| {
-        let signature = signature(schema, method);
+        let signature = signature(schema, revivers, method);
         format!(
-            "{}{inner}{}: ({}): {} =>\n{inner}  this.call({:?}, [{}]),\n",
+            "{}{inner}{}: ({}): {} =>\n{inner}  this.call({:?}, [{}]{}),\n",
             doc(&method.doc, &inner),
             camel_case(&method.shape.text),
             signature.parameters,
             signature.returned,
             method.full_name(),
             signature.arguments,
+            signature.revivers,
         )
     });
     let scopes = children(schema, scope)
@@ -136,7 +188,7 @@ fn scope_object(schema: &Schema, scope: &[String], indent: &str) -> String {
             format!(
                 "{inner}{}: {},\n",
                 camel_case(child.last().expect("a child scope has a name")),
-                scope_object(schema, &child, &inner)
+                scope_object(schema, revivers, &child, &inner)
             )
         });
     format!(
@@ -165,10 +217,27 @@ export interface Codec {
   decodeResponse(methods: string, response: string): string;
 }
 
+/** Turns the JSON of a type that holds an `INSTANT` into its value, with a
+ * `Date` for each instant. */
+type Reviver = (json: any) => unknown;
+
+function reviveInstant(json: string): Date {
+  return new Date(json);
+}
+
+/** `outcome` with its value or error revived. */
+function revive(outcome: Outcome<never, never>, value?: Reviver, error?: Reviver): Outcome<never, never> {
+  if (outcome.kind === "value" && value) return { ...outcome, value: value(outcome.value) as never };
+  if (outcome.kind === "error" && error) return { ...outcome, error: error(outcome.error) as never };
+  return outcome;
+}
+
 /** A call waiting for its request to be sent. */
 interface QueuedCall {
   method: string;
   arguments: unknown[];
+  value?: Reviver;
+  error?: Reviver;
   resolve: (outcome: Outcome<never, never>) => void;
   reject: (reason: unknown) => void;
 }
@@ -202,10 +271,16 @@ export class Client {
     return Promise.all(outcomes);
   }
 
-  /** Calls a method by its full name, such as `files/read _`. */
-  private call<T, E>(method: string, args: unknown[]): Promise<Outcome<T, E>> {
+  /** Calls a method by its full name, such as `files/read _`. `value` and
+   * `error` revive what it returns and its error. */
+  private call<T, E>(
+    method: string,
+    args: unknown[],
+    value?: Reviver,
+    error?: Reviver,
+  ): Promise<Outcome<T, E>> {
     return new Promise<Outcome<T, E>>((resolve, reject) => {
-      const call = { method, arguments: args, resolve, reject };
+      const call = { method, arguments: args, value, error, resolve, reject };
       if (this.queue) this.queue.push(call);
       else void this.sendCalls([call]);
     });
@@ -222,7 +297,7 @@ export class Client {
       ) as Outcome<never, never>[];
       for (const [index, call] of calls.entries()) {
         const outcome = outcomes[index];
-        if (outcome) call.resolve(outcome);
+        if (outcome) call.resolve(revive(outcome, call.value, call.error));
         else call.reject(new Error(`no outcome for ${call.method}`));
       }
     } catch (error) {
@@ -239,6 +314,9 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         Type::Bytes => "string".to_string(),
         Type::Integer | Type::Number => "number".to_string(),
         Type::Boolean => "boolean".to_string(),
+        Type::Instant => "Date".to_string(),
+        // Whole milliseconds, as the JSON carries it.
+        Type::Duration => "number".to_string(),
         Type::List(item) => format!("{}[]", ts_type(schema, item)),
         Type::Named(index) => {
             let definition = &schema.types[*index];
@@ -308,4 +386,144 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
     }
     out.truncate(out.trim_end().len());
     out.push_str(";\n\n");
+}
+
+/// Which of the schema's types hold an `INSTANT`, directly or through
+/// another type, and so need reviving.
+struct Revivers {
+    holds: Vec<bool>,
+}
+
+impl Revivers {
+    fn new(schema: &Schema) -> Self {
+        let mut revivers = Revivers {
+            holds: vec![false; schema.types.len()],
+        };
+        loop {
+            let found: Vec<usize> = (0..schema.types.len())
+                .filter(|index| !revivers.holds[*index])
+                .filter(|index| match &schema.types[*index].kind {
+                    TypeKind::Record(fields) => fields
+                        .iter()
+                        .any(|field| revivers.type_holds(&field.r#type)),
+                    TypeKind::Choice(variants) => revivers.union_holds(variants),
+                })
+                .collect();
+            if found.is_empty() {
+                return revivers;
+            }
+            for index in found {
+                revivers.holds[index] = true;
+            }
+        }
+    }
+
+    fn type_holds(&self, r#type: &Type) -> bool {
+        match r#type {
+            Type::Instant => true,
+            Type::List(item) => self.type_holds(item),
+            Type::Named(index) => self.holds[*index],
+            _ => false,
+        }
+    }
+
+    fn union_holds(&self, variants: &[Shaped]) -> bool {
+        variants.iter().any(|variant| {
+            variant
+                .shape
+                .parameters
+                .iter()
+                .any(|parameter| self.type_holds(&parameter.r#type))
+        })
+    }
+
+    /// A function that revives the JSON of `type`, or `None` when it holds
+    /// no `INSTANT`.
+    fn of(&self, schema: &Schema, r#type: &Type) -> Option<String> {
+        match r#type {
+            Type::Instant => Some("reviveInstant".to_string()),
+            Type::List(item) => self
+                .of(schema, item)
+                .map(|item| format!("(json: any[]) => json.map({item})")),
+            Type::Named(index) if self.holds[*index] => {
+                let definition = &schema.types[*index];
+                Some(format!(
+                    "revive{}",
+                    scoped_pascal_case(&definition.scope, &definition.name)
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// `json`, revived as `type`.
+    fn apply(&self, schema: &Schema, r#type: &Type, json: &str) -> Option<String> {
+        self.of(schema, r#type)
+            .map(|reviver| match reviver.contains(' ') {
+                true => format!("({reviver})({json})"),
+                false => format!("{reviver}({json})"),
+            })
+    }
+}
+
+fn revive_record(
+    out: &mut String,
+    schema: &Schema,
+    revivers: &Revivers,
+    name: &str,
+    fields: &[Field],
+) {
+    let revived: String = fields
+        .iter()
+        .filter_map(|field| {
+            let key = camel_case(&field.name);
+            let json = format!("json.{key}");
+            let value = revivers.apply(schema, &field.r#type, &json)?;
+            Some(match field.optional {
+                true => format!(", {key}: {json} === undefined ? undefined : {value}"),
+                false => format!(", {key}: {value}"),
+            })
+        })
+        .collect();
+    writeln!(
+        out,
+        "function revive{name}(json: any): {name} {{\n  return {{ ...json{revived} }};\n}}\n"
+    )
+    .unwrap();
+}
+
+fn revive_union(
+    out: &mut String,
+    schema: &Schema,
+    revivers: &Revivers,
+    name: &str,
+    variants: &[Shaped],
+) {
+    let cases: String = variants
+        .iter()
+        .filter_map(|variant| {
+            let revived: String = variant
+                .shape
+                .parameters
+                .iter()
+                .filter_map(|parameter| {
+                    let key = camel_case(&parameter.name);
+                    let value =
+                        revivers.apply(schema, &parameter.r#type, &format!("json.{key}"))?;
+                    Some(format!(", {key}: {value}"))
+                })
+                .collect();
+            (!revived.is_empty()).then(|| {
+                format!(
+                    "    case {:?}:\n      return {{ ...json{revived} }};\n",
+                    camel_case(&variant.shape.words())
+                )
+            })
+        })
+        .collect();
+    writeln!(
+        out,
+        "function revive{name}(json: any): {name} {{\n  switch (json.kind) {{\n{cases}    default:\n      return json;\n  }}\n}}\n"
+    )
+    .unwrap();
 }

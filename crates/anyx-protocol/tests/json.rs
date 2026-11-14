@@ -116,3 +116,50 @@ fn nothing_returned_is_a_value_without_a_value_in_json() {
     let json = decode_response_json(&schema, "sign out", "sign out RETURNS NOTHING").unwrap();
     assert_eq!(json, r#"{"kind":"value"}"#);
 }
+
+#[test]
+fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
+    let schema = common::schema(
+        "PROTOCOL a VERSION 1, METHOD wait (duration: DURATION) from (start: INSTANT) RETURNS (end: INSTANT),",
+    );
+    let request = encode_request_json(
+        &schema,
+        "wait _ from _",
+        r#"[5400000, "2026-11-14T06:00:08Z"]"#,
+    )
+    .unwrap();
+    assert_eq!(
+        request,
+        "wait (1 hour 30 minutes) from \"2026-11-14T06:00:08.000Z\"\n"
+    );
+    assert_eq!(
+        decode_request_json(&schema, &request).unwrap(),
+        r#"[{"arguments":[5400000,"2026-11-14T06:00:08.000Z"],"method":"wait _ from _"}]"#
+    );
+    assert_eq!(
+        decode_response_json(
+            &schema,
+            "wait _ from _",
+            "wait (90 seconds) from \"2026-11-14T06:00:08Z\" RETURNS \"2026-11-14T07:30:08.000Z\""
+        )
+        .unwrap(),
+        r#"{"kind":"value","value":"2026-11-14T07:30:08.000Z"}"#
+    );
+    let mistakes = [
+        r#"[1.5, "2026-11-14T06:00:08Z"]"#,
+        r#"[-1, "2026-11-14T06:00:08Z"]"#,
+        r#"[0, "2026-11-14T06:00:08+08:00"]"#,
+    ];
+    let messages: Vec<String> = mistakes
+        .iter()
+        .map(|arguments| encode_request_json(&schema, "wait _ from _", arguments).unwrap_err())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "in `duration`: found 1.5; expected a duration in whole milliseconds",
+            "in `duration`: found -1; expected a duration in whole milliseconds",
+            "in `start`: found \"2026-11-14T06:00:08+08:00\"; expected an instant in UTC in a string, as in \"2026-11-14T06:00:08.000Z\"",
+        ]
+    );
+}

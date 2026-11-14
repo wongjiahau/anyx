@@ -415,3 +415,118 @@ fn nothing_and_a_value_are_not_mixed_up() {
         .is_err()
     );
 }
+
+const TIMERS: &str = "PROTOCOL a VERSION 1,
+RECORD timer { at: INSTANT, every: DURATION, pause: OPTIONAL: DURATION },
+METHOD wait (duration: DURATION) until (instant: INSTANT) RETURNS (started: INSTANT),
+METHOD set (timer: timer) RETURNS (left: DURATION),
+METHOD list RETURNS (durations: LIST: DURATION),";
+
+fn instant(text: &str) -> Value {
+    let milliseconds = |at: &str| -> u64 {
+        // Only the instants below: 2026-11-14 and the epoch.
+        match at {
+            "2026-11-14T06:00:08.000Z" => 1_794_636_008_000,
+            "1970-01-01T00:00:00.250Z" => 250,
+            _ => panic!("{at}"),
+        }
+    };
+    Value::Instant(std::time::UNIX_EPOCH + std::time::Duration::from_millis(milliseconds(text)))
+}
+
+fn duration(milliseconds: u64) -> Value {
+    Value::Duration(std::time::Duration::from_millis(milliseconds))
+}
+
+#[test]
+fn instants_and_durations_read_back_as_written() {
+    let schema = schema(TIMERS);
+    let calls = vec![
+        Call {
+            method: 0,
+            arguments: vec![duration(5 * 60_000), instant("2026-11-14T06:00:08.000Z")],
+        },
+        Call {
+            method: 1,
+            arguments: vec![record(&[
+                ("at", instant("1970-01-01T00:00:00.250Z")),
+                ("every", duration(5_400_000)),
+                ("pause", duration(0)),
+            ])],
+        },
+    ];
+    let request = encode_request(&schema, &calls).unwrap();
+    assert_eq!(
+        request,
+        "wait (5 minutes) until \"2026-11-14T06:00:08.000Z\",
+set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 seconds },
+"
+    );
+    assert_eq!(decode_request(&schema, &request).unwrap(), calls);
+    let response = Response::Outcomes(vec![
+        Outcome::Value(instant("2026-11-14T06:00:08.000Z")),
+        Outcome::Value(duration(90_001)),
+    ]);
+    let written = encode_response(&schema, &calls, &response).unwrap();
+    assert_eq!(
+        written,
+        "wait (5 minutes) until \"2026-11-14T06:00:08.000Z\" RETURNS \"2026-11-14T06:00:08.000Z\",
+set {
+    at \"1970-01-01T00:00:00.250Z\",
+    every: 1 hour 30 minutes,
+    pause: 0 seconds,
+} RETURNS 1 minute 30 seconds 1 millisecond,
+"
+    );
+    assert_eq!(
+        decode_response(&schema, &[0, 1], &written).unwrap(),
+        response
+    );
+}
+
+#[test]
+fn an_instant_and_a_duration_read_in_other_forms_too() {
+    let schema = schema(TIMERS);
+    let calls =
+        decode_request(&schema, "wait (90 seconds) until \"2026-11-14T06:00:08Z\"").unwrap();
+    assert_eq!(
+        calls[0].arguments,
+        [duration(90_000), instant("2026-11-14T06:00:08.000Z")]
+    );
+    let list = decode_response(
+        &schema,
+        &[2],
+        "list RETURNS [1 day, 2 hours 1 minute, 1 second 5 milliseconds]",
+    )
+    .unwrap();
+    assert_eq!(
+        list,
+        Response::Outcomes(vec![Outcome::Value(Value::List(vec![
+            duration(86_400_000),
+            duration(7_260_000),
+            duration(1_005),
+        ]))])
+    );
+}
+
+#[test]
+fn mistakes_in_instants_and_durations_say_how_to_write_them() {
+    let schema = schema(TIMERS);
+    let cases = [
+        "wait (5) until \"2026-11-14T06:00:08Z\"",
+        "wait (5 weeks) until \"2026-11-14T06:00:08Z\"",
+        "wait (1 minute 1 hour) until \"2026-11-14T06:00:08Z\"",
+        "wait (1.5 hours) until \"2026-11-14T06:00:08Z\"",
+        "wait (minutes) until \"2026-11-14T06:00:08Z\"",
+        "wait (5 minutes) until \"2026-11-14 06:00:08\"",
+        "wait (5 minutes) until \"2026-11-14T06:00:08+08:00\"",
+        "wait (5 minutes) until 1794636008",
+        "set { at \"2026-11-14T06:00:08Z\", every 5 minutes }",
+    ];
+    assert_snapshot(
+        "tests/snapshots/time_errors.txt",
+        &render(&cases, |source| {
+            decode_request(&schema, source).map(|calls| format!("{calls:?}"))
+        }),
+    );
+}

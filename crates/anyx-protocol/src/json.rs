@@ -271,6 +271,11 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
         Value::Integer(integer) => json!(integer),
         Value::Number(number) => json!(number),
         Value::Boolean(boolean) => Json::Bool(*boolean),
+        Value::Instant(instant) => {
+            crate::time::format_instant(*instant).map_or(Json::Null, Json::String)
+        }
+        Value::Duration(duration) => u64::try_from(duration.as_millis())
+            .map_or(Json::Null, |milliseconds| json!(milliseconds)),
         Value::Nothing => Json::Null,
         Value::List(items) => {
             let item = match r#type {
@@ -373,6 +378,16 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
         Type::Boolean => match json {
             Json::Bool(boolean) => Ok(Value::Boolean(*boolean)),
             _ => mismatch("true or false"),
+        },
+        Type::Instant => match json.as_str().and_then(crate::time::parse_instant) {
+            Some(instant) => Ok(Value::Instant(instant)),
+            None => mismatch("an instant in UTC in a string, as in \"2026-11-14T06:00:08.000Z\""),
+        },
+        Type::Duration => match json.as_u64() {
+            Some(milliseconds) => Ok(Value::Duration(std::time::Duration::from_millis(
+                milliseconds,
+            ))),
+            None => mismatch("a duration in whole milliseconds"),
         },
         Type::List(item) => match json {
             Json::Array(items) => items

@@ -551,7 +551,7 @@ impl<'a> Checker<'a> {
                         scoped(&path.scope, &path.name)
                     ),
                     false => format!(
-                        "found `{text}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `LIST: type`, or a `RECORD` or `CHOICE` defined here; define `{text}`, or fix the name{hint}",
+                        "found `{text}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD` or `CHOICE` defined here; define `{text}`, or fix the name{hint}",
                         text = path.name,
                         scope = self.this_scope(),
                         hint = self.elsewhere(self.types.iter(), &path.name),
@@ -892,6 +892,8 @@ impl<'a> Checker<'a> {
             ast::Type::Integer(_) => Type::Integer,
             ast::Type::Number(_) => Type::Number,
             ast::Type::Boolean(_) => Type::Boolean,
+            ast::Type::Instant(_) => Type::Instant,
+            ast::Type::Duration(_) => Type::Duration,
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
             ast::Type::Named(reference) => {
                 self.resolve_type(reference).map_or(Type::Text, Type::Named)

@@ -121,6 +121,8 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
         Type::Integer => "i64".to_string(),
         Type::Number => "f64".to_string(),
         Type::Boolean => "bool".to_string(),
+        Type::Instant => "::std::time::SystemTime".to_string(),
+        Type::Duration => "::std::time::Duration".to_string(),
         Type::List(item) => format!("Vec<{}>", rust_type(schema, scope, item)),
         Type::Named(index) => {
             let definition = &schema.types[*index];

@@ -16,6 +16,7 @@ pub mod json;
 mod response;
 pub mod schema;
 pub mod server;
+mod time;
 pub mod value;
 
 pub use codec::{Call, EncodeError, Outcome, Problem, Response, decode_request, encode_request};

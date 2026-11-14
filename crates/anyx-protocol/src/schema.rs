@@ -152,6 +152,12 @@ pub enum Type {
     Integer,
     Number,
     Boolean,
+    /// A point in time, to the millisecond. On the wire, RFC 3339 text in
+    /// UTC: `"2026-11-14T06:00:08.000Z"`.
+    Instant,
+    /// A length of time, to the millisecond. On the wire, whole numbers
+    /// with their units: `1 hour 30 minutes`.
+    Duration,
     List(Box<Type>),
     /// The index of a type in [`Schema::types`].
     Named(usize),
@@ -277,6 +283,8 @@ impl Schema {
             Type::Integer => "INTEGER".to_string(),
             Type::Number => "NUMBER".to_string(),
             Type::Boolean => "BOOLEAN".to_string(),
+            Type::Instant => "INSTANT".to_string(),
+            Type::Duration => "DURATION".to_string(),
             Type::List(item) => format!("LIST: {}", self.type_name(item)),
             Type::Named(index) => {
                 let definition = &self.types[*index];

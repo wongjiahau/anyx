@@ -176,6 +176,8 @@ pub enum Type {
     Integer(Span),
     Number(Span),
     Boolean(Span),
+    Instant(Span),
+    Duration(Span),
     List { item: Box<Type>, span: Span },
     Named(Reference),
 }
@@ -275,6 +277,8 @@ impl Type {
             | Type::Integer(span)
             | Type::Number(span)
             | Type::Boolean(span)
+            | Type::Instant(span)
+            | Type::Duration(span)
             | Type::List { span, .. } => *span,
             Type::Named(value) => value.span,
         }
@@ -477,6 +481,8 @@ impl support::Errors for Type {
             Type::Integer(_) => {}
             Type::Number(_) => {}
             Type::Boolean(_) => {}
+            Type::Instant(_) => {}
+            Type::Duration(_) => {}
             Type::List { item, .. } => {
                 support::Errors::errors(item, found);
             }
@@ -879,6 +885,8 @@ pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
         .or_else(|error| error.or(support::word(node, "INTEGER").map(Type::Integer)))
         .or_else(|error| error.or(support::word(node, "NUMBER").map(Type::Number)))
         .or_else(|error| error.or(support::word(node, "BOOLEAN").map(Type::Boolean)))
+        .or_else(|error| error.or(support::word(node, "INSTANT").map(Type::Instant)))
+        .or_else(|error| error.or(support::word(node, "DURATION").map(Type::Duration)))
         .or_else(|error| error.or(decode_type_list(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }

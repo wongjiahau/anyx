@@ -46,8 +46,9 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   schema language. Keywords side by side join into one name, so write
   `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
 - **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `NUMBER` (a finite float),
-  `BOOLEAN`, `LIST: T`, and the name of a `RECORD` or `CHOICE`. A type may
-  hold itself only through a `LIST`.
+  `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
+  `LIST: T`, and the name of a `RECORD` or `CHOICE`. A type may hold itself
+  only through a `LIST`.
 - **`RECORD name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
   may be left out.
 - **`CHOICE name { variant, … }`**: one of its variants. A variant is a
@@ -174,13 +175,23 @@ SCHEMA,
 | `BYTES` | its standard base64 (RFC 4648, padded) as a string: `"TVRoZA=="` |
 | `INTEGER`, `NUMBER` | `3`, `-1.5` |
 | `BOOLEAN` | `true`, `false` |
+| `INSTANT` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
+| `DURATION` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
 
-A value written as words, a `BOOLEAN` or a variant, goes in parentheses in a
-slot, where it would otherwise join the words around it:
-`set (custom hue 0.5) strict (true)`.
+A value written as words, a `BOOLEAN`, a `DURATION` or a variant, goes in
+parentheses in a slot, where it would otherwise join the words around it:
+`set (custom hue 0.5) strict (true)`, `wait (5 minutes)`. In a record, such a
+value follows a `:`: `{ every: 1 hour 30 minutes }`.
+
+A `DURATION`'s units are `days`, `hours`, `minutes`, `seconds` and
+`milliseconds`, each in the singular for 1: `1 day 1 second`. Each unit comes
+at most once, after the larger ones; a count may be more than the next unit
+holds, as in `90 seconds`. A duration is written with every count below the
+next unit, and as `0 seconds` when it is empty. Time finer than a millisecond
+is dropped, rounding down, for both types.
 
 ## Responses
 
@@ -223,6 +234,8 @@ client calling the codec through wasm. Names are camelCase. A record is an
 object; a variant or an error is an object whose `kind` is its words in
 camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
+An `INSTANT` is its text, as on the wire, and a `DURATION` its whole
+milliseconds: `5400000` for `1 hour 30 minutes`.
 A result is `{ "kind": "value", "value": … }` (with no `value` for a method
 that returns nothing), `{ "kind": "error",
 "error": … }`, `{ "kind": "notRun" }`, `{ "kind": "internalError" }` or
