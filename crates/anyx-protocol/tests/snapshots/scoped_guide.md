@@ -38,9 +38,9 @@ Every call runs, in order, and the response has one result per call.
   `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
 - `LIST: T` is `[a, b, c]`.
 - A RECORD is its fields in braces, each its name and value, in any order:
-  `{ path "a", revision 3 }`. An `OPTIONAL` field may be left out. When a
-  value is words, put `:` after the field's name: `{ status: done }`,
-  `{ timeout: 5 minutes }`.
+  `{ path "a", revision 3 }`. An `OPTIONAL` field may be left out; one
+  with a `DEFAULT` then holds that value. When a value is words, put `:`
+  after the field's name: `{ status: done }`, `{ timeout: 5 minutes }`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 - In a slot, a value written as words goes in parentheses so that it doesn't

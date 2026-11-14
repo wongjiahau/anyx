@@ -50,7 +50,12 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   `LIST: T`, and the name of a `RECORD` or `CHOICE`. A type may hold itself
   only through a `LIST`.
 - **`RECORD name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
-  may be left out.
+  may be left out. `DEFAULT value` after its type gives it the value it
+  holds when left out: `limit: OPTIONAL: INTEGER DEFAULT 50`, or
+  `tags: OPTIONAL: LIST: TEXT DEFAULT []`. The value is written as on the
+  wire and checked against the type. Only an `OPTIONAL` field of a `RECORD`
+  takes a `DEFAULT`; a parameter is always written. The reader of a value
+  fills the default in, so code sees the field as always there.
 - **`CHOICE name { variant, … }`**: one of its variants. A variant is a
   *shape*: words, with `(name: TYPE)` slots anywhere among them, as in
   `custom hue (hue: NUMBER)` or `(base: shade) dimmed`. Variants differ by
@@ -236,6 +241,7 @@ camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
 An `INSTANT` is its text, as on the wire, and a `DURATION` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
+A field with a `DEFAULT` that is left out or `null` takes its default.
 A result is `{ "kind": "value", "value": … }` (with no `value` for a method
 that returns nothing), `{ "kind": "error",
 "error": … }`, `{ "kind": "notRun" }`, `{ "kind": "internalError" }` or

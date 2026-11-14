@@ -163,3 +163,14 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
         ]
     );
 }
+
+#[test]
+fn a_field_left_out_of_json_takes_its_default() {
+    let schema = common::schema(
+        "PROTOCOL a VERSION 1,
+        RECORD search { query: TEXT, limit: OPTIONAL: INTEGER DEFAULT 50 },
+        METHOD find (search: search) RETURNS (count: INTEGER),",
+    );
+    let request = encode_request_json(&schema, "find _", r#"[{"query": "ode"}]"#).unwrap();
+    assert_eq!(request, "find { query \"ode\", limit 50 }\n");
+}

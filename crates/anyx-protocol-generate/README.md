@@ -17,6 +17,8 @@ The schema is one file, or a folder of scopes (see
   `custom hue (hue: NUMBER)` is `CustomHue { hue: f64 }`.
 - `INSTANT` is `std::time::SystemTime` and `DURATION` is
   `std::time::Duration`; the wire keeps both to the millisecond.
+- An `OPTIONAL` field is an `Option`, and `?` in TypeScript, unless it has a
+  `DEFAULT`: the reader fills that in, so the field is always there.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 - A `Server` trait with an `async fn` per method. A method with errors

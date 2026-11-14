@@ -16,6 +16,8 @@ RECORD reminder {
     note: TEXT,
     at: INSTANT,
     every: OPTIONAL: DURATION,
+    # How many times to remind before giving up.
+    times: OPTIONAL: INTEGER DEFAULT 3,
 },
 
 CHOICE schedule { never, once at (at: INSTANT), every (period: DURATION) },
@@ -47,6 +49,8 @@ pub struct Reminder {
     pub note: String,
     pub at: ::std::time::SystemTime,
     pub every: Option<::std::time::Duration>,
+    /// How many times to remind before giving up.
+    pub times: i64,
 }
 
 impl IntoValue for Reminder {
@@ -56,6 +60,7 @@ impl IntoValue for Reminder {
                 .field("note", self.note)
                 .field("at", self.at)
                 .optional("every", self.every)
+                .field("times", self.times)
                 .build(),
         )
     }
@@ -71,6 +76,7 @@ impl FromValue for Reminder {
             note: fields.field("note")?,
             at: fields.field("at")?,
             every: fields.optional("every")?,
+            times: fields.field("times")?,
         })
     }
 }

@@ -72,6 +72,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         note: "tea".into(),
         at: at(1_794_636_008_123),
         every: None,
+        times: 3,
     };
     assert_eq!(
         run(client.remind(reminder.clone())),
@@ -100,5 +101,18 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         Err(CallError::Method(SnoozeForError::OverdueSince {
             since: at(1_794_636_008_123)
         }))
+    );
+}
+
+#[test]
+fn a_field_left_out_reaches_the_server_with_its_default() {
+    let response = run(types::handle(
+        &Reminders,
+        r#"snooze { note "tea", at "2026-11-14T06:00:08Z" } for (1 second)"#,
+        |_| {},
+    ));
+    assert_eq!(
+        response,
+        "snooze { note \"tea\", at \"2026-11-14T06:00:08.000Z\", times 3 } for (1 second) RETURNS [\n    { note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3 },\n]\n"
     );
 }

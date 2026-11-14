@@ -505,6 +505,11 @@ fn decode_fields(
         })?;
         values.insert(words.to_string(), value);
     }
+    for field in fields {
+        if let (Some(default), false) = (&field.default, values.contains_key(&field.name)) {
+            values.insert(field.name.clone(), default.clone());
+        }
+    }
     let missing: Vec<String> = fields
         .iter()
         .filter(|field| !field.optional && !values.contains_key(&field.name))

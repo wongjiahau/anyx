@@ -530,3 +530,32 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
         }),
     );
 }
+
+#[test]
+fn a_field_left_out_takes_its_default() {
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+        RECORD search { query: TEXT, limit: OPTIONAL: INTEGER DEFAULT 50, note: OPTIONAL: TEXT },
+        METHOD find (search: search) RETURNS (search: search),",
+    );
+    let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
+    let filled = record(&[("query", text("ode")), ("limit", Value::Integer(50))]);
+    assert_eq!(calls[0].arguments, std::slice::from_ref(&filled));
+    assert_eq!(
+        encode_request(&schema, &calls).unwrap(),
+        "find { query \"ode\", limit 50 }\n"
+    );
+    let response = decode_response(
+        &schema,
+        &[0],
+        "find { query \"ode\" } RETURNS { query \"a\", limit 3 }",
+    )
+    .unwrap();
+    assert_eq!(
+        response,
+        Response::Outcomes(vec![Outcome::Value(record(&[
+            ("query", text("a")),
+            ("limit", Value::Integer(3))
+        ]))])
+    );
+}

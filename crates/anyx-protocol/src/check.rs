@@ -34,6 +34,16 @@ struct Group<'a> {
     expanded: Option<Option<Vec<usize>>>,
 }
 
+/// A field's `DEFAULT`, to read once every type is known.
+struct PendingDefault {
+    /// The index of the record's type, and of the field in it.
+    r#type: usize,
+    field: usize,
+    node: anyx::Node,
+    file: usize,
+    scope: Vec<String>,
+}
+
 /// An error of a method, and where its list names it.
 struct Listed {
     index: usize,
@@ -124,6 +134,7 @@ pub(crate) struct Checker<'a> {
     groups: Vec<Group<'a>>,
     /// Each error, in the order of the schema's errors.
     errors: Vec<Declared>,
+    defaults: Vec<PendingDefault>,
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
@@ -204,12 +215,13 @@ impl<'a> Checker<'a> {
                 match definition {
                     ast::Definition::Record(found) => {
                         let found = record(found);
+                        let fields = self.fields(types.len(), &found.body.fields.value);
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
-                            kind: TypeKind::Record(self.fields(&found.body.fields.value)),
+                            kind: TypeKind::Record(fields),
                         });
                     }
                     ast::Definition::Choice(found) => {
@@ -276,7 +288,7 @@ impl<'a> Checker<'a> {
                 name.value
             })
         });
-        let schema = Schema {
+        let mut schema = Schema {
             files,
             doc: header.and_then(|header| doc(&header.doc)),
             name: name.unwrap_or_default(),
@@ -286,7 +298,52 @@ impl<'a> Checker<'a> {
             methods,
         };
         self.check_recursion(&schema);
+        if self.diagnostics.is_empty() {
+            self.read_defaults(&mut schema);
+        }
         schema
+    }
+
+    /// Reads each field's `DEFAULT` as a value of the field's type. A
+    /// default may be a record whose own fields have defaults, so it is
+    /// read again until every default it holds is filled in.
+    fn read_defaults(&mut self, schema: &mut Schema) {
+        let pending = std::mem::take(&mut self.defaults);
+        for _ in 0..=pending.len() {
+            let mut changed = false;
+            for default in &pending {
+                let TypeKind::Record(fields) = &schema.types[default.r#type].kind else {
+                    continue;
+                };
+                let field = &fields[default.field];
+                let read = crate::codec::decode(schema, &field.r#type, &default.node);
+                let name = field.name.clone();
+                match read {
+                    Ok(value) => {
+                        let TypeKind::Record(fields) = &mut schema.types[default.r#type].kind
+                        else {
+                            continue;
+                        };
+                        let slot = &mut fields[default.field].default;
+                        if slot.as_ref() != Some(&value) {
+                            *slot = Some(value);
+                            changed = true;
+                        }
+                    }
+                    Err(mismatch) => {
+                        self.within(default.file, &default.scope, |checker| {
+                            checker.error(
+                                mismatch.span,
+                                format!("in the `DEFAULT` of `{name}`: {}", mismatch.message),
+                            )
+                        });
+                    }
+                }
+            }
+            if !changed || !self.diagnostics.is_empty() {
+                break;
+            }
+        }
     }
 
     /// The root has the `PROTOCOL` header, alone when there are scope files;
@@ -671,7 +728,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn fields(&mut self, fields: &[ast::Field]) -> Vec<Field> {
+    fn fields(&mut self, record: usize, fields: &[ast::Field]) -> Vec<Field> {
         let mut checked: Vec<Field> = Vec::new();
         for field in fields {
             self.check_words(&field.name, "a field");
@@ -685,14 +742,42 @@ impl<'a> Checker<'a> {
                 );
             }
             let (r#type, optional) = match &field.r#type {
-                ast::FieldType::Optional { r#type, .. } => (r#type, true),
-                ast::FieldType::Type(r#type) => (r#type, false),
+                ast::FieldType::Optional {
+                    r#type: ast::OptionalType::Type(r#type),
+                    ..
+                } => (self.r#type(r#type), true),
+                ast::FieldType::Optional {
+                    r#type: ast::OptionalType::Defaulted(defaulted),
+                    ..
+                } => {
+                    let (r#type, node) = self.defaulted(defaulted);
+                    self.defaults.push(PendingDefault {
+                        r#type: record,
+                        field: checked.len(),
+                        node: node.clone(),
+                        file: self.file,
+                        scope: self.scope.clone(),
+                    });
+                    (r#type, true)
+                }
+                ast::FieldType::RequiredWithDefault(defaulted) => {
+                    self.error(
+                        defaulted.span(),
+                        format!(
+                            "found a `DEFAULT` on the field `{name}`, which is not `OPTIONAL`; expected a `DEFAULT` only on an `OPTIONAL` field, which may be left out, as in `{name}: OPTIONAL: INTEGER DEFAULT 50`",
+                            name = field.name.value
+                        ),
+                    );
+                    (self.defaulted(defaulted).0, false)
+                }
+                ast::FieldType::Type(r#type) => (self.r#type(r#type), false),
             };
             checked.push(Field {
                 doc: doc(&field.doc),
                 name: field.name.value.clone(),
-                r#type: self.r#type(r#type),
+                r#type,
                 optional,
+                default: None,
             });
         }
         checked
@@ -898,6 +983,29 @@ impl<'a> Checker<'a> {
             ast::Type::Named(reference) => {
                 self.resolve_type(reference).map_or(Type::Text, Type::Named)
             }
+        }
+    }
+
+    /// The type of a field with a `DEFAULT`, and the default as written.
+    fn defaulted<'d>(&mut self, defaulted: &'d ast::Defaulted) -> (Type, &'d anyx::Node) {
+        match defaulted {
+            ast::Defaulted::Text { default, .. } => (Type::Text, default),
+            ast::Defaulted::Bytes { default, .. } => (Type::Bytes, default),
+            ast::Defaulted::Integer { default, .. } => (Type::Integer, default),
+            ast::Defaulted::Number { default, .. } => (Type::Number, default),
+            ast::Defaulted::Boolean { default, .. } => (Type::Boolean, default),
+            ast::Defaulted::Instant { default, .. } => (Type::Instant, default),
+            ast::Defaulted::Duration { default, .. } => (Type::Duration, default),
+            ast::Defaulted::List { item, .. } => {
+                let (item, default) = self.defaulted(item);
+                (Type::List(Box::new(item)), default)
+            }
+            ast::Defaulted::ListOfNamed { item, default, .. } => {
+                (Type::List(Box::new(self.r#type(item))), default)
+            }
+            ast::Defaulted::Other {
+                r#type, default, ..
+            } => (self.r#type(r#type), default),
         }
     }
 

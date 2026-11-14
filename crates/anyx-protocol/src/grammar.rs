@@ -59,8 +59,61 @@ pub struct Field {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldType {
-    Optional { r#type: Type, span: Span },
+    Optional { r#type: OptionalType, span: Span },
+    RequiredWithDefault(Defaulted),
     Type(Type),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum OptionalType {
+    Defaulted(Defaulted),
+    Type(Type),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Defaulted {
+    Text {
+        default: Node,
+        span: Span,
+    },
+    Bytes {
+        default: Node,
+        span: Span,
+    },
+    Integer {
+        default: Node,
+        span: Span,
+    },
+    Number {
+        default: Node,
+        span: Span,
+    },
+    Boolean {
+        default: Node,
+        span: Span,
+    },
+    Instant {
+        default: Node,
+        span: Span,
+    },
+    Duration {
+        default: Node,
+        span: Span,
+    },
+    List {
+        item: Box<Defaulted>,
+        span: Span,
+    },
+    ListOfNamed {
+        item: Type,
+        default: Node,
+        span: Span,
+    },
+    Other {
+        r#type: Type,
+        default: Node,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -219,7 +272,34 @@ impl FieldType {
     pub fn span(&self) -> Span {
         match self {
             FieldType::Optional { span, .. } => *span,
+            FieldType::RequiredWithDefault(value) => value.span(),
             FieldType::Type(value) => value.span(),
+        }
+    }
+}
+
+impl OptionalType {
+    pub fn span(&self) -> Span {
+        match self {
+            OptionalType::Defaulted(value) => value.span(),
+            OptionalType::Type(value) => value.span(),
+        }
+    }
+}
+
+impl Defaulted {
+    pub fn span(&self) -> Span {
+        match self {
+            Defaulted::Text { span, .. }
+            | Defaulted::Bytes { span, .. }
+            | Defaulted::Integer { span, .. }
+            | Defaulted::Number { span, .. }
+            | Defaulted::Boolean { span, .. }
+            | Defaulted::Instant { span, .. }
+            | Defaulted::Duration { span, .. }
+            | Defaulted::List { span, .. }
+            | Defaulted::ListOfNamed { span, .. }
+            | Defaulted::Other { span, .. } => *span,
         }
     }
 }
@@ -347,7 +427,58 @@ impl support::Errors for FieldType {
             FieldType::Optional { r#type, .. } => {
                 support::Errors::errors(r#type, found);
             }
+            FieldType::RequiredWithDefault(value) => support::Errors::errors(value, found),
             FieldType::Type(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for OptionalType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            OptionalType::Defaulted(value) => support::Errors::errors(value, found),
+            OptionalType::Type(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for Defaulted {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Defaulted::Text { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Bytes { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Integer { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Number { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Boolean { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Instant { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Duration { default, .. } => {
+                support::Errors::errors(default, found);
+            }
+            Defaulted::List { item, .. } => {
+                support::Errors::errors(item, found);
+            }
+            Defaulted::ListOfNamed { item, default, .. } => {
+                support::Errors::errors(item, found);
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Other {
+                r#type, default, ..
+            } => {
+                support::Errors::errors(r#type, found);
+                support::Errors::errors(default, found);
+            }
         }
     }
 }
@@ -621,13 +752,160 @@ pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
 
 pub fn decode_field_type(node: &Node) -> Result<FieldType, DecodeError> {
     decode_field_type_optional(node)
+        .or_else(|error| error.or(decode_defaulted(node).map(FieldType::RequiredWithDefault)))
         .or_else(|error| error.or(decode_type(node).map(FieldType::Type)))
 }
 
 fn decode_field_type_optional(node: &Node) -> Result<FieldType, DecodeError> {
     let mut parts = support::call(node, "the call `OPTIONAL _`")?;
     let decoded = FieldType::Optional {
-        r#type: parts.word("OPTIONAL")?.one(decode_type, "a type")?,
+        r#type: parts
+            .word("OPTIONAL")?
+            .one(decode_optional_type, "an optional type")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_optional_type(node: &Node) -> Result<OptionalType, DecodeError> {
+    decode_defaulted(node)
+        .map(OptionalType::Defaulted)
+        .or_else(|error| error.or(decode_type(node).map(OptionalType::Type)))
+}
+
+pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
+    decode_defaulted_text(node)
+        .or_else(|error| error.or(decode_defaulted_bytes(node)))
+        .or_else(|error| error.or(decode_defaulted_integer(node)))
+        .or_else(|error| error.or(decode_defaulted_number(node)))
+        .or_else(|error| error.or(decode_defaulted_boolean(node)))
+        .or_else(|error| error.or(decode_defaulted_instant(node)))
+        .or_else(|error| error.or(decode_defaulted_duration(node)))
+        .or_else(|error| error.or(decode_defaulted_list(node)))
+        .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
+        .or_else(|error| error.or(decode_defaulted_other(node)))
+}
+
+fn decode_defaulted_text(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `TEXT DEFAULT _`")?;
+    let decoded = Defaulted::Text {
+        default: parts
+            .word("TEXT")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_bytes(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `BYTES DEFAULT _`")?;
+    let decoded = Defaulted::Bytes {
+        default: parts
+            .word("BYTES")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_integer(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `INTEGER DEFAULT _`")?;
+    let decoded = Defaulted::Integer {
+        default: parts
+            .word("INTEGER")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_number(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `NUMBER DEFAULT _`")?;
+    let decoded = Defaulted::Number {
+        default: parts
+            .word("NUMBER")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_boolean(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `BOOLEAN DEFAULT _`")?;
+    let decoded = Defaulted::Boolean {
+        default: parts
+            .word("BOOLEAN")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_instant(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `INSTANT DEFAULT _`")?;
+    let decoded = Defaulted::Instant {
+        default: parts
+            .word("INSTANT")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_duration(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `DURATION DEFAULT _`")?;
+    let decoded = Defaulted::Duration {
+        default: parts
+            .word("DURATION")?
+            .word("DEFAULT")?
+            .one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_list(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `LIST _`")?;
+    let decoded = Defaulted::List {
+        item: parts
+            .word("LIST")?
+            .one(|node| decode_defaulted(node).map(Box::new), "a defaulted")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_list_of_named(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `LIST _ DEFAULT _`")?;
+    let decoded = Defaulted::ListOfNamed {
+        item: parts.word("LIST")?.one(decode_type, "a type")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = Defaulted::Other {
+        r#type: parts.one(decode_type, "a type")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
         span: node.span,
     };
     parts.finish()?;

@@ -2,6 +2,7 @@
 
 mod common;
 
+use anyx_protocol::Value;
 use anyx_protocol::schema::{Type, TypeKind};
 use common::{assert_snapshot, diagnostics, poentaro, read, schema};
 
@@ -298,4 +299,121 @@ fn a_method_may_return_nothing() {
     let trash = schema.method("trash _").unwrap();
     assert_eq!(trash.returns, None);
     assert_eq!(trash.errors.len(), 1);
+}
+
+#[test]
+fn an_optional_field_may_have_a_default() {
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+        CHOICE shade { dark, light },
+        RECORD page { size: OPTIONAL: INTEGER DEFAULT 50, after: OPTIONAL: TEXT },
+        RECORD search {
+            query: TEXT,
+            limit: OPTIONAL: INTEGER DEFAULT 50,
+            include trash: OPTIONAL: BOOLEAN DEFAULT false,
+            shade: OPTIONAL: shade DEFAULT dark,
+            tags: OPTIONAL: LIST: TEXT DEFAULT [\"new\"],
+            shades: OPTIONAL: LIST shade DEFAULT [light],
+            sizes: OPTIONAL: (LIST: INTEGER) DEFAULT [],
+            wait: OPTIONAL: DURATION DEFAULT 5 minutes,
+            page: OPTIONAL: page DEFAULT { after \"a\" },
+            note: OPTIONAL: TEXT,
+        },",
+    );
+    let TypeKind::Record(fields) = &schema.types[2].kind else {
+        panic!("search is a record")
+    };
+    let defaults: Vec<(&str, Option<&Value>)> = fields
+        .iter()
+        .map(|field| (field.name.as_str(), field.default.as_ref()))
+        .collect();
+    let text = |text: &str| Value::Text(text.to_string());
+    let variant = |shape: &str| Value::Variant {
+        shape: shape.to_string(),
+        arguments: vec![],
+    };
+    let page = Value::Record(
+        [
+            ("after".to_string(), text("a")),
+            ("size".to_string(), Value::Integer(50)),
+        ]
+        .into(),
+    );
+    assert_eq!(
+        defaults,
+        [
+            ("query", None),
+            ("limit", Some(&Value::Integer(50))),
+            ("include trash", Some(&Value::Boolean(false))),
+            ("shade", Some(&variant("dark"))),
+            ("tags", Some(&Value::List(vec![text("new")]))),
+            ("shades", Some(&Value::List(vec![variant("light")]))),
+            ("sizes", Some(&Value::List(vec![]))),
+            (
+                "wait",
+                Some(&Value::Duration(std::time::Duration::from_secs(300)))
+            ),
+            ("page", Some(&page)),
+            ("note", None),
+        ]
+    );
+    let types: Vec<String> = fields
+        .iter()
+        .map(|field| schema.type_name(&field.r#type))
+        .collect();
+    assert_eq!(
+        types,
+        [
+            "TEXT",
+            "INTEGER",
+            "BOOLEAN",
+            "shade",
+            "LIST: TEXT",
+            "LIST: shade",
+            "LIST: INTEGER",
+            "DURATION",
+            "page",
+            "TEXT"
+        ]
+    );
+    assert!(fields.iter().skip(1).all(|field| field.optional));
+}
+
+#[test]
+fn mistakes_in_a_default_are_diagnosed() {
+    let cases = [
+        (
+            "a default of another type",
+            "PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL: INTEGER DEFAULT \"50\" },",
+        ),
+        (
+            "a default that is no variant",
+            "PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: OPTIONAL: shade DEFAULT dim },",
+        ),
+        (
+            "a default on a field that must be written",
+            "PROTOCOL a VERSION 1, RECORD x { limit: INTEGER DEFAULT 50 },",
+        ),
+        (
+            "a default on a parameter",
+            "PROTOCOL a VERSION 1, METHOD f (limit: INTEGER DEFAULT 50) RETURNS (y: TEXT),",
+        ),
+    ];
+    let rendered: Vec<String> = cases
+        .iter()
+        .map(|(title, source)| format!("== {title}\n{source}\n{}\n", diagnostics(source)))
+        .collect();
+    assert_snapshot(
+        "tests/snapshots/default_diagnostics.txt",
+        &rendered.join("\n"),
+    );
+}
+
+#[test]
+fn a_schema_with_defaults_is_formatted_as_written() {
+    let source = "PROTOCOL a VERSION 1,
+
+RECORD search { limit: OPTIONAL: INTEGER DEFAULT 50, tags: OPTIONAL: LIST: TEXT DEFAULT [] },
+";
+    assert_eq!(anyx_protocol::format_schema(source).unwrap(), source);
 }

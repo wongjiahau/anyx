@@ -5,6 +5,8 @@ export interface Reminder {
   note: string;
   at: Date;
   every?: number;
+  /** How many times to remind before giving up. */
+  times: number;
 }
 
 export type Schedule =

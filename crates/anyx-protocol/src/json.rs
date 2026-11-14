@@ -484,7 +484,11 @@ fn fields_from_json(
     let mut values = BTreeMap::new();
     for field in fields {
         match object.get(&camel_case(&field.name)) {
-            None | Some(Json::Null) if field.optional => {}
+            None | Some(Json::Null) if field.optional => {
+                if let Some(default) = &field.default {
+                    values.insert(field.name.clone(), default.clone());
+                }
+            }
             None => return Err(format!("found no field \"{}\"", camel_case(&field.name))),
             Some(json) => {
                 let value = from_json(schema, &field.r#type, json)

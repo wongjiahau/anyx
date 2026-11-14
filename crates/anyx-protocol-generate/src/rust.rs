@@ -131,8 +131,14 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
     }
 }
 
+/// Whether a field may be missing from a record: `OPTIONAL` without a
+/// `DEFAULT`, which the codec fills in.
+pub fn may_be_missing(field: &Field) -> bool {
+    field.optional && field.default.is_none()
+}
+
 fn field_type(schema: &Schema, scope: &[String], field: &Field) -> String {
-    match field.optional {
+    match may_be_missing(field) {
         true => format!("Option<{}>", rust_type(schema, scope, &field.r#type)),
         false => rust_type(schema, scope, &field.r#type),
     }
@@ -160,7 +166,11 @@ fn record(
     let built: String = fields
         .iter()
         .map(|field| {
-            let method = if field.optional { "optional" } else { "field" };
+            let method = if may_be_missing(field) {
+                "optional"
+            } else {
+                "field"
+            };
             format!(
                 ".{method}({:?}, self.{})",
                 field.name,
@@ -171,7 +181,11 @@ fn record(
     let read: String = fields
         .iter()
         .map(|field| {
-            let method = if field.optional { "optional" } else { "field" };
+            let method = if may_be_missing(field) {
+                "optional"
+            } else {
+                "field"
+            };
             format!(
                 "{}: fields.{method}({:?})?, ",
                 snake_case(&field.name),

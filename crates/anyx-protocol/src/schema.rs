@@ -78,6 +78,10 @@ pub struct Field {
     pub r#type: Type,
     /// `OPTIONAL`: the field may be left out.
     pub optional: bool,
+    /// What an `OPTIONAL` field with a `DEFAULT` holds when it is left
+    /// out. The codec fills it in, so a record read from the wire always
+    /// has the field.
+    pub default: Option<crate::value::Value>,
 }
 
 /// A call's shape: words with a typed slot between or around them, such as
@@ -418,6 +422,12 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
                 ),
             )];
         }
+        if let Some(default) = default_outside_record(&nodes, error.span) {
+            return vec![found(
+                default,
+                "found a `DEFAULT` outside a `RECORD`; expected one only on an `OPTIONAL` field of a `RECORD`, as in `limit: OPTIONAL: INTEGER DEFAULT 50`, since a parameter is always written".to_string(),
+            )];
+        }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
             (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: INTEGER)`, since the name says what the value is".to_string(),
             (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: TEXT) RETURNS (file: file) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`".to_string(),
@@ -457,6 +467,33 @@ fn unnamed_return(nodes: &[Node], span: Span) -> bool {
             if call.name.iter().any(|part| matches!(part, NamePart::Word { text, .. } if !anyx::is_keyword(text)))
                 && call.name.contains(&NamePart::Slot))
     })
+}
+
+/// Where the call with a `DEFAULT` that `span` is in is, when it is not in
+/// a `RECORD`, as in a parameter `(limit: INTEGER DEFAULT 50)`.
+fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
+    fn has_word(node: &Node, word: &str) -> bool {
+        matches!(&node.kind, NodeKind::Call(call)
+            if call.name.iter().any(|part| matches!(part, NamePart::Word { text, .. } if text == word)))
+    }
+    fn within(node: &Node, span: Span) -> Option<Span> {
+        if !(node.span.start <= span.start && span.end <= node.span.end) {
+            return None;
+        }
+        let children: &[Node] = match &node.kind {
+            NodeKind::Call(call) => &call.arguments,
+            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            _ => &[],
+        };
+        children
+            .iter()
+            .find_map(|child| within(child, span))
+            .or_else(|| has_word(node, "DEFAULT").then_some(node.span))
+    }
+    nodes
+        .iter()
+        .filter(|node| !has_word(node, "RECORD"))
+        .find_map(|node| within(node, span))
 }
 
 /// Whether `span` is in a top-level `ERROR`, which a schema no longer has:

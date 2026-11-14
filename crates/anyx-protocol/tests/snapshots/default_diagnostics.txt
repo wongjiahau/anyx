@@ -1,0 +1,23 @@
+== a default of another type
+PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL: INTEGER DEFAULT "50" },
+schema:1:67: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
+  PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL: INTEGER DEFAULT "50" },
+                                                                    ^^^^
+
+== a default that is no variant
+PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: OPTIONAL: shade DEFAULT dim },
+schema:1:88: in the `DEFAULT` of `shade`: found the call `dim`; expected a variant of `shade`: `dark`
+  PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: OPTIONAL: shade DEFAULT dim },
+                                                                                         ^^^
+
+== a default on a field that must be written
+PROTOCOL a VERSION 1, RECORD x { limit: INTEGER DEFAULT 50 },
+schema:1:41: found a `DEFAULT` on the field `limit`, which is not `OPTIONAL`; expected a `DEFAULT` only on an `OPTIONAL` field, which may be left out, as in `limit: OPTIONAL: INTEGER DEFAULT 50`
+  PROTOCOL a VERSION 1, RECORD x { limit: INTEGER DEFAULT 50 },
+                                          ^^^^^^^^^^^^^^^^^^
+
+== a default on a parameter
+PROTOCOL a VERSION 1, METHOD f (limit: INTEGER DEFAULT 50) RETURNS (y: TEXT),
+schema:1:40: found a `DEFAULT` outside a `RECORD`; expected one only on an `OPTIONAL` field of a `RECORD`, as in `limit: OPTIONAL: INTEGER DEFAULT 50`, since a parameter is always written
+  PROTOCOL a VERSION 1, METHOD f (limit: INTEGER DEFAULT 50) RETURNS (y: TEXT),
+                                         ^^^^^^^^^^^^^^^^^^

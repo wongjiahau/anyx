@@ -24,7 +24,35 @@ record body: ANYFIX CALL [name: WORDS [NO KEYWORD], fields: CURLY BRACE [ZERO OR
 
 field: ANYFIX CALL [doc: OPTIONAL: STRING, name: WORDS [NO KEYWORD], type: field type],
 
-field type: ONE OF [optional: ANYFIX CALL [WORD "OPTIONAL", type], type],
+field type: ONE OF [
+  optional: ANYFIX CALL [WORD "OPTIONAL", type: optional type],
+  ## `DEFAULT` on a field that isn't `OPTIONAL`, which the schema checker
+  ## reports.
+  required with default: defaulted,
+  type,
+],
+
+optional type: ONE OF [defaulted, type],
+
+## An `OPTIONAL` field's type and the value it takes when left out:
+## `OPTIONAL: INTEGER DEFAULT 50`. All-caps words side by side join into one
+## call, so `INTEGER DEFAULT 50` is the call `INTEGER DEFAULT _`, and
+## `LIST: TEXT DEFAULT []` is `LIST _` of `TEXT DEFAULT _`: the default
+## still belongs to the whole field.
+defaulted: ONE OF [
+  text: ANYFIX CALL [WORD "TEXT", WORD "DEFAULT", default: ANY NODE],
+  bytes: ANYFIX CALL [WORD "BYTES", WORD "DEFAULT", default: ANY NODE],
+  integer: ANYFIX CALL [WORD "INTEGER", WORD "DEFAULT", default: ANY NODE],
+  number: ANYFIX CALL [WORD "NUMBER", WORD "DEFAULT", default: ANY NODE],
+  boolean: ANYFIX CALL [WORD "BOOLEAN", WORD "DEFAULT", default: ANY NODE],
+  instant: ANYFIX CALL [WORD "INSTANT", WORD "DEFAULT", default: ANY NODE],
+  duration: ANYFIX CALL [WORD "DURATION", WORD "DEFAULT", default: ANY NODE],
+  list: ANYFIX CALL [WORD "LIST", item: defaulted],
+  ## `LIST file summary DEFAULT []`
+  list of named: ANYFIX CALL [WORD "LIST", item: type, WORD "DEFAULT", default: ANY NODE],
+  ## `shade DEFAULT dark`, or a type in parentheses, `(LIST: TEXT) DEFAULT []`
+  other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
+],
 
 choice: ONE OF [
   public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "CHOICE", body: choice body],

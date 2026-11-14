@@ -348,7 +348,11 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
     writeln!(out, "export interface {name} {{").unwrap();
     for field in fields {
         out.push_str(&doc(&field.doc, "  "));
-        let optional = if field.optional { "?" } else { "" };
+        let optional = if crate::rust::may_be_missing(field) {
+            "?"
+        } else {
+            ""
+        };
         writeln!(
             out,
             "  {}{optional}: {};",
@@ -479,7 +483,7 @@ fn revive_record(
             let key = camel_case(&field.name);
             let json = format!("json.{key}");
             let value = revivers.apply(schema, &field.r#type, &json)?;
-            Some(match field.optional {
+            Some(match crate::rust::may_be_missing(field) {
                 true => format!(", {key}: {json} === undefined ? undefined : {value}"),
                 false => format!(", {key}: {value}"),
             })
