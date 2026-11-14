@@ -1,0 +1,17 @@
+RETURNS 2, RETURNS NOTHING
+=> 1:9: in result 1 of 2, for the call of `change password from _ to _`: found a value after `RETURNS`; expected `RETURNS NOTHING`, since `change password from _ to _` returns nothing
+
+RETURNS NOTHING, RETURNS NOTHING
+=> 1:18: in result 2 of 2, for the call of `tag _`: found `RETURNS NOTHING`; expected `RETURNS` and its `count`, which `tag _` returns
+
+RETURNS NOTHING
+=> 1:16: found 1 result; expected 2 results, one per call, in the order of the calls
+
+RETURNS NOTHING, RETURNS 2, RETURNS 3
+=> 1:29: found 3 results; expected 2 results, one per call, in the order of the calls
+
+RETURNS NOTHING, ERROR wrong password
+=> 1:24: in result 2 of 2, for the call of `tag _`: found an error after `ERROR`; expected `RETURNS` and what `tag _` returns, since it has no errors
+
+change password from "a" to "b" RETURNS NOTHING, tag [] RETURNS 0
+=> 1:1: in result 1 of 2, for the call of `change password from _ to _`: found the call `_ RETURNS NOTHING`; expected the result of `change password from _ to _`, the call in that place of the request: `RETURNS NOTHING`, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`; a result doesn't repeat its call, so write it alone

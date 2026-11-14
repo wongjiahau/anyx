@@ -182,8 +182,8 @@ method: ONE OF [
   ] FORMAT [BREAK BEFORE WORD "RETURNS"],
 ],
 
-## Examples of a method, each a call of it and its outcome, written as a line
-## of a response writes them:
+## Examples of a method, each a call of it and its outcome side by side, the
+## call as a request writes it and the outcome as a response writes it:
 ## `EXAMPLES [write "a" at revision 3 content "x" RETURNS 4]`. An empty list
 ## reads, so that the checker can say what is wrong with it.
 examples: SQUARE BRACKET [ZERO OR MORE: example],

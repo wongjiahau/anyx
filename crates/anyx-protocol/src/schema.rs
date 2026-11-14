@@ -146,8 +146,8 @@ pub struct Method {
     pub examples: Vec<Example>,
 }
 
-/// An example of a method: a call of it and its outcome, written as a line
-/// of a response, `write "a" at revision 3 content "x" RETURNS 4`.
+/// An example of a method: a call of it and its outcome side by side, as
+/// in `write "a" at revision 3 content "x" RETURNS 4`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Example {
     pub doc: Option<String>,

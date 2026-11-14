@@ -52,18 +52,24 @@ Every call runs, in order, and the response has one result per call.
 
 ## Responses
 
-The response has one result per call, in order. Each result repeats its
-call, with text over 32 characters and lists over 3 items cut short with
-`…`, then one of:
+The response has one result per call, in the order of the calls, separated
+by commas. A result doesn't repeat its call: the first result answers the
+first call, the second the second, and so on, so keep a request short
+enough to count its results without slipping. A result is one of:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing.
 - `ERROR` and one of the method's errors, in the error's shape. They follow
   `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `read "a" ERROR missing`. The call didn't do anything.
-  Each error's `#` lines say what to do next.
+  For example: `ERROR missing`. The call didn't do anything. Each error's
+  `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
+
+For two calls, one that read a file and one whose file was missing:
+
+    RETURNS { path "a", revision 3 },
+    ERROR missing,
 
 A request that can't be read gets one result, and none of its calls run:
 

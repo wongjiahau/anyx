@@ -49,18 +49,24 @@ Every call runs, in order, and the response has one result per call.
 
 ## Responses
 
-The response has one result per call, in order. Each result repeats its
-call, with text over 32 characters and lists over 3 items cut short with
-`…`, then one of:
+The response has one result per call, in the order of the calls, separated
+by commas. A result doesn't repeat its call: the first result answers the
+first call, the second the second, and so on, so keep a request short
+enough to count its results without slipping. A result is one of:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing.
 - `ERROR` and one of the method's errors, in the error's shape. They follow
   `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `read "a" ERROR missing`. The call didn't do anything.
-  Each error's `#` lines say what to do next.
+  For example: `ERROR missing`. The call didn't do anything. Each error's
+  `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
+
+For two calls, one that read a file and one whose file was missing:
+
+    RETURNS { path "a", revision 3 },
+    ERROR missing,
 
 A request that can't be read gets one result, and none of its calls run:
 
@@ -71,8 +77,9 @@ A request that can't be read gets one result, and none of its calls run:
 In the schema, a `#` line before a definition says what it means. Lowercase
 words are names; all-caps words belong to the schema language. `ERRORS name
 […]` is a group of errors that methods share by joining it with `+`.
-`EXAMPLES […]` after a method lists calls of it, each followed by its
-result as a response writes it, with a `#` line saying what it shows.
+`EXAMPLES […]` after a method lists calls of it, each with its result side
+by side, as in `read "a" RETURNS …`, and a `#` line saying what it shows.
+A response writes the result alone.
 
 # Poentaro turns `.poentaro` text into numbered musical notation (jianpu) and
 # keeps the account owner's scores in the cloud. When you save, anyone who

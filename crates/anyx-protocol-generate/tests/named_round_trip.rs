@@ -128,10 +128,10 @@ fn named_types_cross_the_wire_as_the_types_underneath() {
         exchanged[0],
         (
             "share \"a\" tagged [\"hymn\"]\n".to_string(),
-            "share \"a\" tagged [\"hymn\"] RETURNS { share id \"share of a\", file id \"a\", tags [\"hymn\"] }\n".to_string()
+            "RETURNS { share id \"share of a\", file id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );
-    assert_eq!(exchanged[1].1, "grant (write) on \"a\" RETURNS write\n");
+    assert_eq!(exchanged[1].1, "RETURNS write\n");
 }
 
 #[test]
@@ -150,6 +150,6 @@ fn a_named_type_over_an_instant_or_a_map_crosses_the_wire() {
     assert_eq!(run(client.visits()), Ok(vec![visit()]));
     assert_eq!(
         client.transport.exchanged.borrow()[0].1,
-        "visits RETURNS [\n    { at \"1970-01-01T00:00:01.000Z\", by person { \"ann\" \"1970-01-01T00:00:01.000Z\" }, label \"none\" },\n]\n"
+        "RETURNS [\n    { at \"1970-01-01T00:00:01.000Z\", by person { \"ann\" \"1970-01-01T00:00:01.000Z\" }, label \"none\" },\n]\n"
     );
 }

@@ -71,19 +71,6 @@ impl std::fmt::Display for EncodeError {
 
 impl std::error::Error for EncodeError {}
 
-/// How much of a value to write: all of it, or a shortened form that labels
-/// it, which a response uses to repeat the call it answers. Shortened text
-/// keeps its first [`SHORTENED_CHARACTERS`] characters and a list its first
-/// [`SHORTENED_ITEMS`] items, each followed by `…`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Form {
-    Whole,
-    Shortened,
-}
-
-pub(crate) const SHORTENED_CHARACTERS: usize = 32;
-pub(crate) const SHORTENED_ITEMS: usize = 3;
-
 pub(crate) struct Mismatch {
     pub(crate) span: Span,
     pub(crate) message: String,
@@ -138,14 +125,14 @@ pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Proble
 
 /// A call in a scope: `files/export/midi "a"` reads as the call `_/_/_` of
 /// `files`, `export` and `midi "a"`.
-pub(crate) struct ScopedCall<'n> {
-    pub(crate) scope: Vec<String>,
-    pub(crate) call: &'n Node,
+struct ScopedCall<'n> {
+    scope: Vec<String>,
+    call: &'n Node,
 }
 
 /// `node` as a call in a scope, if its name is slots between `/`s and each
 /// slot before the last holds a single word.
-pub(crate) fn scoped_call(node: &Node) -> Option<ScopedCall<'_>> {
+fn scoped_call(node: &Node) -> Option<ScopedCall<'_>> {
     let NodeKind::Call(call) = &node.kind else {
         return None;
     };
@@ -630,13 +617,7 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
         .map(|call| {
             let method = schema.method_at(call.method);
             let mut shape = String::new();
-            write_shape(
-                schema,
-                &method.shape,
-                &call.arguments,
-                Form::Whole,
-                &mut shape,
-            )?;
+            write_shape(schema, &method.shape, &call.arguments, &mut shape)?;
             Ok(scoped(&method.scope, layout(shape).trim_end()))
         })
         .collect::<Result<Vec<_>, EncodeError>>()?;
@@ -657,7 +638,6 @@ pub(crate) fn write_shape(
     schema: &Schema,
     shape: &Shape,
     arguments: &[Value],
-    form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
     if arguments.len() != shape.parameters.len() {
@@ -676,9 +656,7 @@ pub(crate) fn write_shape(
             out.push(' ');
         }
         match (word, slots.next_if(|_| word == "_")) {
-            (_, Some((parameter, value))) => {
-                write_slot(schema, &parameter.r#type, value, form, out)?
-            }
+            (_, Some((parameter, value))) => write_slot(schema, &parameter.r#type, value, out)?,
             _ => out.push_str(word),
         }
     }
@@ -691,7 +669,6 @@ fn write_slot(
     schema: &Schema,
     r#type: &Type,
     value: &Value,
-    form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
     let call = matches!(
@@ -701,7 +678,7 @@ fn write_slot(
     if call {
         out.push('(');
     }
-    write(schema, r#type, value, form, out)?;
+    write(schema, r#type, value, out)?;
     if call {
         out.push(')');
     }
@@ -712,13 +689,12 @@ pub(crate) fn write(
     schema: &Schema,
     r#type: &Type,
     value: &Value,
-    form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
     let r#type = schema.underlying(r#type);
     match value {
-        Value::Text(text) => write_text(text, form, out),
-        Value::Bytes(bytes) => write_text(&crate::bytes::encode(bytes), form, out),
+        Value::Text(text) => write_text(text, out),
+        Value::Bytes(bytes) => write_text(&crate::bytes::encode(bytes), out),
         Value::Integer(integer) => out.push_str(&integer.to_string()),
         Value::Number(number) if number.is_finite() => out.push_str(&format!("{number:?}")),
         Value::Number(number) => {
@@ -728,7 +704,7 @@ pub(crate) fn write(
         }
         Value::Boolean(boolean) => out.push_str(if *boolean { "true" } else { "false" }),
         Value::Instant(instant) => match crate::time::format_instant(*instant) {
-            Some(text) => write_text(&text, form, out),
+            Some(text) => write_text(&text, out),
             None => {
                 return Err(EncodeError {
                     message: format!(
@@ -757,19 +733,12 @@ pub(crate) fn write(
                 Type::List(item) => item.as_ref(),
                 _ => r#type,
             };
-            let shown = match form {
-                Form::Whole => items.len(),
-                Form::Shortened => items.len().min(SHORTENED_ITEMS),
-            };
             out.push('[');
-            for (index, value) in items[..shown].iter().enumerate() {
+            for (index, value) in items.iter().enumerate() {
                 if index > 0 {
                     out.push_str(", ");
                 }
-                write(schema, item, value, form, out)?;
-            }
-            if shown < items.len() {
-                out.push_str(", …");
+                write(schema, item, value, out)?;
             }
             out.push(']');
         }
@@ -777,25 +746,18 @@ pub(crate) fn write(
             let Type::Map(value_type) = r#type else {
                 return Err(mismatched(schema, r#type, "a map"));
             };
-            let shown = match form {
-                Form::Whole => entries.len(),
-                Form::Shortened => entries.len().min(SHORTENED_ITEMS),
-            };
             if entries.is_empty() {
                 out.push_str("{}");
                 return Ok(());
             }
             out.push_str("{ ");
-            for (index, (key, value)) in entries.iter().take(shown).enumerate() {
+            for (index, (key, value)) in entries.iter().enumerate() {
                 if index > 0 {
                     out.push_str(", ");
                 }
-                write_quoted(key, usize::MAX, out);
+                write_quoted(key, out);
                 out.push_str(": ");
-                write(schema, value_type, value, form, out)?;
-            }
-            if shown < entries.len() {
-                out.push_str(", …");
+                write(schema, value_type, value, out)?;
             }
             out.push_str(" }");
         }
@@ -806,7 +768,7 @@ pub(crate) fn write(
             let TypeKind::Record(fields) = kind.as_ref() else {
                 return Err(mismatched(schema, r#type, "a record"));
             };
-            write_fields(schema, fields, values, form, out)?;
+            write_fields(schema, fields, values, out)?;
         }
         Value::Variant { shape, arguments } => {
             let Some((_, kind)) = schema.instance(r#type) else {
@@ -823,7 +785,7 @@ pub(crate) fn write(
                     ),
                 });
             };
-            write_shape(schema, &variant.shape, arguments, form, out)?;
+            write_shape(schema, &variant.shape, arguments, out)?;
         }
     }
     Ok(())
@@ -841,7 +803,6 @@ fn write_fields(
     schema: &Schema,
     fields: &[Field],
     values: &BTreeMap<String, Value>,
-    form: Form,
     out: &mut String,
 ) -> Result<(), EncodeError> {
     out.push_str("{ ");
@@ -856,35 +817,28 @@ fn write_fields(
         first = false;
         out.push_str(&field.name);
         out.push_str(": ");
-        write(schema, &field.r#type, value, form, out)?;
+        write(schema, &field.r#type, value, out)?;
     }
     out.push_str(" }");
     Ok(())
 }
 
 /// Writes text as a raw string when it has lines and reads back the same,
-/// and as a quoted string otherwise. Shortened, it is always quoted, on one
-/// line, and text longer than [`SHORTENED_CHARACTERS`] ends in `…`.
-pub(crate) fn write_text(text: &str, form: Form, out: &mut String) {
-    if form == Form::Whole
-        && text.contains('\n')
+/// and as a quoted string otherwise.
+pub(crate) fn write_text(text: &str, out: &mut String) {
+    if text.contains('\n')
         && let Some(raw) = raw_string(text)
     {
         out.push_str(&raw);
         return;
     }
-    let shown = match form {
-        Form::Whole => text.chars().count(),
-        Form::Shortened => SHORTENED_CHARACTERS,
-    };
-    write_quoted(text, shown, out);
+    write_quoted(text, out);
 }
 
-/// Writes the first `shown` characters of `text` as a quoted string, ending
-/// in `…` when there is more.
-fn write_quoted(text: &str, shown: usize, out: &mut String) {
+/// Writes `text` as a quoted string.
+fn write_quoted(text: &str, out: &mut String) {
     out.push('"');
-    for c in text.chars().take(shown) {
+    for c in text.chars() {
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -894,9 +848,6 @@ fn write_quoted(text: &str, shown: usize, out: &mut String) {
             c if c.is_control() => out.push_str(&format!("\\u{{{:x}}}", c as u32)),
             c => out.push(c),
         }
-    }
-    if text.chars().nth(shown).is_some() {
-        out.push('…');
     }
     out.push('"');
 }

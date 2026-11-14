@@ -1,27 +1,27 @@
-//! Reads and writes responses. Each outcome repeats the call it answers,
-//! with long arguments shortened, so a reader can tell which call it
-//! answers without counting:
+//! Reads and writes responses: one result per call, in the order of the
+//! calls, which a reader matches to its call by position. A result doesn't
+//! repeat its call, so no argument, such as a password, comes back:
 //!
 //! ```anyx
-//! files/read "a.poentaro" RETURNS { path "a.poentaro", revision 3, content "…" },
-//! files/export/midi "b.poentaro" ERROR missing,
+//! RETURNS { path "a.poentaro", revision 3, content "…" },
+//! ERROR missing,
 //! ```
 //!
-//! After the call comes `RETURNS` and the method's value, `ERROR` and one
-//! of its errors, `INTERNAL ERROR` or `NOT RUN`. Outcomes stay in the order
-//! of the calls. A request that can't be read gets the single response
-//! `INVALID REQUEST { … }` instead.
+//! A result is `RETURNS` and the method's value (`RETURNS NOTHING` for a
+//! method that returns nothing), `ERROR` and one of its errors, `INTERNAL
+//! ERROR` or `NOT RUN`. A request that can't be read gets the single
+//! response `INVALID REQUEST { … }` instead.
 
 use anyx::{NamePart, Node, NodeKind, Span};
 
 use crate::codec::{
-    Call, EncodeError, Form, Mismatch, Outcome, Problem, Response, ScopedCall, decode,
-    decode_variant, describe, layout, parse, problem, scoped_call, write, write_shape, write_text,
+    Call, EncodeError, Mismatch, Outcome, Problem, Response, decode, decode_variant, describe,
+    layout, parse, problem, write, write_shape, write_text,
 };
-use crate::schema::{Method, Schema, Shape, scoped};
+use crate::schema::{Method, Schema, Shape};
 use crate::value::Value;
 
-/// Writes the response to `calls`, one outcome each.
+/// Writes the response to `calls`, one result each, in their order.
 pub fn encode_response(
     schema: &Schema,
     calls: &[Call],
@@ -34,7 +34,7 @@ pub fn encode_response(
             out.push_str(", column ");
             out.push_str(&problem.column.to_string());
             out.push_str(", message ");
-            write_text(&problem.message, Form::Whole, &mut out);
+            write_text(&problem.message, &mut out);
             out.push_str(" }\n");
             return Ok(layout(out));
         }
@@ -43,7 +43,7 @@ pub fn encode_response(
     let written = calls
         .iter()
         .zip(outcomes)
-        .map(|(call, outcome)| encode_outcome(schema, call, outcome))
+        .map(|(call, outcome)| encode_outcome(schema, schema.method_at(call.method), outcome))
         .collect::<Result<Vec<_>, EncodeError>>()?;
     Ok(match written.as_slice() {
         [outcome] => format!("{outcome}\n"),
@@ -54,25 +54,21 @@ pub fn encode_response(
     })
 }
 
-/// One outcome after the call it answers, laid out the way `anyx::format`
-/// lays it out, after the scope's path, which the formatter would space.
-fn encode_outcome(schema: &Schema, call: &Call, outcome: &Outcome) -> Result<String, EncodeError> {
-    let method = schema.method_at(call.method);
+/// One result of a call of `method`, laid out the way `anyx::format` lays
+/// it out.
+fn encode_outcome(
+    schema: &Schema,
+    method: &Method,
+    outcome: &Outcome,
+) -> Result<String, EncodeError> {
     let mut out = String::new();
-    write_shape(
-        schema,
-        &method.shape,
-        &call.arguments,
-        Form::Shortened,
-        &mut out,
-    )?;
     match outcome {
         Outcome::Value(value) => match (&method.returns, value) {
             (Some(returns), _) => {
-                out.push_str(" RETURNS ");
-                write(schema, &returns.r#type, value, Form::Whole, &mut out)?;
+                out.push_str("RETURNS ");
+                write(schema, &returns.r#type, value, &mut out)?;
             }
-            (None, Value::Nothing) => out.push_str(" RETURNS NOTHING"),
+            (None, Value::Nothing) => out.push_str("RETURNS NOTHING"),
             (None, _) => {
                 return Err(EncodeError {
                     message: format!(
@@ -83,7 +79,7 @@ fn encode_outcome(schema: &Schema, call: &Call, outcome: &Outcome) -> Result<Str
             }
         },
         Outcome::Error(error) => {
-            out.push_str(" ERROR ");
+            out.push_str("ERROR ");
             let Value::Variant { shape, arguments } = error else {
                 return Err(EncodeError {
                     message: "found an error that is not a variant".to_string(),
@@ -101,16 +97,16 @@ fn encode_outcome(schema: &Schema, call: &Call, outcome: &Outcome) -> Result<Str
                     ),
                 });
             };
-            write_shape(schema, &error.shape, arguments, Form::Whole, &mut out)?;
+            write_shape(schema, &error.shape, arguments, &mut out)?;
         }
-        Outcome::NotRun => out.push_str(" NOT RUN"),
-        Outcome::InternalError => out.push_str(" INTERNAL ERROR"),
+        Outcome::NotRun => out.push_str("NOT RUN"),
+        Outcome::InternalError => out.push_str("INTERNAL ERROR"),
     }
-    Ok(scoped(&method.scope, layout(out).trim_end()))
+    Ok(layout(out).trim_end().to_string())
 }
 
-/// Reads a response to calls of `methods`. Each outcome must repeat a call
-/// of its method; its arguments, which may be shortened, aren't read.
+/// Reads a response to calls of `methods`: one result per call, matched to
+/// its call by position.
 pub fn decode_response(
     schema: &Schema,
     methods: &[usize],
@@ -132,29 +128,52 @@ pub fn decode_response(
             });
     }
     if nodes.len() != methods.len() {
+        let span = nodes
+            .get(methods.len())
+            .map_or(Span::empty(source.len()), |extra| extra.span);
         return Err(problem(
             source,
-            Span::empty(0),
+            span,
             format!(
-                "found {} outcomes; expected one per call, {}",
-                nodes.len(),
-                methods.len()
+                "found {}; expected {}, one per call, in the order of the calls",
+                count(nodes.len(), "result"),
+                count(methods.len(), "result"),
             ),
         ));
     }
     methods
         .iter()
         .zip(&nodes)
-        .map(|(method, node)| {
-            decode_outcome(schema, schema.method_at(*method), node)
-                .map_err(|mismatch| problem(source, mismatch.span, mismatch.message))
+        .enumerate()
+        .map(|(index, (method, node))| {
+            let method = schema.method_at(*method);
+            decode_outcome(schema, method, node).map_err(|mismatch| {
+                let message = match methods.len() {
+                    1 => mismatch.message,
+                    total => format!(
+                        "in result {} of {total}, for the call of `{}`: {}",
+                        index + 1,
+                        method.full_name(),
+                        mismatch.message
+                    ),
+                };
+                problem(source, mismatch.span, message)
+            })
         })
         .collect::<Result<_, _>>()
         .map(Response::Outcomes)
 }
 
-/// What follows the repeated call.
-pub(crate) enum Ending<'n> {
+/// `count` of `noun`, such as "1 result" or "2 results".
+fn count(count: usize, noun: &str) -> String {
+    match count {
+        1 => format!("1 {noun}"),
+        count => format!("{count} {noun}s"),
+    }
+}
+
+/// A result as written, in a response or after the call in an example.
+pub(crate) enum WrittenOutcome<'n> {
     Returns(&'n Node),
     ReturnsNothing,
     Error(&'n Node),
@@ -162,110 +181,82 @@ pub(crate) enum Ending<'n> {
     InternalError,
 }
 
-/// An outcome split into the call it repeats and what follows it.
-struct Split<'n> {
-    /// The name before the ending: one slot holding the call, or the words
-    /// of a call made of keywords only, such as `SCHEMA`.
-    name: &'n [NamePart],
-    arguments: &'n [Node],
-    ending: Ending<'n>,
-}
-
-fn split(node: &Node) -> Option<Split<'_>> {
+fn written_outcome(node: &Node) -> Option<WrittenOutcome<'_>> {
     let NodeKind::Call(call) = &node.kind else {
         return None;
     };
     let word = |part: &NamePart, expected: &str| matches!(part, NamePart::Word { text, .. } if text == expected);
-    match call.name.as_slice() {
-        [name @ .., not, run] if word(not, "NOT") && word(run, "RUN") => Some(Split {
-            name,
-            arguments: &call.arguments,
-            ending: Ending::NotRun,
-        }),
-        [name @ .., returns, nothing] if word(returns, "RETURNS") && word(nothing, "NOTHING") => {
-            Some(Split {
-                name,
-                arguments: &call.arguments,
-                ending: Ending::ReturnsNothing,
-            })
+    match (call.name.as_slice(), call.arguments.as_slice()) {
+        ([not, run], []) if word(not, "NOT") && word(run, "RUN") => Some(WrittenOutcome::NotRun),
+        ([returns, nothing], []) if word(returns, "RETURNS") && word(nothing, "NOTHING") => {
+            Some(WrittenOutcome::ReturnsNothing)
         }
-        [name @ .., internal, error] if word(internal, "INTERNAL") && word(error, "ERROR") => {
-            Some(Split {
-                name,
-                arguments: &call.arguments,
-                ending: Ending::InternalError,
-            })
+        ([internal, error], []) if word(internal, "INTERNAL") && word(error, "ERROR") => {
+            Some(WrittenOutcome::InternalError)
         }
-        [name @ .., keyword, NamePart::Slot] => {
-            let (last, arguments) = call.arguments.split_last()?;
-            let ending = match () {
-                _ if word(keyword, "RETURNS") => Ending::Returns(last),
-                _ if word(keyword, "ERROR") => Ending::Error(last),
-                _ => return None,
-            };
-            Some(Split {
-                name,
-                arguments,
-                ending,
-            })
+        ([returns, NamePart::Slot], [value]) if word(returns, "RETURNS") => {
+            Some(WrittenOutcome::Returns(value))
+        }
+        ([error, NamePart::Slot], [value]) if word(error, "ERROR") => {
+            Some(WrittenOutcome::Error(value))
         }
         _ => None,
     }
 }
 
-fn decode_outcome(schema: &Schema, method: &Method, node: &Node) -> Result<Outcome, Mismatch> {
-    let example = method.full_name().replace(" _", " …");
-    let Some(split) = split(node) else {
-        return Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found {}; expected the call it answers, then `RETURNS` and its value, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`, as in `{example} RETURNS …`",
-                describe(node)
-            ),
-        });
+/// Whether `node` is a call followed by a result, as an example writes it:
+/// `read "a" RETURNS …`.
+fn repeats_a_call(node: &Node) -> bool {
+    let NodeKind::Call(call) = &node.kind else {
+        return false;
     };
-    if split.name.is_empty() {
+    let keyword = |part: &NamePart| matches!(part, NamePart::Word { text, .. } if ["RETURNS", "ERROR", "NOT", "INTERNAL"].contains(&text.as_str()));
+    call.name
+        .iter()
+        .position(keyword)
+        .is_some_and(|position| position > 0)
+}
+
+fn decode_outcome(schema: &Schema, method: &Method, node: &Node) -> Result<Outcome, Mismatch> {
+    let Some(written) = written_outcome(node) else {
+        let returns = match method.returns {
+            Some(_) => "`RETURNS` and its value",
+            None => "`RETURNS NOTHING`",
+        };
+        let hint = match repeats_a_call(node) {
+            true => "; a result doesn't repeat its call, so write it alone",
+            false => "",
+        };
         return Err(Mismatch {
             span: node.span,
             message: format!(
-                "found an outcome without the call it answers; expected the call first, as in `{example} RETURNS …`"
-            ),
-        });
-    }
-    let repeated = repeated_method(&split);
-    if repeated.as_deref() != Some(method.full_name().as_str()) {
-        let found = repeated.map_or_else(|| "something".to_string(), |name| format!("`{name}`"));
-        return Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found the outcome of {found}; expected the outcome of `{}`, the call in that place of the request",
+                "found {}; expected the result of `{}`, the call in that place of the request: {returns}, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`{hint}",
+                describe(node),
                 method.full_name()
             ),
         });
-    }
-    decode_ending(schema, method, split.ending, node.span)
+    };
+    read_outcome(schema, method, written, node.span)
 }
 
-/// Reads what follows the call in an outcome of `method`; `span` is the
-/// outcome's.
-pub(crate) fn decode_ending(
+/// Reads a result of a call of `method`; `span` is the result's.
+pub(crate) fn read_outcome(
     schema: &Schema,
     method: &Method,
-    ending: Ending,
+    written: WrittenOutcome,
     span: Span,
 ) -> Result<Outcome, Mismatch> {
-    let example = method.full_name().replace(" _", " …");
-    match ending {
-        Ending::NotRun => Ok(Outcome::NotRun),
-        Ending::InternalError => Ok(Outcome::InternalError),
-        Ending::Error(error) if method.errors.is_empty() => Err(Mismatch {
+    match written {
+        WrittenOutcome::NotRun => Ok(Outcome::NotRun),
+        WrittenOutcome::InternalError => Ok(Outcome::InternalError),
+        WrittenOutcome::Error(error) if method.errors.is_empty() => Err(Mismatch {
             span: error.span,
             message: format!(
                 "found an error after `ERROR`; expected `RETURNS` and what `{}` returns, since it has no errors",
                 method.full_name()
             ),
         }),
-        Ending::Error(error) => {
+        WrittenOutcome::Error(error) => {
             let errors = schema.errors_of(method);
             let shapes: Vec<&Shape> = errors.iter().map(|error| &error.shape).collect();
             decode_variant(
@@ -276,7 +267,7 @@ pub(crate) fn decode_ending(
             )
             .map(Outcome::Error)
         }
-        Ending::ReturnsNothing => match &method.returns {
+        WrittenOutcome::ReturnsNothing => match &method.returns {
             None => Ok(Outcome::Value(Value::Nothing)),
             Some(returns) => Err(Mismatch {
                 span,
@@ -287,7 +278,7 @@ pub(crate) fn decode_ending(
                 ),
             }),
         },
-        Ending::Returns(value) => {
+        WrittenOutcome::Returns(value) => {
             let Some(returns) = &method.returns else {
                 return Err(Mismatch {
                     span: value.span,
@@ -308,7 +299,7 @@ pub(crate) fn decode_ending(
                     {
                         Mismatch {
                             message: format!(
-                                "{}; an error is written after `ERROR`, as in `{example} ERROR {}`",
+                                "{}; an error is written after `ERROR`, as in `ERROR {}`",
                                 mismatch.message,
                                 call.name_text().replace(" _", " …")
                             ),
@@ -318,31 +309,6 @@ pub(crate) fn decode_ending(
                     _ => mismatch,
                 })
         }
-    }
-}
-
-/// The full name of the method whose call an outcome repeats.
-fn repeated_method(split: &Split) -> Option<String> {
-    match (split.name, split.arguments) {
-        ([NamePart::Slot], [repeated]) => {
-            let ScopedCall { scope, call } = scoped_call(repeated).unwrap_or(ScopedCall {
-                scope: Vec::new(),
-                call: repeated,
-            });
-            match &call.kind {
-                NodeKind::Call(call) => Some(scoped(&scope, &call.name_text())),
-                _ => None,
-            }
-        }
-        (words, []) if !words.is_empty() => words
-            .iter()
-            .map(|part| match part {
-                NamePart::Word { text, .. } => Some(text.as_str()),
-                NamePart::Slot => None,
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|words| words.join(" ")),
-        _ => None,
     }
 }
 

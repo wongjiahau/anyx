@@ -1,23 +1,26 @@
-read "a" ERROR conflict at revision 1 content "x"
-=> 1:16: found the call `conflict at revision _ content _`; expected an error of `read _`: `trashed`, `missing`
+ERROR conflict at revision 1 content "x"
+=> 1:7: found the call `conflict at revision _ content _`; expected an error of `read _`: `trashed`, `missing`
 
-read "a" ERROR gone
-=> 1:16: found the call `gone`; expected an error of `read _`: `trashed`, `missing`
+ERROR gone
+=> 1:7: found the call `gone`; expected an error of `read _`: `trashed`, `missing`
 
-read "a" RETURNS missing
-=> 1:18: found the call `missing`; expected the record `file`, as in `{ path …, revision …, content … }`; an error is written after `ERROR`, as in `read … ERROR missing`
+RETURNS missing
+=> 1:9: found the call `missing`; expected the record `file`, as in `{ path …, revision …, content … }`; an error is written after `ERROR`, as in `ERROR missing`
 
-read "a" NOT RUN, read "b" NOT RUN
-=> 1:1: found 2 outcomes; expected one per call, 1
+NOT RUN, NOT RUN
+=> 1:10: found 2 results; expected 1 result, one per call, in the order of the calls
+
+
+=> 1:1: found 0 results; expected 1 result, one per call, in the order of the calls
 
 INVALID REQUEST { line 1 }
 => 1:1: found an `INVALID REQUEST` without a line, column and message
 
-ERROR missing
-=> 1:1: found an outcome without the call it answers; expected the call first, as in `read … RETURNS …`
+missing
+=> 1:1: found the call `missing`; expected the result of `read _`, the call in that place of the request: `RETURNS` and its value, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`
 
-list files RETURNS []
-=> 1:1: found the outcome of `list files`; expected the outcome of `read _`, the call in that place of the request
+read "a" RETURNS { path "a", revision 1, content "x" }
+=> 1:1: found the call `_ RETURNS _`; expected the result of `read _`, the call in that place of the request: `RETURNS` and its value, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`; a result doesn't repeat its call, so write it alone
 
-read "a" ERRORS missing
-=> 1:1: found the call `_ ERRORS _`; expected the call it answers, then `RETURNS` and its value, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`, as in `read … RETURNS …`
+ERRORS missing
+=> 1:1: found the call `ERRORS _`; expected the result of `read _`, the call in that place of the request: `RETURNS` and its value, `ERROR` and one of its errors, `INTERNAL ERROR` or `NOT RUN`

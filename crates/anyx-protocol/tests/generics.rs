@@ -121,7 +121,7 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
     let value = returned(
         &schema,
         0,
-        "list orders RETURNS { items [{ number 1, total 250 }], next \"2\" }",
+        "RETURNS { items [{ number 1, total 250 }], next \"2\" }",
     );
     let Value::Record(fields) = &value else {
         panic!("expected a record, found {value:?}");
@@ -140,12 +140,12 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
     .unwrap();
     assert_eq!(
         response,
-        "list orders RETURNS { items [{ number 1, total 250 }], next \"2\", size 20 }\n"
+        "RETURNS { items [{ number 1, total 250 }], next \"2\", size 20 }\n"
     );
     let nested = returned(
         &schema,
         2,
-        "pay all [1, 2] RETURNS { items [done \"receipt 1\", failed: insufficient funds] }",
+        "RETURNS { items [done \"receipt 1\", failed: insufficient funds] }",
     );
     assert_eq!(
         nested,
@@ -163,10 +163,7 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
             },
         ])
     );
-    assert_eq!(
-        returned(&schema, 3, "history RETURNS { items [] }"),
-        page(vec![])
-    );
+    assert_eq!(returned(&schema, 3, "RETURNS { items [] }"), page(vec![]));
 }
 
 #[test]
@@ -207,7 +204,7 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
         decode_response_json(
             &schema,
             "pay all _",
-            "pay all [1] RETURNS { items [failed: card expired] }"
+            "RETURNS { items [failed: card expired] }"
         )
         .unwrap(),
         r#"{"kind":"value","value":{"items":[{"kind":"failed","problem":{"kind":"cardExpired"}}],"size":20}}"#
@@ -216,7 +213,7 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
         decode_response_json(
             &schema,
             "history",
-            "history RETURNS { items [{ number 1, total 2 }] }"
+            "RETURNS { items [{ number 1, total 2 }] }"
         )
         .unwrap(),
         r#"{"kind":"value","value":{"items":[{"number":1,"total":2}],"size":20}}"#
@@ -439,7 +436,7 @@ METHOD tree RETURNS (tree: tree WITH (item: TEXT)),
     let value = returned(
         &schema,
         0,
-        "tree RETURNS { value \"a\", children [{ value \"b\", children [] }] }",
+        "RETURNS { value \"a\", children [{ value \"b\", children [] }] }",
     );
     let Value::Record(fields) = value else {
         panic!("expected a record");

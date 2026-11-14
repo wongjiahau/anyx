@@ -46,7 +46,7 @@ fn bytes_are_written_as_base64() {
     let response = Response::Outcomes(vec![Outcome::Value(Value::Integer(256))]);
     assert_eq!(
         encode_response(&schema, &[upload], &response).unwrap(),
-        "upload \"AAECAwQFBgcICQoLDA0ODxAREhMUFRYX…\" RETURNS 256\n"
+        "RETURNS 256\n"
     );
     let export = Call {
         method: 0,
@@ -55,7 +55,7 @@ fn bytes_are_written_as_base64() {
     let response = Response::Outcomes(vec![Outcome::Value(Value::Bytes(b"MThd".to_vec()))]);
     assert_eq!(
         encode_response(&schema, &[export], &response).unwrap(),
-        "export \"a.mid\" RETURNS \"TVRoZA==\"\n"
+        "RETURNS \"TVRoZA==\"\n"
     );
 }
 

@@ -54,7 +54,7 @@ fn a_named_type_is_written_like_the_type_underneath() {
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
     assert_eq!(request, "share \"a\" tagged [\"hymn\"]\n");
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
-    let response = "share \"a\" tagged [\"hymn\"] RETURNS { file id \"a\", tags [\"hymn\"] }";
+    let response = "RETURNS { file id \"a\", tags [\"hymn\"] }";
     let anyx_protocol::Response::Outcomes(outcomes) =
         decode_response(&schema, &[0], response).unwrap()
     else {
@@ -82,19 +82,14 @@ fn a_named_type_is_the_type_underneath_in_json() {
         "share \"a\" tagged [\"hymn\"]\n"
     );
     assert_eq!(
-        decode_response_json(
-            &schema,
-            "share _ tagged _",
-            "share \"a\" tagged [] ERROR missing \"a\""
-        )
-        .unwrap(),
+        decode_response_json(&schema, "share _ tagged _", "ERROR missing \"a\"").unwrap(),
         r#"{"error":{"id":"a","kind":"missing"},"kind":"error"}"#
     );
     assert_eq!(
         decode_response_json(
             &schema,
             "share _ tagged _",
-            "share \"a\" tagged [] RETURNS { file id \"a\", tags [] }"
+            "RETURNS { file id \"a\", tags [] }"
         )
         .unwrap(),
         r#"{"kind":"value","value":{"fileId":"a","tags":[]}}"#
@@ -201,7 +196,8 @@ RECORD visit { at: opened at, by person: openings, label: OPTIONAL: label DEFAUL
 METHOD visits RETURNS (visits: LIST: visit),
 ",
     );
-    let response = "visits RETURNS [{ at \"1970-01-01T00:00:01Z\", by person { \"ann\" \"1970-01-01T00:00:02Z\" } }]";
+    let response =
+        "RETURNS [{ at \"1970-01-01T00:00:01Z\", by person { \"ann\" \"1970-01-01T00:00:02Z\" } }]";
     let anyx_protocol::Response::Outcomes(outcomes) =
         decode_response(&schema, &[0], response).unwrap()
     else {

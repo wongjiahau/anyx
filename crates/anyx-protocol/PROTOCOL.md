@@ -122,10 +122,11 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   has a name, which says what it is. `ERRORS` may be left out. A method with
   nothing to return, such as `sign out`, says `RETURNS NOTHING`.
 - **`EXAMPLES [example, …]`**, last in a method, shows how it is used. Each
-  example is a call of the method and its outcome, written as a line of a
-  response writes it: the call by its full name, as a request writes it,
-  then `RETURNS` and a value, `RETURNS NOTHING`, or `ERROR` and one of the
-  method's errors. A `#` line before an example says what it shows. The
+  example is a call of the method and its outcome side by side, since it
+  shows a request and its response together: the call by its full name, as
+  a request writes it, then the result as a response writes it, `RETURNS`
+  and a value, `RETURNS NOTHING`, or `ERROR` and one of the method's
+  errors. A `#` line before an example says what it shows. The
   schema is checked against its examples, so that they can't go stale:
   each call must be a call of its method, and each outcome one the method
   may have. The guide and generated code show them.
@@ -238,8 +239,8 @@ METHOD pdf (path: TEXT) RETURNS (pdf: BYTES)
 ```
 
 - In its own scope, a type or group is named without its path.
-- An error is written on the wire by its words alone, `… ERROR missing`, so
-  a method can't list two errors of the same words from different scopes.
+- An error is written on the wire by its words alone, `ERROR missing`, so a
+  method can't list two errors of the same words from different scopes.
 
 ## Requests
 
@@ -297,9 +298,9 @@ is dropped, rounding down, for both types.
 
 ## Responses
 
-One result per call, in order, separated by commas. Each result repeats
-the call it answers, so a reader can tell which call it answers without
-counting, then says what came of it:
+One result per call, in the order of the calls, separated by commas. A
+result doesn't repeat its call; a reader matches results to calls by
+position. Each result says what came of its call:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing;
@@ -309,16 +310,19 @@ counting, then says what came of it:
   don't run;
 - `NOT RUN`: an earlier call failed with `INTERNAL ERROR`.
 
+For the request `files/read "a.poentaro", files/write "a.poentaro" at
+revision 3 content "…", files/export/midi "b.poentaro"`:
+
 ```anyx
-files/read "a.poentaro" RETURNS { path "a.poentaro", revision 3, content "…" },
-files/write "a.poentaro" at revision 3 content "## Twinkle\nkey C\n| 1 1 5 5 | 6 6…" ERROR conflict at revision 4 content "…",
-files/export/midi "b.poentaro" ERROR missing,
+RETURNS { path "a.poentaro", revision 3, content "…" },
+ERROR conflict at revision 4 content "…",
+ERROR missing,
 ```
 
-The repeated call is a label, so long arguments are shortened: text keeps
-its first 32 characters and a list its first 3 items, each followed by `…`,
-and text is always quoted on one line. A reader checks that each result
-repeats a call of the method in its place, and doesn't read the arguments.
+A reader checks that there are as many results as calls, and reads each
+as an outcome of the method of the call in its place. Since a result
+doesn't repeat its call, no argument, such as a password, comes back in
+the response, where it could end up in logs, caches and transcripts.
 
 A request that can't be read gets one result in place of all of them, and
 none of its calls run:

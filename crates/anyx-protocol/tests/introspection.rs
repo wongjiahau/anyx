@@ -81,8 +81,7 @@ fn the_json_client_calls_schema() {
         "SCHEMA\n"
     );
     assert_eq!(
-        anyx_protocol::json::decode_response_json(&schema, "SCHEMA", "SCHEMA RETURNS \"guide\"")
-            .unwrap(),
+        anyx_protocol::json::decode_response_json(&schema, "SCHEMA", "RETURNS \"guide\"").unwrap(),
         r#"{"kind":"value","value":"guide"}"#
     );
 }

@@ -54,25 +54,21 @@ fn each_outcome_reads_as_json() {
     let cases = [
         (
             "list files",
-            "list files RETURNS [{ path \"a\", revision 1 }]",
+            "RETURNS [{ path \"a\", revision 1 }]",
             r#"{"kind":"value","value":[{"path":"a","revision":1}]}"#,
         ),
         (
             WRITE,
-            "write \"a\" at revision 3 content \"x\" ERROR conflict at revision 4 content \"y\"",
+            "ERROR conflict at revision 4 content \"y\"",
             r#"{"error":{"content":"y","kind":"conflictAtRevisionContent","revision":4},"kind":"error"}"#,
         ),
         (
             "read _",
-            "read \"a\" ERROR trashed",
+            "ERROR trashed",
             r#"{"error":{"kind":"trashed"},"kind":"error"}"#,
         ),
-        ("read _", "read \"a\" NOT RUN", r#"{"kind":"notRun"}"#),
-        (
-            "read _",
-            "read \"a\" INTERNAL ERROR",
-            r#"{"kind":"internalError"}"#,
-        ),
+        ("read _", "NOT RUN", r#"{"kind":"notRun"}"#),
+        ("read _", "INTERNAL ERROR", r#"{"kind":"internalError"}"#),
         (
             "read _",
             "INVALID REQUEST { line 1, column 2, message \"m\" }",
@@ -95,12 +91,7 @@ fn bytes_are_base64_in_json() {
     let request = encode_request_json(&schema, "upload _", r#"["TVRoZA=="]"#).unwrap();
     assert_eq!(request, "upload \"TVRoZA==\"\n");
     assert_eq!(
-        decode_response_json(
-            &schema,
-            "upload _",
-            "upload \"TVRoZA==\" RETURNS \"TVRoZA==\""
-        )
-        .unwrap(),
+        decode_response_json(&schema, "upload _", "RETURNS \"TVRoZA==\"").unwrap(),
         r#"{"kind":"value","value":"TVRoZA=="}"#
     );
     let mistake = encode_request_json(&schema, "upload _", r#"["%%"]"#).unwrap_err();
@@ -113,7 +104,7 @@ fn bytes_are_base64_in_json() {
 #[test]
 fn nothing_returned_is_a_value_without_a_value_in_json() {
     let schema = common::schema("PROTOCOL a VERSION 1, METHOD sign out RETURNS NOTHING,");
-    let json = decode_response_json(&schema, "sign out", "sign out RETURNS NOTHING").unwrap();
+    let json = decode_response_json(&schema, "sign out", "RETURNS NOTHING").unwrap();
     assert_eq!(json, r#"{"kind":"value"}"#);
 }
 
@@ -140,7 +131,7 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
         decode_response_json(
             &schema,
             "wait _ from _",
-            "wait (90 seconds) from \"2026-11-14T06:00:08Z\" RETURNS \"2026-11-14T07:30:08.000Z\""
+            "RETURNS \"2026-11-14T07:30:08.000Z\""
         )
         .unwrap(),
         r#"{"kind":"value","value":"2026-11-14T07:30:08.000Z"}"#
@@ -189,12 +180,7 @@ fn a_map_is_an_object_whose_keys_stay_as_written() {
         r#"[{"arguments":[{"":0,"hymn":3,"old ode":1}],"method":"count _"}]"#
     );
     assert_eq!(
-        decode_response_json(
-            &schema,
-            "count _",
-            "count {} RETURNS { \"tea\": 5 minutes }"
-        )
-        .unwrap(),
+        decode_response_json(&schema, "count _", "RETURNS { \"tea\": 5 minutes }").unwrap(),
         r#"{"kind":"value","value":{"tea":300000}}"#
     );
     assert_eq!(

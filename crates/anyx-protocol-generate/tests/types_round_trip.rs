@@ -125,7 +125,7 @@ fn a_field_left_out_reaches_the_server_with_its_default() {
     ));
     assert_eq!(
         response,
-        "snooze { note \"tea\", at \"2026-11-14T06:00:08.000Z\", times 3, seen {} } for (1 second) RETURNS [\n    { note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} },\n]\n"
+        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} }]\n"
     );
 }
 

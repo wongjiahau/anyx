@@ -289,14 +289,15 @@ fn mistakes_in_a_response_point_at_where_they_are() {
     let schema = poentaro();
     let read = [method(&schema, "read _")];
     let cases = [
-        "read \"a\" ERROR conflict at revision 1 content \"x\"",
-        "read \"a\" ERROR gone",
-        "read \"a\" RETURNS missing",
-        "read \"a\" NOT RUN, read \"b\" NOT RUN",
+        "ERROR conflict at revision 1 content \"x\"",
+        "ERROR gone",
+        "RETURNS missing",
+        "NOT RUN, NOT RUN",
+        "",
         "INVALID REQUEST { line 1 }",
-        "ERROR missing",
-        "list files RETURNS []",
-        "read \"a\" ERRORS missing",
+        "missing",
+        "read \"a\" RETURNS { path \"a\", revision 1, content \"x\" }",
+        "ERRORS missing",
     ];
     assert_snapshot(
         "tests/snapshots/response_errors.txt",
@@ -306,47 +307,63 @@ fn mistakes_in_a_response_point_at_where_they_are() {
     );
 }
 
-const TAGS: &str = "PROTOCOL a VERSION 1,
-METHOD tag (names: LIST: TEXT) note (note: TEXT) RETURNS (count: INTEGER),";
+const ACCOUNTS: &str = "PROTOCOL a VERSION 1,
+METHOD change password from (old: TEXT) to (new: TEXT) RETURNS NOTHING ERRORS [wrong password],
+METHOD tag (names: LIST: TEXT) RETURNS (count: INTEGER),";
 
 #[test]
-fn a_response_repeats_each_call_with_long_arguments_shortened() {
-    let schema = schema(TAGS);
-    let names = |count: usize| Value::List((1..=count).map(|n| text(&format!("n{n}"))).collect());
+fn a_response_answers_each_call_by_position_without_repeating_it() {
+    let schema = schema(ACCOUNTS);
+    let change_password = Call {
+        method: 0,
+        arguments: vec![text("old secret"), text("new secret")],
+    };
+    let tag = |names: &[&str]| Call {
+        method: 1,
+        arguments: vec![Value::List(names.iter().map(|name| text(name)).collect())],
+    };
     let calls = [
-        Call {
-            method: 0,
-            arguments: vec![names(3), text("short\nnote")],
-        },
-        Call {
-            method: 0,
-            arguments: vec![names(4), text(&"a".repeat(33))],
-        },
-        Call {
-            method: 0,
-            arguments: vec![names(0), text(&"é".repeat(32))],
-        },
+        change_password.clone(),
+        change_password,
+        tag(&["n1", "n2"]),
+        tag(&[]),
+        tag(&["n3"]),
     ];
     let response = Response::Outcomes(vec![
-        Outcome::Value(Value::Integer(3)),
+        Outcome::Value(Value::Nothing),
+        Outcome::Error(variant("wrong password", vec![])),
+        Outcome::Value(Value::Integer(2)),
         Outcome::InternalError,
         Outcome::NotRun,
     ]);
-    let methods = [0, 0, 0];
     let written = encode_response(&schema, &calls, &response).unwrap();
     assert_eq!(
         written,
-        format!(
-            "tag [\"n1\", \"n2\", \"n3\"] note \"short\\nnote\" RETURNS 3,\n\
-             tag [\"n1\", \"n2\", \"n3\", …] note \"{}…\" INTERNAL ERROR,\n\
-             tag [] note \"{}\" NOT RUN,\n",
-            "a".repeat(32),
-            "é".repeat(32)
-        )
+        "RETURNS NOTHING,\nERROR wrong password,\nRETURNS 2,\nINTERNAL ERROR,\nNOT RUN,\n"
     );
+    assert!(!written.contains("secret"));
     assert_eq!(
-        decode_response(&schema, &methods, &written).unwrap(),
+        decode_response(&schema, &[0, 0, 1, 1, 1], &written).unwrap(),
         response
+    );
+}
+
+#[test]
+fn a_result_is_read_as_an_outcome_of_the_call_in_its_place() {
+    let schema = schema(ACCOUNTS);
+    let cases = [
+        "RETURNS 2, RETURNS NOTHING",
+        "RETURNS NOTHING, RETURNS NOTHING",
+        "RETURNS NOTHING",
+        "RETURNS NOTHING, RETURNS 2, RETURNS 3",
+        "RETURNS NOTHING, ERROR wrong password",
+        "change password from \"a\" to \"b\" RETURNS NOTHING, tag [] RETURNS 0",
+    ];
+    assert_snapshot(
+        "tests/snapshots/positional_response_errors.txt",
+        &render(&cases, |source| {
+            decode_response(&schema, &[0, 1], source).map(|response| format!("{response:?}"))
+        }),
     );
 }
 
@@ -374,7 +391,7 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
         Outcome::Value(Value::Integer(2)),
     ]);
     let written = encode_response(&schema, &calls, &response).unwrap();
-    assert_eq!(written, "sign out RETURNS NOTHING,\ncount RETURNS 2,\n");
+    assert_eq!(written, "RETURNS NOTHING,\nRETURNS 2,\n");
     assert_eq!(
         decode_response(&schema, &[sign_out, count], &written).unwrap(),
         response
@@ -391,13 +408,13 @@ fn nothing_and_a_value_are_not_mixed_up() {
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
     assert!(
-        decode_response(&schema, &[sign_out], "sign out RETURNS 2")
+        decode_response(&schema, &[sign_out], "RETURNS 2")
             .unwrap_err()
             .message
             .contains("expected `RETURNS NOTHING`")
     );
     assert!(
-        decode_response(&schema, &[count], "count RETURNS NOTHING")
+        decode_response(&schema, &[count], "RETURNS NOTHING")
             .unwrap_err()
             .message
             .contains("found `RETURNS NOTHING`")
@@ -470,13 +487,7 @@ set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 second
     let written = encode_response(&schema, &calls, &response).unwrap();
     assert_eq!(
         written,
-        "wait (5 minutes) until \"2026-11-14T06:00:08.000Z\" RETURNS \"2026-11-14T06:00:08.000Z\",
-set {
-    at \"1970-01-01T00:00:00.250Z\",
-    every: 1 hour 30 minutes,
-    pause: 0 seconds,
-} RETURNS 1 minute 30 seconds 1 millisecond,
-"
+        "RETURNS \"2026-11-14T06:00:08.000Z\",\nRETURNS 1 minute 30 seconds 1 millisecond,\n"
     );
     assert_eq!(
         decode_response(&schema, &[0, 1], &written).unwrap(),
@@ -496,7 +507,7 @@ fn an_instant_and_a_duration_read_in_other_forms_too() {
     let list = decode_response(
         &schema,
         &[2],
-        "list RETURNS [1 day, 2 hours 1 minute, 1 second 5 milliseconds]",
+        "RETURNS [1 day, 2 hours 1 minute, 1 second 5 milliseconds]",
     )
     .unwrap();
     assert_eq!(
@@ -545,12 +556,7 @@ fn a_field_left_out_takes_its_default() {
         encode_request(&schema, &calls).unwrap(),
         "find { query \"ode\", limit 50 }\n"
     );
-    let response = decode_response(
-        &schema,
-        &[0],
-        "find { query \"ode\" } RETURNS { query \"a\", limit 3 }",
-    )
-    .unwrap();
+    let response = decode_response(&schema, &[0], "RETURNS { query \"a\", limit 3 }").unwrap();
     assert_eq!(
         response,
         Response::Outcomes(vec![Outcome::Value(record(&[

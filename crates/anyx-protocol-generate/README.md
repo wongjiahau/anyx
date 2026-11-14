@@ -85,7 +85,8 @@ const [a, b] = await client.batch((calls) => [calls.read("a"), calls.read("b")])
 
 The wasm functions take and give every call of a request at once:
 `encodePoentaroRequest('[{"method":"read _","arguments":["a"]}]')` and
-`decodePoentaroResponse('["read _"]', response)`, one outcome per call.
+`decodePoentaroResponse('["read _"]', response)`, one outcome per call, in
+the order of the calls.
 
 An `INSTANT` is a `Date`: the client turns the text JSON carries into one,
 and `JSON.stringify` writes a `Date` back as that text. A `DURATION` is a

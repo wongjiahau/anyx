@@ -5,7 +5,7 @@
 use anyx::{NamePart, Node, NodeKind, Span, StringLiteral};
 
 use crate::codec;
-use crate::response::{self, Ending};
+use crate::response::{self, WrittenOutcome};
 
 use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
@@ -611,20 +611,20 @@ impl<'a> Checker<'a> {
             .example
             .iter()
             .filter_map(|example| {
-                let (call, ending, span) = match example {
+                let (call, written, span) = match example {
                     ast::Example::ReturnsNothing { call, span } => {
-                        (call, Ending::ReturnsNothing, *span)
+                        (call, WrittenOutcome::ReturnsNothing, *span)
                     }
                     ast::Example::Returns { call, value, span } => {
-                        (call, Ending::Returns(value), *span)
+                        (call, WrittenOutcome::Returns(value), *span)
                     }
                     ast::Example::Error { call, error, span } => {
-                        (call, Ending::Error(error), *span)
+                        (call, WrittenOutcome::Error(error), *span)
                     }
                 };
                 let (doc, call) = self.without_doc(call);
                 let read = codec::decode_call_of(schema, method, &call).and_then(|arguments| {
-                    response::decode_ending(schema, method, ending, span)
+                    response::read_outcome(schema, method, written, span)
                         .map(|outcome| (arguments, outcome))
                 });
                 match read {
