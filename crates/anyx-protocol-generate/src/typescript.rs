@@ -4,7 +4,9 @@
 //!
 //! JSON carries an `INSTANT` as text, and the client gives it as a `Date`:
 //! for each type that holds one, a `revive` function turns its JSON into
-//! its value.
+//! its value. A generic type's `revive` function takes the reviver of each
+//! of its parameters, and returns the reviver of the type with them:
+//! `revivePage(reviveInstant)` revives a `Page<Date>`.
 
 use std::fmt::Write;
 
@@ -12,7 +14,10 @@ use anyx_protocol::Schema;
 use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind, scoped};
 
 use crate::names::camel_case;
-use crate::{Error, children, has_methods, methods_in, scoped_pascal_case, typescript_error_name};
+use crate::{
+    Error, children, has_methods, methods_in, scoped_pascal_case, type_parameter_name,
+    typescript_error_name, typescript_type_taken,
+};
 
 pub fn typescript(schema: &Schema) -> Result<String, Error> {
     crate::check_names(schema)?;
@@ -26,9 +31,10 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
     for definition in &schema.types {
         out.push_str(&doc(&definition.doc, ""));
         let name = scoped_pascal_case(&definition.scope, &definition.name);
+        let generic = generic_name(schema, &name, &definition.parameters);
         match &definition.kind {
-            TypeKind::Record(fields) => record(&mut out, schema, &name, fields),
-            TypeKind::Choice(variants) => union(&mut out, schema, &name, variants),
+            TypeKind::Record(fields) => record(&mut out, schema, &generic, fields),
+            TypeKind::Choice(variants) => union(&mut out, schema, &generic, variants),
             TypeKind::Distinct(underlying) => branded(
                 &mut out,
                 schema,
@@ -47,14 +53,17 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
     }
     let revivers = Revivers::new(schema);
     for (index, definition) in schema.types.iter().enumerate() {
-        if revivers.holds[index] {
+        // A generic type's reviver is there for any use whose arguments
+        // need reviving.
+        if revivers.holds[index] || !definition.parameters.is_empty() {
             let name = scoped_pascal_case(&definition.scope, &definition.name);
+            let parameters = &definition.parameters;
             match &definition.kind {
                 TypeKind::Record(fields) => {
-                    revive_record(&mut out, schema, &revivers, &name, fields)
+                    revive_record(&mut out, schema, &revivers, &name, parameters, fields)
                 }
                 TypeKind::Choice(variants) => {
-                    revive_union(&mut out, schema, &revivers, &name, variants)
+                    revive_union(&mut out, schema, &revivers, &name, parameters, variants)
                 }
                 // Revived by the reviver of the type underneath, in `of`.
                 TypeKind::Distinct(_) => {}
@@ -69,9 +78,17 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 schema,
                 &revivers,
                 &typescript_error_name(method),
+                &[],
                 &errors,
             );
         }
+    }
+    if schema
+        .types
+        .iter()
+        .any(|definition| !definition.parameters.is_empty())
+    {
+        out.push_str(UNCHANGED);
     }
     out.push_str(PRELUDE);
     let root_methods: Vec<String> = methods_in(schema, &[])
@@ -127,7 +144,7 @@ fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature
     let value = method
         .returns
         .as_ref()
-        .and_then(|returns| revivers.of(schema, &returns.r#type));
+        .and_then(|returns| revivers.of(schema, &returns.r#type, false));
     let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
     let error = revivers
         .union_holds(&errors)
@@ -316,6 +333,9 @@ export class Client {
 
 "#;
 
+/// The reviver of an argument of a generic type that needs no reviving.
+const UNCHANGED: &str = "/** The reviver of an argument of a generic type that needs no reviving. */\nfunction unchanged(json: any): any {\n  return json;\n}\n\n";
+
 fn ts_type(schema: &Schema, r#type: &Type) -> String {
     match r#type {
         Type::Text => "string".to_string(),
@@ -332,6 +352,39 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
             let definition = &schema.types[*index];
             scoped_pascal_case(&definition.scope, &definition.name)
         }
+        Type::Generic(index, arguments) => {
+            let definition = &schema.types[*index];
+            let arguments: Vec<String> = arguments
+                .iter()
+                .map(|argument| ts_type(schema, argument))
+                .collect();
+            format!(
+                "{}<{}>",
+                scoped_pascal_case(&definition.scope, &definition.name),
+                arguments.join(", ")
+            )
+        }
+        Type::Parameter(name) => parameter_name(schema, name),
+    }
+}
+
+/// A type parameter as TypeScript names it: `item` is `Item`.
+fn parameter_name(schema: &Schema, name: &str) -> String {
+    type_parameter_name(name, |taken| typescript_type_taken(schema, taken))
+}
+
+/// `name` with the type parameters `parameters`: `Page<Item>`.
+fn generic_name(schema: &Schema, name: &str, parameters: &[String]) -> String {
+    match parameters.is_empty() {
+        true => name.to_string(),
+        false => format!(
+            "{name}<{}>",
+            parameters
+                .iter()
+                .map(|parameter| parameter_name(schema, parameter))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -430,7 +483,8 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 
 /// Which of the schema's types hold an `INSTANT`, directly or through
 /// another type (a named `TYPE` through the type underneath), and so need
-/// reviving.
+/// reviving. A generic type holds one when it does whatever its arguments
+/// are; a use of it also when one of its arguments does.
 struct Revivers {
     holds: Vec<bool>,
 }
@@ -446,9 +500,9 @@ impl Revivers {
                 .filter(|index| match &schema.types[*index].kind {
                     TypeKind::Record(fields) => fields
                         .iter()
-                        .any(|field| revivers.type_holds(&field.r#type)),
+                        .any(|field| revivers.type_holds(&field.r#type, false)),
                     TypeKind::Choice(variants) => revivers.union_holds(variants),
-                    TypeKind::Distinct(underlying) => revivers.type_holds(underlying),
+                    TypeKind::Distinct(underlying) => revivers.type_holds(underlying, false),
                 })
                 .collect();
             if found.is_empty() {
@@ -460,11 +514,21 @@ impl Revivers {
         }
     }
 
-    fn type_holds(&self, r#type: &Type) -> bool {
+    /// Whether `type` needs reviving. Inside a generic type, `parameters`
+    /// is true: each of its parameters is revived by the reviver it was
+    /// given.
+    fn type_holds(&self, r#type: &Type, parameters: bool) -> bool {
         match r#type {
             Type::Instant => true,
-            Type::List(item) | Type::Map(item) => self.type_holds(item),
+            Type::List(item) | Type::Map(item) => self.type_holds(item, parameters),
             Type::Named(index) => self.holds[*index],
+            Type::Generic(index, arguments) => {
+                self.holds[*index]
+                    || arguments
+                        .iter()
+                        .any(|argument| self.type_holds(argument, parameters))
+            }
+            Type::Parameter(_) => parameters,
             _ => false,
         }
     }
@@ -475,19 +539,19 @@ impl Revivers {
                 .shape
                 .parameters
                 .iter()
-                .any(|parameter| self.type_holds(&parameter.r#type))
+                .any(|parameter| self.type_holds(&parameter.r#type, false))
         })
     }
 
     /// A function that revives the JSON of `type`, or `None` when it holds
     /// no `INSTANT`.
-    fn of(&self, schema: &Schema, r#type: &Type) -> Option<String> {
+    fn of(&self, schema: &Schema, r#type: &Type, parameters: bool) -> Option<String> {
         match r#type {
             Type::Instant => Some("reviveInstant".to_string()),
             Type::List(item) => self
-                .of(schema, item)
+                .of(schema, item, parameters)
                 .map(|item| format!("(json: any[]) => json.map({item})")),
-            Type::Map(value) => self.of(schema, value).map(|value| {
+            Type::Map(value) => self.of(schema, value, parameters).map(|value| {
                 let revived = match value.contains(' ') {
                     true => format!("({value})(item)"),
                     false => format!("{value}(item)"),
@@ -501,21 +565,45 @@ impl Revivers {
                 if let TypeKind::Distinct(underlying) = &definition.kind {
                     // A brand is only a type, so the value underneath is
                     // revived as it is.
-                    return self.of(schema, underlying);
+                    return self.of(schema, underlying, parameters);
                 }
                 Some(format!(
                     "revive{}",
                     scoped_pascal_case(&definition.scope, &definition.name)
                 ))
             }
+            Type::Generic(index, arguments) if self.type_holds(r#type, parameters) => {
+                let definition = &schema.types[*index];
+                let arguments: Vec<String> = arguments
+                    .iter()
+                    .map(|argument| {
+                        self.of(schema, argument, parameters)
+                            .unwrap_or_else(|| "unchanged".to_string())
+                    })
+                    .collect();
+                Some(format!(
+                    "revive{}({})",
+                    scoped_pascal_case(&definition.scope, &definition.name),
+                    arguments.join(", ")
+                ))
+            }
+            Type::Parameter(name) if parameters => {
+                Some(format!("revive{}", parameter_name(schema, name)))
+            }
             _ => None,
         }
     }
 
     /// `json`, revived as `type`.
-    fn apply(&self, schema: &Schema, r#type: &Type, json: &str) -> Option<String> {
-        self.of(schema, r#type)
-            .map(|reviver| match reviver.contains(' ') {
+    fn apply(
+        &self,
+        schema: &Schema,
+        r#type: &Type,
+        json: &str,
+        parameters: bool,
+    ) -> Option<String> {
+        self.of(schema, r#type, parameters)
+            .map(|reviver| match reviver.contains("=>") {
                 true => format!("({reviver})({json})"),
                 false => format!("{reviver}({json})"),
             })
@@ -527,23 +615,56 @@ fn revive_record(
     schema: &Schema,
     revivers: &Revivers,
     name: &str,
+    parameters: &[String],
     fields: &[Field],
 ) {
+    let generic = !parameters.is_empty();
     let revived: String = fields
         .iter()
         .filter_map(|field| {
             let key = camel_case(&field.name);
             let json = format!("json.{key}");
-            let value = revivers.apply(schema, &field.r#type, &json)?;
+            let value = revivers.apply(schema, &field.r#type, &json, generic)?;
             Some(match crate::rust::may_be_missing(field) {
                 true => format!(", {key}: {json} === undefined ? undefined : {value}"),
                 false => format!(", {key}: {value}"),
             })
         })
         .collect();
+    reviver(
+        out,
+        schema,
+        name,
+        parameters,
+        &format!("return {{ ...json{revived} }};"),
+    );
+}
+
+/// The reviver of the type `name`, which runs `body` on `json`. A generic
+/// type's takes the reviver of each parameter, and returns its reviver.
+fn reviver(out: &mut String, schema: &Schema, name: &str, parameters: &[String], body: &str) {
+    if parameters.is_empty() {
+        writeln!(
+            out,
+            "function revive{name}(json: any): {name} {{\n  {body}\n}}\n"
+        )
+        .unwrap();
+        return;
+    }
+    let generic = generic_name(schema, name, parameters);
+    let names: Vec<String> = parameters
+        .iter()
+        .map(|parameter| parameter_name(schema, parameter))
+        .collect();
+    let revivers = names
+        .iter()
+        .map(|parameter| format!("revive{parameter}: (json: any) => {parameter}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let body = body.replace('\n', "\n  ");
     writeln!(
         out,
-        "function revive{name}(json: any): {name} {{\n  return {{ ...json{revived} }};\n}}\n"
+        "function revive{generic}({revivers}): (json: any) => {generic} {{\n  return function (json: any): {generic} {{\n    {body}\n  }};\n}}\n"
     )
     .unwrap();
 }
@@ -553,8 +674,10 @@ fn revive_union(
     schema: &Schema,
     revivers: &Revivers,
     name: &str,
+    parameters: &[String],
     variants: &[Shaped],
 ) {
+    let generic = !parameters.is_empty();
     let cases: String = variants
         .iter()
         .filter_map(|variant| {
@@ -564,8 +687,12 @@ fn revive_union(
                 .iter()
                 .filter_map(|parameter| {
                     let key = camel_case(&parameter.name);
-                    let value =
-                        revivers.apply(schema, &parameter.r#type, &format!("json.{key}"))?;
+                    let value = revivers.apply(
+                        schema,
+                        &parameter.r#type,
+                        &format!("json.{key}"),
+                        generic,
+                    )?;
                     Some(format!(", {key}: {value}"))
                 })
                 .collect();
@@ -577,9 +704,11 @@ fn revive_union(
             })
         })
         .collect();
-    writeln!(
+    reviver(
         out,
-        "function revive{name}(json: any): {name} {{\n  switch (json.kind) {{\n{cases}    default:\n      return json;\n  }}\n}}\n"
-    )
-    .unwrap();
+        schema,
+        name,
+        parameters,
+        &format!("switch (json.kind) {{\n{cases}    default:\n      return json;\n  }}"),
+    );
 }

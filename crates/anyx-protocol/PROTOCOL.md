@@ -56,8 +56,9 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
 - **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `NUMBER` (a finite float),
   `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
-  `LIST: T`, `MAP: T` (text keys, each to a `T`), and the name of a
-  `RECORD`, `CHOICE` or `TYPE`. A type may hold itself only through a
+  `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
+  `RECORD`, `CHOICE` or `TYPE`, and a use of a generic type,
+  `page WITH (item: order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
 - **`TYPE name: T`** names a type, `TYPE file id: TEXT`, so that values that
   share a representation but mean different things can't be mixed up. It is
@@ -75,6 +76,47 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   *shape*: words, with `(name: TYPE)` slots anywhere among them, as in
   `custom hue (hue: NUMBER)` or `(base: shade) dimmed`. Variants differ by
   their words.
+- **`GENERIC (parameter, …) RECORD`** or **`CHOICE`** declares a generic
+  type, whose fields or variants use each parameter as a type. A use
+  gives every parameter a type, by name, in any order:
+  `page WITH (item: order)`. A value of it is written exactly like the
+  record or choice with those types in place of the parameters, on the
+  wire and in JSON, and checked against them, in `DEFAULT`s and
+  `EXAMPLES` too.
+
+  ```anyx
+  # A page of a long list, and where the next one starts.
+  GENERIC (item) RECORD page {
+      items: LIST: item,
+      next: OPTIONAL: TEXT,
+  },
+
+  # What came of a payment, or of any attempt.
+  GENERIC (value, problem) CHOICE outcome {
+      done (value: value),
+      failed (problem: problem),
+  },
+
+  METHOD orders RETURNS (orders: page WITH (item: order)),
+  METHOD pay (order: order id)
+      RETURNS (outcome: outcome WITH (value: receipt, problem: decline)),
+  METHOD pay all (orders: LIST: order id)
+      RETURNS (outcomes: page WITH (item: outcome WITH (value: receipt, problem: decline))),
+  TYPE orders: page WITH (item: order),
+  ```
+
+  Only a `RECORD` or a `CHOICE` is generic, and `PUBLIC GENERIC (…) RECORD`
+  shares one. A parameter is a lowercase name, once in its declaration,
+  used by at least one field or variant, and not the name of a type
+  visible there: a type of its scope, or another scope's `PUBLIC` type.
+  A parameter takes no arguments, and a field whose type holds one takes
+  no `DEFAULT`, since it couldn't be checked against every argument. A
+  generic type is always used `WITH` all its arguments, and only a generic
+  type takes them. Within its own declaration, a generic type uses itself
+  with its own parameters as they are, `tree WITH (item: item)`, and only
+  through a `LIST` or a `MAP`. After `LIST`, `MAP` or `OPTIONAL`, a use
+  needs the `:`, `LIST: page WITH (item: order)`, since keywords side by
+  side join into one name.
 - **`METHOD shape RETURNS (name: TYPE) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
@@ -239,6 +281,7 @@ SCHEMA,
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
+| a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `page WITH (item: order)` |
 
 A value written as words, a `BOOLEAN`, a `DURATION` or a variant, goes in
 parentheses in a slot, where it would otherwise join the words around it:

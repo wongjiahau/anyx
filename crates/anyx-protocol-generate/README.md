@@ -24,6 +24,15 @@ The schema is one file, or a folder of scopes (see
 - A struct around the type underneath per named `TYPE`, with `From` both
   ways: `TYPE file id: TEXT` is `pub struct FileId(pub String)`, so a
   `FileId` can't be passed where a `ShareId` goes.
+- A `GENERIC` record or choice is a generic struct or enum, with a type
+  parameter per parameter in PascalCase, and its `IntoValue` and
+  `FromValue` bound on them: `GENERIC (item) RECORD page` is
+  `pub struct Page<Item>`, with
+  `impl<Item: IntoValue> IntoValue for Page<Item>`, and
+  `page WITH (item: order)` is `Page<Order>`. A parameter whose name the
+  module already uses, such as `value` (the generated code uses `Value`) or
+  a type of the scope, gets `Parameter` after it: `ValueParameter`. The
+  same goes in TypeScript, `interface Page<Item>`, against every type there.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 - A `Server` trait with an `async fn` per method. A method with errors
@@ -86,6 +95,13 @@ A named `TYPE` is a branded type, with a function of the same name that
 brands a value: `TYPE file id: TEXT` is
 `type FileId = string & { readonly __brand: "file id" }` and
 `FileId("a")`. Its JSON is the value underneath.
+
+A generic type's reviver takes the reviver of each parameter and returns
+its own, and a use passes them: a method returning
+`page WITH (item: payment)`, where a payment holds an `INSTANT`, revives with
+`revivePage(revivePayment)`, and one returning `page WITH (item: TEXT)` needs
+no reviving, unless `page` holds an `INSTANT` itself, when it passes
+`unchanged`.
 
 In TypeScript every type shares one namespace, so a scoped type's name starts
 with its scope: `diagnostic` in `common` is `CommonDiagnostic`, and the errors

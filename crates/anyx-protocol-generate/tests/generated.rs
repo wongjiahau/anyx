@@ -1,8 +1,9 @@
 //! The code generated from Poentaro's schema, from the schema of scopes in
-//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx` and
-//! `tests/fixtures/named.anyx`, kept in `tests/generated` so a change to the
-//! generator shows up as a diff. `round_trip.rs`, `scoped_round_trip.rs`,
-//! `types_round_trip.rs` and `named_round_trip.rs` compile the Rust modules.
+//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx`,
+//! `tests/fixtures/named.anyx` and `tests/fixtures/generic.anyx`, kept in
+//! `tests/generated` so a change to the generator shows up as a diff. `round_trip.rs`, `scoped_round_trip.rs`,
+//! `types_round_trip.rs`, `named_round_trip.rs` and `generic_round_trip.rs`
+//! compile the Rust modules.
 
 use anyx_protocol::{Schema, SchemaFile};
 
@@ -189,4 +190,22 @@ fn names_in_scopes_that_become_the_same_name_are_rejected() {
         ]),
         "found the type `files/export/page`, which becomes the TypeScript type `FilesExportPage`, like the type `files/export page`; expected names that stay distinct in the generated code, so rename one"
     );
+}
+
+/// Generic records and choices, and their uses.
+fn generic() -> Schema {
+    Schema::parse(&read("tests/fixtures/generic.anyx")).unwrap()
+}
+
+#[test]
+fn the_rust_module_of_generic_types_is_up_to_date() {
+    let code = anyx_protocol_generate::rust(&generic()).unwrap();
+    let code = anyx_protocol_generate::format_rust(&code).expect("rustfmt is installed");
+    assert_snapshot("tests/generated/generic.rs", &code);
+}
+
+#[test]
+fn the_typescript_client_of_generic_types_is_up_to_date() {
+    let code = anyx_protocol_generate::typescript(&generic()).unwrap();
+    assert_snapshot("tests/generated/generic.ts", &code);
 }

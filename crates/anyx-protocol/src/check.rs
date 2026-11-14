@@ -66,6 +66,8 @@ struct Declaration<'b, T> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
     public: bool,
     body: &'b T,
+    /// The type parameters after `GENERIC`, for a generic record or choice.
+    parameters: Option<&'b ast::TypeParameters>,
 }
 
 fn record(record: &ast::Record) -> Declaration<'_, ast::RecordBody> {
@@ -74,11 +76,35 @@ fn record(record: &ast::Record) -> Declaration<'_, ast::RecordBody> {
             doc,
             public: true,
             body,
+            parameters: None,
         },
         ast::Record::Private { doc, body, .. } => Declaration {
             doc,
             public: false,
             body,
+            parameters: None,
+        },
+        ast::Record::PublicGeneric {
+            doc,
+            parameters,
+            body,
+            ..
+        } => Declaration {
+            doc,
+            public: true,
+            body,
+            parameters: Some(parameters),
+        },
+        ast::Record::Generic {
+            doc,
+            parameters,
+            body,
+            ..
+        } => Declaration {
+            doc,
+            public: false,
+            body,
+            parameters: Some(parameters),
         },
     }
 }
@@ -89,11 +115,35 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, ast::ChoiceBody> {
             doc,
             public: true,
             body,
+            parameters: None,
         },
         ast::Choice::Private { doc, body, .. } => Declaration {
             doc,
             public: false,
             body,
+            parameters: None,
+        },
+        ast::Choice::PublicGeneric {
+            doc,
+            parameters,
+            body,
+            ..
+        } => Declaration {
+            doc,
+            public: true,
+            body,
+            parameters: Some(parameters),
+        },
+        ast::Choice::Generic {
+            doc,
+            parameters,
+            body,
+            ..
+        } => Declaration {
+            doc,
+            public: false,
+            body,
+            parameters: Some(parameters),
         },
     }
 }
@@ -104,11 +154,13 @@ fn named_type(named: &ast::NamedType) -> Declaration<'_, ast::NamedTypeBody> {
             doc,
             public: true,
             body,
+            parameters: None,
         },
         ast::NamedType::Private { doc, body, .. } => Declaration {
             doc,
             public: false,
             body,
+            parameters: None,
         },
     }
 }
@@ -119,11 +171,13 @@ fn errors(errors: &ast::Errors) -> Declaration<'_, ast::ErrorList> {
             doc,
             public: true,
             body,
+            parameters: None,
         },
         ast::Errors::Private { doc, body, .. } => Declaration {
             doc,
             public: false,
             body,
+            parameters: None,
         },
     }
 }
@@ -267,6 +321,12 @@ pub(crate) struct Checker<'a> {
     scope: Vec<String>,
     /// Each type, in order.
     types: Vec<Declared>,
+    /// The type parameters of each type, in the order of `types`: empty for
+    /// a type that isn't generic.
+    type_parameters: Vec<Vec<ast::Spanned<String>>>,
+    /// The type parameters of the generic record or choice being checked,
+    /// which its fields and variants may use as types.
+    parameters: Vec<String>,
     groups: Vec<Group<'a>>,
     /// Each error, in the order of the schema's errors.
     errors: Vec<Declared>,
@@ -329,14 +389,17 @@ impl<'a> Checker<'a> {
                     ast::Definition::Record(found) => {
                         let found = record(found);
                         self.declare_type(&found.body.name, found.public);
+                        self.declare_type_parameters(found.parameters);
                     }
                     ast::Definition::Choice(found) => {
                         let found = choice(found);
                         self.declare_type(&found.body.name, found.public);
+                        self.declare_type_parameters(found.parameters);
                     }
                     ast::Definition::NamedType(found) => {
                         let found = named_type(found);
                         self.declare_type(&found.body.name, found.public);
+                        self.declare_type_parameters(None);
                     }
                     ast::Definition::Errors(found) => {
                         let found = errors(found);
@@ -356,24 +419,36 @@ impl<'a> Checker<'a> {
                 match definition {
                     ast::Definition::Record(found) => {
                         let found = record(found);
-                        let fields = self.fields(types.len(), &found.body.fields.value);
+                        let index = types.len();
+                        let fields = self.generic(index, |checker| {
+                            checker.fields(index, &found.body.fields.value)
+                        });
+                        let kind = TypeKind::Record(fields);
+                        self.check_parameters_used(index, &kind);
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
-                            kind: TypeKind::Record(fields),
+                            parameters: self.parameter_names(index),
+                            kind,
                         });
                     }
                     ast::Definition::Choice(found) => {
                         let found = choice(found);
-                        let variants = self.variants(&found.body.variants.value);
+                        let index = types.len();
+                        let variants = self.generic(index, |checker| {
+                            checker.variants(&found.body.variants.value)
+                        });
+                        let kind = TypeKind::Choice(variants);
+                        self.check_parameters_used(index, &kind);
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
-                            kind: TypeKind::Choice(variants),
+                            parameters: self.parameter_names(index),
+                            kind,
                         });
                     }
                     ast::Definition::NamedType(found) => {
@@ -383,6 +458,7 @@ impl<'a> Checker<'a> {
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
+                            parameters: Vec::new(),
                             kind: TypeKind::Distinct(self.r#type(&found.body.r#type)),
                         });
                     }
@@ -678,6 +754,104 @@ impl<'a> Checker<'a> {
         }
         let declared = self.declared(name, public);
         self.types.push(declared);
+    }
+
+    /// Declares the type parameters after `GENERIC`, each a name once, for
+    /// the type just declared; none for a type that isn't generic.
+    fn declare_type_parameters(&mut self, parameters: Option<&ast::TypeParameters>) {
+        let written: Vec<&ast::TypeParameter> = match parameters {
+            None => Vec::new(),
+            Some(ast::TypeParameters::One(parameter)) => vec![parameter],
+            Some(ast::TypeParameters::Several(parameters)) => parameters.value.iter().collect(),
+        };
+        let mut names: Vec<ast::Spanned<String>> = Vec::new();
+        for parameter in written {
+            self.check_words(&parameter.name, "a type parameter");
+            if names
+                .iter()
+                .any(|known| known.value == parameter.name.value)
+            {
+                self.error(
+                    parameter.name.span,
+                    format!(
+                        "found a second type parameter named `{}`; expected each type parameter once; rename one of them",
+                        parameter.name.value
+                    ),
+                );
+                continue;
+            }
+            names.push(parameter.name.clone());
+        }
+        self.type_parameters.push(names);
+    }
+
+    fn parameter_names(&self, index: usize) -> Vec<String> {
+        self.type_parameters[index]
+            .iter()
+            .map(|name| name.value.clone())
+            .collect()
+    }
+
+    /// Checks the fields or variants of the type at `index` with its type
+    /// parameters in scope, after checking that no type here has the name
+    /// of one of them.
+    fn generic<T>(&mut self, index: usize, check: impl FnOnce(&mut Self) -> T) -> T {
+        let type_name = self.types[index].name.clone();
+        for parameter in self.type_parameters[index].clone() {
+            let shadowed: Vec<String> = self
+                .types
+                .iter()
+                .filter(|known| {
+                    known.name == parameter.value && (known.scope == self.scope || known.public)
+                })
+                .map(|known| format!("`{}`", scoped(&known.scope, &known.name)))
+                .collect();
+            if !shadowed.is_empty() {
+                self.error(
+                    parameter.span,
+                    format!(
+                        "found the type parameter `{name}` of `{type_name}`, which has the name of the type {}; expected a name that no type visible here has, since `{name}` in `{type_name}` would then mean either; rename the parameter",
+                        shadowed.join(", "),
+                        name = parameter.value,
+                    ),
+                );
+            }
+        }
+        let names = self.parameter_names(index);
+        let parameters = std::mem::replace(&mut self.parameters, names);
+        let checked = check(self);
+        self.parameters = parameters;
+        checked
+    }
+
+    /// Reports each type parameter of the type at `index` that none of its
+    /// fields or variants uses.
+    fn check_parameters_used(&mut self, index: usize, kind: &TypeKind) {
+        let types: Vec<&Type> = match kind {
+            TypeKind::Record(fields) => fields.iter().map(|field| &field.r#type).collect(),
+            TypeKind::Choice(variants) => variants
+                .iter()
+                .flat_map(|variant| &variant.shape.parameters)
+                .map(|parameter| &parameter.r#type)
+                .collect(),
+            TypeKind::Distinct(underlying) => vec![underlying],
+        };
+        let used: Vec<&str> = types
+            .iter()
+            .flat_map(|r#type| r#type.parameters())
+            .collect();
+        let type_name = self.types[index].name.clone();
+        for parameter in self.type_parameters[index].clone() {
+            if !used.contains(&parameter.value.as_str()) {
+                self.error(
+                    parameter.span,
+                    format!(
+                        "found the type parameter `{name}` of `{type_name}`, which none of its types uses; expected each parameter in the type of a field or a variant's slot, such as `LIST: {name}`; use it or remove it",
+                        name = parameter.value,
+                    ),
+                );
+            }
+        }
     }
 
     fn declared(&self, name: &ast::Spanned<String>, public: bool) -> Declared {
@@ -1035,13 +1209,24 @@ impl<'a> Checker<'a> {
                     ..
                 } => {
                     let (r#type, node) = self.defaulted(defaulted);
-                    self.defaults.push(PendingDefault {
-                        r#type: record,
-                        field: checked.len(),
-                        node: node.clone(),
-                        file: self.file,
-                        scope: self.scope.clone(),
-                    });
+                    if let Some(parameter) = r#type.parameters().first() {
+                        self.error(
+                            defaulted.span(),
+                            format!(
+                                "found a `DEFAULT` on the field `{name}`, whose type holds the type parameter `{parameter}`; expected a `DEFAULT` only on a field whose type is the same in every use of `{record}`, since the default can't be checked against each type `{parameter}` stands for",
+                                name = field.name.value,
+                                record = self.types[record].name,
+                            ),
+                        );
+                    } else {
+                        self.defaults.push(PendingDefault {
+                            r#type: record,
+                            field: checked.len(),
+                            node: node.clone(),
+                            file: self.file,
+                            scope: self.scope.clone(),
+                        });
+                    }
                     (r#type, true)
                 }
                 ast::FieldType::RequiredWithDefault(defaulted) => {
@@ -1255,9 +1440,138 @@ impl<'a> Checker<'a> {
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
             ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
             ast::Type::Named(reference) => {
-                self.resolve_type(reference).map_or(Type::Text, Type::Named)
+                if let Some(parameter) = self.parameter_named(reference) {
+                    return Type::Parameter(parameter);
+                }
+                let Some(index) = self.resolve_type(reference) else {
+                    return Type::Text;
+                };
+                let parameters = self.parameter_names(index);
+                if !parameters.is_empty() {
+                    let written = self.written(reference.span).to_string();
+                    self.error(
+                        reference.span,
+                        format!(
+                            "found `{written}`, which is `GENERIC ({})`, without its type arguments; expected `{written} WITH ({})`, with a type for each of its parameters",
+                            parameters.join(", "),
+                            parameters
+                                .iter()
+                                .map(|parameter| format!("{parameter}: …"))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        ),
+                    );
+                    return Type::Text;
+                }
+                Type::Named(index)
             }
+            ast::Type::Generic {
+                reference,
+                arguments,
+                span,
+            } => self.generic_use(reference, arguments, *span),
         }
+    }
+
+    /// The type parameter in scope that `reference` names, if it is one.
+    fn parameter_named(&self, reference: &ast::Reference) -> Option<String> {
+        if !reference.arguments.is_empty() || reference.name.parts.contains(&NamePart::Slot) {
+            return None;
+        }
+        let name = spanned_words(&reference.name).value;
+        self.parameters.contains(&name).then_some(name)
+    }
+
+    /// A use of a generic type, `page WITH (item: file summary)`: an
+    /// argument for each of its parameters, by name, once each.
+    fn generic_use(
+        &mut self,
+        reference: &ast::Reference,
+        arguments: &ast::TypeArguments,
+        span: Span,
+    ) -> Type {
+        if let Some(parameter) = self.parameter_named(reference) {
+            self.error(
+                span,
+                format!(
+                    "found the type parameter `{parameter}` with `WITH`; expected `{parameter}` alone, since a type parameter stands for a whole type and takes no arguments"
+                ),
+            );
+            return Type::Parameter(parameter);
+        }
+        let Some(index) = self.resolve_type(reference) else {
+            return Type::Text;
+        };
+        let written = self.written(reference.span).to_string();
+        let parameters = self.parameter_names(index);
+        if parameters.is_empty() {
+            self.error(
+                span,
+                format!(
+                    "found `WITH` after `{written}`, which is not `GENERIC`; expected `{written}` alone, since only a `GENERIC` record or choice takes type arguments"
+                ),
+            );
+            return Type::Named(index);
+        }
+        let given: Vec<&ast::Parameter> = match arguments {
+            ast::TypeArguments::One(argument) => vec![argument],
+            ast::TypeArguments::Several(arguments) => arguments.value.iter().collect(),
+        };
+        let expected = || {
+            parameters
+                .iter()
+                .map(|parameter| format!("`{parameter}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut found: Vec<Option<Type>> = vec![None; parameters.len()];
+        for argument in given {
+            let name = &argument.name.value;
+            let Some(position) = parameters.iter().position(|parameter| parameter == name) else {
+                self.error(
+                    argument.name.span,
+                    format!(
+                        "found the type argument `{name}`, which is not a parameter of `{written}`; expected an argument for each of its parameters, {}",
+                        expected()
+                    ),
+                );
+                continue;
+            };
+            let r#type = self.r#type(&argument.r#type);
+            if found[position].is_some() {
+                self.error(
+                    argument.name.span,
+                    format!(
+                        "found a second type argument for `{name}`; expected each parameter of `{written}` once"
+                    ),
+                );
+                continue;
+            }
+            found[position] = Some(r#type);
+        }
+        let missing: Vec<String> = parameters
+            .iter()
+            .zip(&found)
+            .filter(|(_, found)| found.is_none())
+            .map(|(parameter, _)| format!("`{parameter}`"))
+            .collect();
+        if !missing.is_empty() {
+            self.error(
+                span,
+                format!(
+                    "found no type argument for {}; expected an argument for each parameter of `{written}`, {}",
+                    missing.join(", "),
+                    expected()
+                ),
+            );
+        }
+        Type::Generic(
+            index,
+            found
+                .into_iter()
+                .map(|found| found.unwrap_or(Type::Text))
+                .collect(),
+        )
     }
 
     /// The type of a field with a `DEFAULT`, and the default as written.
@@ -1284,6 +1598,12 @@ impl<'a> Checker<'a> {
             ast::Defaulted::MapOfNamed { value, default, .. } => {
                 (Type::Map(Box::new(self.r#type(value))), default)
             }
+            ast::Defaulted::Generic {
+                reference,
+                arguments,
+                default,
+                span,
+            } => (self.generic_use(reference, arguments, *span), default),
             ast::Defaulted::Other {
                 r#type, default, ..
             } => (self.r#type(r#type), default),
@@ -1298,6 +1618,12 @@ impl<'a> Checker<'a> {
             match r#type {
                 Type::Named(index) => found.push(*index),
                 Type::List(item) | Type::Map(item) => mentioned(item, found),
+                Type::Generic(index, arguments) => {
+                    found.push(*index);
+                    arguments
+                        .iter()
+                        .for_each(|argument| mentioned(argument, found));
+                }
                 _ => {}
             }
         }
@@ -1331,29 +1657,93 @@ impl<'a> Checker<'a> {
     }
 
     /// A type that holds itself, other than through a `LIST` or a `MAP`, has
-    /// no finite value. A named type holds the type underneath it.
+    /// no finite value. A named type holds the type underneath it, and a
+    /// use of a generic type holds the arguments of the parameters that the
+    /// generic type holds, so the rule holds for every use.
     fn check_recursion(&mut self, schema: &Schema) {
-        fn held(r#type: &Type) -> Option<usize> {
+        /// The types `type` holds, other than through a `LIST` or a `MAP`,
+        /// and the type parameters it holds.
+        fn held<'t>(
+            r#type: &'t Type,
+            holds_parameters: &[Vec<String>],
+            schema: &Schema,
+            types: &mut Vec<usize>,
+            parameters: &mut Vec<&'t str>,
+        ) {
             match r#type {
-                Type::Named(index) => Some(*index),
-                _ => None,
+                Type::Named(index) => types.push(*index),
+                Type::Generic(index, arguments) => {
+                    types.push(*index);
+                    for (parameter, argument) in
+                        schema.types[*index].parameters.iter().zip(arguments)
+                    {
+                        if holds_parameters[*index].contains(parameter) {
+                            held(argument, holds_parameters, schema, types, parameters);
+                        }
+                    }
+                }
+                Type::Parameter(name) => parameters.push(name),
+                _ => {}
             }
         }
-        let reported = self.check_named_cycles(schema);
-        let edges: Vec<Vec<usize>> = schema
-            .types
-            .iter()
-            .map(|definition| match &definition.kind {
-                TypeKind::Record(fields) => fields
-                    .iter()
-                    .filter_map(|field| held(&field.r#type))
-                    .collect(),
+        fn direct(definition: &TypeDefinition) -> Vec<&Type> {
+            match &definition.kind {
+                TypeKind::Record(fields) => fields.iter().map(|field| &field.r#type).collect(),
                 TypeKind::Choice(variants) => variants
                     .iter()
                     .flat_map(|variant| &variant.shape.parameters)
-                    .filter_map(|parameter| held(&parameter.r#type))
+                    .map(|parameter| &parameter.r#type)
                     .collect(),
-                TypeKind::Distinct(underlying) => held(underlying).into_iter().collect(),
+                TypeKind::Distinct(underlying) => vec![underlying],
+            }
+        }
+        let reported = self.check_named_cycles(schema);
+        // Which of its parameters each generic type holds, found by
+        // repeating until nothing changes, since generic types hold each
+        // other.
+        let mut holds_parameters: Vec<Vec<String>> = vec![Vec::new(); schema.types.len()];
+        loop {
+            let found: Vec<Vec<String>> = schema
+                .types
+                .iter()
+                .map(|definition| {
+                    let mut parameters = Vec::new();
+                    for r#type in direct(definition) {
+                        held(
+                            r#type,
+                            &holds_parameters,
+                            schema,
+                            &mut Vec::new(),
+                            &mut parameters,
+                        );
+                    }
+                    let mut parameters: Vec<String> =
+                        parameters.into_iter().map(str::to_string).collect();
+                    parameters.sort();
+                    parameters.dedup();
+                    parameters
+                })
+                .collect();
+            if found == holds_parameters {
+                break;
+            }
+            holds_parameters = found;
+        }
+        let edges: Vec<Vec<usize>> = schema
+            .types
+            .iter()
+            .map(|definition| {
+                let mut types = Vec::new();
+                for r#type in direct(definition) {
+                    held(
+                        r#type,
+                        &holds_parameters,
+                        schema,
+                        &mut types,
+                        &mut Vec::new(),
+                    );
+                }
+                types
             })
             .collect();
         for start in cycles(&edges) {
@@ -1367,6 +1757,111 @@ impl<'a> Checker<'a> {
                 span,
                 format!(
                     "found the type `{name}` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`"
+                ),
+            );
+        }
+        self.check_generic_recursion(schema);
+    }
+
+    /// A generic type that uses itself, directly or through other generic
+    /// types, must pass its own parameters as they are: `nest WITH (item:
+    /// item)` within `nest`. With other arguments, such as `nest WITH (item:
+    /// LIST: item)`, each use would need another, without end.
+    fn check_generic_recursion(&mut self, schema: &Schema) {
+        /// The generic types `type` uses, anywhere in it, with their
+        /// arguments.
+        fn uses<'t>(r#type: &'t Type, found: &mut Vec<(usize, &'t [Type])>) {
+            match r#type {
+                Type::Generic(index, arguments) => {
+                    found.push((*index, arguments));
+                    arguments.iter().for_each(|argument| uses(argument, found));
+                }
+                Type::List(item) | Type::Map(item) => uses(item, found),
+                _ => {}
+            }
+        }
+        /// Follows the uses of generic types from `type` with `arguments`,
+        /// and returns the first use of `start` with arguments other than
+        /// its own parameters. A type met again on `path` with other
+        /// arguments is not followed: it changes its own arguments, and is
+        /// reported for itself.
+        fn changed(
+            schema: &Schema,
+            start: usize,
+            r#type: usize,
+            arguments: &[Type],
+            path: &mut Vec<(usize, Vec<Type>)>,
+            seen: &mut Vec<(usize, Vec<Type>)>,
+        ) -> Option<Type> {
+            let definition = &schema.types[r#type];
+            let kind = definition
+                .kind
+                .substitute(&definition.parameters, arguments);
+            let mut found = Vec::new();
+            match &kind {
+                TypeKind::Record(fields) => fields
+                    .iter()
+                    .for_each(|field| uses(&field.r#type, &mut found)),
+                TypeKind::Choice(variants) => variants
+                    .iter()
+                    .flat_map(|variant| &variant.shape.parameters)
+                    .for_each(|parameter| uses(&parameter.r#type, &mut found)),
+                TypeKind::Distinct(underlying) => uses(underlying, &mut found),
+            }
+            for (index, used) in found {
+                let own: Vec<Type> = schema.types[index]
+                    .parameters
+                    .iter()
+                    .map(|name| Type::Parameter(name.clone()))
+                    .collect();
+                if index == start {
+                    if used != own.as_slice() {
+                        return Some(Type::Generic(index, used.to_vec()));
+                    }
+                    continue;
+                }
+                let at = (index, used.to_vec());
+                if seen.contains(&at) || path.iter().any(|(known, _)| *known == index) {
+                    continue;
+                }
+                seen.push(at.clone());
+                path.push(at);
+                let inner = changed(schema, start, index, used, path, seen);
+                path.pop();
+                if inner.is_some() {
+                    return inner;
+                }
+            }
+            None
+        }
+        for (start, definition) in schema.types.iter().enumerate() {
+            if definition.parameters.is_empty() {
+                continue;
+            }
+            let own: Vec<Type> = definition
+                .parameters
+                .iter()
+                .map(|name| Type::Parameter(name.clone()))
+                .collect();
+            let Some(changed) = changed(
+                schema,
+                start,
+                start,
+                &own,
+                &mut vec![(start, own.clone())],
+                &mut Vec::new(),
+            ) else {
+                continue;
+            };
+            let declared = &self.types[start];
+            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+            self.file = file;
+            self.error(
+                span,
+                format!(
+                    "found the generic type `{name}` using itself as `{}`; expected each use of `{name}` within it to pass its own parameters as they are, `{}`, so that every use of `{name}` holds the same types all the way down",
+                    schema.type_name(&changed),
+                    schema.type_name(&Type::Generic(start, own)),
                 ),
             );
         }

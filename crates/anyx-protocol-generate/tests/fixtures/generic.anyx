@@ -1,0 +1,39 @@
+## Generic types, for the tests of the generated code.
+PROTOCOL shop VERSION 1,
+
+# A page of a long list, and where the next one starts.
+GENERIC (item) RECORD page {
+    items: LIST: item,
+    next: OPTIONAL: TEXT,
+    # How many there are in all.
+    total: OPTIONAL: INTEGER DEFAULT 0,
+},
+
+# What came of an attempt: `value` is a parameter whose name the generated
+# Rust code already uses.
+GENERIC (value, problem) CHOICE attempt { done (value: value), failed (problem: problem) },
+
+# A value and when it was taken, which holds an `INSTANT` whatever the value.
+GENERIC (item) RECORD dated { item: item, at: INSTANT },
+
+# Holds itself through a `LIST`, with its own parameter.
+GENERIC (item) RECORD tree { value: item, children: LIST: tree WITH (item: item) },
+
+RECORD payment { amount: INTEGER, at: INSTANT },
+
+CHOICE decline { insufficient funds, card expired },
+
+TYPE payments: page WITH (item: payment),
+
+METHOD pay (amount: INTEGER) RETURNS (attempt: attempt WITH (value: payment, problem: decline)),
+
+METHOD pay all (amounts: LIST: INTEGER)
+    RETURNS (attempts: page WITH (item: attempt WITH (problem: decline, value: payment))),
+
+METHOD payments RETURNS (payments: payments),
+
+METHOD count (payments: page WITH (item: payment)) RETURNS (count: INTEGER),
+
+METHOD categories RETURNS (categories: tree WITH (item: TEXT)),
+
+METHOD latest RETURNS (latest: dated WITH (item: TEXT)),

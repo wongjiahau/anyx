@@ -7,7 +7,9 @@ use std::fmt::Write;
 use anyx_protocol::schema::{Field, Method, Parameter, Schema, Shape, Shaped, Type, TypeKind};
 
 use crate::names::{doc_comment, pascal_case, raw_string, snake_case};
-use crate::{Error, children, error_enum_name, has_methods, methods_in};
+use crate::{
+    Error, children, error_enum_name, has_methods, methods_in, rust_type_taken, type_parameter_name,
+};
 
 const IMPORTS: &str = "use anyx_protocol::client::{CallError, Transport};\nuse anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};\n\n";
 
@@ -76,9 +78,12 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
     {
         let name = pascal_case(&definition.name);
         let doc = doc_comment(&definition.doc, "///");
+        let generics = Generics::new(schema, scope, &definition.parameters);
         match &definition.kind {
-            TypeKind::Record(fields) => record(out, schema, scope, &doc, &name, fields),
-            TypeKind::Choice(variants) => choice(out, schema, scope, &doc, &name, variants),
+            TypeKind::Record(fields) => record(out, schema, scope, &doc, &name, &generics, fields),
+            TypeKind::Choice(variants) => {
+                choice(out, schema, scope, &doc, &name, &generics, variants)
+            }
             TypeKind::Distinct(underlying) => newtype(out, schema, scope, &doc, &name, underlying),
         }
     }
@@ -87,7 +92,16 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
         if !method.errors.is_empty() {
             let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
             let doc = format!("/// The errors of `{}`.\n", method.full_name());
-            choice(out, schema, scope, &doc, &error_enum_name(method), &errors);
+            let generics = Generics::new(schema, scope, &[]);
+            choice(
+                out,
+                schema,
+                scope,
+                &doc,
+                &error_enum_name(method),
+                &generics,
+                &errors,
+            );
         }
     }
     match scope.is_empty() {
@@ -133,6 +147,63 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
             let definition = &schema.types[*index];
             path_to(scope, &definition.scope) + &pascal_case(&definition.name)
         }
+        Type::Generic(index, arguments) => {
+            let definition = &schema.types[*index];
+            let arguments: Vec<String> = arguments
+                .iter()
+                .map(|argument| rust_type(schema, scope, argument))
+                .collect();
+            format!(
+                "{}{}<{}>",
+                path_to(scope, &definition.scope),
+                pascal_case(&definition.name),
+                arguments.join(", ")
+            )
+        }
+        Type::Parameter(name) => {
+            type_parameter_name(name, |taken| rust_type_taken(schema, scope, taken))
+        }
+    }
+}
+
+/// The type parameters of a generic record or choice, which its
+/// conversions need to convert too: `<Item>`, and
+/// `impl<Item: IntoValue> IntoValue for Page<Item>`.
+struct Generics {
+    names: Vec<String>,
+}
+
+impl Generics {
+    fn new(schema: &Schema, scope: &[String], parameters: &[String]) -> Self {
+        Generics {
+            names: parameters
+                .iter()
+                .map(|parameter| rust_type(schema, scope, &Type::Parameter(parameter.clone())))
+                .collect(),
+        }
+    }
+
+    /// `name` with its parameters: `Page<Item>`.
+    fn of(&self, name: &str) -> String {
+        match self.names.is_empty() {
+            true => name.to_string(),
+            false => format!("{name}<{}>", self.names.join(", ")),
+        }
+    }
+
+    /// `impl` with each parameter bound by `bound`: `impl<Item: IntoValue>`.
+    fn implementation(&self, bound: &str) -> String {
+        match self.names.is_empty() {
+            true => "impl".to_string(),
+            false => format!(
+                "impl<{}>",
+                self.names
+                    .iter()
+                    .map(|name| format!("{name}: {bound}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
     }
 }
 
@@ -155,6 +226,7 @@ fn record(
     scope: &[String],
     doc: &str,
     name: &str,
+    generics: &Generics,
     fields: &[Field],
 ) {
     let declared: String = fields
@@ -198,11 +270,14 @@ fn record(
             )
         })
         .collect();
+    let into = generics.implementation("IntoValue");
+    let from = generics.implementation("FromValue");
+    let name = generics.of(name);
     write!(
         out,
         "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name} {{\n{declared}}}\n\n\
-         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        Value::Record(FieldsBuilder::new(){built}.build())\n    }}\n}}\n\n\
-         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Record(fields) = value else {{ return None }};\n        let mut fields = FieldsReader::new(fields);\n        Some(Self {{ {read} }})\n    }}\n}}\n\n"
+         {into} IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        Value::Record(FieldsBuilder::new(){built}.build())\n    }}\n}}\n\n\
+         {from} FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Record(fields) = value else {{ return None }};\n        let mut fields = FieldsReader::new(fields);\n        Some(Self {{ {read} }})\n    }}\n}}\n\n"
     )
     .unwrap();
 }
@@ -236,6 +311,7 @@ fn choice(
     scope: &[String],
     doc: &str,
     name: &str,
+    generics: &Generics,
     variants: &[Shaped],
 ) {
     let declared: String = variants
@@ -306,11 +382,14 @@ fn choice(
             )
         })
         .collect();
+    let declared_name = generics.of(name);
+    let into_implementation = generics.implementation("IntoValue");
+    let from_implementation = generics.implementation("FromValue");
     write!(
         out,
-        "{doc}#[derive(Clone, Debug, PartialEq)]\npub enum {name} {{\n{declared}}}\n\n\
-         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        match self {{\n{into}        }}\n    }}\n}}\n\n\
-         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Variant {{ shape, arguments }} = value else {{ return None }};\n        let mut arguments = arguments.into_iter();\n        Some(match shape.as_str() {{\n{from}            _ => return None,\n        }})\n    }}\n}}\n\n"
+        "{doc}#[derive(Clone, Debug, PartialEq)]\npub enum {declared_name} {{\n{declared}}}\n\n\
+         {into_implementation} IntoValue for {declared_name} {{\n    fn into_value(self) -> Value {{\n        match self {{\n{into}        }}\n    }}\n}}\n\n\
+         {from_implementation} FromValue for {declared_name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Variant {{ shape, arguments }} = value else {{ return None }};\n        let mut arguments = arguments.into_iter();\n        Some(match shape.as_str() {{\n{from}            _ => return None,\n        }})\n    }}\n}}\n\n"
     )
     .unwrap();
 }

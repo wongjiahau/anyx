@@ -78,7 +78,7 @@ Every call runs, in order, and the response has one result per call.
   after the field's name: `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
-{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't
+{generic_types}{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
 
@@ -121,10 +121,39 @@ words are names; all-caps words belong to the schema language. `ERRORS name
         },
         source = sources(schema),
         named_types = named_types(schema),
+        generic_types = generic_types(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
             true => EXAMPLES,
             false => "",
         },
+    )
+}
+
+/// The rule for generic types, shown with the schema's first one: "`GENERIC
+/// (item) RECORD page`", then a use of it. Empty for a schema without any.
+fn generic_types(schema: &Schema) -> String {
+    let Some(definition) = schema
+        .types
+        .iter()
+        .find(|definition| !definition.parameters.is_empty())
+    else {
+        return String::new();
+    };
+    let keyword = match definition.kind {
+        TypeKind::Choice(_) => "CHOICE",
+        TypeKind::Record(_) | TypeKind::Distinct(_) => "RECORD",
+    };
+    let name = scoped(&definition.scope, &definition.name);
+    let arguments: Vec<String> = definition
+        .parameters
+        .iter()
+        .map(|parameter| format!("{parameter}: TEXT"))
+        .collect();
+    format!(
+        "- A GENERIC RECORD or CHOICE has type parameters, which its fields or\n  variants use as types: `GENERIC ({}) {keyword} {}`. A use gives a type\n  for each, `{name} WITH ({})`, and its value is written with those types\n  in place of the parameters.\n",
+        definition.parameters.join(", "),
+        definition.name,
+        arguments.join(", "),
     )
 }
 
@@ -239,10 +268,11 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Duration => "(5 minutes)".to_string(),
         Type::List(_) => "[…]".to_string(),
         Type::Map(_) => "{ … }".to_string(),
-        Type::Named(index) => match schema.types[*index].kind {
+        Type::Named(index) | Type::Generic(index, _) => match schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
             TypeKind::Choice(_) => "(…)".to_string(),
             TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
         },
+        Type::Parameter(_) => "…".to_string(),
     }
 }

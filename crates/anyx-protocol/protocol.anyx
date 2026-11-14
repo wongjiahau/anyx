@@ -18,7 +18,28 @@ definition: ONE OF [record, choice, named type, errors, method],
 record: ONE OF [
   public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "RECORD", body: record body],
   private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "RECORD", body: record body],
+  public generic: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "PUBLIC", WORD "GENERIC", parameters: type parameters,
+    WORD "RECORD", body: record body,
+  ],
+  generic: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "GENERIC", parameters: type parameters,
+    WORD "RECORD", body: record body,
+  ],
 ],
+
+## A generic `RECORD` or `CHOICE` names its type parameters after `GENERIC`:
+## `GENERIC (item) RECORD page { items: LIST: item }`. Parentheses around one
+## name only group, so `(item)` is the name itself, and `(value, problem)`
+## holds several.
+type parameters: ONE OF [
+  several: PARENTHESIS [ONE OR MORE: type parameter],
+  one: type parameter,
+],
+
+type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD]],
 
 record body: ANYFIX CALL [name: WORDS [NO KEYWORD], fields: CURLY BRACE [ZERO OR MORE: field]],
 
@@ -53,6 +74,11 @@ defaulted: ONE OF [
   map: ANYFIX CALL [WORD "MAP", value: defaulted],
   ## `MAP file summary DEFAULT {}`
   map of named: ANYFIX CALL [WORD "MAP", value: type, WORD "DEFAULT", default: ANY NODE],
+  ## `page WITH (item: TEXT) DEFAULT { items [] }`
+  generic: ANYFIX CALL [
+    reference, WORD "WITH", arguments: type arguments,
+    WORD "DEFAULT", default: ANY NODE,
+  ],
   ## `shade DEFAULT dark`, or a type in parentheses, `(LIST: TEXT) DEFAULT []`
   other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
 ],
@@ -60,6 +86,16 @@ defaulted: ONE OF [
 choice: ONE OF [
   public: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "PUBLIC", WORD "CHOICE", body: choice body],
   private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "CHOICE", body: choice body],
+  public generic: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "PUBLIC", WORD "GENERIC", parameters: type parameters,
+    WORD "CHOICE", body: choice body,
+  ],
+  generic: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "GENERIC", parameters: type parameters,
+    WORD "CHOICE", body: choice body,
+  ],
 ],
 
 choice body: ANYFIX CALL [
@@ -200,7 +236,14 @@ type: ONE OF [
   ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
   map: ANYFIX CALL [WORD "MAP", value: type],
   named: reference,
+  ## A generic type with a type for each of its parameters, by name:
+  ## `page WITH (item: file summary)`. `WITH` splits the run, so the
+  ## arguments are one slot: one argument, `item: file summary`, is the call
+  ## `item _`, and several are in parentheses.
+  generic: ANYFIX CALL [reference, WORD "WITH", arguments: type arguments],
 ],
+
+type arguments: ONE OF [several: PARENTHESIS [ONE OR MORE: parameter], one: parameter],
 
 ## A type by its name, `diagnostic`, or by its full path from
 ## another scope, `common/diagnostic`, which reads as the call `_/_` of

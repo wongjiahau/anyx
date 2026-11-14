@@ -41,6 +41,30 @@ pub enum Record {
         body: RecordBody,
         span: Span,
     },
+    PublicGeneric {
+        doc: Option<Spanned<StringLiteral>>,
+        parameters: TypeParameters,
+        body: RecordBody,
+        span: Span,
+    },
+    Generic {
+        doc: Option<Spanned<StringLiteral>>,
+        parameters: TypeParameters,
+        body: RecordBody,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeParameters {
+    Several(Spanned<Vec<TypeParameter>>),
+    One(TypeParameter),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypeParameter {
+    pub name: Spanned<String>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -119,6 +143,12 @@ pub enum Defaulted {
         default: Node,
         span: Span,
     },
+    Generic {
+        reference: Reference,
+        arguments: TypeArguments,
+        default: Node,
+        span: Span,
+    },
     Other {
         r#type: Type,
         default: Node,
@@ -135,6 +165,18 @@ pub enum Choice {
     },
     Private {
         doc: Option<Spanned<StringLiteral>>,
+        body: ChoiceBody,
+        span: Span,
+    },
+    PublicGeneric {
+        doc: Option<Spanned<StringLiteral>>,
+        parameters: TypeParameters,
+        body: ChoiceBody,
+        span: Span,
+    },
+    Generic {
+        doc: Option<Spanned<StringLiteral>>,
+        parameters: TypeParameters,
         body: ChoiceBody,
         span: Span,
     },
@@ -290,7 +332,7 @@ pub struct Shape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameter {
     pub name: Spanned<String>,
-    pub r#type: Type,
+    pub r#type: Box<Type>,
     pub span: Span,
 }
 
@@ -303,9 +345,26 @@ pub enum Type {
     Boolean(Span),
     Instant(Span),
     Duration(Span),
-    List { item: Box<Type>, span: Span },
-    Map { value: Box<Type>, span: Span },
+    List {
+        item: Box<Type>,
+        span: Span,
+    },
+    Map {
+        value: Box<Type>,
+        span: Span,
+    },
     Named(Reference),
+    Generic {
+        reference: Reference,
+        arguments: TypeArguments,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeArguments {
+    Several(Spanned<Vec<Parameter>>),
+    One(Parameter),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -337,7 +396,19 @@ impl Definition {
 impl Record {
     pub fn span(&self) -> Span {
         match self {
-            Record::Public { span, .. } | Record::Private { span, .. } => *span,
+            Record::Public { span, .. }
+            | Record::Private { span, .. }
+            | Record::PublicGeneric { span, .. }
+            | Record::Generic { span, .. } => *span,
+        }
+    }
+}
+
+impl TypeParameters {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeParameters::Several(value) => value.span,
+            TypeParameters::One(value) => value.span,
         }
     }
 }
@@ -375,6 +446,7 @@ impl Defaulted {
             | Defaulted::ListOfNamed { span, .. }
             | Defaulted::Map { span, .. }
             | Defaulted::MapOfNamed { span, .. }
+            | Defaulted::Generic { span, .. }
             | Defaulted::Other { span, .. } => *span,
         }
     }
@@ -383,7 +455,10 @@ impl Defaulted {
 impl Choice {
     pub fn span(&self) -> Span {
         match self {
-            Choice::Public { span, .. } | Choice::Private { span, .. } => *span,
+            Choice::Public { span, .. }
+            | Choice::Private { span, .. }
+            | Choice::PublicGeneric { span, .. }
+            | Choice::Generic { span, .. } => *span,
         }
     }
 }
@@ -458,8 +533,18 @@ impl Type {
             | Type::Instant(span)
             | Type::Duration(span)
             | Type::List { span, .. }
-            | Type::Map { span, .. } => *span,
+            | Type::Map { span, .. }
+            | Type::Generic { span, .. } => *span,
             Type::Named(value) => value.span,
+        }
+    }
+}
+
+impl TypeArguments {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeArguments::Several(value) => value.span,
+            TypeArguments::One(value) => value.span,
         }
     }
 }
@@ -502,7 +587,42 @@ impl support::Errors for Record {
                 support::Errors::errors(doc, found);
                 support::Errors::errors(body, found);
             }
+            Record::PublicGeneric {
+                doc,
+                parameters,
+                body,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(parameters, found);
+                support::Errors::errors(body, found);
+            }
+            Record::Generic {
+                doc,
+                parameters,
+                body,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(parameters, found);
+                support::Errors::errors(body, found);
+            }
         }
+    }
+}
+
+impl support::Errors for TypeParameters {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            TypeParameters::Several(value) => support::Errors::errors(value, found),
+            TypeParameters::One(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for TypeParameter {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
     }
 }
 
@@ -580,6 +700,16 @@ impl support::Errors for Defaulted {
                 support::Errors::errors(value, found);
                 support::Errors::errors(default, found);
             }
+            Defaulted::Generic {
+                reference,
+                arguments,
+                default,
+                ..
+            } => {
+                support::Errors::errors(reference, found);
+                support::Errors::errors(arguments, found);
+                support::Errors::errors(default, found);
+            }
             Defaulted::Other {
                 r#type, default, ..
             } => {
@@ -599,6 +729,26 @@ impl support::Errors for Choice {
             }
             Choice::Private { doc, body, .. } => {
                 support::Errors::errors(doc, found);
+                support::Errors::errors(body, found);
+            }
+            Choice::PublicGeneric {
+                doc,
+                parameters,
+                body,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(parameters, found);
+                support::Errors::errors(body, found);
+            }
+            Choice::Generic {
+                doc,
+                parameters,
+                body,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(parameters, found);
                 support::Errors::errors(body, found);
             }
         }
@@ -822,6 +972,23 @@ impl support::Errors for Type {
                 support::Errors::errors(value, found);
             }
             Type::Named(value) => support::Errors::errors(value, found),
+            Type::Generic {
+                reference,
+                arguments,
+                ..
+            } => {
+                support::Errors::errors(reference, found);
+                support::Errors::errors(arguments, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for TypeArguments {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            TypeArguments::Several(value) => support::Errors::errors(value, found),
+            TypeArguments::One(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -886,7 +1053,10 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
 }
 
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
-    decode_record_public(node).or_else(|error| error.or(decode_record_private(node)))
+    decode_record_public(node)
+        .or_else(|error| error.or(decode_record_private(node)))
+        .or_else(|error| error.or(decode_record_public_generic(node)))
+        .or_else(|error| error.or(decode_record_generic(node)))
 }
 
 fn decode_record_public(node: &Node) -> Result<Record, DecodeError> {
@@ -910,6 +1080,68 @@ fn decode_record_private(node: &Node) -> Result<Record, DecodeError> {
         body: parts
             .word("RECORD")?
             .one(decode_record_body, "a record body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_record_public_generic(node: &Node) -> Result<Record, DecodeError> {
+    let mut parts = support::call(node, "the call `_? PUBLIC GENERIC _ RECORD _`")?;
+    let decoded = Record::PublicGeneric {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        parameters: parts
+            .word("PUBLIC")?
+            .word("GENERIC")?
+            .one(decode_type_parameters, "type parameters")?,
+        body: parts
+            .word("RECORD")?
+            .one(decode_record_body, "a record body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_record_generic(node: &Node) -> Result<Record, DecodeError> {
+    let mut parts = support::call(node, "the call `_? GENERIC _ RECORD _`")?;
+    let decoded = Record::Generic {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        parameters: parts
+            .word("GENERIC")?
+            .one(decode_type_parameters, "type parameters")?,
+        body: parts
+            .word("RECORD")?
+            .one(decode_record_body, "a record body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_type_parameters(node: &Node) -> Result<TypeParameters, DecodeError> {
+    decode_type_parameters_several(node)
+        .map(TypeParameters::Several)
+        .or_else(|error| error.or(decode_type_parameter(node).map(TypeParameters::One)))
+}
+
+fn decode_type_parameters_several(node: &Node) -> Result<Spanned<Vec<TypeParameter>>, DecodeError> {
+    let mut elements = support::parenthesis(node)?;
+    let value = elements.one_or_more(decode_type_parameter, "a type parameter")?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+pub fn decode_type_parameter(node: &Node) -> Result<TypeParameter, DecodeError> {
+    let mut parts = support::call(node, "the call `…`")?;
+    let decoded = TypeParameter {
+        name: parts.words(
+            |text| !text.split(' ').any(anyx::is_keyword),
+            "words whose text has no keyword",
+        )?,
         span: node.span,
     };
     parts.finish()?;
@@ -991,6 +1223,7 @@ pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
         .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
         .or_else(|error| error.or(decode_defaulted_map(node)))
         .or_else(|error| error.or(decode_defaulted_map_of_named(node)))
+        .or_else(|error| error.or(decode_defaulted_generic(node)))
         .or_else(|error| error.or(decode_defaulted_other(node)))
 }
 
@@ -1131,6 +1364,20 @@ fn decode_defaulted_map_of_named(node: &Node) -> Result<Defaulted, DecodeError> 
     Ok(decoded)
 }
 
+fn decode_defaulted_generic(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `_ WITH _ DEFAULT _`")?;
+    let decoded = Defaulted::Generic {
+        reference: parts.one(decode_reference, "a reference")?,
+        arguments: parts
+            .word("WITH")?
+            .one(decode_type_arguments, "type arguments")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
 fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
     let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
     let decoded = Defaulted::Other {
@@ -1143,7 +1390,10 @@ fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
 }
 
 pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
-    decode_choice_public(node).or_else(|error| error.or(decode_choice_private(node)))
+    decode_choice_public(node)
+        .or_else(|error| error.or(decode_choice_private(node)))
+        .or_else(|error| error.or(decode_choice_public_generic(node)))
+        .or_else(|error| error.or(decode_choice_generic(node)))
 }
 
 fn decode_choice_public(node: &Node) -> Result<Choice, DecodeError> {
@@ -1164,6 +1414,39 @@ fn decode_choice_private(node: &Node) -> Result<Choice, DecodeError> {
     let mut parts = support::call(node, "the call `_? CHOICE _`")?;
     let decoded = Choice::Private {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        body: parts
+            .word("CHOICE")?
+            .one(decode_choice_body, "a choice body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_choice_public_generic(node: &Node) -> Result<Choice, DecodeError> {
+    let mut parts = support::call(node, "the call `_? PUBLIC GENERIC _ CHOICE _`")?;
+    let decoded = Choice::PublicGeneric {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        parameters: parts
+            .word("PUBLIC")?
+            .word("GENERIC")?
+            .one(decode_type_parameters, "type parameters")?,
+        body: parts
+            .word("CHOICE")?
+            .one(decode_choice_body, "a choice body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_choice_generic(node: &Node) -> Result<Choice, DecodeError> {
+    let mut parts = support::call(node, "the call `_? GENERIC _ CHOICE _`")?;
+    let decoded = Choice::Generic {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        parameters: parts
+            .word("GENERIC")?
+            .one(decode_type_parameters, "type parameters")?,
         body: parts
             .word("CHOICE")?
             .one(decode_choice_body, "a choice body")?,
@@ -1542,7 +1825,7 @@ pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
         )?,
-        r#type: parts.one(decode_type, "a type")?,
+        r#type: parts.one(|node| decode_type(node).map(Box::new), "a type")?,
         span: node.span,
     };
     parts.finish()?;
@@ -1561,6 +1844,7 @@ pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
         .or_else(|error| error.or(decode_type_list(node)))
         .or_else(|error| error.or(decode_type_map(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
+        .or_else(|error| error.or(decode_type_generic(node)))
 }
 
 fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
@@ -1585,6 +1869,35 @@ fn decode_type_map(node: &Node) -> Result<Type, DecodeError> {
     };
     parts.finish()?;
     Ok(decoded)
+}
+
+fn decode_type_generic(node: &Node) -> Result<Type, DecodeError> {
+    let mut parts = support::call(node, "the call `_ WITH _`")?;
+    let decoded = Type::Generic {
+        reference: parts.one(decode_reference, "a reference")?,
+        arguments: parts
+            .word("WITH")?
+            .one(decode_type_arguments, "type arguments")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_type_arguments(node: &Node) -> Result<TypeArguments, DecodeError> {
+    decode_type_arguments_several(node)
+        .map(TypeArguments::Several)
+        .or_else(|error| error.or(decode_parameter(node).map(TypeArguments::One)))
+}
+
+fn decode_type_arguments_several(node: &Node) -> Result<Spanned<Vec<Parameter>>, DecodeError> {
+    let mut elements = support::parenthesis(node)?;
+    let value = elements.one_or_more(decode_parameter, "a parameter")?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
 }
 
 pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {

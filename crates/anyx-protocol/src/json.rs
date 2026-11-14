@@ -303,23 +303,19 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
             )
         }
         Value::Record(values) => {
-            let fields = match r#type {
-                Type::Named(index) => match &schema.types[*index].kind {
-                    TypeKind::Record(fields) => &fields[..],
-                    TypeKind::Choice(_) | TypeKind::Distinct(_) => &[],
-                },
+            let kind = schema.instance(r#type).map(|(_, kind)| kind);
+            let fields = match kind.as_deref() {
+                Some(TypeKind::Record(fields)) => &fields[..],
                 _ => &[],
             };
             Json::Object(fields_to_json(schema, fields, values))
         }
         Value::Variant { shape, arguments } => {
-            let variants = match r#type {
-                Type::Named(index) => match &schema.types[*index].kind {
-                    TypeKind::Choice(variants) => {
-                        variants.iter().map(|variant| &variant.shape).collect()
-                    }
-                    TypeKind::Record(_) | TypeKind::Distinct(_) => Vec::new(),
-                },
+            let kind = schema.instance(r#type).map(|(_, kind)| kind);
+            let variants = match kind.as_deref() {
+                Some(TypeKind::Choice(variants)) => {
+                    variants.iter().map(|variant| &variant.shape).collect()
+                }
                 _ => Vec::new(),
             };
             variant_to_json(schema, &variants, shape, arguments)
@@ -421,12 +417,14 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 .map(Value::Map),
             _ => mismatch("an object"),
         },
-        Type::Named(index) => {
-            let definition = &schema.types[*index];
+        Type::Named(_) | Type::Generic(..) => {
+            let Some((definition, kind)) = schema.instance(r#type) else {
+                unreachable!("a named or generic type is a record or a choice underneath")
+            };
             let Json::Object(object) = json else {
                 return mismatch(&format!("an object for `{}`", definition.name));
             };
-            match &definition.kind {
+            match kind.as_ref() {
                 TypeKind::Record(fields) => {
                     fields_from_json(schema, fields, object).map(Value::Record)
                 }
@@ -438,6 +436,11 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
             }
         }
+        // The checker replaces each parameter by its argument wherever a
+        // value is read.
+        Type::Parameter(name) => mismatch(&format!(
+            "a value of a type in place of the type parameter `{name}`"
+        )),
     }
 }
 

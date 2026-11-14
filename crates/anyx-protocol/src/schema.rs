@@ -63,6 +63,9 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Lowercase words, such as `file summary`.
     pub name: String,
+    /// The type parameters of a `GENERIC` record or choice, in the order
+    /// written, `GENERIC (value, problem)`; empty for any other type.
+    pub parameters: Vec<String>,
     pub kind: TypeKind,
 }
 
@@ -191,8 +194,99 @@ pub enum Type {
     /// Text keys, each to a value of the type. On the wire, braces of keys
     /// and values: `{ "hymn" 3, "ode" 1 }`.
     Map(Box<Type>),
-    /// The index of a type in [`Schema::types`].
+    /// The index of a type in [`Schema::types`], one that isn't generic.
     Named(usize),
+    /// A generic record or choice with its arguments, `page WITH (item:
+    /// TEXT)`: the index of the type in [`Schema::types`], and a type for
+    /// each of its parameters, in the order of its parameters.
+    Generic(usize, Vec<Type>),
+    /// A type parameter, by its name, within the generic record or choice
+    /// that declares it. A use of that type puts its argument in its place,
+    /// so a value is never of this type.
+    Parameter(String),
+}
+
+impl Type {
+    /// `self` with each of `parameters` replaced by the argument at its
+    /// place in `arguments`.
+    pub fn substitute(&self, parameters: &[String], arguments: &[Type]) -> Type {
+        match self {
+            Type::Parameter(name) => parameters
+                .iter()
+                .position(|parameter| parameter == name)
+                .and_then(|index| arguments.get(index))
+                .cloned()
+                .unwrap_or_else(|| self.clone()),
+            Type::List(item) => Type::List(Box::new(item.substitute(parameters, arguments))),
+            Type::Map(value) => Type::Map(Box::new(value.substitute(parameters, arguments))),
+            Type::Generic(index, inner) => Type::Generic(
+                *index,
+                inner
+                    .iter()
+                    .map(|argument| argument.substitute(parameters, arguments))
+                    .collect(),
+            ),
+            _ => self.clone(),
+        }
+    }
+
+    /// The type parameters it mentions, each once, in the order met.
+    pub fn parameters(&self) -> Vec<&str> {
+        fn walk<'t>(r#type: &'t Type, found: &mut Vec<&'t str>) {
+            match r#type {
+                Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
+                Type::List(item) | Type::Map(item) => walk(item, found),
+                Type::Generic(_, arguments) => {
+                    arguments.iter().for_each(|argument| walk(argument, found))
+                }
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        walk(self, &mut found);
+        found
+    }
+}
+
+impl TypeKind {
+    /// `self` with each of `parameters` replaced by the argument at its
+    /// place in `arguments`, in every field or variant.
+    pub fn substitute(&self, parameters: &[String], arguments: &[Type]) -> TypeKind {
+        match self {
+            TypeKind::Record(fields) => TypeKind::Record(
+                fields
+                    .iter()
+                    .map(|field| Field {
+                        r#type: field.r#type.substitute(parameters, arguments),
+                        ..field.clone()
+                    })
+                    .collect(),
+            ),
+            TypeKind::Choice(variants) => TypeKind::Choice(
+                variants
+                    .iter()
+                    .map(|variant| Shaped {
+                        doc: variant.doc.clone(),
+                        shape: Shape {
+                            text: variant.shape.text.clone(),
+                            parameters: variant
+                                .shape
+                                .parameters
+                                .iter()
+                                .map(|parameter| Parameter {
+                                    name: parameter.name.clone(),
+                                    r#type: parameter.r#type.substitute(parameters, arguments),
+                                })
+                                .collect(),
+                        },
+                    })
+                    .collect(),
+            ),
+            TypeKind::Distinct(underlying) => {
+                TypeKind::Distinct(underlying.substitute(parameters, arguments))
+            }
+        }
+    }
 }
 
 /// The words of the built-in call every server answers with the guide to
@@ -324,6 +418,52 @@ impl Schema {
                 let definition = &self.types[*index];
                 scoped(&definition.scope, &definition.name)
             }
+            Type::Generic(index, arguments) => {
+                let definition = &self.types[*index];
+                let arguments: Vec<String> = definition
+                    .parameters
+                    .iter()
+                    .zip(arguments)
+                    .map(|(parameter, argument)| {
+                        format!("{parameter}: {}", self.type_name(argument))
+                    })
+                    .collect();
+                format!(
+                    "{} WITH ({})",
+                    scoped(&definition.scope, &definition.name),
+                    arguments.join(", ")
+                )
+            }
+            Type::Parameter(name) => name.clone(),
+        }
+    }
+
+    /// The record or choice that `type` names, after reading past named
+    /// types, and its fields or variants: for a generic type, with its
+    /// arguments in place of its parameters, so that a value of
+    /// `page WITH (item: TEXT)` reads like a record whose `items` are
+    /// `LIST: TEXT`. `None` for any other type.
+    pub fn instance<'s>(
+        &'s self,
+        r#type: &'s Type,
+    ) -> Option<(&'s TypeDefinition, std::borrow::Cow<'s, TypeKind>)> {
+        match self.underlying(r#type) {
+            Type::Named(index) => {
+                let definition = &self.types[*index];
+                Some((definition, std::borrow::Cow::Borrowed(&definition.kind)))
+            }
+            Type::Generic(index, arguments) => {
+                let definition = &self.types[*index];
+                Some((
+                    definition,
+                    std::borrow::Cow::Owned(
+                        definition
+                            .kind
+                            .substitute(&definition.parameters, arguments),
+                    ),
+                ))
+            }
+            _ => None,
         }
     }
 
@@ -471,6 +611,14 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
                 ),
             )];
         }
+        if let Some(keyword) = keyword_before_with(&nodes, error.span) {
+            return vec![found(
+                error.span,
+                format!(
+                    "found `WITH` in the call of `{keyword}`; expected a `:` after `{keyword}`, as in `{keyword}: page WITH (item: TEXT)`, since the keywords of a run belong to one call"
+                ),
+            )];
+        }
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
@@ -543,6 +691,35 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
         .iter()
         .filter(|node| !has_word(node, "RECORD"))
         .find_map(|node| within(node, span))
+}
+
+/// The keyword before a `WITH` at `span` in the same call, as in
+/// `LIST page WITH (item: TEXT)`, which needs a `:` after `LIST`.
+fn keyword_before_with(nodes: &[Node], span: Span) -> Option<&'static str> {
+    nodes.iter().find_map(|node| {
+        if !(node.span.start <= span.start && span.end <= node.span.end) {
+            return None;
+        }
+        let children: &[Node] = match &node.kind {
+            NodeKind::Call(call) => {
+                let at_with = call.name.iter().any(|part| {
+                    matches!(part, NamePart::Word { text, span: at } if text == "WITH" && *at == span)
+                });
+                let keyword = ["LIST", "MAP", "OPTIONAL"].into_iter().find(|keyword| {
+                    call.name
+                        .iter()
+                        .any(|part| matches!(part, NamePart::Word { text, .. } if text == keyword))
+                });
+                if let (true, Some(keyword)) = (at_with, keyword) {
+                    return Some(keyword);
+                }
+                &call.arguments
+            }
+            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            _ => &[],
+        };
+        keyword_before_with(children, span)
+    })
 }
 
 /// Whether `span` is in a top-level `ERROR`, which a schema no longer has:

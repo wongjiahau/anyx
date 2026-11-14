@@ -141,6 +141,51 @@ const RESERVED_TYPE_NAMES: [&str; 17] = [
     "Reviver",
 ];
 
+/// The name of a type parameter in the generated code: the parameter in
+/// PascalCase, with `Parameter` after it while that is a name `taken`, such
+/// as a type of the schema, so that the parameter doesn't shadow it: `item`
+/// is `Item`, and `value` is `ValueParameter`, since the Rust code uses its
+/// `Value`.
+pub fn type_parameter_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
+    let mut parameter = pascal_case(name);
+    while taken(&parameter) {
+        parameter.push_str("Parameter");
+    }
+    parameter
+}
+
+/// Whether `name` is a type a type parameter in the Rust module of `scope`
+/// would shadow: the scope's types, the errors of its methods, and the
+/// names the generated code uses.
+pub fn rust_type_taken(schema: &Schema, scope: &[String], name: &str) -> bool {
+    RESERVED_TYPE_NAMES.contains(&name)
+        || name == "Self"
+        || schema
+            .types
+            .iter()
+            .any(|definition| definition.scope == scope && pascal_case(&definition.name) == name)
+        || methods_in(schema, scope)
+            .into_iter()
+            .any(|(_, method)| !method.errors.is_empty() && error_enum_name(method) == name)
+}
+
+/// Whether `name` is a type a type parameter in the TypeScript code would
+/// shadow: any type of the schema, the errors of a method, and the names
+/// the client declares or uses. `Instant` is taken too, since a parameter's
+/// reviver is `revive` and its name, and `reviveInstant` revives instants.
+pub fn typescript_type_taken(schema: &Schema, name: &str) -> bool {
+    RESERVED_TYPE_NAMES.contains(&name)
+        || ["Promise", "Codec", "QueuedCall", "Instant"].contains(&name)
+        || schema
+            .types
+            .iter()
+            .any(|definition| scoped_pascal_case(&definition.scope, &definition.name) == name)
+        || schema
+            .methods
+            .iter()
+            .any(|method| !method.errors.is_empty() && typescript_error_name(method) == name)
+}
+
 /// Names the Rust and TypeScript clients declare next to the methods.
 const RESERVED_METHOD_NAMES: [&str; 5] = ["new", "call", "codec", "send", "constructor"];
 
@@ -246,6 +291,28 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
         );
     distinct("TypeScript type", reserved_types().chain(typescript_types))?;
     for definition in &schema.types {
+        let parameter =
+            |name: &String| format!("the type parameter `{name}` of `{}`", definition.name);
+        distinct(
+            "type parameter",
+            definition.parameters.iter().map(|name| {
+                (
+                    type_parameter_name(name, |taken| {
+                        rust_type_taken(schema, &definition.scope, taken)
+                    }),
+                    parameter(name),
+                )
+            }),
+        )?;
+        distinct(
+            "TypeScript type parameter",
+            definition.parameters.iter().map(|name| {
+                (
+                    type_parameter_name(name, |taken| typescript_type_taken(schema, taken)),
+                    parameter(name),
+                )
+            }),
+        )?;
         match &definition.kind {
             TypeKind::Record(fields) => distinct(
                 "field",

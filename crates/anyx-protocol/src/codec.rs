@@ -401,9 +401,11 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
             "a map of {}, as in `{{ \"key\" … }}`",
             schema.type_name(value)
         ))),
-        (Type::Named(index), _) => {
-            let definition = &schema.types[*index];
-            match &definition.kind {
+        (Type::Named(_) | Type::Generic(..), _) => {
+            let Some((definition, kind)) = schema.instance(r#type) else {
+                unreachable!("a named or generic type is a record or a choice underneath")
+            };
+            match kind.as_ref() {
                 TypeKind::Record(fields) => match &node.kind {
                     NodeKind::Braces(nodes) => {
                         decode_fields(schema, fields, nodes, node.span).map(Value::Record)
@@ -427,6 +429,11 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
                 TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
             }
         }
+        // The checker replaces each parameter by its argument wherever a
+        // value is read.
+        (Type::Parameter(name), _) => Err(mismatch(format!(
+            "a value of a type in place of the type parameter `{name}`"
+        ))),
     }
 }
 
@@ -793,19 +800,19 @@ pub(crate) fn write(
             out.push_str(" }");
         }
         Value::Record(values) => {
-            let Type::Named(index) = r#type else {
+            let Some((_, kind)) = schema.instance(r#type) else {
                 return Err(mismatched(schema, r#type, "a record"));
             };
-            let TypeKind::Record(fields) = &schema.types[*index].kind else {
+            let TypeKind::Record(fields) = kind.as_ref() else {
                 return Err(mismatched(schema, r#type, "a record"));
             };
             write_fields(schema, fields, values, form, out)?;
         }
         Value::Variant { shape, arguments } => {
-            let Type::Named(index) = r#type else {
+            let Some((_, kind)) = schema.instance(r#type) else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };
-            let TypeKind::Choice(variants) = &schema.types[*index].kind else {
+            let TypeKind::Choice(variants) = kind.as_ref() else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };
             let Some(variant) = variants.iter().find(|variant| variant.shape.text == *shape) else {
