@@ -361,6 +361,13 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
             "a list of {}, as in `[…]`",
             schema.type_name(item)
         ))),
+        (Type::Map(value), NodeKind::Braces(nodes)) => {
+            decode_entries(schema, value, nodes).map(Value::Map)
+        }
+        (Type::Map(value), _) => Err(mismatch(format!(
+            "a map of {}, as in `{{ \"key\" … }}`",
+            schema.type_name(value)
+        ))),
         (Type::Named(index), _) => {
             let definition = &schema.types[*index];
             match &definition.kind {
@@ -450,6 +457,52 @@ fn example_fields(fields: &[Field]) -> String {
         .map(|field| format!("{} …", field.name))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Reads a map's entries, each a string key and its value: `"hymn" 3`, or
+/// `"hymn": done` when the value is words.
+fn decode_entries(
+    schema: &Schema,
+    r#type: &Type,
+    nodes: &[Node],
+) -> Result<BTreeMap<String, Value>, Mismatch> {
+    let mut entries = BTreeMap::new();
+    for node in nodes {
+        let entry = match &node.kind {
+            NodeKind::Call(call) => match (&call.name[..], &call.arguments[..]) {
+                ([NamePart::Slot, NamePart::Slot], [key, value]) => match &key.kind {
+                    NodeKind::String(key) => Some((&key.value, value)),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((key, value)) = entry else {
+            let found = match &node.kind {
+                NodeKind::Call(call) => format!("the call `{}`", call.name_text()),
+                _ => describe(node),
+            };
+            return Err(Mismatch {
+                span: node.span,
+                message: format!(
+                    "found {found}; expected an entry written as a string key and its value, as in `\"key\" …`; put a `:` after the key when the value is words, as in `\"key\": done`"
+                ),
+            });
+        };
+        if entries.contains_key(key) {
+            return Err(Mismatch {
+                span: node.span,
+                message: format!("found the key `\"{key}\"` twice; expected each key once"),
+            });
+        }
+        let value = decode(schema, r#type, value).map_err(|mismatch| Mismatch {
+            message: format!("in `\"{key}\"`: {}", mismatch.message),
+            ..mismatch
+        })?;
+        entries.insert(key.clone(), value);
+    }
+    Ok(entries)
 }
 
 fn decode_fields(
@@ -678,6 +731,32 @@ pub(crate) fn write(
             }
             out.push(']');
         }
+        Value::Map(entries) => {
+            let Type::Map(value_type) = r#type else {
+                return Err(mismatched(schema, r#type, "a map"));
+            };
+            let shown = match form {
+                Form::Whole => entries.len(),
+                Form::Shortened => entries.len().min(SHORTENED_ITEMS),
+            };
+            if entries.is_empty() {
+                out.push_str("{}");
+                return Ok(());
+            }
+            out.push_str("{ ");
+            for (index, (key, value)) in entries.iter().take(shown).enumerate() {
+                if index > 0 {
+                    out.push_str(", ");
+                }
+                write_quoted(key, usize::MAX, out);
+                out.push_str(": ");
+                write(schema, value_type, value, form, out)?;
+            }
+            if shown < entries.len() {
+                out.push_str(", …");
+            }
+            out.push_str(" }");
+        }
         Value::Record(values) => {
             let Type::Named(index) = r#type else {
                 return Err(mismatched(schema, r#type, "a record"));
@@ -756,6 +835,12 @@ pub(crate) fn write_text(text: &str, form: Form, out: &mut String) {
         Form::Whole => text.chars().count(),
         Form::Shortened => SHORTENED_CHARACTERS,
     };
+    write_quoted(text, shown, out);
+}
+
+/// Writes the first `shown` characters of `text` as a quoted string, ending
+/// in `…` when there is more.
+fn write_quoted(text: &str, shown: usize, out: &mut String) {
     out.push('"');
     for c in text.chars().take(shown) {
         match c {

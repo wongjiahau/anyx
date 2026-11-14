@@ -174,3 +174,31 @@ fn a_field_left_out_of_json_takes_its_default() {
     let request = encode_request_json(&schema, "find _", r#"[{"query": "ode"}]"#).unwrap();
     assert_eq!(request, "find { query \"ode\", limit 50 }\n");
 }
+
+#[test]
+fn a_map_is_an_object_whose_keys_stay_as_written() {
+    let schema = common::schema(
+        "PROTOCOL a VERSION 1,
+        METHOD count (counts: MAP: INTEGER) RETURNS (waits: MAP: DURATION),",
+    );
+    let request =
+        encode_request_json(&schema, "count _", r#"[{"hymn": 3, "old ode": 1, "": 0}]"#).unwrap();
+    assert_eq!(request, "count { \"\" 0, \"hymn\" 3, \"old ode\" 1 }\n");
+    assert_eq!(
+        decode_request_json(&schema, &request).unwrap(),
+        r#"[{"arguments":[{"":0,"hymn":3,"old ode":1}],"method":"count _"}]"#
+    );
+    assert_eq!(
+        decode_response_json(
+            &schema,
+            "count _",
+            "count {} RETURNS { \"tea\": 5 minutes }"
+        )
+        .unwrap(),
+        r#"{"kind":"value","value":{"tea":300000}}"#
+    );
+    assert_eq!(
+        encode_request_json(&schema, "count _", r#"[[3]]"#).unwrap_err(),
+        "in `counts`: found [3]; expected an object"
+    );
+}

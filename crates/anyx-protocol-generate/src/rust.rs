@@ -124,6 +124,10 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
         Type::Instant => "::std::time::SystemTime".to_string(),
         Type::Duration => "::std::time::Duration".to_string(),
         Type::List(item) => format!("Vec<{}>", rust_type(schema, scope, item)),
+        Type::Map(value) => format!(
+            "::std::collections::BTreeMap<String, {}>",
+            rust_type(schema, scope, value)
+        ),
         Type::Named(index) => {
             let definition = &schema.types[*index];
             path_to(scope, &definition.scope) + &pascal_case(&definition.name)

@@ -17,6 +17,8 @@ pub enum Value {
     /// A `DURATION`. The wire keeps it to the millisecond, rounded down.
     Duration(Duration),
     List(Vec<Value>),
+    /// A `MAP`: values by their text keys.
+    Map(BTreeMap<String, Value>),
     /// A record's fields by name. An `OPTIONAL` field left out is absent.
     Record(BTreeMap<String, Value>),
     /// A choice's variant or an error: its shape's text, such as
@@ -183,6 +185,28 @@ impl<T: FromValue> FromValue for Vec<T> {
     fn from_value(value: Value) -> Option<Self> {
         match value {
             Value::List(items) => items.into_iter().map(T::from_value).collect(),
+            _ => None,
+        }
+    }
+}
+
+impl<T: IntoValue> IntoValue for BTreeMap<String, T> {
+    fn into_value(self) -> Value {
+        Value::Map(
+            self.into_iter()
+                .map(|(key, value)| (key, value.into_value()))
+                .collect(),
+        )
+    }
+}
+
+impl<T: FromValue> FromValue for BTreeMap<String, T> {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Map(entries) => entries
+                .into_iter()
+                .map(|(key, value)| Some((key, T::from_value(value)?)))
+                .collect(),
             _ => None,
         }
     }

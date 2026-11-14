@@ -318,6 +318,7 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         // Whole milliseconds, as the JSON carries it.
         Type::Duration => "number".to_string(),
         Type::List(item) => format!("{}[]", ts_type(schema, item)),
+        Type::Map(value) => format!("Record<string, {}>", ts_type(schema, value)),
         Type::Named(index) => {
             let definition = &schema.types[*index];
             scoped_pascal_case(&definition.scope, &definition.name)
@@ -425,7 +426,7 @@ impl Revivers {
     fn type_holds(&self, r#type: &Type) -> bool {
         match r#type {
             Type::Instant => true,
-            Type::List(item) => self.type_holds(item),
+            Type::List(item) | Type::Map(item) => self.type_holds(item),
             Type::Named(index) => self.holds[*index],
             _ => false,
         }
@@ -449,6 +450,15 @@ impl Revivers {
             Type::List(item) => self
                 .of(schema, item)
                 .map(|item| format!("(json: any[]) => json.map({item})")),
+            Type::Map(value) => self.of(schema, value).map(|value| {
+                let revived = match value.contains(' ') {
+                    true => format!("({value})(item)"),
+                    false => format!("{value}(item)"),
+                };
+                format!(
+                    "(json: Record<string, any>) => Object.fromEntries(Object.entries(json).map(([key, item]) => [key, {revived}]))"
+                )
+            }),
             Type::Named(index) if self.holds[*index] => {
                 let definition = &schema.types[*index];
                 Some(format!(

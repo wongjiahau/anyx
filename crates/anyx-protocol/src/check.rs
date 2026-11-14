@@ -980,6 +980,7 @@ impl<'a> Checker<'a> {
             ast::Type::Instant(_) => Type::Instant,
             ast::Type::Duration(_) => Type::Duration,
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
+            ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
             ast::Type::Named(reference) => {
                 self.resolve_type(reference).map_or(Type::Text, Type::Named)
             }
@@ -1003,13 +1004,20 @@ impl<'a> Checker<'a> {
             ast::Defaulted::ListOfNamed { item, default, .. } => {
                 (Type::List(Box::new(self.r#type(item))), default)
             }
+            ast::Defaulted::Map { value, .. } => {
+                let (value, default) = self.defaulted(value);
+                (Type::Map(Box::new(value)), default)
+            }
+            ast::Defaulted::MapOfNamed { value, default, .. } => {
+                (Type::Map(Box::new(self.r#type(value))), default)
+            }
             ast::Defaulted::Other {
                 r#type, default, ..
             } => (self.r#type(r#type), default),
         }
     }
 
-    /// A type that holds itself, other than through a `LIST`, has no
+    /// A type that holds itself, other than through a `LIST` or a `MAP`, has no
     /// finite value.
     fn check_recursion(&mut self, schema: &Schema) {
         fn held(r#type: &Type) -> Option<usize> {
@@ -1044,7 +1052,7 @@ impl<'a> Checker<'a> {
                     self.error(
                         span,
                         format!(
-                            "found the type `{name}` holding itself; expected a type that holds itself to do so through a `LIST`, so that its values end; make the field a `LIST`"
+                            "found the type `{name}` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`"
                         ),
                     );
                     break;

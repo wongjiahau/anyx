@@ -47,8 +47,9 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
 - **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `NUMBER` (a finite float),
   `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
-  `LIST: T`, and the name of a `RECORD` or `CHOICE`. A type may hold itself
-  only through a `LIST`.
+  `LIST: T`, `MAP: T` (text keys, each to a `T`), and the name of a
+  `RECORD` or `CHOICE`. A type may hold itself only through a `LIST` or a
+  `MAP`, which may be empty.
 - **`RECORD name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
   may be left out. `DEFAULT value` after its type gives it the value it
   holds when left out: `limit: OPTIONAL: INTEGER DEFAULT 50`, or
@@ -183,13 +184,14 @@ SCHEMA,
 | `INSTANT` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
 | `DURATION` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
+| `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
 
 A value written as words, a `BOOLEAN`, a `DURATION` or a variant, goes in
 parentheses in a slot, where it would otherwise join the words around it:
 `set (custom hue 0.5) strict (true)`, `wait (5 minutes)`. In a record, such a
-value follows a `:`: `{ every: 1 hour 30 minutes }`.
+value follows a `:`: `{ every: 1 hour 30 minutes }`, `{ "tea": 5 minutes }`.
 
 A `DURATION`'s units are `days`, `hours`, `minutes`, `seconds` and
 `milliseconds`, each in the singular for 1: `1 day 1 second`. Each unit comes
@@ -242,6 +244,8 @@ camelCase, next to its parameters:
 An `INSTANT` is its text, as on the wire, and a `DURATION` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
 A field with a `DEFAULT` that is left out or `null` takes its default.
+A `MAP` is an object whose keys are kept as written, not camelCased:
+`{ "old ode": 1 }`.
 A result is `{ "kind": "value", "value": … }` (with no `value` for a method
 that returns nothing), `{ "kind": "error",
 "error": … }`, `{ "kind": "notRun" }`, `{ "kind": "internalError" }` or

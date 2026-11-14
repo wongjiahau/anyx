@@ -109,6 +109,15 @@ pub enum Defaulted {
         default: Node,
         span: Span,
     },
+    Map {
+        value: Box<Defaulted>,
+        span: Span,
+    },
+    MapOfNamed {
+        value: Type,
+        default: Node,
+        span: Span,
+    },
     Other {
         r#type: Type,
         default: Node,
@@ -232,6 +241,7 @@ pub enum Type {
     Instant(Span),
     Duration(Span),
     List { item: Box<Type>, span: Span },
+    Map { value: Box<Type>, span: Span },
     Named(Reference),
 }
 
@@ -299,6 +309,8 @@ impl Defaulted {
             | Defaulted::Duration { span, .. }
             | Defaulted::List { span, .. }
             | Defaulted::ListOfNamed { span, .. }
+            | Defaulted::Map { span, .. }
+            | Defaulted::MapOfNamed { span, .. }
             | Defaulted::Other { span, .. } => *span,
         }
     }
@@ -359,7 +371,8 @@ impl Type {
             | Type::Boolean(span)
             | Type::Instant(span)
             | Type::Duration(span)
-            | Type::List { span, .. } => *span,
+            | Type::List { span, .. }
+            | Type::Map { span, .. } => *span,
             Type::Named(value) => value.span,
         }
     }
@@ -471,6 +484,13 @@ impl support::Errors for Defaulted {
             }
             Defaulted::ListOfNamed { item, default, .. } => {
                 support::Errors::errors(item, found);
+                support::Errors::errors(default, found);
+            }
+            Defaulted::Map { value, .. } => {
+                support::Errors::errors(value, found);
+            }
+            Defaulted::MapOfNamed { value, default, .. } => {
+                support::Errors::errors(value, found);
                 support::Errors::errors(default, found);
             }
             Defaulted::Other {
@@ -616,6 +636,9 @@ impl support::Errors for Type {
             Type::Duration(_) => {}
             Type::List { item, .. } => {
                 support::Errors::errors(item, found);
+            }
+            Type::Map { value, .. } => {
+                support::Errors::errors(value, found);
             }
             Type::Named(value) => support::Errors::errors(value, found),
         }
@@ -784,6 +807,8 @@ pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
         .or_else(|error| error.or(decode_defaulted_duration(node)))
         .or_else(|error| error.or(decode_defaulted_list(node)))
         .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
+        .or_else(|error| error.or(decode_defaulted_map(node)))
+        .or_else(|error| error.or(decode_defaulted_map_of_named(node)))
         .or_else(|error| error.or(decode_defaulted_other(node)))
 }
 
@@ -894,6 +919,29 @@ fn decode_defaulted_list_of_named(node: &Node) -> Result<Defaulted, DecodeError>
     let mut parts = support::call(node, "the call `LIST _ DEFAULT _`")?;
     let decoded = Defaulted::ListOfNamed {
         item: parts.word("LIST")?.one(decode_type, "a type")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_map(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `MAP _`")?;
+    let decoded = Defaulted::Map {
+        value: parts
+            .word("MAP")?
+            .one(|node| decode_defaulted(node).map(Box::new), "a defaulted")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_defaulted_map_of_named(node: &Node) -> Result<Defaulted, DecodeError> {
+    let mut parts = support::call(node, "the call `MAP _ DEFAULT _`")?;
+    let decoded = Defaulted::MapOfNamed {
+        value: parts.word("MAP")?.one(decode_type, "a type")?,
         default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
         span: node.span,
     };
@@ -1166,6 +1214,7 @@ pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
         .or_else(|error| error.or(support::word(node, "INSTANT").map(Type::Instant)))
         .or_else(|error| error.or(support::word(node, "DURATION").map(Type::Duration)))
         .or_else(|error| error.or(decode_type_list(node)))
+        .or_else(|error| error.or(decode_type_map(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }
 
@@ -1174,6 +1223,18 @@ fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
     let decoded = Type::List {
         item: parts
             .word("LIST")?
+            .one(|node| decode_type(node).map(Box::new), "a type")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_type_map(node: &Node) -> Result<Type, DecodeError> {
+    let mut parts = support::call(node, "the call `MAP _`")?;
+    let decoded = Type::Map {
+        value: parts
+            .word("MAP")?
             .one(|node| decode_type(node).map(Box::new), "a type")?,
         span: node.span,
     };

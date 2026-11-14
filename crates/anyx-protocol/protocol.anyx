@@ -50,6 +50,9 @@ defaulted: ONE OF [
   list: ANYFIX CALL [WORD "LIST", item: defaulted],
   ## `LIST file summary DEFAULT []`
   list of named: ANYFIX CALL [WORD "LIST", item: type, WORD "DEFAULT", default: ANY NODE],
+  map: ANYFIX CALL [WORD "MAP", value: defaulted],
+  ## `MAP file summary DEFAULT {}`
+  map of named: ANYFIX CALL [WORD "MAP", value: type, WORD "DEFAULT", default: ANY NODE],
   ## `shade DEFAULT dark`, or a type in parentheses, `(LIST: TEXT) DEFAULT []`
   other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
 ],
@@ -139,6 +142,8 @@ type: ONE OF [
   WORD "INSTANT",
   WORD "DURATION",
   list: ANYFIX CALL [WORD "LIST", item: type],
+  ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
+  map: ANYFIX CALL [WORD "MAP", value: type],
   named: reference,
 ],
 

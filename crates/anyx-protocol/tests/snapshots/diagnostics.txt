@@ -42,16 +42,28 @@ schema:1:58: found a second method `f`; expected each method shape once in a sco
 
 == a type holding itself
 PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },
-schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST`, so that its values end; make the field a `LIST`
+schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
   PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },
                                ^^^^
 
+== a type holding itself through an optional field
+PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },
+schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },
+                               ^^^^
+
+== a map default that is not a map
+PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: INTEGER DEFAULT [] },
+schema:1:68: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of INTEGER, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: INTEGER DEFAULT [] },
+                                                                     ^^
+
 == a cycle through a choice
 PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
-schema:1:30: found the type `a` holding itself; expected a type that holds itself to do so through a `LIST`, so that its values end; make the field a `LIST`
+schema:1:30: found the type `a` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
   PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
                                ^
-schema:1:49: found the type `b` holding itself; expected a type that holds itself to do so through a `LIST`, so that its values end; make the field a `LIST`
+schema:1:49: found the type `b` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
   PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
                                                   ^
 

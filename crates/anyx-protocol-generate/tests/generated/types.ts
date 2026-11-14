@@ -7,6 +7,8 @@ export interface Reminder {
   every?: number;
   /** How many times to remind before giving up. */
   times: number;
+  /** When each person last saw it, by their name. */
+  seen: Record<string, Date>;
 }
 
 export type Schedule =
@@ -20,7 +22,7 @@ export type SnoozeForError =
   | { kind: "overdueSince"; since: Date };
 
 function reviveReminder(json: any): Reminder {
-  return { ...json, at: reviveInstant(json.at) };
+  return { ...json, at: reviveInstant(json.at), seen: ((json: Record<string, any>) => Object.fromEntries(Object.entries(json).map(([key, item]) => [key, reviveInstant(item)])))(json.seen) };
 }
 
 function reviveSchedule(json: any): Schedule {
@@ -151,6 +153,10 @@ export class Client {
 
   remind(reminder: Reminder): Promise<Outcome<Schedule, never>> {
     return this.call("remind _", [reminder], reviveSchedule);
+  }
+
+  count(reminders: Record<string, Reminder>): Promise<Outcome<Record<string, number>, never>> {
+    return this.call("count _", [reminders]);
   }
 
   snoozeFor(reminder: Reminder, duration: number): Promise<Outcome<Reminder[], SnoozeForError>> {

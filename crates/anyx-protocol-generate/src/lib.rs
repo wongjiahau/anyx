@@ -95,7 +95,7 @@ pub fn methods_in<'s>(schema: &'s Schema, scope: &[String]) -> Vec<(usize, &'s M
 
 /// Names the generated code declares or uses, which a schema's types would
 /// shadow.
-const RESERVED_TYPE_NAMES: [&str; 14] = [
+const RESERVED_TYPE_NAMES: [&str; 17] = [
     "Client",
     "Server",
     "Value",
@@ -110,6 +110,10 @@ const RESERVED_TYPE_NAMES: [&str; 14] = [
     "IntoValue",
     "CallError",
     "Transport",
+    // TypeScript's own types for `INSTANT` and `MAP`, and the client's.
+    "Date",
+    "Record",
+    "Reviver",
 ];
 
 /// Names the Rust and TypeScript clients declare next to the methods.

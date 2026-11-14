@@ -61,6 +61,9 @@ Every call runs, in order, and the response has one result per call.
   `90 seconds`, `1 hour 30 minutes`. The units are `days`, `hours`,
   `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
 - `LIST: T` is `[a, b, c]`.
+- `MAP: T` is keys, each a string, with their values in braces:
+  `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
+  words, put `:` after its key: `{{ \"hymn\": done }}`.
 - A RECORD is its fields in braces, each its name and value, in any order:
   `{{ path \"a\", revision 3 }}`. An `OPTIONAL` field may be left out; one
   with a `DEFAULT` then holds that value. When a value is words, put `:`
@@ -180,6 +183,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Instant => "\"2026-11-14T06:00:08.000Z\"".to_string(),
         Type::Duration => "(5 minutes)".to_string(),
         Type::List(_) => "[…]".to_string(),
+        Type::Map(_) => "{ … }".to_string(),
         Type::Named(index) => match schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
             TypeKind::Choice(_) => "(…)".to_string(),

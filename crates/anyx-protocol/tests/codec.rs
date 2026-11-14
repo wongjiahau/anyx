@@ -559,3 +559,103 @@ fn a_field_left_out_takes_its_default() {
         ]))])
     );
 }
+
+const COUNTS: &str = "PROTOCOL a VERSION 1,
+CHOICE mood { calm, wild },
+RECORD tally { counts: MAP: INTEGER, moods: OPTIONAL: MAP: mood DEFAULT {} },
+METHOD count (tally: tally) RETURNS (counts: MAP: INTEGER),
+METHOD wait (waits: MAP: DURATION) RETURNS (moods: MAP: LIST: mood),";
+
+fn map(entries: &[(&str, Value)]) -> Value {
+    Value::Map(
+        entries
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.clone()))
+            .collect(),
+    )
+}
+
+#[test]
+fn maps_read_back_as_written() {
+    let schema = schema(COUNTS);
+    let calls = vec![
+        Call {
+            method: 0,
+            arguments: vec![record(&[
+                (
+                    "counts",
+                    map(&[("hymn", Value::Integer(3)), ("ode", Value::Integer(1))]),
+                ),
+                (
+                    "moods",
+                    map(&[
+                        ("a \"b\"", variant("calm", vec![])),
+                        ("", variant("wild", vec![])),
+                    ]),
+                ),
+            ])],
+        },
+        Call {
+            method: 1,
+            arguments: vec![map(&[("tea", duration(300_000))])],
+        },
+        Call {
+            method: 1,
+            arguments: vec![map(&[])],
+        },
+    ];
+    let request = encode_request(&schema, &calls).unwrap();
+    assert_eq!(
+        request,
+        "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": wild, \"a \\\"b\\\"\": calm } },
+wait { \"tea\": 5 minutes },
+wait {},
+"
+    );
+    assert_eq!(decode_request(&schema, &request).unwrap(), calls);
+    let response = Response::Outcomes(vec![
+        Outcome::Value(map(&[("hymn", Value::Integer(3))])),
+        Outcome::Value(map(&[(
+            "tea",
+            Value::List(vec![variant("calm", vec![]), variant("wild", vec![])]),
+        )])),
+        Outcome::Value(map(&[])),
+    ]);
+    let written = encode_response(&schema, &calls, &response).unwrap();
+    assert_eq!(
+        decode_response(&schema, &[0, 1, 1], &written).unwrap(),
+        response
+    );
+}
+
+#[test]
+fn a_map_field_left_out_takes_its_default() {
+    let schema = schema(COUNTS);
+    let calls = decode_request(&schema, "count { counts { \"hymn\": 3 } }").unwrap();
+    assert_eq!(
+        calls[0].arguments,
+        [record(&[
+            ("counts", map(&[("hymn", Value::Integer(3))])),
+            ("moods", map(&[])),
+        ])]
+    );
+}
+
+#[test]
+fn mistakes_in_maps_say_how_to_write_them() {
+    let schema = schema(COUNTS);
+    let cases = [
+        "count { counts [1, 2] }",
+        "count { counts { hymn 3 } }",
+        "count { counts { \"hymn\" 3, \"hymn\" 4 } }",
+        "count { counts { \"hymn\" \"three\" } }",
+        "count { counts { \"hymn\" } }",
+        "wait { \"tea\" 5 minutes }",
+    ];
+    assert_snapshot(
+        "tests/snapshots/map_errors.txt",
+        &render(&cases, |source| {
+            decode_request(&schema, source).map(|calls| format!("{calls:?}"))
+        }),
+    );
+}

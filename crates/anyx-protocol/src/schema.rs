@@ -163,6 +163,9 @@ pub enum Type {
     /// with their units: `1 hour 30 minutes`.
     Duration,
     List(Box<Type>),
+    /// Text keys, each to a value of the type. On the wire, braces of keys
+    /// and values: `{ "hymn" 3, "ode" 1 }`.
+    Map(Box<Type>),
     /// The index of a type in [`Schema::types`].
     Named(usize),
 }
@@ -290,6 +293,7 @@ impl Schema {
             Type::Instant => "INSTANT".to_string(),
             Type::Duration => "DURATION".to_string(),
             Type::List(item) => format!("LIST: {}", self.type_name(item)),
+            Type::Map(value) => format!("MAP: {}", self.type_name(value)),
             Type::Named(index) => {
                 let definition = &self.types[*index];
                 scoped(&definition.scope, &definition.name)

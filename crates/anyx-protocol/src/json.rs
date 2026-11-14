@@ -289,6 +289,18 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                     .collect(),
             )
         }
+        Value::Map(entries) => {
+            let value_type = match r#type {
+                Type::Map(value) => value.as_ref(),
+                other => other,
+            };
+            Json::Object(
+                entries
+                    .iter()
+                    .map(|(key, value)| (key.clone(), to_json(schema, value_type, value)))
+                    .collect(),
+            )
+        }
         Value::Record(values) => {
             let fields = match r#type {
                 Type::Named(index) => match &schema.types[*index].kind {
@@ -396,6 +408,16 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 .collect::<Result<_, _>>()
                 .map(Value::List),
             _ => mismatch("an array"),
+        },
+        Type::Map(value_type) => match json {
+            Json::Object(object) => object
+                .iter()
+                .map(|(key, json)| {
+                    from_json(schema, value_type, json).map(|value| (key.clone(), value))
+                })
+                .collect::<Result<_, _>>()
+                .map(Value::Map),
+            _ => mismatch("an object"),
         },
         Type::Named(index) => {
             let definition = &schema.types[*index];

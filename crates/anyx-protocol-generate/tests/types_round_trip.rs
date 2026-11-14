@@ -4,6 +4,7 @@
 #[path = "generated/types.rs"]
 mod types;
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
@@ -34,6 +35,16 @@ impl Server for Reminders {
             Some(period) => Schedule::Every { period },
             None => Schedule::OnceAt { at: reminder.at },
         })
+    }
+
+    async fn count(
+        &self,
+        reminders: BTreeMap<String, Reminder>,
+    ) -> Result<BTreeMap<String, i64>, Self::Error> {
+        Ok(reminders
+            .into_iter()
+            .map(|(name, reminder)| (name, reminder.times + reminder.seen.len() as i64))
+            .collect())
     }
 
     async fn snooze_for(
@@ -73,6 +84,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         at: at(1_794_636_008_123),
         every: None,
         times: 3,
+        seen: BTreeMap::new(),
     };
     assert_eq!(
         run(client.remind(reminder.clone())),
@@ -113,6 +125,37 @@ fn a_field_left_out_reaches_the_server_with_its_default() {
     ));
     assert_eq!(
         response,
-        "snooze { note \"tea\", at \"2026-11-14T06:00:08.000Z\", times 3 } for (1 second) RETURNS [\n    { note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3 },\n]\n"
+        "snooze { note \"tea\", at \"2026-11-14T06:00:08.000Z\", times 3, seen {} } for (1 second) RETURNS [\n    { note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} },\n]\n"
     );
+}
+
+#[test]
+fn maps_reach_the_server_and_come_back() {
+    let client = Client::new(InProcess);
+    let reminder = Reminder {
+        note: "tea".into(),
+        at: at(1_794_636_008_123),
+        every: None,
+        times: 3,
+        seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
+    };
+    let reminders = BTreeMap::from([
+        ("tea".to_string(), reminder.clone()),
+        (
+            "".to_string(),
+            Reminder {
+                times: 1,
+                seen: BTreeMap::new(),
+                ..reminder
+            },
+        ),
+    ]);
+    assert_eq!(
+        run(client.count(reminders)),
+        Ok(BTreeMap::from([
+            ("".to_string(), 1),
+            ("tea".to_string(), 5)
+        ]))
+    );
+    assert_eq!(run(client.count(BTreeMap::new())), Ok(BTreeMap::new()));
 }

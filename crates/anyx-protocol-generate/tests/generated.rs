@@ -122,6 +122,10 @@ fn names_that_become_the_same_name_are_rejected() {
         "found the type `client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
+        error("PROTOCOL p VERSION 1, CHOICE record { a }"),
+        "found the type `record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
+    );
+    assert_eq!(
         error("PROTOCOL p VERSION 1, METHOD send (text: TEXT) RETURNS (sent: BOOLEAN)"),
         "found `send _`, which becomes the method `send`, like the client's `send`; expected names that stay distinct in the generated code, so rename one"
     );

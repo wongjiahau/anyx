@@ -8,11 +8,15 @@ RECORD reminder {
     every: OPTIONAL: DURATION,
     # How many times to remind before giving up.
     times: OPTIONAL: INTEGER DEFAULT 3,
+    # When each person last saw it, by their name.
+    seen: OPTIONAL: MAP: INSTANT DEFAULT {},
 },
 
 CHOICE schedule { never, once at (at: INSTANT), every (period: DURATION) },
 
 METHOD remind (reminder: reminder) RETURNS (schedule: schedule),
+
+METHOD count (reminders: MAP: reminder) RETURNS (times: MAP: INTEGER),
 
 METHOD snooze (reminder: reminder) for (duration: DURATION)
     RETURNS (reminders: LIST: reminder)

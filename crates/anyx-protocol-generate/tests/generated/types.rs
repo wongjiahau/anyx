@@ -18,11 +18,15 @@ RECORD reminder {
     every: OPTIONAL: DURATION,
     # How many times to remind before giving up.
     times: OPTIONAL: INTEGER DEFAULT 3,
+    # When each person last saw it, by their name.
+    seen: OPTIONAL: MAP: INSTANT DEFAULT {},
 },
 
 CHOICE schedule { never, once at (at: INSTANT), every (period: DURATION) },
 
 METHOD remind (reminder: reminder) RETURNS (schedule: schedule),
+
+METHOD count (reminders: MAP: reminder) RETURNS (times: MAP: INTEGER),
 
 METHOD snooze (reminder: reminder) for (duration: DURATION)
     RETURNS (reminders: LIST: reminder)
@@ -51,6 +55,8 @@ pub struct Reminder {
     pub every: Option<::std::time::Duration>,
     /// How many times to remind before giving up.
     pub times: i64,
+    /// When each person last saw it, by their name.
+    pub seen: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
 }
 
 impl IntoValue for Reminder {
@@ -61,6 +67,7 @@ impl IntoValue for Reminder {
                 .field("at", self.at)
                 .optional("every", self.every)
                 .field("times", self.times)
+                .field("seen", self.seen)
                 .build(),
         )
     }
@@ -77,6 +84,7 @@ impl FromValue for Reminder {
             at: fields.field("at")?,
             every: fields.optional("every")?,
             times: fields.field("times")?,
+            seen: fields.field("seen")?,
         })
     }
 }
@@ -169,6 +177,12 @@ pub trait Server {
     /// `remind _`, returning `schedule`.
     async fn remind(&self, reminder: Reminder) -> Result<Schedule, Self::Error>;
 
+    /// `count _`, returning `times`.
+    async fn count(
+        &self,
+        reminders: ::std::collections::BTreeMap<String, Reminder>,
+    ) -> Result<::std::collections::BTreeMap<String, i64>, Self::Error>;
+
     /// `snooze _ for _`, returning `reminders`.
     async fn snooze_for(
         &self,
@@ -206,7 +220,14 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            1 => anyx_protocol::server::result(
+            1 => anyx_protocol::server::value(
+                <S as Server>::count(
+                    implementation,
+                    anyx_protocol::server::argument(&mut arguments),
+                )
+                .await,
+            ),
+            2 => anyx_protocol::server::result(
                 <S as Server>::snooze_for(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
@@ -214,7 +235,7 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            2 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
+            3 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
             _ => unreachable!("the codec read a method of the schema"),
         };
         outcomes.push(outcome.unwrap_or_else(|error| {
@@ -245,6 +266,18 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 0, vec![reminder.into_value()]).await
     }
 
+    /// `count _`, returning `times`.
+    pub async fn count(
+        &self,
+        reminders: ::std::collections::BTreeMap<String, Reminder>,
+    ) -> Result<
+        ::std::collections::BTreeMap<String, i64>,
+        CallError<::std::convert::Infallible, T::Error>,
+    > {
+        anyx_protocol::client::call(&self.transport, schema(), 1, vec![reminders.into_value()])
+            .await
+    }
+
     /// `snooze _ for _`, returning `reminders`.
     pub async fn snooze_for(
         &self,
@@ -254,7 +287,7 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(
             &self.transport,
             schema(),
-            1,
+            2,
             vec![reminder.into_value(), duration.into_value()],
         )
         .await
@@ -262,6 +295,6 @@ impl<T: Transport> Client<T> {
 
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 2, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 3, vec![]).await
     }
 }

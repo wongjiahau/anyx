@@ -188,6 +188,14 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },",
         ),
         (
+            "a type holding itself through an optional field",
+            "PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },",
+        ),
+        (
+            "a map default that is not a map",
+            "PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: INTEGER DEFAULT [] },",
+        ),
+        (
             "a cycle through a choice",
             "PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },",
         ),
@@ -416,4 +424,60 @@ fn a_schema_with_defaults_is_formatted_as_written() {
 RECORD search { limit: OPTIONAL: INTEGER DEFAULT 50, tags: OPTIONAL: LIST: TEXT DEFAULT [] },
 ";
     assert_eq!(anyx_protocol::format_schema(source).unwrap(), source);
+}
+
+#[test]
+fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+        CHOICE shade { dark, light },
+        RECORD folder {
+            files: MAP: INTEGER,
+            folders: MAP: folder,
+            shades: OPTIONAL: MAP: shade DEFAULT { \"a\": dark },
+            names: OPTIONAL: MAP: LIST: TEXT DEFAULT { \"b\" [\"c\"] },
+            lights: OPTIONAL: MAP shade DEFAULT {},
+        },
+        METHOD sizes (sizes: MAP: NUMBER) RETURNS (folder: folder),",
+    );
+    let TypeKind::Record(fields) = &schema.types[1].kind else {
+        panic!("folder is a record")
+    };
+    let types: Vec<String> = fields
+        .iter()
+        .map(|field| schema.type_name(&field.r#type))
+        .collect();
+    assert_eq!(
+        types,
+        [
+            "MAP: INTEGER",
+            "MAP: folder",
+            "MAP: shade",
+            "MAP: LIST: TEXT",
+            "MAP: shade"
+        ]
+    );
+    let variant = |shape: &str| Value::Variant {
+        shape: shape.to_string(),
+        arguments: vec![],
+    };
+    assert_eq!(
+        fields[2].default,
+        Some(Value::Map([("a".to_string(), variant("dark"))].into()))
+    );
+    assert_eq!(
+        fields[3].default,
+        Some(Value::Map(
+            [(
+                "b".to_string(),
+                Value::List(vec![Value::Text("c".to_string())])
+            )]
+            .into()
+        ))
+    );
+    assert_eq!(fields[4].default, Some(Value::Map([].into())));
+    assert_eq!(
+        schema.methods[0].shape.parameters[0].r#type,
+        Type::Map(Box::new(Type::Number))
+    );
 }
