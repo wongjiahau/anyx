@@ -8,21 +8,29 @@ use crate::schema::{Method, Schema, Type, TypeKind, scoped};
 /// send a request, such as the URL and the header to send it with; when it
 /// is empty, as in the answer to `SCHEMA`, the guide leaves it out.
 pub fn guide(schema: &Schema, how_to_send: &str) -> String {
-    let widest = schema
-        .methods
+    // The schema's own examples show a call best; without any, a call is
+    // made up with a sample value in each slot.
+    let has_examples = |method: &&Method| !method.examples.is_empty();
+    let shown: Vec<&Method> = match schema.methods.iter().any(|method| has_examples(&method)) {
+        true => schema.methods.iter().filter(has_examples).collect(),
+        false => schema.methods.iter().collect(),
+    };
+    let widest = shown
         .iter()
+        .copied()
         .max_by_key(|method| method.shape.parameters.len());
-    let example = widest.map_or(String::new(), |method| sample_call(schema, method));
+    let example = widest.map_or(String::new(), |method| call_of(schema, method));
     let scoped_example = match widest.filter(|method| !method.scope.is_empty()) {
         Some(_) => "\nA method in a scope is called by its full name, as above: the scope's\npath, `/`, then the call.\n".to_string(),
-        None => schema
-            .methods
+        None => shown
             .iter()
+            .copied()
             .find(|method| !method.scope.is_empty())
+            .or_else(|| schema.methods.iter().find(|method| !method.scope.is_empty()))
             .map_or(String::new(), |method| {
                 format!(
                     "\nA method in a scope is called by its full name: the scope's path, `/`,\nthen the call:\n\n    {}\n",
-                    sample_call(schema, method)
+                    call_of(schema, method)
                 )
             }),
     };
@@ -97,7 +105,7 @@ A request that can't be read gets one result, and none of its calls run:
 
 In the schema, a `#` line before a definition says what it means. Lowercase
 words are names; all-caps words belong to the schema language. `ERRORS name
-[…]` is a group of errors that methods share by joining it with `+`.{scopes}
+[…]` is a group of errors that methods share by joining it with `+`.{examples}{scopes}
 
 {source}
 ",
@@ -113,6 +121,10 @@ words are names; all-caps words belong to the schema language. `ERRORS name
         },
         source = sources(schema),
         named_types = named_types(schema),
+        examples = match schema.methods.iter().any(|method| has_examples(&method)) {
+            true => EXAMPLES,
+            false => "",
+        },
     )
 }
 
@@ -152,6 +164,10 @@ type or an error group is private to its scope unless it is `PUBLIC`; another
 scope writes its full path, such as `common/diagnostic`. A response writes
 an error in its shape alone, without its scope: `ERROR missing`.";
 
+const EXAMPLES: &str = "
+`EXAMPLES […]` after a method lists calls of it, each followed by its
+result as a response writes it, with a `#` line saying what it shows.";
+
 /// The schema's files as written: a schema of one file as it is, else each
 /// file under a heading of its scope.
 fn sources(schema: &Schema) -> String {
@@ -180,6 +196,15 @@ fn sources(schema: &Schema) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// A call of `method` by its full name: its first example's, or else one
+/// with a sample value in each slot.
+fn call_of(schema: &Schema, method: &Method) -> String {
+    match method.examples.first() {
+        Some(example) => example.call.clone(),
+        None => sample_call(schema, method),
+    }
 }
 
 /// A call of `method` by its full name, with a sample value in each slot.

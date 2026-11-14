@@ -2,13 +2,16 @@
 //! in, keeps private types and errors to their scope, and reports what is
 //! defined twice.
 
-use anyx::{NamePart, Span, StringLiteral};
+use anyx::{NamePart, Node, NodeKind, Span, StringLiteral};
+
+use crate::codec;
+use crate::response::{self, Ending};
 
 use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
-    DecodedFile, Diagnostic, ErrorDefinition, Field, Method, Parameter, ROOT_FILE, Schema, Shape,
-    Shaped, SourceFile, Type, TypeDefinition, TypeKind, scope_file, scoped,
+    DecodedFile, Diagnostic, ErrorDefinition, Example, Field, Method, Parameter, ROOT_FILE, Schema,
+    Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, scope_file, scoped,
 };
 
 /// A type, error or alias, where it is declared.
@@ -125,6 +128,124 @@ fn errors(errors: &ast::Errors) -> Declaration<'_, ast::ErrorList> {
     }
 }
 
+/// A method's clauses, whichever of its forms it is written in.
+struct MethodParts<'b> {
+    doc: &'b Option<ast::Spanned<StringLiteral>>,
+    shape: &'b ast::Shape,
+    /// `None` for `RETURNS NOTHING`.
+    returns: Option<&'b ast::Returns>,
+    errors: Option<&'b ast::ErrorList>,
+    examples: Option<&'b ast::Examples>,
+}
+
+fn method_parts(method: &ast::Method) -> MethodParts<'_> {
+    match method {
+        ast::Method::ValueWithErrorsAndExamples {
+            doc,
+            shape,
+            returns,
+            errors,
+            examples,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: Some(returns),
+            errors: Some(errors),
+            examples: Some(examples),
+        },
+        ast::Method::ValueWithErrors {
+            doc,
+            shape,
+            returns,
+            errors,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: Some(returns),
+            errors: Some(errors),
+            examples: None,
+        },
+        ast::Method::ValueWithExamples {
+            doc,
+            shape,
+            returns,
+            examples,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: Some(returns),
+            errors: None,
+            examples: Some(examples),
+        },
+        ast::Method::Value {
+            doc,
+            shape,
+            returns,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: Some(returns),
+            errors: None,
+            examples: None,
+        },
+        ast::Method::NothingWithErrorsAndExamples {
+            doc,
+            shape,
+            errors,
+            examples,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: None,
+            errors: Some(errors),
+            examples: Some(examples),
+        },
+        ast::Method::NothingWithErrors {
+            doc, shape, errors, ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: None,
+            errors: Some(errors),
+            examples: None,
+        },
+        ast::Method::NothingWithExamples {
+            doc,
+            shape,
+            examples,
+            ..
+        } => MethodParts {
+            doc,
+            shape,
+            returns: None,
+            errors: None,
+            examples: Some(examples),
+        },
+        ast::Method::Nothing { doc, shape, .. } => MethodParts {
+            doc,
+            shape,
+            returns: None,
+            errors: None,
+            examples: None,
+        },
+    }
+}
+
+/// A method's `EXAMPLES`, checked once the schema they are checked against
+/// is read.
+struct PendingExamples<'a> {
+    /// The method's index in the schema.
+    method: usize,
+    file: usize,
+    scope: Vec<String>,
+    examples: &'a ast::Examples,
+}
+
 fn doc(doc: &Option<ast::Spanned<StringLiteral>>) -> Option<String> {
     doc.as_ref().map(|doc| doc.value.value.clone())
 }
@@ -150,6 +271,7 @@ pub(crate) struct Checker<'a> {
     /// Each error, in the order of the schema's errors.
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
+    examples: Vec<PendingExamples<'a>>,
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
@@ -287,15 +409,20 @@ impl<'a> Checker<'a> {
             for definition in &file.document.definition {
                 if let ast::Definition::Method(found) = definition {
                     let method = self.method(found, &mut errors_found);
+                    let parts = method_parts(found);
+                    if let Some(examples) = parts.examples {
+                        self.examples.push(PendingExamples {
+                            method: methods.len(),
+                            file: index,
+                            scope: file.scope.clone(),
+                            examples,
+                        });
+                    }
                     if methods.iter().any(|other| {
                         other.scope == method.scope && other.shape.text == method.shape.text
                     }) {
-                        let (ast::Method::ValueWithErrors { shape, .. }
-                        | ast::Method::Value { shape, .. }
-                        | ast::Method::NothingWithErrors { shape, .. }
-                        | ast::Method::Nothing { shape, .. }) = found;
                         self.error(
-                                shape.name.span,
+                                parts.shape.name.span,
                                 format!(
                                     "found a second method `{}`; expected each method shape once in a scope; rename or remove one of them",
                                     method.shape.text
@@ -329,6 +456,17 @@ impl<'a> Checker<'a> {
         self.check_recursion(&schema);
         if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
+        }
+        // Examples are read against the schema, defaults and all, which
+        // must be whole first: a mistake elsewhere would only show up again
+        // in them.
+        if self.diagnostics.is_empty() {
+            for pending in std::mem::take(&mut self.examples) {
+                let examples = self.within(pending.file, &pending.scope, |checker| {
+                    checker.examples(&schema, &schema.methods[pending.method], pending.examples)
+                });
+                schema.methods[pending.method].examples = examples;
+            }
         }
         schema
     }
@@ -373,6 +511,123 @@ impl<'a> Checker<'a> {
                 break;
             }
         }
+    }
+
+    /// Reads each example of `method`: its call must be a call of `method`,
+    /// and its outcome one that `method` may have.
+    fn examples(
+        &mut self,
+        schema: &Schema,
+        method: &Method,
+        examples: &ast::Examples,
+    ) -> Vec<Example> {
+        if examples.example.is_empty() {
+            self.error(
+                examples.span,
+                format!(
+                    "found `EXAMPLES` without an example; expected a call of `{}` and its outcome in the brackets, such as `{} RETURNS …`, or no `EXAMPLES` at all",
+                    method.full_name(),
+                    method.full_name()
+                ),
+            );
+        }
+        examples
+            .example
+            .iter()
+            .filter_map(|example| {
+                let (call, ending, span) = match example {
+                    ast::Example::ReturnsNothing { call, span } => {
+                        (call, Ending::ReturnsNothing, *span)
+                    }
+                    ast::Example::Returns { call, value, span } => {
+                        (call, Ending::Returns(value), *span)
+                    }
+                    ast::Example::Error { call, error, span } => {
+                        (call, Ending::Error(error), *span)
+                    }
+                };
+                let (doc, call) = self.without_doc(call);
+                let read = codec::decode_call_of(schema, method, &call).and_then(|arguments| {
+                    response::decode_ending(schema, method, ending, span)
+                        .map(|outcome| (arguments, outcome))
+                });
+                match read {
+                    Ok((arguments, outcome)) => Some(Example {
+                        doc,
+                        text: self
+                            .written(Span::new(call.span.start, span.end))
+                            .to_string(),
+                        call: self.written(call.span).to_string(),
+                        arguments,
+                        outcome,
+                    }),
+                    Err(mismatch) => {
+                        self.error(
+                            mismatch.span,
+                            format!(
+                                "in an example of `{}`: {}",
+                                method.full_name(),
+                                mismatch.message
+                            ),
+                        );
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// `node` without the `#` doc written before it, which lands in the
+    /// first slot of its leftmost call, and the doc: in `# Saving.` then
+    /// `files/write "a"`, the doc is the first argument of the call
+    /// `_ files`.
+    fn without_doc(&self, node: &Node) -> (Option<String>, Node) {
+        let unchanged = || (None, node.clone());
+        let NodeKind::Call(call) = &node.kind else {
+            return unchanged();
+        };
+        let (Some(NamePart::Slot), Some(first)) = (call.name.first(), call.arguments.first())
+        else {
+            return unchanged();
+        };
+        let (doc, first) = match &first.kind {
+            NodeKind::String(literal)
+                if self.sources[self.file][first.span.start..].starts_with('#')
+                    && call.name.len() > 1 =>
+            {
+                (literal.value.clone(), None)
+            }
+            NodeKind::Call(_) => match self.without_doc(first) {
+                (Some(doc), first) => (doc, Some(first)),
+                (None, _) => return unchanged(),
+            },
+            _ => return unchanged(),
+        };
+        let mut call = call.clone();
+        match first {
+            Some(first) => call.arguments[0] = first,
+            None => {
+                call.name.remove(0);
+                call.arguments.remove(0);
+            }
+        }
+        let start = call
+            .name
+            .iter()
+            .filter_map(|part| match part {
+                NamePart::Word { span, .. } => Some(span.start),
+                NamePart::Slot => None,
+            })
+            .chain(call.arguments.iter().map(|argument| argument.span.start))
+            .min()
+            .unwrap_or(node.span.start);
+        (
+            Some(doc),
+            Node {
+                kind: NodeKind::Call(call),
+                span: Span::new(start, node.span.end),
+            },
+        )
     }
 
     /// The root has the `PROTOCOL` header, alone when there are scope files;
@@ -914,25 +1169,13 @@ impl<'a> Checker<'a> {
     }
 
     fn method(&mut self, method: &'a ast::Method, found: &mut Vec<ErrorDefinition>) -> Method {
-        let (doc_string, shape, returns, list) = match method {
-            ast::Method::ValueWithErrors {
-                doc,
-                shape,
-                returns,
-                errors,
-                ..
-            } => (doc, shape, Some(returns), Some(errors)),
-            ast::Method::Value {
-                doc,
-                shape,
-                returns,
-                ..
-            } => (doc, shape, Some(returns), None),
-            ast::Method::NothingWithErrors {
-                doc, shape, errors, ..
-            } => (doc, shape, None, Some(errors)),
-            ast::Method::Nothing { doc, shape, .. } => (doc, shape, None, None),
-        };
+        let MethodParts {
+            doc: doc_string,
+            shape,
+            returns,
+            errors: list,
+            ..
+        } = method_parts(method);
         let checked_shape = self.shape(&shape.name, &shape.arguments, "a method");
         let terms = list.and_then(|list| self.error_terms(list));
         let mut listed: Vec<Listed> = Vec::new();
@@ -996,6 +1239,7 @@ impl<'a> Checker<'a> {
             shape: checked_shape,
             returns: returns.map(|returns| self.parameter(returns)),
             errors,
+            examples: Vec::new(),
         }
     }
 

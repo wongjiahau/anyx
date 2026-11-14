@@ -12,7 +12,9 @@
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
 use crate::check::Checker;
+use crate::codec::Outcome;
 use crate::grammar as ast;
+use crate::value::Value;
 
 /// The file of a schema's folder that holds its `PROTOCOL` header, and the
 /// name a schema of one file is read under.
@@ -137,6 +139,24 @@ pub struct Method {
     /// Indices into [`Schema::errors`], with aliases expanded, in the order
     /// written.
     pub errors: Vec<usize>,
+    /// Its `EXAMPLES`, in the order written, each checked against it.
+    pub examples: Vec<Example>,
+}
+
+/// An example of a method: a call of it and its outcome, written as a line
+/// of a response, `write "a" at revision 3 content "x" RETURNS 4`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Example {
+    pub doc: Option<String>,
+    /// The call and its outcome as written in the schema, without the doc.
+    pub text: String,
+    /// The call alone as written, which a request may send as it is.
+    pub call: String,
+    /// The call's arguments, one per parameter of the method.
+    pub arguments: Vec<Value>,
+    /// What the call returns, [`Outcome::Value`], or the error it returns,
+    /// [`Outcome::Error`].
+    pub outcome: Outcome,
 }
 
 impl Method {
@@ -195,6 +215,7 @@ pub fn introspection() -> &'static Method {
             r#type: Type::Text,
         }),
         errors: Vec::new(),
+        examples: Vec::new(),
     });
     &METHOD
 }

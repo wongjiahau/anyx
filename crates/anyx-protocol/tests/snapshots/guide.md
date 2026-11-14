@@ -7,7 +7,7 @@ Send a request as the body of `POST https://example.com/agent`.
 A request is a list of calls separated by commas. Each call is written in the
 shape of one of the methods below, with a value in each `(name: TYPE)` slot:
 
-    write "a" at revision 3 content "a"
+    write "Hymns/a.poentaro" at revision 3 content "title \"Ode\""
 
 Every call runs, in order, and the response has one result per call.
 
@@ -71,6 +71,8 @@ A request that can't be read gets one result, and none of its calls run:
 In the schema, a `#` line before a definition says what it means. Lowercase
 words are names; all-caps words belong to the schema language. `ERRORS name
 […]` is a group of errors that methods share by joining it with `+`.
+`EXAMPLES […]` after a method lists calls of it, each followed by its
+result as a response writes it, with a `#` line saying what it shows.
 
 # Poentaro turns `.poentaro` text into numbered musical notation (jianpu) and
 # keeps the account owner's scores in the cloud. When you save, anyone who
@@ -127,7 +129,13 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         conflict at revision (revision: INTEGER) content (content: TEXT),
-    ] + score errors + file errors,
+    ] + score errors + file errors
+    EXAMPLES [
+        # Saving over the revision you read.
+        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
+        # Someone saved first.
+        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\"",
+    ],
 
 # Makes a new file, and its folders if they don't exist.
 METHOD create (path: TEXT) content (content: TEXT)

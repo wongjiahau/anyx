@@ -30,6 +30,8 @@ The schema is one file, or a folder of scopes (see
   returns `Result<Result<T, MethodError>, Self::Error>`; the outer `Err` is
   the server's own failure, which the caller sees as `INTERNAL ERROR`. A
   method that `RETURNS NOTHING` returns `()`, and `void` in TypeScript.
+  Each method's doc comment, in Rust and TypeScript, ends with its
+  `EXAMPLES`, each after its `#` line, in an `anyx` code block.
 - `handle(server, request, on_internal_error)`, which reads a request, runs
   its calls and writes the response. It answers `SCHEMA` itself.
 - A `Client<T: Transport>` with a method per schema method, and `schema()`,

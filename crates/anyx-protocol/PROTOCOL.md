@@ -38,7 +38,13 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at `revision`.
         conflict at revision (revision: INTEGER) content (content: TEXT),
-    ] + file errors,
+    ] + file errors
+    EXAMPLES [
+        # Saving over the revision you read.
+        write "Hymns/a.poentaro" at revision 3 content "title" RETURNS 4,
+        # Someone saved first.
+        write "Hymns/a.poentaro" at revision 3 content "title" ERROR conflict at revision 4 content "hymn",
+    ],
 ```
 
 - **`PROTOCOL name VERSION n`** comes first. `n` is a whole number from 1.
@@ -73,6 +79,14 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
   nothing to return, such as `sign out`, says `RETURNS NOTHING`.
+- **`EXAMPLES [example, …]`**, last in a method, shows how it is used. Each
+  example is a call of the method and its outcome, written as a line of a
+  response writes it: the call by its full name, as a request writes it,
+  then `RETURNS` and a value, `RETURNS NOTHING`, or `ERROR` and one of the
+  method's errors. A `#` line before an example says what it shows. The
+  schema is checked against its examples, so that they can't go stale:
+  each call must be a call of its method, and each outcome one the method
+  may have. The guide and generated code show them.
 - **Errors** are written where they are used, in full: a shape like a
   variant's, with its `#` doc before it. A method's `ERRORS` has its own
   errors in brackets, then the groups it shares joined with `+`:
@@ -294,4 +308,6 @@ that returns nothing), `{ "kind": "error",
 `anyx_protocol::guide(schema, how_to_send)` writes the markdown an agent
 reads before its first request, and what `SCHEMA` answers (with
 `how_to_send` empty): these rules, briefly, then the schema with
-its `#` lines, a section per scope's file.
+its `#` lines, a section per scope's file. Its sample call is the first
+example of the widest method with `EXAMPLES`, or, in a schema without
+any, one it makes up with a sample value in each slot.

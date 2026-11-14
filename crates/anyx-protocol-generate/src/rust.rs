@@ -375,6 +375,10 @@ fn method_doc(method: &Method) -> String {
         None => writeln!(doc, "    /// `{}`, returning nothing.", method.full_name()),
     }
     .unwrap();
+    if let Some(examples) = crate::examples_doc(method) {
+        doc.push_str("    ///\n");
+        doc.push_str(&doc_comment(&Some(examples), "    ///"));
+    }
     doc
 }
 

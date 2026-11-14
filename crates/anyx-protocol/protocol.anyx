@@ -92,29 +92,74 @@ errors: ONE OF [
   private: ANYFIX CALL [doc: OPTIONAL: STRING, WORD "ERRORS", body: error list],
 ],
 
+## A method's clauses come in this order, and `ERRORS` and `EXAMPLES` may be
+## left out. The grammar language has no optional words, so each combination
+## is a form of its own.
 method: ONE OF [
+  value with errors and examples: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "METHOD", shape: shape,
+    WORD "RETURNS", returns: returns,
+    WORD "ERRORS", errors: error list,
+    WORD "EXAMPLES", examples: examples,
+  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
   value with errors: ANYFIX CALL [
     doc: OPTIONAL: STRING,
     WORD "METHOD", shape: shape,
     WORD "RETURNS", returns: returns,
     WORD "ERRORS", errors: error list,
   ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS"],
+  value with examples: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "METHOD", shape: shape,
+    WORD "RETURNS", returns: returns,
+    WORD "EXAMPLES", examples: examples,
+  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "EXAMPLES"],
   value: ANYFIX CALL [
     doc: OPTIONAL: STRING,
     WORD "METHOD", shape: shape,
     WORD "RETURNS", returns: returns,
   ] FORMAT [BREAK BEFORE WORD "RETURNS"],
+  nothing with errors and examples: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "METHOD", shape: shape,
+    WORD "RETURNS", WORD "NOTHING",
+    WORD "ERRORS", errors: error list,
+    WORD "EXAMPLES", examples: examples,
+  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
   nothing with errors: ANYFIX CALL [
     doc: OPTIONAL: STRING,
     WORD "METHOD", shape: shape,
     WORD "RETURNS", WORD "NOTHING",
     WORD "ERRORS", errors: error list,
   ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS"],
+  nothing with examples: ANYFIX CALL [
+    doc: OPTIONAL: STRING,
+    WORD "METHOD", shape: shape,
+    WORD "RETURNS", WORD "NOTHING",
+    WORD "EXAMPLES", examples: examples,
+  ] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "EXAMPLES"],
   nothing: ANYFIX CALL [
     doc: OPTIONAL: STRING,
     WORD "METHOD", shape: shape,
     WORD "RETURNS", WORD "NOTHING",
   ] FORMAT [BREAK BEFORE WORD "RETURNS"],
+],
+
+## Examples of a method, each a call of it and its outcome, written as a line
+## of a response writes them:
+## `EXAMPLES [write "a" at revision 3 content "x" RETURNS 4]`. An empty list
+## reads, so that the checker can say what is wrong with it.
+examples: SQUARE BRACKET [ZERO OR MORE: example],
+
+## The call is kept as a node for the schema checker to decode against the
+## method. A `#` doc before an example lands inside its call, as the call's
+## first argument, since `RETURNS` and `ERROR` split the run first; the
+## checker reads it out of there.
+example: ONE OF [
+  returns nothing: ANYFIX CALL [call: ANY NODE, WORD "RETURNS", WORD "NOTHING"],
+  returns: ANYFIX CALL [call: ANY NODE, WORD "RETURNS", value: ANY NODE],
+  error: ANYFIX CALL [call: ANY NODE, WORD "ERROR", error: ANY NODE],
 ],
 
 ## A method that has nothing to return, such as `sign out`, says

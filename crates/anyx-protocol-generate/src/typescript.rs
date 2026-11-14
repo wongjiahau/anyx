@@ -80,7 +80,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             let signature = signature(schema, &revivers, method);
             format!(
                 "{}  {}({}): {} {{\n    return this.call({:?}, [{}]{});\n  }}\n",
-                doc(&method.doc, "  "),
+                doc(&method_doc(method), "  "),
                 camel_case(&method.shape.text),
                 signature.parameters,
                 signature.returned,
@@ -181,7 +181,7 @@ fn scope_object(schema: &Schema, revivers: &Revivers, scope: &[String], indent: 
         let signature = signature(schema, revivers, method);
         format!(
             "{}{inner}{}: ({}): {} =>\n{inner}  this.call({:?}, [{}]{}),\n",
-            doc(&method.doc, &inner),
+            doc(&method_doc(method), &inner),
             camel_case(&method.shape.text),
             signature.parameters,
             signature.returned,
@@ -332,6 +332,14 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
             let definition = &schema.types[*index];
             scoped_pascal_case(&definition.scope, &definition.name)
         }
+    }
+}
+
+/// A method's doc, then its examples.
+fn method_doc(method: &Method) -> Option<String> {
+    match (&method.doc, crate::examples_doc(method)) {
+        (Some(doc), Some(examples)) => Some(format!("{doc}\n\n{examples}")),
+        (doc, examples) => examples.or_else(|| doc.clone()),
     }
 }
 

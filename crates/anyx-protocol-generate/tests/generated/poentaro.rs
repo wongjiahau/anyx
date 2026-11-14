@@ -63,7 +63,13 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         conflict at revision (revision: INTEGER) content (content: TEXT),
-    ] + score errors + file errors,
+    ] + score errors + file errors
+    EXAMPLES [
+        # Saving over the revision you read.
+        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
+        # Someone saved first.
+        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\"",
+    ],
 
 # Makes a new file, and its folders if they don't exist.
 METHOD create (path: TEXT) content (content: TEXT)
@@ -406,6 +412,15 @@ pub trait Server {
     /// Saves the score, if the file is still at `revision`.
     ///
     /// `write _ at revision _ content _`, returning `new revision`.
+    ///
+    /// Examples:
+    ///
+    /// ```anyx
+    /// # Saving over the revision you read.
+    /// write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4
+    /// # Someone saved first.
+    /// write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\""
+    /// ```
     async fn write_at_revision_content(
         &self,
         path: String,
@@ -525,6 +540,15 @@ impl<T: Transport> Client<T> {
     /// Saves the score, if the file is still at `revision`.
     ///
     /// `write _ at revision _ content _`, returning `new revision`.
+    ///
+    /// Examples:
+    ///
+    /// ```anyx
+    /// # Saving over the revision you read.
+    /// write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4
+    /// # Someone saved first.
+    /// write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\""
+    /// ```
     pub async fn write_at_revision_content(
         &self,
         path: String,

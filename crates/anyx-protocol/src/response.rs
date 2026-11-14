@@ -154,7 +154,7 @@ pub fn decode_response(
 }
 
 /// What follows the repeated call.
-enum Ending<'n> {
+pub(crate) enum Ending<'n> {
     Returns(&'n Node),
     ReturnsNothing,
     Error(&'n Node),
@@ -243,9 +243,28 @@ fn decode_outcome(schema: &Schema, method: &Method, node: &Node) -> Result<Outco
             ),
         });
     }
-    match split.ending {
+    decode_ending(schema, method, split.ending, node.span)
+}
+
+/// Reads what follows the call in an outcome of `method`; `span` is the
+/// outcome's.
+pub(crate) fn decode_ending(
+    schema: &Schema,
+    method: &Method,
+    ending: Ending,
+    span: Span,
+) -> Result<Outcome, Mismatch> {
+    let example = method.full_name().replace(" _", " …");
+    match ending {
         Ending::NotRun => Ok(Outcome::NotRun),
         Ending::InternalError => Ok(Outcome::InternalError),
+        Ending::Error(error) if method.errors.is_empty() => Err(Mismatch {
+            span: error.span,
+            message: format!(
+                "found an error after `ERROR`; expected `RETURNS` and what `{}` returns, since it has no errors",
+                method.full_name()
+            ),
+        }),
         Ending::Error(error) => {
             let errors = schema.errors_of(method);
             let shapes: Vec<&Shape> = errors.iter().map(|error| &error.shape).collect();
@@ -260,7 +279,7 @@ fn decode_outcome(schema: &Schema, method: &Method, node: &Node) -> Result<Outco
         Ending::ReturnsNothing => match &method.returns {
             None => Ok(Outcome::Value(Value::Nothing)),
             Some(returns) => Err(Mismatch {
-                span: node.span,
+                span,
                 message: format!(
                     "found `RETURNS NOTHING`; expected `RETURNS` and its `{}`, which `{}` returns",
                     returns.name,

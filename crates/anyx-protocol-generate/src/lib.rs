@@ -40,6 +40,31 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// The `EXAMPLES` of `method` for its doc comment: a heading, then a code
+/// block of each example as written, after its `#` doc. `None` without any.
+pub fn examples_doc(method: &Method) -> Option<String> {
+    if method.examples.is_empty() {
+        return None;
+    }
+    let examples: String = method
+        .examples
+        .iter()
+        .map(|example| {
+            let doc: String = example
+                .doc
+                .iter()
+                .flat_map(|doc| doc.lines())
+                .map(|line| match line.is_empty() {
+                    true => "#\n".to_string(),
+                    false => format!("# {line}\n"),
+                })
+                .collect();
+            format!("{doc}{}\n", example.text)
+        })
+        .collect();
+    Some(format!("Examples:\n\n```anyx\n{examples}```"))
+}
+
 /// The enum of a method's errors, in the module of its scope:
 /// `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 pub fn error_enum_name(method: &Method) -> String {

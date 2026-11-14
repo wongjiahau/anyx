@@ -186,7 +186,18 @@ export class Client {
     return this.call("read _", [path]);
   }
 
-  /** Saves the score, if the file is still at `revision`. */
+  /**
+   * Saves the score, if the file is still at `revision`.
+   *
+   * Examples:
+   *
+   * ```anyx
+   * # Saving over the revision you read.
+   * write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4
+   * # Someone saved first.
+   * write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\""
+   * ```
+   */
   writeAtRevisionContent(path: string, revision: number, content: string): Promise<Outcome<number, WriteAtRevisionContentError>> {
     return this.call("write _ at revision _ content _", [path, revision, content]);
   }

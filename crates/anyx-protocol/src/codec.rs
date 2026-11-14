@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
-use crate::schema::{Field, Schema, Shape, Type, TypeKind, scoped};
+use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind, scoped};
 use crate::value::Value;
 
 /// One call of a request: which method, and its arguments in order.
@@ -241,6 +241,38 @@ fn decode_call(schema: &Schema, node: &Node) -> Result<Call, Mismatch> {
         method: methods[index],
         arguments,
     })
+}
+
+/// Reads `node` as a call of `method` alone, by its full name, with every
+/// argument written in full, as an example of the method in its schema is.
+pub(crate) fn decode_call_of(
+    schema: &Schema,
+    method: &Method,
+    node: &Node,
+) -> Result<Vec<Value>, Mismatch> {
+    let ScopedCall { scope, call } = scoped_call(node).unwrap_or(ScopedCall {
+        scope: Vec::new(),
+        call: node,
+    });
+    let found = match &call.kind {
+        NodeKind::Call(found) => format!("a call of `{}`", scoped(&scope, &found.name_text())),
+        _ => describe(call),
+    };
+    let expected = method.full_name();
+    let mismatch = |found: String| Mismatch {
+        span: node.span,
+        message: format!(
+            "found {found}; expected a call of `{expected}`, the method the example is under, written by its full name as a request writes it"
+        ),
+    };
+    if scope != method.scope {
+        return Err(mismatch(found));
+    }
+    match decode_shape(schema, &[&method.shape], call) {
+        Ok((_, arguments)) => Ok(arguments),
+        Err(ShapeMismatch::NoShape(_)) => Err(mismatch(found)),
+        Err(ShapeMismatch::Argument(mismatch)) => Err(mismatch),
+    }
 }
 
 enum ShapeMismatch {

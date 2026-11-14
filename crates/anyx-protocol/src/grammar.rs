@@ -197,11 +197,26 @@ pub enum Errors {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Method {
+    ValueWithErrorsAndExamples {
+        doc: Option<Spanned<StringLiteral>>,
+        shape: Shape,
+        returns: Returns,
+        errors: ErrorList,
+        examples: Examples,
+        span: Span,
+    },
     ValueWithErrors {
         doc: Option<Spanned<StringLiteral>>,
         shape: Shape,
         returns: Returns,
         errors: ErrorList,
+        span: Span,
+    },
+    ValueWithExamples {
+        doc: Option<Spanned<StringLiteral>>,
+        shape: Shape,
+        returns: Returns,
+        examples: Examples,
         span: Span,
     },
     Value {
@@ -210,10 +225,23 @@ pub enum Method {
         returns: Returns,
         span: Span,
     },
+    NothingWithErrorsAndExamples {
+        doc: Option<Spanned<StringLiteral>>,
+        shape: Shape,
+        errors: ErrorList,
+        examples: Examples,
+        span: Span,
+    },
     NothingWithErrors {
         doc: Option<Spanned<StringLiteral>>,
         shape: Shape,
         errors: ErrorList,
+        span: Span,
+    },
+    NothingWithExamples {
+        doc: Option<Spanned<StringLiteral>>,
+        shape: Shape,
+        examples: Examples,
         span: Span,
     },
     Nothing {
@@ -221,6 +249,19 @@ pub enum Method {
         shape: Shape,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Examples {
+    pub example: Vec<Example>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Example {
+    ReturnsNothing { call: Node, span: Span },
+    Returns { call: Node, value: Node, span: Span },
+    Error { call: Node, error: Node, span: Span },
 }
 
 pub type Returns = Parameter;
@@ -375,10 +416,24 @@ impl Errors {
 impl Method {
     pub fn span(&self) -> Span {
         match self {
-            Method::ValueWithErrors { span, .. }
+            Method::ValueWithErrorsAndExamples { span, .. }
+            | Method::ValueWithErrors { span, .. }
+            | Method::ValueWithExamples { span, .. }
             | Method::Value { span, .. }
+            | Method::NothingWithErrorsAndExamples { span, .. }
             | Method::NothingWithErrors { span, .. }
+            | Method::NothingWithExamples { span, .. }
             | Method::Nothing { span, .. } => *span,
+        }
+    }
+}
+
+impl Example {
+    pub fn span(&self) -> Span {
+        match self {
+            Example::ReturnsNothing { span, .. }
+            | Example::Returns { span, .. }
+            | Example::Error { span, .. } => *span,
         }
     }
 }
@@ -613,6 +668,20 @@ impl support::Errors for Errors {
 impl support::Errors for Method {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
+            Method::ValueWithErrorsAndExamples {
+                doc,
+                shape,
+                returns,
+                errors,
+                examples,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(shape, found);
+                support::Errors::errors(returns, found);
+                support::Errors::errors(errors, found);
+                support::Errors::errors(examples, found);
+            }
             Method::ValueWithErrors {
                 doc,
                 shape,
@@ -625,6 +694,18 @@ impl support::Errors for Method {
                 support::Errors::errors(returns, found);
                 support::Errors::errors(errors, found);
             }
+            Method::ValueWithExamples {
+                doc,
+                shape,
+                returns,
+                examples,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(shape, found);
+                support::Errors::errors(returns, found);
+                support::Errors::errors(examples, found);
+            }
             Method::Value {
                 doc,
                 shape,
@@ -635,6 +716,18 @@ impl support::Errors for Method {
                 support::Errors::errors(shape, found);
                 support::Errors::errors(returns, found);
             }
+            Method::NothingWithErrorsAndExamples {
+                doc,
+                shape,
+                errors,
+                examples,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(shape, found);
+                support::Errors::errors(errors, found);
+                support::Errors::errors(examples, found);
+            }
             Method::NothingWithErrors {
                 doc, shape, errors, ..
             } => {
@@ -642,9 +735,43 @@ impl support::Errors for Method {
                 support::Errors::errors(shape, found);
                 support::Errors::errors(errors, found);
             }
+            Method::NothingWithExamples {
+                doc,
+                shape,
+                examples,
+                ..
+            } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(shape, found);
+                support::Errors::errors(examples, found);
+            }
             Method::Nothing { doc, shape, .. } => {
                 support::Errors::errors(doc, found);
                 support::Errors::errors(shape, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for Examples {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.example, found);
+    }
+}
+
+impl support::Errors for Example {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Example::ReturnsNothing { call, .. } => {
+                support::Errors::errors(call, found);
+            }
+            Example::Returns { call, value, .. } => {
+                support::Errors::errors(call, found);
+                support::Errors::errors(value, found);
+            }
+            Example::Error { call, error, .. } => {
+                support::Errors::errors(call, found);
+                support::Errors::errors(error, found);
             }
         }
     }
@@ -1169,10 +1296,30 @@ fn decode_errors_private(node: &Node) -> Result<Errors, DecodeError> {
 }
 
 pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
-    decode_method_value_with_errors(node)
+    decode_method_value_with_errors_and_examples(node)
+        .or_else(|error| error.or(decode_method_value_with_errors(node)))
+        .or_else(|error| error.or(decode_method_value_with_examples(node)))
         .or_else(|error| error.or(decode_method_value(node)))
+        .or_else(|error| error.or(decode_method_nothing_with_errors_and_examples(node)))
         .or_else(|error| error.or(decode_method_nothing_with_errors(node)))
+        .or_else(|error| error.or(decode_method_nothing_with_examples(node)))
         .or_else(|error| error.or(decode_method_nothing(node)))
+}
+
+fn decode_method_value_with_errors_and_examples(node: &Node) -> Result<Method, DecodeError> {
+    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _ ERRORS _ EXAMPLES _`")?;
+    let decoded = Method::ValueWithErrorsAndExamples {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
+        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
+        errors: parts
+            .word("ERRORS")?
+            .one(decode_error_list, "an error list")?,
+        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 fn decode_method_value_with_errors(node: &Node) -> Result<Method, DecodeError> {
@@ -1190,12 +1337,45 @@ fn decode_method_value_with_errors(node: &Node) -> Result<Method, DecodeError> {
     Ok(decoded)
 }
 
+fn decode_method_value_with_examples(node: &Node) -> Result<Method, DecodeError> {
+    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _ EXAMPLES _`")?;
+    let decoded = Method::ValueWithExamples {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
+        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
+        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
 fn decode_method_value(node: &Node) -> Result<Method, DecodeError> {
     let mut parts = support::call(node, "the call `_? METHOD _ RETURNS _`")?;
     let decoded = Method::Value {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
         shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
         returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_method_nothing_with_errors_and_examples(node: &Node) -> Result<Method, DecodeError> {
+    let mut parts = support::call(
+        node,
+        "the call `_? METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+    )?;
+    let decoded = Method::NothingWithErrorsAndExamples {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
+        errors: parts
+            .word("RETURNS")?
+            .word("NOTHING")?
+            .word("ERRORS")?
+            .one(decode_error_list, "an error list")?,
+        examples: parts.word("EXAMPLES")?.one(decode_examples, "examples")?,
         span: node.span,
     };
     parts.finish()?;
@@ -1218,6 +1398,22 @@ fn decode_method_nothing_with_errors(node: &Node) -> Result<Method, DecodeError>
     Ok(decoded)
 }
 
+fn decode_method_nothing_with_examples(node: &Node) -> Result<Method, DecodeError> {
+    let mut parts = support::call(node, "the call `_? METHOD _ RETURNS NOTHING EXAMPLES _`")?;
+    let decoded = Method::NothingWithExamples {
+        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
+        examples: parts
+            .word("RETURNS")?
+            .word("NOTHING")?
+            .word("EXAMPLES")?
+            .one(decode_examples, "examples")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
 fn decode_method_nothing(node: &Node) -> Result<Method, DecodeError> {
     let mut parts = support::call(node, "the call `_? METHOD _ RETURNS NOTHING`")?;
     let decoded = Method::Nothing {
@@ -1226,6 +1422,55 @@ fn decode_method_nothing(node: &Node) -> Result<Method, DecodeError> {
         span: node.span,
     };
     parts.word("RETURNS")?.word("NOTHING")?;
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_examples(node: &Node) -> Result<Examples, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let decoded = Examples {
+        example: elements.zero_or_more(decode_example),
+        span: node.span,
+    };
+    elements.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_example(node: &Node) -> Result<Example, DecodeError> {
+    decode_example_returns_nothing(node)
+        .or_else(|error| error.or(decode_example_returns(node)))
+        .or_else(|error| error.or(decode_example_error(node)))
+}
+
+fn decode_example_returns_nothing(node: &Node) -> Result<Example, DecodeError> {
+    let mut parts = support::call(node, "the call `_ RETURNS NOTHING`")?;
+    let decoded = Example::ReturnsNothing {
+        call: parts.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.word("RETURNS")?.word("NOTHING")?;
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_example_returns(node: &Node) -> Result<Example, DecodeError> {
+    let mut parts = support::call(node, "the call `_ RETURNS _`")?;
+    let decoded = Example::Returns {
+        call: parts.one(support::any_node, "a node")?,
+        value: parts.word("RETURNS")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_example_error(node: &Node) -> Result<Example, DecodeError> {
+    let mut parts = support::call(node, "the call `_ ERROR _`")?;
+    let decoded = Example::Error {
+        call: parts.one(support::any_node, "a node")?,
+        error: parts.word("ERROR")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
     parts.finish()?;
     Ok(decoded)
 }
@@ -1383,16 +1628,32 @@ pub const DOCUMENTATION: &[(&str, &str)] = &[];
 /// How [`format`] lays out calls, from the grammar's `FORMAT`s.
 pub const LAYOUT: &[support::LayoutRule] = &[
     support::LayoutRule {
+        words: &["METHOD", "RETURNS", "ERRORS", "EXAMPLES"],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
         words: &["METHOD", "RETURNS", "ERRORS"],
         break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS"],
         break_before: &["RETURNS"],
     },
     support::LayoutRule {
+        words: &["METHOD", "RETURNS", "NOTHING", "ERRORS", "EXAMPLES"],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
         words: &["METHOD", "RETURNS", "NOTHING", "ERRORS"],
         break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "NOTHING", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS", "NOTHING"],
