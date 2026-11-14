@@ -6,7 +6,7 @@ branch: master
 cost: { minutes: 30, tokens: 121102 }
 id: l-b5b3a5cc
 scope: repo
-status: active
+status: superseded
 src: agent
 touches:
   - crates/anyx-protocol-generate/README.md
@@ -20,6 +20,8 @@ touches:
   - crates/anyx-protocol/protocol.anyx
   - crates/anyx-protocol/src/check.rs
 ---
+
+> Superseded on 2026-11-15: `GENERIC` and `WITH` are being replaced by anyfix type shapes. See the learning "A generic type's name is an anyfix shape whose type parameters can sit anywhere". The checker rules and generated-code notes below still apply.
 
 ## Decided
 
