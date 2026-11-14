@@ -56,6 +56,18 @@ struct Definition {
     body: Body,
     /// The `#` line string above the rule, for its type.
     documentation: Option<String>,
+    /// For a group among a call's parts: how it is decoded, inline in the
+    /// call's decoder, which has no function for it.
+    sequenced: Option<Sequenced>,
+}
+
+/// How a group, or a choice between groups, is told apart in the sequence
+/// of a call.
+struct Sequenced {
+    /// What an error expects where the group starts: one for each choice.
+    expected: Vec<String>,
+    /// What an error calls the choice that is a slot, if there is one.
+    slot: Option<String>,
 }
 
 enum Body {
@@ -76,6 +88,10 @@ enum Body {
         kind: ContainerKind,
         steps: Vec<Step>,
     },
+    /// A group of a call's parts with at most one value, and no name on
+    /// it. It has no type of its own: it decodes to that value, or to its
+    /// span.
+    Group(Vec<Step>),
 }
 
 /// What a struct, or a variant with fields, is decoded from.
@@ -90,10 +106,13 @@ struct Record {
 enum Source {
     Document,
     Container(ContainerKind),
-    /// A call with fixed words. `expected` describes it in errors.
+    /// A call with fixed words. `expected` describes it in errors: once
+    /// for each way of writing it.
     Call {
-        expected: String,
+        expected: Vec<String>,
     },
+    /// A group of a call's parts, decoded in the call's sequence.
+    Group,
     /// Any call whose name passes `condition`, a closure. When not
     /// `decoded`, its arguments are kept as raw nodes.
     AnyCall {
@@ -306,6 +325,7 @@ impl Builder<'_> {
             is_rule,
             body: Body::Enum(Vec::new()),
             documentation: None,
+            sequenced: None,
         });
         self.definitions.len() - 1
     }
@@ -345,6 +365,53 @@ impl Builder<'_> {
             Pattern::SpecificCall(_) | Pattern::AnyCall { .. } => {
                 let definition = self.reserve(path, is_rule, span);
                 self.definitions[definition].body = Body::Struct(self.record(pattern, path));
+                Value::Definition(definition)
+            }
+            Pattern::Group(parts) => {
+                let definition = self.reserve(path, false, span);
+                let steps = self.steps(parts, path, "value");
+                let has_names = values(parts).any(|part| part.name.is_some());
+                self.definitions[definition].body = match values(parts).count() {
+                    0 | 1 if !has_names => Body::Group(steps),
+                    _ => Body::Struct(Record {
+                        source: Source::Group,
+                        steps,
+                        order: Order::Written,
+                    }),
+                };
+                self.definitions[definition].sequenced = Some(Sequenced {
+                    expected: self.grammar.describe(pattern),
+                    slot: None,
+                });
+                Value::Definition(definition)
+            }
+            Pattern::PartChoice(choices) => {
+                let definition = self.reserve(path, false, span);
+                let mut slot = None;
+                let variants = choices
+                    .iter()
+                    .map(|choice| {
+                        // Each choice is a group of one part: the variant
+                        // holds that part.
+                        let part = match &choice.pattern {
+                            Pattern::Group(parts) => &parts[0].pattern,
+                            pattern => pattern,
+                        };
+                        if !matches!(part, Pattern::Word(_)) {
+                            slot = Some(self.grammar.describe_one(part));
+                        }
+                        let choice = Choice {
+                            pattern: part.clone(),
+                            ..choice.clone()
+                        };
+                        self.variant(definition, &choice, path)
+                    })
+                    .collect();
+                self.definitions[definition].body = Body::Enum(variants);
+                self.definitions[definition].sequenced = Some(Sequenced {
+                    expected: self.grammar.describe(pattern),
+                    slot,
+                });
                 Value::Definition(definition)
             }
             Pattern::Word(text) => Value::Word(text.clone()),
@@ -430,7 +497,9 @@ impl Builder<'_> {
                 order: *order,
             },
             Pattern::SpecificCall(parts) => Record {
-                source: Source::Call { expected },
+                source: Source::Call {
+                    expected: self.grammar.describe(pattern),
+                },
                 steps: self.steps(parts, path, "item"),
                 order: Order::Written,
             },
@@ -553,7 +622,9 @@ impl Builder<'_> {
             Body::Alias(value) => self.held_types(value),
             Body::Struct(_) | Body::Enum(_) => vec![definition],
             Body::Variant { owner, .. } => vec![*owner],
-            Body::Transparent { steps, .. } => self.held_by_steps(steps).concat(),
+            Body::Transparent { steps, .. } | Body::Group(steps) => {
+                self.held_by_steps(steps).concat()
+            }
         }
     }
 
@@ -884,6 +955,10 @@ impl Printer<'_> {
                     Some(field) => spanned(&self.field_type(field)),
                     None => self.names.get("Span").to_string(),
                 },
+                Body::Group(steps) => match only_field(steps) {
+                    Some(field) => self.field_type(field),
+                    None => self.names.get("Span").to_string(),
+                },
                 _ => self.type_name(*definition),
             },
         }
@@ -928,6 +1003,10 @@ impl Printer<'_> {
             Body::Transparent { steps, .. } => match only_field(steps) {
                 Some(_) => Shape::Field,
                 None => Shape::Itself,
+            },
+            Body::Group(steps) => match only_field(steps) {
+                Some(field) if field.repetition == Repetition::One => self.shape(&field.value),
+                _ => Shape::Itself,
             },
         }
     }
@@ -1049,7 +1128,7 @@ impl Printer<'_> {
                 }
                 output.push_str("}\n\n");
             }
-            Body::Variant { .. } | Body::Transparent { .. } => {}
+            Body::Variant { .. } | Body::Transparent { .. } | Body::Group(_) => {}
         }
     }
 
@@ -1099,7 +1178,9 @@ impl Printer<'_> {
                 }
                 format!("match self {{\n{arms}}}\n")
             }
-            Body::Alias(_) | Body::Variant { .. } | Body::Transparent { .. } => return,
+            Body::Alias(_) | Body::Variant { .. } | Body::Transparent { .. } | Body::Group(_) => {
+                return;
+            }
         };
         // A type with nothing inside that holds errors never uses `found`.
         let found = match body.contains("found") {
@@ -1162,6 +1243,21 @@ impl Printer<'_> {
                 }
                 Step::Field(field) => field,
             };
+            if let Some(definition) = self.sequenced(&field.value) {
+                // The words before a group are matched first, on their own.
+                let before = match words.is_empty() {
+                    true => String::new(),
+                    false => format!("{variable}{words};\n"),
+                };
+                words.clear();
+                let group = self.group(variable, definition, field);
+                let expression = match before.is_empty() {
+                    true => group,
+                    false => format!("{{\n{before}{group}\n}}"),
+                };
+                fields.push((field.name.clone(), expression));
+                continue;
+            }
             let decoder = || self.decoder(&field.value, field.boxed);
             let expected = &field.expected;
             let matched = match (&field.value, field.repetition) {
@@ -1181,6 +1277,159 @@ impl Printer<'_> {
             false => format!("{variable}{words};\n"),
         };
         (fields, rest)
+    }
+
+    /// The definition of `value` if it is a group, decoded in the sequence.
+    fn sequenced(&self, value: &Value) -> Option<usize> {
+        let definition = self.value_definition(value)?;
+        self.definitions[definition].sequenced.as_ref()?;
+        Some(definition)
+    }
+
+    /// The expression decoding the group `definition` of `field`, in the
+    /// sequence `variable`: once its first word tells whether it is there,
+    /// or which choice it is, it is matched like the parts around it.
+    fn group(&self, variable: &str, definition: usize, field: &Field) -> String {
+        let Some(sequenced) = &self.definitions[definition].sequenced else {
+            unreachable!("a group is decoded in the sequence");
+        };
+        let expected = format!(
+            "&[{}]",
+            sequenced
+                .expected
+                .iter()
+                .map(|one| format!("{one:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let optional = field.repetition == Repetition::Optional;
+        let boxed = |value: String| match field.boxed {
+            true => format!("{}::new({value})", self.names.get("Box")),
+            false => value,
+        };
+        let steps = match &self.definitions[definition].body {
+            Body::Struct(record) => &record.steps,
+            Body::Group(steps) => steps,
+            Body::Enum(variants) => {
+                let type_name = self.type_name(definition);
+                let words: Vec<String> = variants
+                    .iter()
+                    .filter_map(|variant| match &variant.payload {
+                        Payload::Word(text) => Some(first_word(text)),
+                        _ => None,
+                    })
+                    .collect();
+                let has_slot = words.len() < variants.len();
+                let found = |value: String| match optional {
+                    true => format!("Some({})", boxed(value)),
+                    false => boxed(value),
+                };
+                let mut arms = Vec::new();
+                let mut last = None;
+                let mut index = 0;
+                for variant in variants {
+                    let constructor = format!("{type_name}::{}", variant.name);
+                    match &variant.payload {
+                        Payload::Word(text) => {
+                            let arm =
+                                found(format!("{constructor}({variable}.word_span({text:?})?)"));
+                            match !optional && !has_slot && index + 1 == words.len() {
+                                true => last = Some(format!("_ => {arm},")),
+                                false => arms.push(format!("Some({index}) => {arm},")),
+                            }
+                            index += 1;
+                        }
+                        payload => {
+                            let decoder = match payload {
+                                Payload::Value { value, boxed } => self.decoder(value, *boxed),
+                                Payload::Record(fields) => self.function_name(*fields),
+                                Payload::Word(_) => unreachable!("matched above"),
+                            };
+                            let map = match payload {
+                                Payload::Record(_) => String::new(),
+                                _ => format!(".map({constructor})"),
+                            };
+                            let slot = sequenced.slot.as_deref().unwrap_or("a value");
+                            last = Some(match optional {
+                                true => format!(
+                                    "Some(_) => {variable}.optional({decoder}){map}{},\nNone => None,",
+                                    match field.boxed {
+                                        true => format!(".map({}::new)", self.names.get("Box")),
+                                        false => String::new(),
+                                    }
+                                ),
+                                false => {
+                                    let value = match payload {
+                                        Payload::Record(_) => {
+                                            format!("{variable}.one({decoder}, {slot:?})?")
+                                        }
+                                        _ => format!(
+                                            "{constructor}({variable}.one({decoder}, {slot:?})?)"
+                                        ),
+                                    };
+                                    format!("_ => {},", boxed(value))
+                                }
+                            });
+                        }
+                    }
+                }
+                let last = last.unwrap_or_else(|| "_ => None,".to_string());
+                let words = words
+                    .iter()
+                    .map(|word| format!("{word:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return format!(
+                    "match {variable}.choose(&[{words}], {has_slot}, {optional}, {expected})? {{\n{}\n{last}\n}}",
+                    arms.join("\n")
+                );
+            }
+            _ => unreachable!("a group is a struct, an enum or a group"),
+        };
+        let (fields, rest) = self.sequence(variable, steps);
+        let value = match &self.definitions[definition].body {
+            Body::Struct(_) => {
+                let mut value = format!("let start = {variable}.position();\n");
+                for (name, expression) in &fields {
+                    writeln!(
+                        value,
+                        "let found_{} = {expression};",
+                        name.trim_start_matches("r#")
+                    )
+                    .unwrap();
+                }
+                value.push_str(&rest);
+                let assigned: String = fields
+                    .iter()
+                    .map(|(name, _)| format!("{name}: found_{}, ", name.trim_start_matches("r#")))
+                    .collect();
+                format!(
+                    "{{\n{value}{} {{ {assigned}span: {variable}.span_since(start) }}\n}}",
+                    self.type_name(definition)
+                )
+            }
+            _ => match (fields.first(), &steps[..]) {
+                (Some((_, expression)), _) if rest.is_empty() => expression.clone(),
+                (Some((_, expression)), _) => {
+                    format!("{{\nlet value = {expression};\n{rest}value\n}}")
+                }
+                (None, [Step::Word(text)]) => format!("{variable}.word_span({text:?})?"),
+                (None, _) => format!(
+                    "{{\nlet start = {variable}.position();\n{rest}{variable}.span_since(start)\n}}"
+                ),
+            },
+        };
+        let lead = match steps.first() {
+            Some(Step::Word(text)) => first_word(text),
+            _ => unreachable!("a group starts with a word"),
+        };
+        match optional {
+            true => format!(
+                "if {variable}.choose(&[{lead:?}], false, true, {expected})?.is_some() {{\nSome({})\n}} else {{\nNone\n}}",
+                boxed(value)
+            ),
+            false => boxed(value),
+        }
     }
 
     fn open_container(kind: ContainerKind) -> &'static str {
@@ -1206,13 +1455,22 @@ impl Printer<'_> {
                 "elements"
             }
             Source::Call { expected } => {
-                writeln!(
-                    output,
-                    "let mut parts = support::call(node, {expected:?})?;"
-                )
+                match &expected[..] {
+                    [only] => writeln!(output, "let mut parts = support::call(node, {only:?})?;"),
+                    _ => writeln!(
+                        output,
+                        "let mut parts = support::call_of(node, &[{}])?;",
+                        expected
+                            .iter()
+                            .map(|one| format!("{one:?}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                }
                 .unwrap();
                 "parts"
             }
+            Source::Group => unreachable!("a group is decoded in its call's sequence"),
             Source::AnyCall {
                 condition,
                 expected,
@@ -1318,6 +1576,9 @@ impl Printer<'_> {
     }
 
     fn print_decoder(&self, output: &mut String, definition: &Definition) {
+        if definition.sequenced.is_some() {
+            return;
+        }
         let index = self
             .definitions
             .iter()
@@ -1380,6 +1641,7 @@ impl Printer<'_> {
                     .unwrap();
                 }
             }
+            Body::Group(_) => unreachable!("a group is decoded in its call's sequence"),
             Body::Transparent { kind, steps } => {
                 writeln!(output, "{}", Self::open_container(*kind)).unwrap();
                 let (fields, rest) = self.sequence("elements", steps);
@@ -1402,6 +1664,11 @@ impl Printer<'_> {
 /// it apart from the decoder's own locals, such as `node`.
 fn found(field: &Field) -> String {
     format!("found_{}", field.name.trim_start_matches("r#"))
+}
+
+/// The first of the words in `text`, which tells a group apart.
+fn first_word(text: &str) -> String {
+    text.split(' ').next().unwrap_or(text).to_string()
 }
 
 /// The value of a transparent bracket, if it has one.

@@ -33,6 +33,7 @@ fn the_shipped_grammars_have_nothing_to_report() {
         "grammar.anyx",
         "tests/fixtures/json.anyx",
         "tests/fixtures/manifest.anyx",
+        "tests/fixtures/groups.anyx",
     ] {
         assert_eq!(report(&fixture(path)), "nothing to report\n", "{path}");
     }
@@ -209,6 +210,41 @@ fn words_in_one_string_must_be_words() {
             "ENTRY: value, value: ANYFIX CALL [WORDS \"\", x: NUMBER]",
             "ENTRY: value, value: ANYFIX CALL [WORDS \"max, size\", x: NUMBER]",
             "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORDS \"max size\", x: NUMBER], b: ANYFIX CALL [WORD \"max\", WORD \"size\", y: NUMBER]]",
+        ]),
+    );
+}
+
+#[test]
+fn groups_are_told_apart_by_their_first_word() {
+    let nine_groups: String = (b'A'..=b'I')
+        .map(|letter| {
+            let letter = letter as char;
+            format!(
+                "{}: OPTIONAL: WORD \"{letter}\", ",
+                letter.to_ascii_lowercase()
+            )
+        })
+        .collect();
+    let too_many = format!("ENTRY: value, value: ANYFIX CALL [WORD \"F\", {nine_groups}]");
+    assert_snapshot(
+        "check_groups.txt",
+        &reports(&[
+            "ENTRY: value, value: SQUARE BRACKET [x: OPTIONAL [WORD \"A\", STRING]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", OPTIONAL [WORD \"A\", STRING]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [STRING, WORD \"A\"]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [WORD \"A\", STRING], WORD \"A\", y: STRING]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL: WORD \"A\", y: OPTIONAL: WORD \"A\"]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: WORDS \"A B\"]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: STRING, c: NUMBER]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ZERO OR MORE: ONE OF [a: WORD \"A\", b: WORD \"B\"]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: OPTIONAL: STRING]]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [WORD \"A\", y: WORDS, z: STRING]]",
+            "ENTRY: value, value: ANYFIX CALL [x: WORDS, y: OPTIONAL: WORD \"A\", z: STRING]",
+            "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", y: STRING]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL: ONE OF [a: WORD \"A\", v: STRING], y: OPTIONAL: STRING]",
+            "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", WORD \"B\", y: STRING] FORMAT [BREAK BEFORE WORD \"B\", BREAK BEFORE WORD \"A\"]",
+            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [y: STRING]]",
+            &too_many,
         ]),
     );
 }

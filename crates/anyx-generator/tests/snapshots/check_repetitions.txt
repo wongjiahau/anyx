@@ -14,7 +14,10 @@ grammar:1:52: error: found a repetition where exactly one node is matched; expec
                                                      ^^^^^^^^^^^^^^^
 
 ## ENTRY: value, value: ANYFIX CALL [OPTIONAL: WORD "a", x: STRING]
-grammar:1:35: error: found a repeated `WORD` among the parts of a call; expected each name word exactly once; write one `ANYFIX CALL` per shape and join them with `ONE OF`
+grammar:1:22: error: found a way to write this call, `_`, of one slot and no word; expected a `WORD`, or at least two parts, in each way, since one item alone is never a call; make a word of the call always there
+  ENTRY: value, value: ANYFIX CALL [OPTIONAL: WORD "a", x: STRING]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+grammar:1:35: error: found `OPTIONAL: WORD "a"` with no name; expected `name: pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name: OPTIONAL: WORD "a"`
   ENTRY: value, value: ANYFIX CALL [OPTIONAL: WORD "a", x: STRING]
                                     ^^^^^^^^^^^^^^^^^^
 

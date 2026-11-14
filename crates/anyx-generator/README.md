@@ -206,6 +206,43 @@ Its conditions apply to that text, as with `NAME`. A `WORDS` must have a
 name, appear once, and have a slot, not a `WORD`, on each side, since it
 takes every name word in a row.
 
+#### Groups of parts
+
+In anyx, words side by side join into one call name, so `METHOD _ RETURNS
+NOTHING` and `METHOD _ RETURNS _` are two calls. Rather than write one
+`ANYFIX CALL` for each, a call's parts may hold groups:
+
+```text
+method: ANYFIX CALL [
+  doc: OPTIONAL: STRING,
+  WORD "METHOD", shape,
+  WORD "RETURNS", returns: ONE OF [value: type, nothing: WORD "NOTHING"],
+  errors: OPTIONAL [WORD "ERRORS", error list],
+  effect: OPTIONAL: ONE OF [read only: WORDS "READ ONLY", idempotent: WORD "IDEMPOTENT"],
+  public: OPTIONAL: WORD "PUBLIC",
+]
+```
+
+- `name: OPTIONAL [parts]` is parts that are there together or not at all.
+  It starts with a `WORD`, which tells whether it is there. `OPTIONAL [x]`
+  of one slot is `OPTIONAL: x`.
+- `name: OPTIONAL: WORD "PUBLIC"` (or `WORDS "READ ONLY"`) is a word that
+  may be missing.
+- `name: ONE OF [...]` with a `WORD` or `WORDS "..."` among its choices is
+  a choice between name words, and at most one slot. Each choice is one
+  part. `OPTIONAL: ONE OF [...]` may also be none of them.
+
+The decoder reads a call with groups from left to right, and takes a group
+whenever its first word is next. So the groups of a call, and the choices
+of a `ONE OF` between them, each start with a word of their own, and that
+word can't also come right after the group. `WORDS` can't be in a group or
+next to one. Errors still name every way of writing the call, as a `ONE OF`
+of calls would: ``expected the call `METHOD _ RETURNS _`, `METHOD _ RETURNS
+NOTHING` …``. A call may have at most 256 ways.
+
+`FORMAT` may break before a word in a group, and does so in each way of
+writing the call where the word is not first.
+
 Or conditions on any call:
 
 ```text
@@ -437,6 +474,10 @@ pub struct Array { pub value: Vec<Value>, pub span: Span }
 | `WORDS` | `Spanned<String>`: the words joined by spaces |
 | a named `WORD` | `Span` |
 | `ANYFIX CALL [parts]` | a struct of its fields |
+| `OPTIONAL [WORD "ERRORS", error list]`, a group with one unnamed value | `Option<T>` of that value |
+| `OPTIONAL [WORD "AT", most: NUMBER, …]`, a group with named values | `Option` of a struct of them, with its `span` |
+| `OPTIONAL: WORD "PUBLIC"`, a group of words alone | `Option<Span>` |
+| `ONE OF [...]` between groups of parts | an `enum`: a `Span` for a word, the value for the slot |
 | `ANYFIX CALL`, alone or with conditions | a struct of `name: CallName` and `arguments` |
 | a bracket that is a field or a choice, around one unnamed value | `Spanned<T>`: the value, and the bracket's span |
 
@@ -512,6 +553,10 @@ Errors, which stop the generation:
 - in `ANY ORDER`, an unnamed `WORD`, an `EACH`, or a field named `errors`
 - conditions nothing can meet, and a regex that does not compile
 - a rule that refers to itself with no call or bracket in between
+- a group of parts outside a call, without a name, or not starting with a
+  `WORD`; a group whose first word may also come right after it; two
+  choices between groups starting with the same word, or two that are
+  slots; `WORDS` in or next to a group; a call with more than 256 ways
 
 Warnings:
 
@@ -519,4 +564,5 @@ Warnings:
   match the same input, unless the later one is a fallback that matches
   everything the earlier one does
 - a rule that nothing reachable from `ENTRY` refers to
+- two ways of writing a call with groups that can match the same input
 - a `PARENTHESIS` around exactly one element, which only `(x,)` matches

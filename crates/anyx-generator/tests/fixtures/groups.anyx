@@ -1,0 +1,29 @@
+## Groups of a call's parts: an optional group of words and values, groups
+## inside groups, an optional word, a choice between a word and a value,
+## and optional choices between words or between a word and a value.
+
+ENTRY [ZERO OR MORE: declaration],
+
+declaration: ONE OF [method, record],
+
+## A method, which may be written in many ways.
+method: ANYFIX CALL [
+  doc: OPTIONAL: STRING,
+  WORD "METHOD", name: ANY WORD [NAME],
+  WORD "RETURNS", returns: ONE OF [value: type, nothing: WORD "NOTHING"],
+  ## What can go wrong.
+  errors: OPTIONAL [WORD "ERRORS", SQUARE BRACKET [ZERO OR MORE: type]],
+  limit: OPTIONAL [
+    WORD "AT", WORD "MOST", most: NUMBER [INTEGER, AT LEAST 1], WORD "TIMES",
+    per: OPTIONAL [WORD "PER", unit: ANY WORD [NAME]],
+  ],
+  effect: OPTIONAL: ONE OF [read only: WORDS "READ ONLY", idempotent: WORD "IDEMPOTENT"],
+] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS"],
+
+record: ANYFIX CALL [
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "RECORD", name: STRING,
+  WORD "SIZE", size: OPTIONAL: ONE OF [unbounded: WORD "UNBOUNDED", most: NUMBER [INTEGER]],
+],
+
+type: ANY WORD [NAME],

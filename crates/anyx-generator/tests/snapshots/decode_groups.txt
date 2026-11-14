@@ -1,0 +1,70 @@
+## METHOD find RETURNS
+input:1:20: found the end of the call; expected the word `NOTHING` or a type
+  METHOD find RETURNS
+                     ^
+
+## METHOD find RETURNS item ERRORS
+input:1:32: found the end of the call; expected `[...]`
+  METHOD find RETURNS item ERRORS
+                                 ^
+
+## METHOD find RETURNS item ERRORS [1]
+input:1:34: found the number `1`; expected a name or the closing `]`
+  METHOD find RETURNS item ERRORS [1]
+                                   ^
+
+## METHOD find RETURNS item AT MOST 0 TIMES
+input:1:34: found the number `0`; expected an integer of at least 1
+  METHOD find RETURNS item AT MOST 0 TIMES
+                                   ^
+
+## METHOD find RETURNS item AT MOST 3
+input:1:35: found the end of the call; expected the word `TIMES`
+  METHOD find RETURNS item AT MOST 3
+                                    ^
+
+## METHOD find RETURNS item AT MOST 3 TIMES PER
+input:1:45: found the end of the call; expected a name
+  METHOD find RETURNS item AT MOST 3 TIMES PER
+                                              ^
+
+## METHOD find RETURNS item READ
+input:1:30: found the end of the call; expected the word `READ ONLY`
+  METHOD find RETURNS item READ
+                               ^
+
+## METHOD find RETURNS item SOMETIMES
+input:1:26: found the word `SOMETIMES`; expected the word `ERRORS`, `AT`, `READ ONLY`, `IDEMPOTENT` or the end of the call
+  METHOD find RETURNS item SOMETIMES
+                           ^^^^^^^^^
+
+## METHOD find RETURNS item IDEMPOTENT ERRORS [x]
+input:1:37: found the word `ERRORS`; expected the end of the call
+  METHOD find RETURNS item IDEMPOTENT ERRORS [x]
+                                      ^^^^^^
+
+## METHOD find RETURNS item ERRORS [x] ERRORS [y]
+input:1:37: found the word `ERRORS`; expected the word `AT`, `READ ONLY`, `IDEMPOTENT` or the end of the call
+  METHOD find RETURNS item ERRORS [x] ERRORS [y]
+                                      ^^^^^^
+
+## PUBLIC METHOD find RETURNS item
+input:1:8: found the word `METHOD`; expected the word `RECORD`
+  PUBLIC METHOD find RETURNS item
+         ^^^^^^
+
+## RECORD "item" SIZE 1.5
+input:1:20: found the number `1.5`; expected an integer or the end of the call
+  RECORD "item" SIZE 1.5
+                     ^^^
+
+## RECORD "item" SIZE BIG
+input:1:20: found the word `BIG`; expected the word `UNBOUNDED`, an integer or the end of the call
+  RECORD "item" SIZE BIG
+                     ^^^
+
+## PRIVATE RECORD "item"
+input:1:1: found the word `PRIVATE`; expected the word `METHOD`, `PUBLIC` or `RECORD`
+  PRIVATE RECORD "item"
+  ^^^^^^^
+

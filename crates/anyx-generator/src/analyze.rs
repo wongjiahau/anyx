@@ -4,7 +4,10 @@
 use crate::diagnostic::Diagnostic;
 use anyx::Span;
 
-use crate::model::{ContainerKind, Element, Grammar, Order, Pattern, Repetition};
+use crate::model::{
+    ContainerKind, Element, Grammar, Order, Pattern, Repetition, call_picture, expansions,
+    has_groups,
+};
 use crate::overlap::Overlap;
 
 pub fn analyze(grammar: &Grammar) -> Vec<Diagnostic> {
@@ -35,7 +38,8 @@ fn children(pattern: &Pattern) -> Vec<&Pattern> {
     match pattern {
         Pattern::OneOf(choices) => choices.iter().map(|choice| &choice.pattern).collect(),
         Pattern::Container { elements, .. } => of(elements),
-        Pattern::SpecificCall(parts) => of(parts),
+        Pattern::SpecificCall(parts) | Pattern::Group(parts) => of(parts),
+        Pattern::PartChoice(choices) => choices.iter().map(|choice| &choice.pattern).collect(),
         Pattern::AnyCall { arguments, .. } => arguments
             .iter()
             .map(|arguments| &arguments.pattern)
@@ -225,10 +229,47 @@ fn competing_choices(pattern: &Pattern, overlap: &mut Overlap, diagnostics: &mut
             order: Order::Any,
             ..
         } => competing_elements(elements, overlap, diagnostics),
+        Pattern::SpecificCall(parts) if has_groups(parts) => {
+            competing_ways(parts, overlap, diagnostics)
+        }
         _ => {}
     }
     for child in children(pattern) {
         competing_choices(child, overlap, diagnostics);
+    }
+}
+
+/// Warns when two ways of writing a call with groups can match the same
+/// input, as the decoder would take the first of them.
+fn competing_ways(parts: &[Element], overlap: &mut Overlap, diagnostics: &mut Vec<Diagnostic>) {
+    let ways: Vec<Pattern> = expansions(parts)
+        .into_iter()
+        .map(Pattern::SpecificCall)
+        .collect();
+    for (index, later) in ways.iter().enumerate() {
+        let Some(earlier) = ways[..index]
+            .iter()
+            .find(|earlier| overlap.patterns(earlier, later))
+        else {
+            continue;
+        };
+        let picture = |way: &Pattern| match way {
+            Pattern::SpecificCall(parts) => call_picture(parts),
+            _ => String::new(),
+        };
+        let (Some(first), Some(last)) = (parts.first(), parts.last()) else {
+            return;
+        };
+        let span = Span::new(first.span.start, last.span.end);
+        diagnostics.push(Diagnostic::warning(
+            span,
+            format!(
+                "found two ways to write this call that can match the same input, `{}` and `{}`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group",
+                picture(earlier),
+                picture(later)
+            ),
+        ));
+        return;
     }
 }
 

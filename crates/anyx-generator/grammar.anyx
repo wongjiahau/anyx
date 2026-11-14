@@ -61,6 +61,12 @@ one of: ANYFIX CALL [
 repetition: ONE OF [
   zero or more: ANYFIX CALL [WORD "ZERO", WORD "OR", WORD "MORE", pattern],
   one or more: ANYFIX CALL [WORD "ONE", WORD "OR", WORD "MORE", pattern],
+  ## Among the parts of a call: parts that are there together or not at all,
+  ## `OPTIONAL [WORD "ERRORS", list: error list]`.
+  optional group: ANYFIX CALL [
+    WORD "OPTIONAL",
+    parts: SQUARE BRACKET [ONE OR MORE: element],
+  ],
   optional: ANYFIX CALL [WORD "OPTIONAL", pattern],
   each: ANYFIX CALL [WORD "EACH", pattern],
 ],

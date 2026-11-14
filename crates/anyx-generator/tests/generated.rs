@@ -8,6 +8,8 @@ mod common;
 mod config;
 #[path = "generated/corners.rs"]
 mod corners;
+#[path = "generated/groups.rs"]
+mod groups;
 #[path = "generated/json.rs"]
 mod json;
 #[path = "generated/language.rs"]
@@ -57,6 +59,12 @@ fn generating_twice_gives_the_same_text() {
     let first = anyx_generator::generate(&source).unwrap();
     let second = anyx_generator::generate(&source).unwrap();
     assert!(first == second);
+}
+
+#[test]
+fn groups_are_generated() {
+    let warnings = assert_generated("tests/fixtures/groups.anyx", "tests/generated/groups.rs");
+    assert_eq!(warnings, Vec::<String>::new());
 }
 
 #[test]
@@ -414,6 +422,82 @@ mod common_error {
     from!(json);
     from!(language);
     from!(corners);
+    from!(groups);
+}
+
+#[test]
+fn groups_decode_to_options_and_choices() {
+    let source = "\"Finds it.\" METHOD find RETURNS item ERRORS [missing] AT MOST 3 TIMES PER minute READ ONLY,\nMETHOD clear RETURNS NOTHING IDEMPOTENT,\nPUBLIC RECORD \"item\" SIZE UNBOUNDED,\nRECORD \"other\" SIZE 5,\nRECORD \"any\" SIZE";
+    let document = groups::decode_document(&parse(source)).unwrap();
+    let [
+        groups::Declaration::Method(find),
+        groups::Declaration::Method(clear),
+        groups::Declaration::Record(item),
+        groups::Declaration::Record(other),
+        groups::Declaration::Record(any),
+    ] = &document.declaration[..]
+    else {
+        panic!("{document:?}");
+    };
+    let text = |span: anyx::Span| &source[span.start..span.end];
+    assert!(find.doc.is_some());
+    let groups::MethodReturns::Value(returned) = &find.returns else {
+        panic!("{:?}", find.returns);
+    };
+    assert_eq!(returned.value, "item");
+    let errors: Vec<&str> = find
+        .errors
+        .as_ref()
+        .unwrap()
+        .value
+        .iter()
+        .map(|error| error.value.as_str())
+        .collect();
+    assert_eq!(errors, ["missing"]);
+    let limit = find.limit.as_ref().unwrap();
+    assert_eq!(limit.most.value, 3);
+    assert_eq!(text(limit.span), "AT MOST 3 TIMES PER minute");
+    assert_eq!(limit.per.as_ref().unwrap().unit.value, "minute");
+    assert!(
+        matches!(find.effect, Some(groups::MethodEffect::ReadOnly(span)) if text(span) == "READ ONLY")
+    );
+    assert!(
+        matches!(clear.returns, groups::MethodReturns::Nothing(span) if text(span) == "NOTHING")
+    );
+    assert_eq!((&clear.errors, &clear.limit), (&None, &None));
+    assert!(matches!(
+        clear.effect,
+        Some(groups::MethodEffect::Idempotent(_))
+    ));
+    assert_eq!(item.public.map(text), Some("PUBLIC"));
+    assert!(matches!(item.size, Some(groups::RecordSize::Unbounded(_))));
+    assert_eq!(other.public, None);
+    assert!(matches!(&other.size, Some(groups::RecordSize::Most(most)) if most.value == 5));
+    assert_eq!(any.size, None);
+}
+
+#[test]
+fn groups_say_what_is_wrong_where_it_is() {
+    let report = errors(
+        &[
+            "METHOD find RETURNS",
+            "METHOD find RETURNS item ERRORS",
+            "METHOD find RETURNS item ERRORS [1]",
+            "METHOD find RETURNS item AT MOST 0 TIMES",
+            "METHOD find RETURNS item AT MOST 3",
+            "METHOD find RETURNS item AT MOST 3 TIMES PER",
+            "METHOD find RETURNS item READ",
+            "METHOD find RETURNS item SOMETIMES",
+            "METHOD find RETURNS item IDEMPOTENT ERRORS [x]",
+            "METHOD find RETURNS item ERRORS [x] ERRORS [y]",
+            "PUBLIC METHOD find RETURNS item",
+            "RECORD \"item\" SIZE 1.5",
+            "RECORD \"item\" SIZE BIG",
+            "PRIVATE RECORD \"item\"",
+        ],
+        |nodes| Ok(groups::decode_document(nodes)?),
+    );
+    common::assert_snapshot("decode_groups.txt", &report);
 }
 
 #[test]

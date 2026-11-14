@@ -64,6 +64,16 @@ pub enum Pattern {
     Number(NumberPattern),
     /// Any one node, decoded to itself.
     AnyNode,
+    /// Among the parts of a call: parts that stand together, written
+    /// `OPTIONAL [WORD "ERRORS", list: error list]`. The element holding it
+    /// is `OPTIONAL`, or it is a choice of a [`Pattern::PartChoice`]. It
+    /// starts with a `WORD`, which tells whether it is there.
+    Group(Vec<Element>),
+    /// Among the parts of a call: one of several groups of parts, written
+    /// `ONE OF [value: returns, nothing: WORD "NOTHING"]`, told apart by
+    /// their first word. One of them may start with a slot instead. Each
+    /// choice's pattern is a [`Pattern::Group`].
+    PartChoice(Vec<Choice>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,6 +109,88 @@ impl Element {
             && self.repetition == Repetition::One
             && matches!(self.pattern, Pattern::Word(_))
     }
+}
+
+/// Whether a call's parts hold a group: an `OPTIONAL [...]`, an optional
+/// `WORD`, or a `ONE OF` between groups of parts.
+pub fn has_groups(parts: &[Element]) -> bool {
+    parts
+        .iter()
+        .any(|part| matches!(part.pattern, Pattern::Group(_) | Pattern::PartChoice(_)))
+}
+
+/// The most ways of writing one call that the generator lists.
+pub const MOST_EXPANSIONS: usize = 256;
+
+/// Every way of writing a call with groups, as the parts of a call without
+/// any: each optional group there and then not, and each choice of a
+/// `ONE OF` between groups in turn, the earlier groups varying slowest.
+/// A call without groups has one way, its parts. It stops at
+/// [`MOST_EXPANSIONS`].
+pub fn expansions(parts: &[Element]) -> Vec<Vec<Element>> {
+    let mut all: Vec<Vec<Element>> = vec![Vec::new()];
+    for part in parts {
+        let options: Vec<Vec<Element>> = match &part.pattern {
+            Pattern::Group(inner) => {
+                let mut options = expansions(inner);
+                if part.repetition == Repetition::Optional {
+                    options.push(Vec::new());
+                }
+                options
+            }
+            Pattern::PartChoice(choices) => {
+                let mut options: Vec<Vec<Element>> = choices
+                    .iter()
+                    .flat_map(|choice| match &choice.pattern {
+                        Pattern::Group(inner) => expansions(inner),
+                        _ => vec![Vec::new()],
+                    })
+                    .collect();
+                if part.repetition == Repetition::Optional {
+                    options.push(Vec::new());
+                }
+                options
+            }
+            _ => vec![vec![part.clone()]],
+        };
+        all = all
+            .iter()
+            .flat_map(|before| {
+                options.iter().map(move |option| {
+                    let mut way = before.clone();
+                    way.extend(option.iter().cloned());
+                    way
+                })
+            })
+            .take(MOST_EXPANSIONS)
+            .collect();
+    }
+    all
+}
+
+/// How many ways of writing a call with these parts there are, without
+/// listing them, so that a call with too many can be reported.
+pub fn expansion_count(parts: &[Element]) -> usize {
+    parts
+        .iter()
+        .map(|part| {
+            let absent = usize::from(part.repetition == Repetition::Optional);
+            match &part.pattern {
+                Pattern::Group(inner) => expansion_count(inner) + absent,
+                Pattern::PartChoice(choices) => {
+                    choices
+                        .iter()
+                        .map(|choice| match &choice.pattern {
+                            Pattern::Group(inner) => expansion_count(inner),
+                            _ => 1,
+                        })
+                        .fold(0usize, usize::saturating_add)
+                        + absent
+                }
+                _ => 1,
+            }
+        })
+        .fold(1usize, usize::saturating_mul)
 }
 
 /// The elements of a sequence that have a value.
@@ -363,7 +455,33 @@ impl Grammar {
                 return all;
             }
             Pattern::Container { kind, .. } => kind.picture().to_string(),
+            Pattern::SpecificCall(parts) if has_groups(parts) => {
+                let mut all = Vec::new();
+                for way in expansions(parts) {
+                    let one = format!("the call `{}`", call_picture(&way));
+                    if !all.contains(&one) {
+                        all.push(one);
+                    }
+                }
+                return all;
+            }
             Pattern::SpecificCall(parts) => format!("the call `{}`", call_picture(parts)),
+            // What may stand first: a group is missed at its first part.
+            Pattern::Group(parts) => match parts.first() {
+                Some(first) => return self.describe(&first.pattern),
+                None => "nothing".to_string(),
+            },
+            Pattern::PartChoice(choices) => {
+                let mut all = Vec::new();
+                for choice in choices {
+                    for one in self.describe(&choice.pattern) {
+                        if !all.contains(&one) {
+                            all.push(one);
+                        }
+                    }
+                }
+                return all;
+            }
             Pattern::AnyCall { name, .. } if name.is_empty() => "a call".to_string(),
             Pattern::AnyCall { name, .. } if name[..] == [StringCondition::NoSlots] => {
                 "a call with no arguments".to_string()
@@ -437,7 +555,15 @@ impl Grammar {
                         patterns.push(&choice.pattern);
                     }
                 }
-                Pattern::Container { elements, .. } | Pattern::SpecificCall(elements) => {
+                Pattern::PartChoice(choices) => {
+                    for choice in choices {
+                        add(&choice.pattern, &choice.documentation);
+                        patterns.push(&choice.pattern);
+                    }
+                }
+                Pattern::Container { elements, .. }
+                | Pattern::SpecificCall(elements)
+                | Pattern::Group(elements) => {
                     for element in elements {
                         add(&element.pattern, &element.documentation);
                         patterns.push(&element.pattern);
@@ -471,15 +597,18 @@ impl Grammar {
                     calls.extend(choices.iter().map(|choice| &choice.pattern))
                 }
                 Pattern::SpecificCall(parts) => {
-                    let words: Vec<&str> = parts
-                        .iter()
-                        .map_while(|part| match &part.pattern {
-                            Pattern::Word(text) => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
-                    if !words.is_empty() {
-                        described.push(format!("the word `{}`", words.join(" ")));
+                    for way in expansions(parts) {
+                        let words: Vec<&str> = way
+                            .iter()
+                            .map_while(|part| match &part.pattern {
+                                Pattern::Word(text) => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect();
+                        let missed = format!("the word `{}`", words.join(" "));
+                        if !words.is_empty() && !described.contains(&missed) {
+                            described.push(missed);
+                        }
                     }
                 }
                 _ => {}

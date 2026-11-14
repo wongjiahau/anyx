@@ -644,6 +644,18 @@ pub mod support {
         Ok(sequence)
     }
 
+    /// Like [`call`], for a call that may be written in several ways, each
+    /// of `expected`.
+    pub fn call_of<'a>(node: &'a Node, expected: &[&str]) -> Result<Sequence<'a>, DecodeError> {
+        let other_call = || DecodeError {
+            expected: expected.iter().map(|one| one.to_string()).collect(),
+            ..mismatch(node, "")
+        };
+        let mut sequence = call(node, "").map_err(|_| other_call())?;
+        sequence.other_call = Some(other_call());
+        Ok(sequence)
+    }
+
     /// Any call: its name, such as `list file in _`, and its arguments. The
     /// name's text must pass `condition`.
     pub fn any_call<'a>(
@@ -727,6 +739,69 @@ pub mod support {
                 Some(missed) => missed.merge(error),
                 None => error,
             }
+        }
+
+        /// Where the sequence has got to, for [`Sequence::span_since`].
+        pub fn position(&self) -> usize {
+            self.index
+        }
+
+        /// The span of the items matched since `start`.
+        pub fn span_since(&self, start: usize) -> Span {
+            let span = |item: &Item| match item {
+                Item::Word(_, span) => *span,
+                Item::Node(node) => node.span,
+            };
+            match (
+                self.items.get(start),
+                self.index
+                    .checked_sub(1)
+                    .and_then(|last| self.items.get(last)),
+            ) {
+                (Some(first), Some(last)) if start < self.index => span(first).to(span(last)),
+                _ => Span::empty(self.end.1.start),
+            }
+        }
+
+        /// Which of several groups of a call's parts stands next, told apart by
+        /// their first words: the index of the word next, or, if `slot` and a
+        /// node is next, `first_words.len()`. When none is, it is `None` if
+        /// the group is `optional`, and an error expecting each of `expected`
+        /// if not.
+        pub fn choose(
+            &mut self,
+            first_words: &[&str],
+            slot: bool,
+            optional: bool,
+            expected: &[&str],
+        ) -> Result<Option<usize>, DecodeError> {
+            let next = self.items.get(self.index);
+            let word = first_words.iter().position(|word| match next {
+                Some(Item::Word(text, _)) => text == word,
+                Some(Item::Node(node)) => is_word(node, word),
+                None => false,
+            });
+            match (word, next) {
+                (Some(index), _) => return Ok(Some(index)),
+                (None, Some(Item::Node(_))) if slot => return Ok(Some(first_words.len())),
+                _ => {}
+            }
+            let mut error = match next {
+                Some(Item::Word(text, span)) => {
+                    DecodeError::new(*span, format!("the word `{text}`"), "")
+                }
+                Some(Item::Node(node)) => mismatch(node, ""),
+                None => DecodeError::new(self.end.1, self.end.0, ""),
+            };
+            error.expected = expected.iter().map(|one| one.to_string()).collect();
+            if optional {
+                self.missed = Some(self.fail(error));
+                return Ok(None);
+            }
+            if self.other_call.is_some() {
+                return Err(self.is_other_call());
+            }
+            Err(self.fail(error))
         }
 
         /// Matches the word `text`: a name word of a call, or an element that is

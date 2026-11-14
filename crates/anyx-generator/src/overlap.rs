@@ -3,7 +3,8 @@
 //! tell, it says they can.
 
 use anyx::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use regex_automata::Anchored;
 use regex_automata::dfa::{Automaton, dense};
@@ -11,8 +12,8 @@ use regex_automata::util::primitives::StateID;
 use regex_automata::util::start;
 
 use crate::model::{
-    Element, Grammar, NumberPattern, NumberType, Order, Pattern, Repetition, StringCondition,
-    WordKind,
+    Choice, Element, Grammar, NumberPattern, NumberType, Order, Pattern, Repetition,
+    StringCondition, WordKind, expansions, has_groups,
 };
 
 pub struct Overlap<'a> {
@@ -22,6 +23,9 @@ pub struct Overlap<'a> {
     active: Vec<(usize, usize)>,
     /// The same for [`Overlap::covers`].
     covering: Vec<(usize, usize)>,
+    /// Each call with groups, by its address, as a `ONE OF` of the ways of
+    /// writing it. They are kept, so that their addresses stay the same.
+    expanded: HashMap<usize, Rc<Pattern>>,
 }
 
 /// One step of a sequence: a name word of a call, or a node.
@@ -49,7 +53,33 @@ impl<'a> Overlap<'a> {
             grammar,
             active: Vec::new(),
             covering: Vec::new(),
+            expanded: HashMap::new(),
         }
+    }
+
+    /// A call with groups as a `ONE OF` of the ways of writing it, which
+    /// are calls without any.
+    fn expanded(&mut self, pattern: &Pattern) -> Option<Rc<Pattern>> {
+        let Pattern::SpecificCall(parts) = pattern else {
+            return None;
+        };
+        if !has_groups(parts) {
+            return None;
+        }
+        let key = std::ptr::from_ref(pattern) as usize;
+        let expanded = self.expanded.entry(key).or_insert_with(|| {
+            let ways = expansions(parts)
+                .into_iter()
+                .map(|way| Choice {
+                    name: String::new(),
+                    pattern: Pattern::SpecificCall(way),
+                    span: Span::empty(0),
+                    documentation: None,
+                })
+                .collect();
+            Rc::new(Pattern::OneOf(ways))
+        });
+        Some(Rc::clone(expanded))
     }
 
     /// Whether `general` matches every node `specific` matches, which makes
@@ -71,6 +101,12 @@ impl<'a> Overlap<'a> {
     }
 
     fn compare_cover(&mut self, general: &Pattern, specific: &Pattern) -> bool {
+        if let Some(specific) = self.expanded(specific) {
+            return self.covers(general, &specific);
+        }
+        if let Some(general) = self.expanded(general) {
+            return self.covers(&general, specific);
+        }
         let grammar = self.grammar;
         if general == specific || *general == Pattern::AnyNode {
             return true;
@@ -159,6 +195,12 @@ impl<'a> Overlap<'a> {
     }
 
     fn compare(&mut self, a: &Pattern, b: &Pattern) -> bool {
+        if let Some(a) = self.expanded(a) {
+            return self.patterns(&a, b);
+        }
+        if let Some(b) = self.expanded(b) {
+            return self.patterns(a, &b);
+        }
         let grammar = self.grammar;
         match (a, b) {
             (Pattern::Reference(rule), other) => {
