@@ -102,6 +102,36 @@ can say.
   `locked for (duration: INTEGER) seconds` is `LockedForSeconds { duration }`.
   Two variants can't differ only by where their slots sit.
 
+### Naming methods
+
+Name a method after what the caller wants done, not after the record it
+changes. Most real operations change several things at once and keep a rule
+between them, such as a balance that never goes below zero. A client that
+does them with a create, a read, an update and a delete for each record has
+to keep that rule itself, and a request's calls run in order, not as one
+transaction, so a failure halfway leaves the change half made. Agents guess
+at such steps, which makes it worse.
+
+```anyx
+## Not this: the client works out what a transfer changes, and in what order.
+METHOD update account (id: TEXT) fields (fields: account fields)
+    RETURNS (account: account),
+
+## This: the server does the whole transfer, or none of it.
+METHOD transfer (amount: INTEGER) cents from (source: TEXT) to (target: TEXT)
+    RETURNS (transfer: TEXT)
+    ERRORS [short by (shortfall: INTEGER) cents],
+METHOD close (account: TEXT) RETURNS NOTHING
+    ERRORS [still holds (balance: INTEGER) cents],
+```
+
+- **The shape names the intent.** `transfer (amount) cents from (source) to
+  (target)` reads as what the caller means; `update account (id) fields
+  (fields)` says only what it touches.
+- **Reads may be uniform.** Listing and filtering look alike for every
+  record, so `list accounts (filter: account filter)` is fine. Keep writes
+  as intents.
+
 Schemas are formatted with `anyx_protocol::format_schema`, which puts a long
 `METHOD`'s `RETURNS` and `ERRORS` on lines of their own.
 
