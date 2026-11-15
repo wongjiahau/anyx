@@ -135,6 +135,13 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   with its own parameters as they are, `LIST tree of (item)`, and only
   through a `LIST` or a `MAP`. Another scope's type is written with its
   scope first, `common/page of (order)`.
+
+  Make a type generic only when it is used with different arguments, such
+  as `page of (order)` and `page of (file)`. If every use passes the same
+  types, a plain record says the same thing more simply, and its generated
+  name reads better: `RECORD trashed file { file: file summary, trashed at: INSTANT }`,
+  not `RECORD (item: TYPE) in trash since (when: TYPE)` used only as
+  `(file summary) in trash since (INSTANT)`.
 - **`METHOD shape RETURNS (name: TYPE) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
