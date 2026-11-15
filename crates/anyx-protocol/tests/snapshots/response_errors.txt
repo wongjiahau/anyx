@@ -5,7 +5,7 @@ ERROR gone
 => 1:7: found the call `gone`; expected an error of `read _`: `trashed`, `missing`
 
 RETURNS missing
-=> 1:9: found the call `missing`; expected the record `file`, as in `{ path …, revision …, content … }`; an error is written after `ERROR`, as in `ERROR missing`
+=> 1:9: found the call `missing`; expected the record `File`, as in `{ path …, revision …, content … }`; an error is written after `ERROR`, as in `ERROR missing`
 
 NOT RUN, NOT RUN
 => 1:10: found 2 results; expected 1 result, one per call, in the order of the calls

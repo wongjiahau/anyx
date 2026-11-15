@@ -16,7 +16,7 @@ export type Or<ValueParameter, Problem> =
   | { kind: "done"; value: ValueParameter }
   | { kind: "failed"; problem: Problem };
 
-/** A value and when it was taken, which holds an `INSTANT` whatever the value. */
+/** A value and when it was taken, which holds an `Instant` whatever the value. */
 export interface Dated<Item> {
   item: Item;
   at: Date;
@@ -43,7 +43,7 @@ export type Decline =
   | { kind: "insufficientFunds" }
   | { kind: "cardExpired" };
 
-export type Payments = PageOf<Payment> & { readonly __brand: "payments" };
+export type Payments = PageOf<Payment> & { readonly __brand: "Payments" };
 
 /** Makes a `Payments` of a value, which the schema writes as its own. */
 export function Payments(value: PageOf<Payment>): Payments {
@@ -116,7 +116,7 @@ export interface Codec {
   decodeResponse(methods: string, response: string): string;
 }
 
-/** Turns the JSON of a type that holds an `INSTANT` into its value, with a
+/** Turns the JSON of a type that holds an `Instant` into its value, with a
  * `Date` for each instant. */
 type Reviver = (json: any) => unknown;
 

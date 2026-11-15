@@ -109,7 +109,7 @@ fn the_server_runs_the_overload_a_call_resolves_to() {
         ))
     };
     assert_eq!(response("tag [\"a\", \"b\"]"), "RETURNS 2\n");
-    assert_eq!(response("tag ([\"a\"] AS: LIST: file id)"), "RETURNS 101\n");
+    assert_eq!(response("tag ([\"a\"] AS: LIST File Id)"), "RETURNS 101\n");
     assert_eq!(response("scale 1.5"), "RETURNS 3.0\n");
     assert_eq!(response("scale 2"), "RETURNS 6\n");
     assert!(
@@ -132,8 +132,8 @@ fn the_client_annotates_what_its_arguments_leave_open() {
     assert_eq!(
         *client.transport.requests.borrow(),
         [
-            "tag ([] AS: LIST: TEXT)\n",
-            "tag ([\"a\"] AS: LIST file id)\n",
+            "tag ([] AS: LIST Text)\n",
+            "tag ([\"a\"] AS: LIST File Id)\n",
             "scale 3.0\n",
             "scale 3\n",
             "paint (dark)\n",
@@ -157,6 +157,6 @@ fn each_overload_has_its_effects() {
     assert!(scale.read_only && scale.may_retry());
     assert_eq!(
         overloaded::HIDE_WITH_FILE_ID_EFFECTS.undone_by,
-        Some("show (id: file id)")
+        Some("show (id: File Id)")
     );
 }

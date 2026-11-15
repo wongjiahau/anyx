@@ -32,8 +32,8 @@ safe to send without asking:
   and ask the person you work for when unsure.
 
 `UNDONE BY` after a method's results is the call that undoes it, with the
-method's own arguments in its slots: `UNDONE BY move (new path: TEXT) to
-(path: TEXT)` means that after `move "a" to "b"`, the call `move "b" to
+method's own arguments in its slots: `UNDONE BY move (new path: Text) to
+(path: Text)` means that after `move "a" to "b"`, the call `move "b" to
 "a"` takes it back. The state afterwards is equivalent, not always exactly
 the same. A method without `UNDONE BY` can't be undone by a call: its
 effect may be permanent, or it may have shown something to people outside
@@ -41,7 +41,7 @@ the account, such as by sending or sharing it.
 
 ## Values
 
-- TEXT is a string: `"some text"`. Escape `\"` and `\\`, and write a line
+- `Text`: A string: `"some text"`. Escape `\"` and `\\`, and write a line
   break as `\n`. For text with many lines, use a raw string: three quotes,
   the lines, then three quotes on a line of their own. The closing quotes'
   indentation is removed from every line. A raw string has no escapes.
@@ -51,16 +51,20 @@ the account, such as by sending or sharing it.
           second line
           """
 
-- BYTES is base64 in a string: `"TVRoZA=="`.
-- INTEGER is a whole number, written without a point: `3`, `-1`.
-- FLOAT is a 64-bit float, written with a point or an exponent: `1.5`,
-  `3.0`, `1e3`. `3` is an INTEGER, so it doesn't fit a FLOAT; write `3.0`.
-- BOOLEAN is `true` or `false`.
-- INSTANT is a point in time, in UTC to the millisecond, as a string:
+- `Bytes`: Raw bytes, such as a file: their base64 in a string,
+  `"TVRoZA=="`.
+- `Integer`: A whole number of 64 bits, written without a point: `3`, `-1`.
+- `Float`: A finite 64-bit float, written with a point or an exponent:
+  `1.5`, `3.0`, `1e3`. `3` is an `Integer`, so it doesn't fit a `Float`;
+  write `3.0`.
+- `Boolean`: `true` or `false`.
+- `Instant`: A point in time, in UTC to the millisecond, as a string:
   `"2026-11-14T06:00:08.000Z"`.
-- DURATION is whole numbers each followed by its unit, the largest first:
-  `90 seconds`, `1 hour 30 minutes`. The units are `days`, `hours`,
-  `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
+- `Duration`: A length of time, to the millisecond: whole numbers each
+  followed by its unit, the largest first, as in `90 seconds` or
+  `1 hour 30 minutes`. A unit is in the plural for any count but 1:
+  `1 day 1 second`. The units are `day`, `hour`, `minute`, `second` and
+  `millisecond`.
 - `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
@@ -76,14 +80,14 @@ the account, such as by sending or sharing it.
   `wait (5 minutes)`.
 
 An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST: TEXT)`,
-`open ("a" AS: file id)`. A value shows its type when it is a number, a
-string (TEXT), `true` or `false`, a duration, a list or map whose items
+its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
+`open ("a" AS: File Id)`. A value shows its type when it is a number, a
+string (`Text`), `true` or `false`, a duration, a list or map whose items
 show one type, or a record or variant that only one type of the schema
-fits. `[]`, `{}`, and a value of a named TYPE, a generic type, BYTES or
-INSTANT never do. Without its annotation, the request is invalid. Only a
-whole argument is annotated; a value inside it is read by the type around
-it. An annotation states the type; it doesn't convert the value.
+fits. `[]`, `{}`, and a value of a named TYPE, a generic type, `Bytes`
+or `Instant` never do. Without its annotation, the request is invalid.
+Only a whole argument is annotated; a value inside it is read by the type
+around it. An annotation states the type; it doesn't convert the value.
 
 ## Responses
 
@@ -112,13 +116,14 @@ A request that can't be read gets one result, and none of its calls run:
 
 ## The schema
 
-In the schema, a `#` line before a definition says what it means. Lowercase
-words are names; all-caps words belong to the schema language. `ERRORS name
-[…]` is a group of errors that methods share by joining it with `+`.
+In the schema, a `#` line before a definition says what it means. Types
+are named in Title Case, such as `File Summary`; other names are lowercase
+words; all-caps words belong to the schema language. `ERRORS name […]`
+is a group of errors that methods share by joining it with `+`.
 
 The schema is a file per scope, each shown below under its full name. A
 type or an error group is private to its scope unless it is `PUBLIC`; another
-scope writes its full path, such as `common/diagnostic`. A response writes
+scope writes its full path, such as `common/Diagnostic`. A response writes
 an error in its shape alone, without its scope: `ERROR missing`.
 
 ### `protocol.anyx`
@@ -129,7 +134,7 @@ PROTOCOL notes VERSION 1,
 ### `common` (`common.anyx`)
 
 # One problem in a note.
-PUBLIC RECORD diagnostic { line: INTEGER, message: TEXT },
+PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
 PUBLIC ERRORS common errors [
     # No note has this path.
@@ -140,27 +145,27 @@ PUBLIC ERRORS common errors [
 
 Methods: `files/list`, `files/read _`, `files/write _ at revision _ content _`, `files/trash _`, `files/empty trash`.
 
-RECORD file { path: TEXT, revision: INTEGER, content: TEXT },
+RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
     trashed,
 ] + common/common errors,
 
-READ ONLY METHOD list RETURNS (paths: LIST: TEXT),
+READ ONLY METHOD list RETURNS (paths: LIST Text),
 
-READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (warnings: LIST common/diagnostic)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (warnings: LIST common/Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/diagnostic),
+        rejected (diagnostics: LIST common/Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,
@@ -170,12 +175,12 @@ METHOD empty trash RETURNS NOTHING,
 Methods: `files/export/html _`, `files/export/pdf _`.
 
 # A page of a note, with what is wrong on it.
-RECORD page { html: TEXT, problem: OPTIONAL common/diagnostic },
+RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
 
-METHOD html (path: TEXT) RETURNS (pages: LIST page) ERRORS files/file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
 
-METHOD pdf (path: TEXT) RETURNS (pdf: BYTES)
+METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/diagnostic),
+        unreadable (diagnostics: LIST common/Diagnostic),
     ] + files/file errors,

@@ -8,19 +8,19 @@ use common::{assert_snapshot, diagnostics, schema};
 
 const DOCUMENTS: &str = "PROTOCOL documents VERSION 1,
 
-READ ONLY METHOD read (path: TEXT) RETURNS (content: TEXT) ERRORS [missing],
+READ ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [missing],
 
 # Moves the document to the archive. Archiving it again changes nothing.
-IDEMPOTENT METHOD archive (path: TEXT) RETURNS NOTHING UNDONE BY unarchive (path: TEXT),
+IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING UNDONE BY unarchive (path: Text),
 
-IDEMPOTENT METHOD unarchive (path: TEXT) RETURNS NOTHING,
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
 
-METHOD move (path: TEXT) to (new path: TEXT) RETURNS NOTHING
+METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
     ERRORS [taken]
-    UNDONE BY move (new path: TEXT) to (path: TEXT)
+    UNDONE BY move (new path: Text) to (path: Text)
     EXAMPLES [move \"a\" to \"b\" RETURNS NOTHING],
 
-METHOD send (path: TEXT) to (email: TEXT) RETURNS NOTHING,
+METHOD send (path: Text) to (email: Text) RETURNS NOTHING,
 ";
 
 #[test]
@@ -56,7 +56,7 @@ fn markers_are_read_into_each_method() {
         Some(Undo {
             method: 2,
             arguments: vec![0],
-            text: "unarchive (path: TEXT)".to_string(),
+            text: "unarchive (path: Text)".to_string(),
         })
     );
     // The arguments are swapped: `new path` fills the first slot of the
@@ -66,7 +66,7 @@ fn markers_are_read_into_each_method() {
         Some(Undo {
             method: 3,
             arguments: vec![1, 0],
-            text: "move (new path: TEXT) to (path: TEXT)".to_string(),
+            text: "move (new path: Text) to (path: Text)".to_string(),
         })
     );
     assert_eq!(schema.methods[4].undone_by, None);
@@ -84,8 +84,8 @@ fn an_undo_may_name_a_method_declared_after_it_in_its_scope() {
         ("protocol.anyx", "PROTOCOL documents VERSION 1,"),
         (
             "trash.anyx",
-            "IDEMPOTENT METHOD trash (id: INTEGER) RETURNS NOTHING UNDONE BY restore (id: INTEGER),
-METHOD restore (id: INTEGER) RETURNS NOTHING,",
+            "IDEMPOTENT METHOD trash (id: Integer) RETURNS NOTHING UNDONE BY restore (id: Integer),
+METHOD restore (id: Integer) RETURNS NOTHING,",
         ),
     ];
     let schema = common::parse_files(&files).unwrap();
@@ -97,21 +97,21 @@ METHOD restore (id: INTEGER) RETURNS NOTHING,",
 fn markers_are_formatted_in_place() {
     let formatted = anyx_protocol::format_schema(
         "PROTOCOL t VERSION 1,
-READ   ONLY METHOD read (path: TEXT) RETURNS (content: TEXT),
-IDEMPOTENT METHOD unarchive (path: TEXT) RETURNS NOTHING,
-IDEMPOTENT METHOD archive (path: TEXT) RETURNS NOTHING ERRORS [missing, already archived by someone else] UNDONE BY unarchive (path: TEXT) EXAMPLES [archive \"a\" RETURNS NOTHING],
+READ   ONLY METHOD read (path: Text) RETURNS (content: Text),
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
+IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [missing, already archived by someone else] UNDONE BY unarchive (path: Text) EXAMPLES [archive \"a\" RETURNS NOTHING],
 ",
     )
     .unwrap();
     assert_eq!(
         formatted,
         "PROTOCOL t VERSION 1,
-READ ONLY METHOD read (path: TEXT) RETURNS content: TEXT,
-IDEMPOTENT METHOD unarchive (path: TEXT) RETURNS NOTHING,
-IDEMPOTENT METHOD archive (path: TEXT)
+READ ONLY METHOD read (path: Text) RETURNS content: Text,
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
+IDEMPOTENT METHOD archive (path: Text)
     RETURNS NOTHING
     ERRORS [missing, already archived by someone else]
-    UNDONE BY unarchive (path: TEXT)
+    UNDONE BY unarchive (path: Text)
     EXAMPLES [archive \"a\" RETURNS NOTHING],
 "
     );
@@ -121,8 +121,8 @@ IDEMPOTENT METHOD archive (path: TEXT)
 fn the_guide_explains_the_markers() {
     let guide = anyx_protocol::guide(&schema(DOCUMENTS), "");
     assert!(guide.contains("## Effects"));
-    assert!(guide.contains("READ ONLY METHOD read (path: TEXT)"));
-    assert!(guide.contains("UNDONE BY move (new path: TEXT) to (path: TEXT)"));
+    assert!(guide.contains("READ ONLY METHOD read (path: Text)"));
+    assert!(guide.contains("UNDONE BY move (new path: Text) to (path: Text)"));
 }
 
 #[test]
@@ -134,31 +134,31 @@ fn mistakes_in_markers_are_diagnosed() {
         ),
         (
             "an undo of a read only method",
-            "PROTOCOL a VERSION 1, READ ONLY METHOD read (id: TEXT) RETURNS NOTHING UNDONE BY read (id: TEXT),",
+            "PROTOCOL a VERSION 1, READ ONLY METHOD read (id: Text) RETURNS NOTHING UNDONE BY read (id: Text),",
         ),
         (
             "a slot that is not a parameter",
-            "PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (key: TEXT), METHOD show (key: TEXT) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (key: Text), METHOD show (key: Text) RETURNS NOTHING,",
         ),
         (
             "a slot in the undo of a method without parameters",
-            "PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: TEXT), METHOD unlock (id: TEXT) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: Text), METHOD unlock (id: Text) RETURNS NOTHING,",
         ),
         (
             "a slot of another type than its parameter",
-            "PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: INTEGER), METHOD show (id: INTEGER) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Integer), METHOD show (id: Integer) RETURNS NOTHING,",
         ),
         (
             "a slot of an unknown type",
-            "PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: TEXT) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING,",
         ),
         (
             "an undo naming no method",
-            "PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT),",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text),",
         ),
         (
             "an undo whose types match no method of its words",
-            "PROTOCOL a VERSION 1, TYPE file id: TEXT, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT), METHOD show (id: file id) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE file id: Text, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: file id) RETURNS NOTHING,",
         ),
     ];
     let rendered: Vec<String> = cases

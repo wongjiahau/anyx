@@ -58,7 +58,7 @@ struct Listed {
 struct Path {
     scope: Vec<String>,
     name: String,
-    /// Written as a full path, `common/diagnostic`, rather than a name.
+    /// Written as a full path, `common/Diagnostic`, rather than a name.
     full: bool,
 }
 
@@ -66,6 +66,8 @@ struct Path {
 /// not.
 struct Declaration<'b, T> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
+    /// Where `INTRINSIC` is written, which only the prelude may.
+    intrinsic: Option<Span>,
     public: bool,
     body: T,
 }
@@ -77,6 +79,7 @@ fn record(record: &ast::Record) -> Declaration<'_, TypeShape<'_, Vec<ast::Field>
     });
     Declaration {
         doc: &record.doc,
+        intrinsic: record.intrinsic,
         public: record.public.is_some(),
         body: type_shape(&record.body.name, parts),
     }
@@ -89,6 +92,7 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Varian
     });
     Declaration {
         doc: &choice.doc,
+        intrinsic: choice.intrinsic,
         public: choice.public.is_some(),
         body: type_shape(&choice.body.name, parts),
     }
@@ -97,6 +101,7 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Varian
 fn named_type(named: &ast::NamedType) -> Declaration<'_, &ast::NamedTypeBody> {
     Declaration {
         doc: &named.doc,
+        intrinsic: named.intrinsic,
         public: named.public.is_some(),
         body: &named.body,
     }
@@ -105,8 +110,16 @@ fn named_type(named: &ast::NamedType) -> Declaration<'_, &ast::NamedTypeBody> {
 fn errors(errors: &ast::Errors) -> Declaration<'_, &ast::ErrorList> {
     Declaration {
         doc: &errors.doc,
+        intrinsic: errors.intrinsic,
         public: errors.public.is_some(),
         body: &errors.body,
+    }
+}
+
+/// The name a `TYPE` declares, with or without the type it names.
+fn named_type_name(body: &ast::NamedTypeBody) -> &ast::Spanned<String> {
+    match body {
+        ast::NamedTypeBody::Typed { name, .. } | ast::NamedTypeBody::Bare { name, .. } => name,
     }
 }
 
@@ -309,20 +322,34 @@ impl<'a> Checker<'a> {
                 match definition {
                     ast::Definition::Record(found) => {
                         let found = record(found);
+                        self.check_intrinsic(found.intrinsic);
                         self.declare_shaped_type(&found.body, found.public, "RECORD", "fields");
                     }
                     ast::Definition::Choice(found) => {
                         let found = choice(found);
+                        self.check_intrinsic(found.intrinsic);
                         self.declare_shaped_type(&found.body, found.public, "CHOICE", "variants");
                     }
                     ast::Definition::NamedType(found) => {
                         let found = named_type(found);
-                        self.check_words(&found.body.name, "a type");
-                        self.declare_type(&found.body.name, found.public, Vec::new());
+                        self.check_intrinsic(found.intrinsic);
+                        let name = named_type_name(found.body);
+                        if let ast::NamedTypeBody::Bare { name, span } = found.body {
+                            self.error(
+                                *span,
+                                format!(
+                                    "found `TYPE {name}` without a type; expected the type it names after a `:`, as in `TYPE {name}: Text`",
+                                    name = name.value
+                                ),
+                            );
+                        }
+                        self.check_type_words(name);
+                        self.declare_type(name, found.public, Vec::new());
                         self.declare_type_parameters(&[]);
                     }
                     ast::Definition::Errors(found) => {
                         let found = errors(found);
+                        self.check_intrinsic(found.intrinsic);
                         self.declare_group(found.body, found.public);
                     }
                     ast::Definition::Method(_) => {}
@@ -379,13 +406,18 @@ impl<'a> Checker<'a> {
                     }
                     ast::Definition::NamedType(found) => {
                         let found = named_type(found);
+                        let underlying = match found.body {
+                            ast::NamedTypeBody::Typed { r#type, .. } => self.r#type(r#type),
+                            // Reported when it was declared.
+                            ast::NamedTypeBody::Bare { .. } => Type::Text,
+                        };
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
-                            name: found.body.name.value.clone(),
+                            name: named_type_name(found.body).value.clone(),
                             parameters: Vec::new(),
-                            kind: TypeKind::Distinct(self.r#type(&found.body.r#type)),
+                            kind: TypeKind::Distinct(underlying),
                         });
                     }
                     ast::Definition::Errors(_) | ast::Definition::Method(_) => {}
@@ -707,11 +739,11 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found a `{keyword}` whose name has no words; expected at least one lowercase word to name it, with any type parameters among the words, as in `{keyword} page of (item: TYPE)`"
+                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (item: TYPE)`"
                 ),
             );
         } else {
-            self.check_words(&shape.words, "a type");
+            self.check_type_words(&shape.words);
         }
         let parameters: Vec<String> = shape
             .parameters
@@ -748,7 +780,15 @@ impl<'a> Checker<'a> {
     /// of that shape in the scope. `parameters` are its type parameters,
     /// which show it in a message.
     fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool, parameters: Vec<String>) {
-        if self
+        if crate::prelude::find(&name.value).is_some() {
+            self.error(
+                name.span,
+                format!(
+                    "found a type named `{}`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every scope; rename it",
+                    name.value
+                ),
+            );
+        } else if self
             .types
             .iter()
             .any(|known| known.scope == self.scope && known.name == name.value)
@@ -920,7 +960,7 @@ impl<'a> Checker<'a> {
                 self.error(
                     span,
                     format!(
-                        "found `{written}` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: TEXT)] + file errors` or `[missing] + files/file errors`"
+                        "found `{written}` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`"
                     ),
                 );
                 None
@@ -1041,7 +1081,7 @@ impl<'a> Checker<'a> {
                 self.error(
                     reference.span,
                     format!(
-                        "found `{written}`; expected a name, such as `diagnostic`, a generic type with a type in each slot, such as `page of (diagnostic)`, or the full path of a `PUBLIC` one in another scope, such as `common/diagnostic`"
+                        "found `{written}`; expected a name, such as `Diagnostic`, a generic type with a type in each slot, such as `Page of (Diagnostic)`, or the full path of a `PUBLIC` one in another scope, such as `common/Diagnostic`"
                     ),
                 );
                 None
@@ -1160,10 +1200,15 @@ impl<'a> Checker<'a> {
         let similar = similar + &parameter;
         let message = match path.full {
             true => format!(
-                "found `{written}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`{similar}"
+                "found `{written}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/Diagnostic` for `PUBLIC RECORD Diagnostic` in `common.anyx`{similar}"
             ),
             false => format!(
-                "found `{written}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
+                "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
+                built_in = crate::prelude::intrinsics()
+                    .iter()
+                    .map(|intrinsic| format!("`{}`", intrinsic.name))
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 hint = self.elsewhere(self.types.iter(), &path.name),
             ),
         };
@@ -1259,6 +1304,37 @@ impl<'a> Checker<'a> {
         expanded
     }
 
+    /// `INTRINSIC` before a declaration of a schema: only the prelude may
+    /// write it.
+    fn check_intrinsic(&mut self, intrinsic: Option<Span>) {
+        if let Some(span) = intrinsic {
+            self.error(
+                span,
+                "found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it",
+            );
+        }
+    }
+
+    /// A type's name becomes a Rust and TypeScript identifier, so each word
+    /// is ASCII letters and digits, starting with a letter. Type names are
+    /// written in Title Case, `File Summary`, but only by convention: any
+    /// case reads.
+    fn check_type_words(&mut self, name: &ast::Spanned<String>) {
+        let fits = name.value.split(' ').all(|word| {
+            word.starts_with(|c: char| c.is_ascii_alphabetic())
+                && word.chars().all(|c| c.is_ascii_alphanumeric())
+        });
+        if !fits {
+            self.error(
+                name.span,
+                format!(
+                    "found `{}` as the name of a type; expected words of ASCII letters and digits, each starting with a letter, such as `File Summary`, since names become Rust and TypeScript identifiers; rename it",
+                    name.value
+                ),
+            );
+        }
+    }
+
     /// Names become Rust and TypeScript identifiers, so each word is
     /// lowercase letters and digits.
     fn check_words(&mut self, name: &ast::Spanned<String>, what: &str) {
@@ -1326,7 +1402,7 @@ impl<'a> Checker<'a> {
                     self.error(
                         defaulted.span(),
                         format!(
-                            "found a `DEFAULT` on the field `{name}`, which is not `OPTIONAL`; expected a `DEFAULT` only on an `OPTIONAL` field, which may be left out, as in `{name}: OPTIONAL: INTEGER DEFAULT 50`",
+                            "found a `DEFAULT` on the field `{name}`, which is not `OPTIONAL`; expected a `DEFAULT` only on an `OPTIONAL` field, which may be left out, as in `{name}: OPTIONAL: Integer DEFAULT 50`",
                             name = field.name.value
                         ),
                     );
@@ -1383,7 +1459,7 @@ impl<'a> Checker<'a> {
                 ast::VariantSlot::Doc(doc) => self.error(
                     doc.span,
                     format!(
-                        "found a string in {what}'s slot; expected a parameter, as in `(revision: INTEGER)`; {what}'s `#` doc goes on the lines before it"
+                        "found a string in {what}'s slot; expected a parameter, as in `(revision: Integer)`; {what}'s `#` doc goes on the lines before it"
                     ),
                 ),
                 ast::VariantSlot::Parameter(parameter) => parameters.push(parameter.clone()),
@@ -1542,7 +1618,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Reads `UNDONE BY move (new path: TEXT) to (path: TEXT)` of `method`:
+    /// Reads `UNDONE BY move (new path: Text) to (path: Text)` of `method`:
     /// each slot one of the method's parameters, with its type, and the
     /// call one method of the scope, by its words and the type in each
     /// slot.
@@ -1664,13 +1740,6 @@ impl<'a> Checker<'a> {
 
     fn r#type(&mut self, r#type: &ast::Type) -> Type {
         match r#type {
-            ast::Type::Text(_) => Type::Text,
-            ast::Type::Bytes(_) => Type::Bytes,
-            ast::Type::Integer(_) => Type::Integer,
-            ast::Type::Float(_) => Type::Float,
-            ast::Type::Boolean(_) => Type::Boolean,
-            ast::Type::Instant(_) => Type::Instant,
-            ast::Type::Duration(_) => Type::Duration,
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
             ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
             ast::Type::Named(reference) => self.type_use(reference),
@@ -1693,6 +1762,9 @@ impl<'a> Checker<'a> {
         if let Some(parameter) = self.parameter_named(reference) {
             return Type::Parameter(parameter);
         }
+        if let Some(built_in) = crate::prelude::reference(reference) {
+            return built_in;
+        }
         let Some((path, arguments)) = self.path(reference) else {
             return Type::Text;
         };
@@ -1712,13 +1784,6 @@ impl<'a> Checker<'a> {
     /// The type of a field with a `DEFAULT`, and the default as written.
     fn defaulted<'d>(&mut self, defaulted: &'d ast::Defaulted) -> (Type, &'d anyx::Node) {
         match defaulted {
-            ast::Defaulted::Text { default, .. } => (Type::Text, default),
-            ast::Defaulted::Bytes { default, .. } => (Type::Bytes, default),
-            ast::Defaulted::Integer { default, .. } => (Type::Integer, default),
-            ast::Defaulted::Float { default, .. } => (Type::Float, default),
-            ast::Defaulted::Boolean { default, .. } => (Type::Boolean, default),
-            ast::Defaulted::Instant { default, .. } => (Type::Instant, default),
-            ast::Defaulted::Duration { default, .. } => (Type::Duration, default),
             ast::Defaulted::List { item, .. } => {
                 let (item, default) = self.defaulted(item);
                 (Type::List(Box::new(item)), default)
@@ -1778,7 +1843,7 @@ impl<'a> Checker<'a> {
             self.error(
                 span,
                 format!(
-                    "found the named type `{name}` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE {name}: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`"
+                    "found the named type `{name}` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE {name}: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`"
                 ),
             );
         }

@@ -5,43 +5,43 @@ schema:1:33: found `READ ONLY IDEMPOTENT`; expected `READ ONLY` alone, since a m
                                   ^^^^^^^^^^
 
 == an undo of a read only method
-PROTOCOL a VERSION 1, READ ONLY METHOD read (id: TEXT) RETURNS NOTHING UNDONE BY read (id: TEXT),
+PROTOCOL a VERSION 1, READ ONLY METHOD read (id: Text) RETURNS NOTHING UNDONE BY read (id: Text),
 schema:1:82: found `UNDONE BY` on a `READ ONLY` method; expected no `UNDONE BY`, since a method that changes nothing has nothing to undo; remove it, or the `READ ONLY`
-  PROTOCOL a VERSION 1, READ ONLY METHOD read (id: TEXT) RETURNS NOTHING UNDONE BY read (id: TEXT),
+  PROTOCOL a VERSION 1, READ ONLY METHOD read (id: Text) RETURNS NOTHING UNDONE BY read (id: Text),
                                                                                    ^^^^^^^^^^^^^^^
 
 == a slot that is not a parameter
-PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (key: TEXT), METHOD show (key: TEXT) RETURNS NOTHING,
+PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (key: Text), METHOD show (key: Text) RETURNS NOTHING,
 schema:1:78: found `key` in `UNDONE BY`, which is not a parameter of `hide _`; expected one of its parameters in each slot, `id`, since an undo is called with the method's own arguments
-  PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (key: TEXT), METHOD show (key: TEXT) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (key: Text), METHOD show (key: Text) RETURNS NOTHING,
                                                                                ^^^
 
 == a slot in the undo of a method without parameters
-PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: TEXT), METHOD unlock (id: TEXT) RETURNS NOTHING,
+PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: Text), METHOD unlock (id: Text) RETURNS NOTHING,
 schema:1:69: found `id` in `UNDONE BY`, which is not a parameter of `lock`; expected a call without slots, since the method has no parameters and an undo is called with its arguments
-  PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: TEXT), METHOD unlock (id: TEXT) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: Text), METHOD unlock (id: Text) RETURNS NOTHING,
                                                                       ^^
 
 == a slot of another type than its parameter
-PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: INTEGER), METHOD show (id: INTEGER) RETURNS NOTHING,
-schema:1:82: found the type `INTEGER` for `id` in `UNDONE BY`; expected `TEXT`, the type of the parameter `id`
-  PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: INTEGER), METHOD show (id: INTEGER) RETURNS NOTHING,
+PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Integer), METHOD show (id: Integer) RETURNS NOTHING,
+schema:1:82: found the type `Integer` for `id` in `UNDONE BY`; expected `Text`, the type of the parameter `id`
+  PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Integer), METHOD show (id: Integer) RETURNS NOTHING,
                                                                                    ^^^^^^^
 
 == a slot of an unknown type
-PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: TEXT) RETURNS NOTHING,
-schema:1:82: found `thing`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
-  PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: TEXT) RETURNS NOTHING,
+PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING,
+schema:1:82: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+  PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING,
                                                                                    ^^^^^
 
 == an undo naming no method
-PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT),
-schema:1:72: found `UNDONE BY show (id: TEXT)`, but this schema has no method `show _`; expected the call of a method of this schema, with this method's parameters in its slots
-  PROTOCOL a VERSION 1, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT),
+PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text),
+schema:1:72: found `UNDONE BY show (id: Text)`, but this schema has no method `show _`; expected the call of a method of this schema, with this method's parameters in its slots
+  PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text),
                                                                          ^^^^
 
 == an undo whose types match no method of its words
-PROTOCOL a VERSION 1, TYPE file id: TEXT, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT), METHOD show (id: file id) RETURNS NOTHING,
-schema:1:92: found `UNDONE BY show (id: TEXT)`, which matches no method; expected the type in each slot to be the same as in exactly one of: `show (id: file id)`
-  PROTOCOL a VERSION 1, TYPE file id: TEXT, METHOD hide (id: TEXT) RETURNS NOTHING UNDONE BY show (id: TEXT), METHOD show (id: file id) RETURNS NOTHING,
+PROTOCOL a VERSION 1, TYPE file id: Text, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: file id) RETURNS NOTHING,
+schema:1:92: found `UNDONE BY show (id: Text)`, which matches no method; expected the type in each slot to be the same as in exactly one of: `show (id: file id)`
+  PROTOCOL a VERSION 1, TYPE file id: Text, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: file id) RETURNS NOTHING,
                                                                                              ^^^^^^^^^^^^^^^

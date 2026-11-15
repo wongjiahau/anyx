@@ -2,25 +2,25 @@
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-RECORD reminder {
-    note: TEXT,
-    at: INSTANT,
-    every: OPTIONAL: DURATION,
+RECORD Reminder {
+    note: Text,
+    at: Instant,
+    every: OPTIONAL Duration,
     # How many times to remind before giving up.
-    times: OPTIONAL: INTEGER DEFAULT 3,
+    times: OPTIONAL: Integer DEFAULT 3,
     # When each person last saw it, by their name.
-    seen: OPTIONAL: MAP: INSTANT DEFAULT {},
+    seen: OPTIONAL: MAP: Instant DEFAULT {},
 },
 
-CHOICE schedule { never, once at (at: INSTANT), every (period: DURATION) },
+CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },
 
-METHOD remind (reminder: reminder) RETURNS (schedule: schedule),
+METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule),
 
-METHOD count (reminders: MAP: reminder) RETURNS (times: MAP: INTEGER),
+METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer),
 
-METHOD snooze (reminder: reminder) for (duration: DURATION)
-    RETURNS (reminders: LIST: reminder)
+METHOD snooze (reminder: Reminder) for (duration: Duration)
+    RETURNS (reminders: LIST: Reminder)
     ERRORS [
         # Snoozed past its next time.
-        overdue since (since: INSTANT),
+        overdue since (since: Instant),
     ],

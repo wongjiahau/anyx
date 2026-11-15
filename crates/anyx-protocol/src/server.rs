@@ -46,7 +46,7 @@ pub fn introspect(schema: &Schema) -> Outcome {
 }
 
 /// Writes the response to `calls`. A value with no form on the wire, such as
-/// a `FLOAT` that is not finite, turns its outcome into `INTERNAL ERROR`.
+/// a `Float` that is not finite, turns its outcome into `INTERNAL ERROR`.
 pub fn respond(schema: &Schema, calls: &[Call], outcomes: Vec<Outcome>) -> String {
     let outcomes: Vec<Outcome> = calls
         .iter()

@@ -2,7 +2,7 @@
 //! encodes and decodes through the wasm functions of [`crate::wasm`]. A
 //! scope's methods are an object on the client, named after the scope.
 //!
-//! JSON carries an `INSTANT` as text, and the client gives it as a `Date`:
+//! JSON carries an `Instant` as text, and the client gives it as a `Date`:
 //! for each type that holds one, a `revive` function turns its JSON into
 //! its value. A generic type's `revive` function takes the reviver of each
 //! of its parameters, and returns the reviver of the type with them:
@@ -142,7 +142,7 @@ struct Signature {
     arguments: String,
     returned: String,
     /// What `call` takes after the arguments to revive the value and the
-    /// error: `, reviveFile`, or nothing when neither holds an `INSTANT`.
+    /// error: `, reviveFile`, or nothing when neither holds an `Instant`.
     revivers: String,
 }
 
@@ -249,7 +249,7 @@ export interface Codec {
   decodeResponse(methods: string, response: string): string;
 }
 
-/** Turns the JSON of a type that holds an `INSTANT` into its value, with a
+/** Turns the JSON of a type that holds an `Instant` into its value, with a
  * `Date` for each instant. */
 type Reviver = (json: any) => unknown;
 
@@ -534,7 +534,7 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
     out.push_str(";\n\n");
 }
 
-/// Which of the schema's types hold an `INSTANT`, directly or through
+/// Which of the schema's types hold an `Instant`, directly or through
 /// another type (a named `TYPE` through the type underneath), and so need
 /// reviving. A generic type holds one when it does whatever its arguments
 /// are; a use of it also when one of its arguments does.
@@ -597,7 +597,7 @@ impl Revivers {
     }
 
     /// A function that revives the JSON of `type`, or `None` when it holds
-    /// no `INSTANT`.
+    /// no `Instant`.
     fn of(&self, schema: &Schema, r#type: &Type, parameters: bool) -> Option<String> {
         match r#type {
             Type::Instant => Some("reviveInstant".to_string()),

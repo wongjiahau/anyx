@@ -14,24 +14,24 @@ The schema is one file, or a folder of scopes (see
 ## Rust
 
 - A struct per `RECORD` and an enum per `CHOICE`, with a variant per shape:
-  `custom hue (hue: FLOAT)` is `CustomHue { hue: f64 }`.
-- `INSTANT` is `std::time::SystemTime` and `DURATION` is
+  `custom hue (hue: Float)` is `CustomHue { hue: f64 }`.
+- `Instant` is `std::time::SystemTime` and `Duration` is
   `std::time::Duration`; the wire keeps both to the millisecond.
 - `MAP: T` is `std::collections::BTreeMap<String, T>`, and
   `Record<string, T>` in TypeScript.
 - An `OPTIONAL` field is an `Option`, and `?` in TypeScript, unless it has a
   `DEFAULT`: the reader fills that in, so the field is always there.
 - A struct around the type underneath per named `TYPE`, with `From` both
-  ways: `TYPE file id: TEXT` is `pub struct FileId(pub String)`, so a
+  ways: `TYPE File Id: Text` is `pub struct FileId(pub String)`, so a
   `FileId` can't be passed where a `ShareId` goes.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `RECORD page of (item: TYPE)`
+  `IntoValue` and `FromValue` bound on them: `RECORD Page of (item: TYPE)`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
   is `PageOf<Order>`. `RECORD (item: TYPE) history` is `History<Item>`,
-  `RECORD table from (key: TYPE) to (value: TYPE)` is
+  `RECORD Table from (key: TYPE) to (value: TYPE)` is
   `TableFromTo<Key, Value>`, and `CHOICE (left: TYPE) or (right: TYPE)` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
   `page (item: TYPE)`, would get the same name, so generating either
@@ -101,20 +101,20 @@ The wasm functions take and give every call of a request at once:
 `decodePoentaroResponse('["read _"]', response)`, one outcome per call, in
 the order of the calls.
 
-An `INSTANT` is a `Date`: the client turns the text JSON carries into one,
-and `JSON.stringify` writes a `Date` back as that text. A `DURATION` is a
+An `Instant` is a `Date`: the client turns the text JSON carries into one,
+and `JSON.stringify` writes a `Date` back as that text. A `Duration` is a
 `number` of whole milliseconds.
 
 A named `TYPE` is a branded type, with a function of the same name that
-brands a value: `TYPE file id: TEXT` is
+brands a value: `TYPE File Id: Text` is
 `type FileId = string & { readonly __brand: "file id" }` and
 `FileId("a")`. Its JSON is the value underneath.
 
 A generic type's reviver takes the reviver of each parameter and returns
 its own, and a use passes them: a method returning
-`page of (payment)`, where a payment holds an `INSTANT`, revives with
-`revivePageOf(revivePayment)`, and one returning `page of (TEXT)` needs
-no reviving, unless `page of (item: TYPE)` holds an `INSTANT` itself, when it passes
+`page of (Payment)`, where a payment holds an `Instant`, revives with
+`revivePageOf(revivePayment)`, and one returning `page of (Text)` needs
+no reviving, unless `page of (item: TYPE)` holds an `Instant` itself, when it passes
 `unchanged`.
 
 In TypeScript every type shares one namespace, so a scoped type's name starts
@@ -125,16 +125,16 @@ Overloads, methods of one shape with different parameter types, each get a
 name of their own: the shape's words, `with`, then each parameter's type in
 words, joined by `and`. `LIST: T` is `list of T`, `MAP: T` is `map of T`, a
 type of the schema is its words after its scope's, and a generic type has
-its arguments' words in its slots: `tag (paths: LIST: TEXT)` is
+its arguments' words in its slots: `tag (paths: LIST Text)` is
 `tag_with_list_of_text` (`tagWithListOfText`, `TagWithListOfTextError`,
-`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: common/file id)` is
-`open_with_common_file_id`, and `scale (factor: FLOAT)` is
+`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: common/File Id)` is
+`open_with_common_file_id`, and `scale (factor: Float)` is
 `scale_with_float`. A method without overloads keeps its shape's words, so
 adding an overload renames the methods of its shape. The server runs the
 overload a call resolves to, and the clients write the annotations a
 request needs themselves. TypeScript calls an overload, and keys its
-`EFFECTS`, by its typed name, `"tag (LIST: TEXT)"`, as JSON does.
+`EFFECTS`, by its typed name, `"tag (LIST Text)"`, as JSON does.
 
 A schema whose names become the same name in the generated code, such as a
 type `read error` next to the method `read _`, or a method `tag with text`
-next to the overload `tag (TEXT)`, is rejected.
+next to the overload `tag (Text)`, is rejected.

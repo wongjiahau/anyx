@@ -14,6 +14,7 @@ mod grammar;
 mod guide;
 #[cfg(feature = "json")]
 pub mod json;
+pub mod prelude;
 mod response;
 pub mod schema;
 pub mod server;

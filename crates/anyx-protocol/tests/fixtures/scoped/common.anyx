@@ -1,5 +1,5 @@
 # One problem in a note.
-PUBLIC RECORD diagnostic { line: INTEGER, message: TEXT },
+PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
 PUBLIC ERRORS common errors [
     # No note has this path.

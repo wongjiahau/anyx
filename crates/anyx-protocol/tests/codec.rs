@@ -157,9 +157,9 @@ fn an_invalid_request_reads_back() {
 
 const MODES: &str = "PROTOCOL a VERSION 1,
 CHOICE shade { dark, light },
-CHOICE mode { dark, light, custom hue (hue: FLOAT), (base: shade) dimmed },
-RECORD options { mode: mode, strict: OPTIONAL: BOOLEAN },
-METHOD set (mode: mode) strict (strict: BOOLEAN) RETURNS (ok: BOOLEAN),
+CHOICE mode { dark, light, custom hue (hue: Float), (base: shade) dimmed },
+RECORD options { mode: mode, strict: OPTIONAL Boolean },
+METHOD set (mode: mode) strict (strict: Boolean) RETURNS (ok: Boolean),
 METHOD apply (options: options) RETURNS (modes: LIST: mode),";
 
 #[test]
@@ -221,7 +221,7 @@ fn text_that_a_raw_string_cannot_hold_is_quoted() {
 
 #[test]
 fn a_number_that_is_not_finite_has_no_form() {
-    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: FLOAT) RETURNS (y: FLOAT),");
+    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: Float) RETURNS (y: Float),");
     let calls = vec![Call {
         method: 0,
         arguments: vec![Value::Float(f64::NAN)],
@@ -308,8 +308,8 @@ fn mistakes_in_a_response_point_at_where_they_are() {
 }
 
 const ACCOUNTS: &str = "PROTOCOL a VERSION 1,
-METHOD change password from (old: TEXT) to (new: TEXT) RETURNS NOTHING ERRORS [wrong password],
-METHOD tag (names: LIST: TEXT) RETURNS (count: INTEGER),";
+METHOD change password from (old: Text) to (new: Text) RETURNS NOTHING ERRORS [wrong password],
+METHOD tag (names: LIST Text) RETURNS (count: Integer),";
 
 #[test]
 fn a_response_answers_each_call_by_position_without_repeating_it() {
@@ -372,7 +372,7 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         METHOD sign out RETURNS NOTHING,
-        METHOD count RETURNS (count: INTEGER),",
+        METHOD count RETURNS (count: Integer),",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -403,7 +403,7 @@ fn nothing_and_a_value_are_not_mixed_up() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         METHOD sign out RETURNS NOTHING,
-        METHOD count RETURNS (count: INTEGER),",
+        METHOD count RETURNS (count: Integer),",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -434,10 +434,10 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-RECORD timer { at: INSTANT, every: DURATION, pause: OPTIONAL: DURATION },
-METHOD wait (duration: DURATION) until (instant: INSTANT) RETURNS (started: INSTANT),
-METHOD set (timer: timer) RETURNS (left: DURATION),
-METHOD list RETURNS (durations: LIST: DURATION),";
+RECORD timer { at: Instant, every: Duration, pause: OPTIONAL Duration },
+METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant),
+METHOD set (timer: timer) RETURNS (left: Duration),
+METHOD list RETURNS (durations: LIST Duration),";
 
 fn instant(text: &str) -> Value {
     let milliseconds = |at: &str| -> u64 {
@@ -475,7 +475,7 @@ fn instants_and_durations_read_back_as_written() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "wait (5 minutes) until (\"2026-11-14T06:00:08.000Z\" AS: INSTANT),
+        "wait (5 minutes) until (\"2026-11-14T06:00:08.000Z\" AS Instant),
 set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 seconds },
 "
     );
@@ -500,7 +500,7 @@ fn an_instant_and_a_duration_read_in_other_forms_too() {
     let schema = schema(TIMERS);
     let calls = decode_request(
         &schema,
-        "wait (90 seconds) until (\"2026-11-14T06:00:08Z\" AS: INSTANT)",
+        "wait (90 seconds) until (\"2026-11-14T06:00:08Z\" AS Instant)",
     )
     .unwrap();
     assert_eq!(
@@ -549,7 +549,7 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        RECORD search { query: TEXT, limit: OPTIONAL: INTEGER DEFAULT 50, note: OPTIONAL: TEXT },
+        RECORD search { query: Text, limit: OPTIONAL: Integer DEFAULT 50, note: OPTIONAL Text },
         METHOD find (search: search) RETURNS (search: search),",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
@@ -571,9 +571,9 @@ fn a_field_left_out_takes_its_default() {
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
 CHOICE mood { calm, wild },
-RECORD tally { counts: MAP: INTEGER, moods: OPTIONAL: MAP: mood DEFAULT {} },
-METHOD count (tally: tally) RETURNS (counts: MAP: INTEGER),
-METHOD wait (waits: MAP: DURATION) RETURNS (moods: MAP: LIST: mood),";
+RECORD tally { counts: MAP Integer, moods: OPTIONAL: MAP: mood DEFAULT {} },
+METHOD count (tally: tally) RETURNS (counts: MAP Integer),
+METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: mood),";
 
 fn map(entries: &[(&str, Value)]) -> Value {
     Value::Map(
@@ -618,7 +618,7 @@ fn maps_read_back_as_written() {
         request,
         "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": wild, \"a \\\"b\\\"\": calm } },
 wait { \"tea\": 5 minutes },
-wait ({} AS: MAP: DURATION),
+wait ({} AS: MAP Duration),
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);

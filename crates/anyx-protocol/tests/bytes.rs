@@ -1,4 +1,4 @@
-//! `BYTES` values: base64 in a string on the wire.
+//! `Bytes` values: base64 in a string on the wire.
 
 mod common;
 
@@ -9,8 +9,8 @@ use anyx_protocol::{
 use common::schema;
 
 const FILES: &str = "PROTOCOL a VERSION 1,
-METHOD export (path: TEXT) RETURNS (file: BYTES),
-METHOD upload (file: BYTES) RETURNS (size: INTEGER),";
+METHOD export (path: Text) RETURNS (file: Bytes),
+METHOD upload (file: Bytes) RETURNS (size: Integer),";
 
 /// Every byte value, so no byte is lost on the way.
 fn every_byte() -> Vec<u8> {

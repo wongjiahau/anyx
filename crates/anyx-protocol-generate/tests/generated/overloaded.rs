@@ -12,35 +12,35 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-TYPE file id: TEXT,
+TYPE File Id: Text,
 
-CHOICE shade { dark, light },
+CHOICE Shade { dark, light },
 
 # Tags files by their paths.
-METHOD tag (paths: LIST: TEXT)
-    RETURNS (tagged: INTEGER)
-    ERRORS [missing (path: TEXT)]
+METHOD tag (paths: LIST Text)
+    RETURNS (tagged: Integer)
+    ERRORS [missing (path: Text)]
     EXAMPLES [tag ["a"] RETURNS 1],
 
 # Tags files by their ids.
-METHOD tag (ids: LIST: file id)
-    RETURNS (tagged: INTEGER)
-    ERRORS [unknown (id: file id)]
-    EXAMPLES [tag ([] AS: LIST: file id) RETURNS 0],
+METHOD tag (ids: LIST: File Id)
+    RETURNS (tagged: Integer)
+    ERRORS [unknown (id: File Id)]
+    EXAMPLES [tag ([] AS: LIST: File Id) RETURNS 0],
 
-READ ONLY METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT),
+READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float),
 
-READ ONLY METHOD scale (times: INTEGER) RETURNS (scaled: INTEGER),
+READ ONLY METHOD scale (times: Integer) RETURNS (scaled: Integer),
 
-IDEMPOTENT METHOD hide (path: TEXT) RETURNS NOTHING UNDONE BY show (path: TEXT),
+IDEMPOTENT METHOD hide (path: Text) RETURNS NOTHING UNDONE BY show (path: Text),
 
-IDEMPOTENT METHOD hide (id: file id) RETURNS NOTHING UNDONE BY show (id: file id),
+IDEMPOTENT METHOD hide (id: File Id) RETURNS NOTHING UNDONE BY show (id: File Id),
 
-IDEMPOTENT METHOD show (path: TEXT) RETURNS NOTHING,
+IDEMPOTENT METHOD show (path: Text) RETURNS NOTHING,
 
-IDEMPOTENT METHOD show (id: file id) RETURNS NOTHING,
+IDEMPOTENT METHOD show (id: File Id) RETURNS NOTHING,
 
-METHOD paint (shade: shade) RETURNS NOTHING,
+METHOD paint (shade: Shade) RETURNS NOTHING,
 "#,
 }];
 
@@ -117,7 +117,7 @@ impl FromValue for Shade {
     }
 }
 
-/// The errors of `tag (LIST: TEXT)`.
+/// The errors of `tag (LIST Text)`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TagWithListOfTextError {
     Missing { path: String },
@@ -149,7 +149,7 @@ impl FromValue for TagWithListOfTextError {
     }
 }
 
-/// The errors of `tag (LIST: file id)`.
+/// The errors of `tag (LIST File Id)`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TagWithListOfFileIdError {
     Unknown { id: FileId },
@@ -190,7 +190,7 @@ pub trait Server {
 
     /// Tags files by their paths.
     ///
-    /// `tag (LIST: TEXT)`, returning `tagged`.
+    /// `tag (LIST Text)`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
@@ -206,46 +206,46 @@ pub trait Server {
 
     /// Tags files by their ids.
     ///
-    /// `tag (LIST: file id)`, returning `tagged`.
+    /// `tag (LIST File Id)`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ([] AS: LIST: file id) RETURNS 0
+    /// tag ([] AS: LIST: File Id) RETURNS 0
     /// ```
     async fn tag_with_list_of_file_id(
         &self,
         ids: Vec<FileId>,
     ) -> Result<Result<i64, TagWithListOfFileIdError>, Self::Error>;
 
-    /// `scale (FLOAT)`, returning `scaled`.
+    /// `scale (Float)`, returning `scaled`.
     ///
     /// Read only: it changes nothing, so it is safe to call freely.
     async fn scale_with_float(&self, factor: f64) -> Result<f64, Self::Error>;
 
-    /// `scale (INTEGER)`, returning `scaled`.
+    /// `scale (Integer)`, returning `scaled`.
     ///
     /// Read only: it changes nothing, so it is safe to call freely.
     async fn scale_with_integer(&self, times: i64) -> Result<i64, Self::Error>;
 
-    /// `hide (TEXT)`, returning nothing.
+    /// `hide (Text)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: TEXT)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
     async fn hide_with_text(&self, path: String) -> Result<(), Self::Error>;
 
-    /// `hide (file id)`, returning nothing.
+    /// `hide (File Id)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: file id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
     async fn hide_with_file_id(&self, id: FileId) -> Result<(), Self::Error>;
 
-    /// `show (TEXT)`, returning nothing.
+    /// `show (Text)`, returning nothing.
     ///
     /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
     async fn show_with_text(&self, path: String) -> Result<(), Self::Error>;
 
-    /// `show (file id)`, returning nothing.
+    /// `show (File Id)`, returning nothing.
     ///
     /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
     async fn show_with_file_id(&self, id: FileId) -> Result<(), Self::Error>;
@@ -366,7 +366,7 @@ impl<T: Transport> Client<T> {
 
     /// Tags files by their paths.
     ///
-    /// `tag (LIST: TEXT)`, returning `tagged`.
+    /// `tag (LIST Text)`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
@@ -384,14 +384,14 @@ impl<T: Transport> Client<T> {
 
     /// Tags files by their ids.
     ///
-    /// `tag (LIST: file id)`, returning `tagged`.
+    /// `tag (LIST File Id)`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ([] AS: LIST: file id) RETURNS 0
+    /// tag ([] AS: LIST: File Id) RETURNS 0
     /// ```
     pub async fn tag_with_list_of_file_id(
         &self,
@@ -400,7 +400,7 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![ids.into_value()]).await
     }
 
-    /// `scale (FLOAT)`, returning `scaled`.
+    /// `scale (Float)`, returning `scaled`.
     ///
     /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn scale_with_float(
@@ -410,7 +410,7 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 2, vec![factor.into_value()]).await
     }
 
-    /// `scale (INTEGER)`, returning `scaled`.
+    /// `scale (Integer)`, returning `scaled`.
     ///
     /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn scale_with_integer(
@@ -420,9 +420,9 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![times.into_value()]).await
     }
 
-    /// `hide (TEXT)`, returning nothing.
+    /// `hide (Text)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: TEXT)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
     pub async fn hide_with_text(
         &self,
         path: String,
@@ -430,9 +430,9 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 4, vec![path.into_value()]).await
     }
 
-    /// `hide (file id)`, returning nothing.
+    /// `hide (File Id)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: file id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
     pub async fn hide_with_file_id(
         &self,
         id: FileId,
@@ -440,7 +440,7 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 5, vec![id.into_value()]).await
     }
 
-    /// `show (TEXT)`, returning nothing.
+    /// `show (Text)`, returning nothing.
     ///
     /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
     pub async fn show_with_text(
@@ -450,7 +450,7 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 6, vec![path.into_value()]).await
     }
 
-    /// `show (file id)`, returning nothing.
+    /// `show (File Id)`, returning nothing.
     ///
     /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
     pub async fn show_with_file_id(
@@ -476,7 +476,7 @@ impl<T: Transport> Client<T> {
     }
 }
 
-/// What a call of `tag (LIST: TEXT)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+/// What a call of `tag (LIST Text)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
 pub const TAG_WITH_LIST_OF_TEXT_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: false,
@@ -484,7 +484,7 @@ pub const TAG_WITH_LIST_OF_TEXT_EFFECTS: anyx_protocol::client::Effects =
         undone_by: None,
     };
 
-/// What a call of `tag (LIST: file id)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+/// What a call of `tag (LIST File Id)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
 pub const TAG_WITH_LIST_OF_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: false,
@@ -492,7 +492,7 @@ pub const TAG_WITH_LIST_OF_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
         undone_by: None,
     };
 
-/// What a call of `scale (FLOAT)` may do. Read only: it changes nothing, so it is safe to call freely.
+/// What a call of `scale (Float)` may do. Read only: it changes nothing, so it is safe to call freely.
 pub const SCALE_WITH_FLOAT_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: true,
@@ -500,7 +500,7 @@ pub const SCALE_WITH_FLOAT_EFFECTS: anyx_protocol::client::Effects =
         undone_by: None,
     };
 
-/// What a call of `scale (INTEGER)` may do. Read only: it changes nothing, so it is safe to call freely.
+/// What a call of `scale (Integer)` may do. Read only: it changes nothing, so it is safe to call freely.
 pub const SCALE_WITH_INTEGER_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: true,
@@ -508,29 +508,29 @@ pub const SCALE_WITH_INTEGER_EFFECTS: anyx_protocol::client::Effects =
         undone_by: None,
     };
 
-/// What a call of `hide (TEXT)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: TEXT)`.
+/// What a call of `hide (Text)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
 pub const HIDE_WITH_TEXT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: true,
-    undone_by: Some("show (path: TEXT)"),
+    undone_by: Some("show (path: Text)"),
 };
 
-/// What a call of `hide (file id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: file id)`.
+/// What a call of `hide (File Id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
 pub const HIDE_WITH_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: false,
         idempotent: true,
-        undone_by: Some("show (id: file id)"),
+        undone_by: Some("show (id: File Id)"),
     };
 
-/// What a call of `show (TEXT)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+/// What a call of `show (Text)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
 pub const SHOW_WITH_TEXT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: true,
     undone_by: None,
 };
 
-/// What a call of `show (file id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+/// What a call of `show (File Id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
 pub const SHOW_WITH_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: false,

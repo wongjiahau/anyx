@@ -64,14 +64,14 @@ pub fn format(source: &str) -> Result<String, Vec<Error>> {
 /// allows.
 ///
 /// ```
-/// let source = "METHOD read (path: TEXT) RETURNS (file: file) ERRORS [trashed, missing, gone, renamed, locked, moved]";
+/// let source = "METHOD read (path: Text) RETURNS (file: File) ERRORS [trashed, missing, gone, renamed, locked, moved]";
 /// let mut layout = anyx::Layout::new();
 /// layout.break_before(source.find("RETURNS").unwrap());
 /// layout.break_before(source.find("ERRORS").unwrap());
 /// let formatted = anyx::format_with(source, &layout).unwrap();
 /// assert_eq!(
 ///     formatted,
-///     "METHOD read (path: TEXT)\n    RETURNS (file: file)\n    ERRORS [trashed, missing, gone, renamed, locked, moved]\n"
+///     "METHOD read (path: Text)\n    RETURNS (file: File)\n    ERRORS [trashed, missing, gone, renamed, locked, moved]\n"
 /// );
 /// ```
 pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> {

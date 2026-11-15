@@ -12,9 +12,9 @@ pub enum Value {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    /// An `INSTANT`. The wire keeps it to the millisecond, rounded down.
+    /// An `Instant`. The wire keeps it to the millisecond, rounded down.
     Instant(SystemTime),
-    /// A `DURATION`. The wire keeps it to the millisecond, rounded down.
+    /// A `Duration`. The wire keeps it to the millisecond, rounded down.
     Duration(Duration),
     List(Vec<Value>),
     /// A `MAP`: values by their text keys.
@@ -75,7 +75,7 @@ impl FromValue for String {
     }
 }
 
-/// A `BYTES` value. A `LIST: INTEGER` of small numbers is a `Vec<i64>`, so
+/// A `Bytes` value. A `LIST Integer` of small numbers is a `Vec<i64>`, so
 /// `Vec<u8>` is never a list.
 impl IntoValue for Vec<u8> {
     fn into_value(self) -> Value {

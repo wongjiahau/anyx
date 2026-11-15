@@ -13,46 +13,46 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-RECORD page of (item: TYPE) {
+RECORD Page of (item: TYPE) {
     items: LIST: item,
-    next: OPTIONAL: TEXT,
+    next: OPTIONAL Text,
     # How many there are in all.
-    total: OPTIONAL: INTEGER DEFAULT 0,
+    total: OPTIONAL: Integer DEFAULT 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
 CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) },
 
-# A value and when it was taken, which holds an `INSTANT` whatever the value.
-RECORD (item: TYPE) dated { item: item, at: INSTANT },
+# A value and when it was taken, which holds an `Instant` whatever the value.
+RECORD (item: TYPE) dated { item: item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-RECORD tree of (item: TYPE) { value: item, children: LIST tree of (item) },
+RECORD Tree of (item: TYPE) { value: item, children: LIST Tree of (item) },
 
 # Keys and their values, in the same order: a slot between words.
-RECORD table from (key: TYPE) to (value: TYPE) { keys: LIST: key, values: LIST: value },
+RECORD Table from (key: TYPE) to (value: TYPE) { keys: LIST: key, values: LIST: value },
 
-RECORD payment { amount: INTEGER, at: INSTANT },
+RECORD Payment { amount: Integer, at: Instant },
 
-CHOICE decline { insufficient funds, card expired },
+CHOICE Decline { insufficient funds, card expired },
 
-TYPE payments: page of (payment),
+TYPE Payments: Page of (Payment),
 
-METHOD pay (amount: INTEGER) RETURNS (attempt: (payment) or (decline)),
+METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)),
 
-METHOD pay all (amounts: LIST: INTEGER)
-    RETURNS (attempts: page of ((payment) or (decline))),
+METHOD pay all (amounts: LIST Integer)
+    RETURNS (attempts: Page of ((Payment) or (Decline))),
 
-METHOD payments RETURNS (payments: payments),
+METHOD payments RETURNS (payments: Payments),
 
-METHOD count (payments: page of (payment)) RETURNS (count: INTEGER),
+METHOD count (payments: Page of (Payment)) RETURNS (count: Integer),
 
-METHOD categories RETURNS (categories: tree of (TEXT)),
+METHOD categories RETURNS (categories: Tree of (Text)),
 
-METHOD latest RETURNS (latest: (TEXT) dated),
+METHOD latest RETURNS (latest: (Text) dated),
 
-METHOD prices RETURNS (prices: table from (TEXT) to (INTEGER)),
+METHOD prices RETURNS (prices: Table from (Text) to (Integer)),
 "#,
 }];
 
@@ -142,7 +142,7 @@ impl<ValueParameter: FromValue, Problem: FromValue> FromValue for Or<ValueParame
     }
 }
 
-/// A value and when it was taken, which holds an `INSTANT` whatever the value.
+/// A value and when it was taken, which holds an `Instant` whatever the value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Dated<Item> {
     pub item: Item,

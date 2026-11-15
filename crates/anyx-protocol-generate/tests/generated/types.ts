@@ -63,7 +63,7 @@ export interface Codec {
   decodeResponse(methods: string, response: string): string;
 }
 
-/** Turns the JSON of a type that holds an `INSTANT` into its value, with a
+/** Turns the JSON of a type that holds an `Instant` into its value, with a
  * `Date` for each instant. */
 type Reviver = (json: any) => unknown;
 

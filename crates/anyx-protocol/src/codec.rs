@@ -57,7 +57,7 @@ impl std::fmt::Display for Problem {
 
 impl std::error::Error for Problem {}
 
-/// A value that has no form on the wire, such as a `FLOAT` that is not
+/// A value that has no form on the wire, such as a `Float` that is not
 /// finite.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EncodeError {
@@ -377,7 +377,7 @@ fn read_argument<'n>(
     if let Some(inner) = inner_annotation(value) {
         return Err(Mismatch {
             span: inner.span,
-            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST: TEXT)`; a value inside another is read by the type around it".to_string(),
+            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".to_string(),
         });
     }
     let Some(written_type) = written_type else {
@@ -388,16 +388,27 @@ fn read_argument<'n>(
             own: own_type(schema, node),
         });
     };
-    let annotated = annotated_type(schema, scope, written_type).ok_or_else(|| Mismatch {
-        span: written_type.span,
-        message: format!(
-            "found `{}` after `AS`, which names no type of {}; expected a type written as a parameter's is: `TEXT`, `LIST: TEXT`, a type of the scope, such as `file id`, or the full path of a `PUBLIC` one in another, such as `common/file id`",
-            written(source, written_type),
-            match scope.is_empty() {
-                true => "the schema's root".to_string(),
-                false => format!("the scope `{}`", scope.join("/")),
-            }
-        ),
+    let annotated = annotated_type(schema, scope, written_type).ok_or_else(|| {
+        let text = written(source, written_type);
+        let renamed = text
+            .split(|c: char| !c.is_alphanumeric())
+            .find_map(crate::prelude::renamed)
+            .map_or(String::new(), |intrinsic| {
+                format!(
+                    "; the built-in type `{}` is written in Title Case",
+                    intrinsic.name
+                )
+            });
+        Mismatch {
+            span: written_type.span,
+            message: format!(
+                "found `{text}` after `AS`, which names no type of {}; expected a type written as a parameter's is: `Text`, `LIST Text`, a type of the scope, such as `File Id`, or the full path of a `PUBLIC` one in another, such as `common/File Id`{renamed}",
+                match scope.is_empty() {
+                    true => "the schema's root".to_string(),
+                    false => format!("the scope `{}`", scope.join("/")),
+                }
+            ),
+        }
     })?;
     Ok(Argument {
         node,
@@ -496,7 +507,7 @@ fn choose(
     Err(Mismatch {
         span: node.span,
         message: format!(
-            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of a named type, or of `BYTES` or `INSTANT`, is written like another type's, so annotate it, as in `(\"abc\" AS: file id)`",
+            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of a named type, or of `Bytes` or `Instant`, is written like another type's, so annotate it, as in `(\"abc\" AS: File Id)`",
             match types.len() {
                 1 => "an argument of the type",
                 _ => "arguments of the types",
@@ -521,7 +532,7 @@ fn written(source: &str, node: &Node) -> String {
 }
 
 /// `call` as a call of `method`, with its argument at `index` annotated
-/// with its parameter's type: `tag ([] AS: LIST: TEXT)`.
+/// with its parameter's type: `tag ([] AS: LIST Text)`.
 fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index: usize) -> String {
     let mut slots = call.arguments.iter().enumerate().peekable();
     let text = method
@@ -600,7 +611,7 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
     if annotation(node).is_some() {
         return Err(Mismatch {
             span: node.span,
-            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST: TEXT)`; a value inside another is read by the type around it".to_string(),
+            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".to_string(),
         });
     }
     let r#type = schema.underlying(r#type);
@@ -620,7 +631,7 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
         (Type::Integer, NodeKind::Number(text)) if is_float_text(text) => Err(Mismatch {
             span: node.span,
             message: format!(
-                "found the FLOAT `{text}`; expected an INTEGER, a whole number written without a point, such as `3`"
+                "found the Float `{text}`; expected an Integer, a whole number written without a point, such as `3`"
             ),
         }),
         (Type::Integer, NodeKind::Number(text)) => text
@@ -630,15 +641,15 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
         (Type::Integer, _) => Err(mismatch("a whole number, as in `3`".to_string())),
         (Type::Float, NodeKind::Number(text)) if !is_float_text(text) => Err(Mismatch {
             span: node.span,
-            message: format!("found the INTEGER `{text}`; expected a FLOAT, such as `{text}.0`"),
+            message: format!("found the Integer `{text}`; expected a Float, such as `{text}.0`"),
         }),
         (Type::Float, NodeKind::Number(text)) => text
             .parse()
             .ok()
             .filter(|number: &f64| number.is_finite())
             .map(Value::Float)
-            .ok_or_else(|| mismatch("a finite FLOAT, as in `1.5`".to_string())),
-        (Type::Float, _) => Err(mismatch("a FLOAT, as in `1.5`".to_string())),
+            .ok_or_else(|| mismatch("a finite Float, as in `1.5`".to_string())),
+        (Type::Float, _) => Err(mismatch("a Float, as in `1.5`".to_string())),
         (Type::Boolean, NodeKind::Call(call)) if call.arguments.is_empty() => {
             match call.name_text().as_str() {
                 "true" => Ok(Value::Boolean(true)),
@@ -728,9 +739,9 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
     }
 }
 
-/// Whether a number is written as a `FLOAT`, with a point or an exponent:
+/// Whether a number is written as a `Float`, with a point or an exponent:
 /// `1.5`, `3.0`, `1e3`. Any other number, such as `3` or `-1`, is an
-/// `INTEGER`, so every number literal states its own type.
+/// `Integer`, so every number literal states its own type.
 pub(crate) fn is_float_text(text: &str) -> bool {
     let digits = text.strip_prefix('-').unwrap_or(text);
     let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
@@ -744,9 +755,9 @@ pub(crate) const DURATION_EXAMPLE: &str = "1 hour 30 minutes";
 
 /// The units of a duration, as a message lists them.
 fn duration_units() -> String {
-    crate::time::UNITS
+    crate::time::units()
         .iter()
-        .map(|(_, plural, _)| format!("`{plural}`"))
+        .map(|unit| format!("`{}`", unit.plural))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -950,7 +961,7 @@ pub(crate) fn layout(text: String) -> String {
 
 /// Writes a call of `method` in a request: its words, with `arguments` in
 /// its slots, each annotated with its parameter's type, `([] AS: LIST:
-/// TEXT)`, unless it has that type of its own as written.
+/// Text)`, unless it has that type of its own as written.
 fn write_call(
     schema: &Schema,
     method: &Method,
@@ -1056,7 +1067,7 @@ pub(crate) fn write(
         Value::Float(number) if number.is_finite() => out.push_str(&format!("{number:?}")),
         Value::Float(number) => {
             return Err(EncodeError {
-                message: format!("found the FLOAT {number}; expected a finite one"),
+                message: format!("found the Float {number}; expected a finite one"),
             });
         }
         Value::Boolean(boolean) => out.push_str(if *boolean { "true" } else { "false" }),

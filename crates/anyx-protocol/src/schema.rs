@@ -7,7 +7,7 @@
 //! the scope `files/export`. A method in a scope is called by its full name,
 //! `files/export/midi _`. A type or an error is private to its scope unless
 //! it is `PUBLIC`, and another scope refers to it by its full path,
-//! `common/diagnostic`.
+//! `common/Diagnostic`.
 
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
@@ -63,7 +63,7 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `RECORD page of (item: TYPE)`. A type is known by its words and
+    /// `RECORD Page of (item: TYPE)`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
@@ -83,8 +83,8 @@ impl TypeDefinition {
 }
 
 /// `text`, a shape with `_` for each slot, with each slot filled by the next
-/// of `arguments` in parentheses: `page of _` with `TEXT` is
-/// `page of (TEXT)`. A slot left over stays `_`.
+/// of `arguments` in parentheses: `page of _` with `Text` is
+/// `page of (Text)`. A slot left over stays `_`.
 pub fn fill_slots(text: &str, arguments: &[String]) -> String {
     let mut arguments = arguments.iter();
     text.split(' ')
@@ -103,7 +103,7 @@ pub enum TypeKind {
     Record(Vec<Field>),
     /// Variants, each written in its own shape.
     Choice(Vec<Shaped>),
-    /// A named type, `TYPE file id: TEXT`: the type underneath, under a name
+    /// A named type, `TYPE File Id: Text`: the type underneath, under a name
     /// of its own. Generated code keeps it distinct from that type and from
     /// other named types over it; the wire and JSON write it exactly like
     /// the type underneath.
@@ -124,7 +124,7 @@ pub struct Field {
 }
 
 /// A call's shape: words with a typed slot between or around them, such as
-/// `conflict at revision (revision: INTEGER)`.
+/// `conflict at revision (revision: Integer)`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
     /// The words with `_` for each slot: `conflict at revision _`.
@@ -209,7 +209,7 @@ impl Effect {
     }
 }
 
-/// `UNDONE BY move (new path: TEXT) to (path: TEXT)`: the call of another
+/// `UNDONE BY move (new path: Text) to (path: Text)`: the call of another
 /// method of the same protocol that compensates a call of this one, with
 /// this method's parameters as its arguments. It also claims that the call
 /// disclosed nothing outside the account that undoing would not take back.
@@ -221,7 +221,7 @@ pub struct Undo {
     /// of this method that fills it.
     pub arguments: Vec<usize>,
     /// The call as written after `UNDONE BY`, such as
-    /// `move (new path: TEXT) to (path: TEXT)`.
+    /// `move (new path: Text) to (path: Text)`.
     pub text: String,
 }
 
@@ -278,7 +278,7 @@ pub enum Type {
     /// The index of a type in [`Schema::types`], one that isn't generic.
     Named(usize),
     /// A generic record or choice with a type in each slot, `page of
-    /// (TEXT)`: the index of the type in [`Schema::types`], and a type for
+    /// (Text)`: the index of the type in [`Schema::types`], and a type for
     /// each of its parameters, in the order of its slots.
     Generic(usize, Vec<Type>),
     /// A type parameter, by its name, within the generic record or choice
@@ -376,7 +376,7 @@ impl TypeKind {
 pub const INTROSPECTION: &str = "SCHEMA";
 
 /// The built-in `SCHEMA` method: no parameters, returning the guide as
-/// `TEXT`, with no errors.
+/// `Text`, with no errors.
 pub fn introspection() -> &'static Method {
     static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| Method {
         scope: Vec::new(),
@@ -397,7 +397,17 @@ pub fn introspection() -> &'static Method {
     &METHOD
 }
 
-/// `name` behind the path of `scope`: `common/diagnostic`, or `name` alone
+/// `keyword` before the type `name`, as the formatter writes it: with a
+/// `:` only where `name` starts with a keyword it would join, as in
+/// `LIST: LIST Text`, and without one otherwise, `LIST Text`.
+fn keyword_before(keyword: &str, name: String) -> String {
+    match name.split(' ').next().is_some_and(anyx::is_keyword) {
+        true => format!("{keyword}: {name}"),
+        false => format!("{keyword} {name}"),
+    }
+}
+
+/// `name` behind the path of `scope`: `common/Diagnostic`, or `name` alone
 /// in the root.
 pub fn scoped(scope: &[String], name: &str) -> String {
     scope
@@ -487,7 +497,7 @@ impl Schema {
     }
 
     /// `shape` with each slot written as its parameter and type:
-    /// `move (path: TEXT) to (new path: TEXT)`.
+    /// `move (path: Text) to (new path: Text)`.
     pub fn typed_shape(&self, shape: &Shape) -> String {
         let mut parameters = shape.parameters.iter();
         shape
@@ -516,22 +526,23 @@ impl Schema {
 
     /// `type` as it is written in `scope`: a type of that scope by its
     /// name, `file id`, and one of another by its full path,
-    /// `common/file id`.
+    /// `common/File Id`.
     pub fn type_name_in(&self, r#type: &Type, scope: &[String]) -> String {
         let path = |definition: &TypeDefinition, name: &str| match definition.scope == scope {
             true => name.to_string(),
             false => scoped(&definition.scope, name),
         };
         match r#type {
-            Type::Text => "TEXT".to_string(),
-            Type::Bytes => "BYTES".to_string(),
-            Type::Integer => "INTEGER".to_string(),
-            Type::Float => "FLOAT".to_string(),
-            Type::Boolean => "BOOLEAN".to_string(),
-            Type::Instant => "INSTANT".to_string(),
-            Type::Duration => "DURATION".to_string(),
-            Type::List(item) => format!("LIST: {}", self.type_name_in(item, scope)),
-            Type::Map(value) => format!("MAP: {}", self.type_name_in(value, scope)),
+            Type::Text
+            | Type::Bytes
+            | Type::Integer
+            | Type::Float
+            | Type::Boolean
+            | Type::Instant
+            | Type::Duration => crate::prelude::of(r#type)
+                .map_or_else(|| format!("{type:?}"), |intrinsic| intrinsic.name.clone()),
+            Type::List(item) => keyword_before("LIST", self.type_name_in(item, scope)),
+            Type::Map(value) => keyword_before("MAP", self.type_name_in(value, scope)),
             Type::Named(index) => {
                 let definition = &self.types[*index];
                 path(definition, &definition.name)
@@ -551,8 +562,8 @@ impl Schema {
     /// The record or choice that `type` names, after reading past named
     /// types, and its fields or variants: for a generic type, with its
     /// arguments in place of its parameters, so that a value of
-    /// `page of (TEXT)` reads like a record whose `items` are
-    /// `LIST: TEXT`. `None` for any other type.
+    /// `page of (Text)` reads like a record whose `items` are
+    /// `LIST Text`. `None` for any other type.
     pub fn instance<'s>(
         &'s self,
         r#type: &'s Type,
@@ -577,9 +588,9 @@ impl Schema {
         }
     }
 
-    /// `type` with every named type (`TYPE file id: TEXT`) it stands for
+    /// `type` with every named type (`TYPE File Id: Text`) it stands for
     /// replaced by the type underneath, which is how the wire and JSON
-    /// write it: `TEXT` for `file id`.
+    /// write it: `Text` for `file id`.
     pub fn underlying<'t>(&'t self, r#type: &'t Type) -> &'t Type {
         let mut underlying = r#type;
         // The checker rejects named types that lead back to themselves, so
@@ -616,7 +627,7 @@ impl Schema {
     }
 
     /// `method`'s full name with each slot holding its parameter's type, as
-    /// written in its scope: `tag (LIST: TEXT)`, `files/open (file id)`.
+    /// written in its scope: `tag (LIST Text)`, `files/open (file id)`.
     pub fn typed_name(&self, method: &Method) -> String {
         let types: Vec<String> = method
             .shape
@@ -628,7 +639,7 @@ impl Schema {
     }
 
     /// What JSON and the generated TypeScript call `method` by: its full
-    /// name, `tag _`, or its typed name, `tag (LIST: TEXT)`, when it is
+    /// name, `tag _`, or its typed name, `tag (LIST Text)`, when it is
     /// overloaded.
     pub fn call_name(&self, method: &Method) -> String {
         match self.is_overloaded(method) {
@@ -753,15 +764,37 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
                 ),
             )];
         }
+        if let Some((span, intrinsic)) = old_built_in(&nodes, error.span) {
+            return vec![found(
+                span,
+                format!(
+                    "found `{old}`; expected `{new}`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language",
+                    old = &file.source[span.start..span.end],
+                    new = intrinsic.name
+                ),
+            )];
+        }
+        // The definition the error is in, since `INTRINSIC METHOD` fails at
+        // `METHOD`, after the `INTRINSIC` that caused it.
+        let definition = nodes
+            .iter()
+            .find(|node| node.span.start <= error.span.start && error.span.start < node.span.end)
+            .map_or(error.span, |node| node.span);
+        if let Some(span) = word_within(&nodes, definition, "INTRINSIC") {
+            return vec![found(
+                span,
+                "found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it".to_string(),
+            )];
+        }
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a `RECORD`; expected one only on an `OPTIONAL` field of a `RECORD`, as in `limit: OPTIONAL: INTEGER DEFAULT 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a `RECORD`; expected one only on an `OPTIONAL` field of a `RECORD`, as in `limit: OPTIONAL: Integer DEFAULT 50`, since a parameter is always written".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
-            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: INTEGER)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: TEXT) RETURNS (file: file) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`".to_string(),
+            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: Text) RETURNS (file: File) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]
@@ -799,8 +832,54 @@ fn after_word<'a>(nodes: &'a [Node], span: Span, word: &str) -> Option<&'a Node>
     })
 }
 
+/// Each word of a call's name within `span`, among `nodes` and the nodes
+/// they hold, with its span.
+fn words_within(nodes: &[Node], span: Span) -> Vec<(&str, Span)> {
+    fn walk<'n>(node: &'n Node, span: Span, found: &mut Vec<(&'n str, Span)>) {
+        if node.span.end <= span.start || span.end <= node.span.start {
+            return;
+        }
+        let children: &[Node] = match &node.kind {
+            NodeKind::Call(call) => {
+                for part in &call.name {
+                    if let NamePart::Word { text, span: at } = part
+                        && span.start <= at.start
+                        && at.end <= span.end
+                    {
+                        found.push((text, *at));
+                    }
+                }
+                &call.arguments
+            }
+            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            _ => &[],
+        };
+        children.iter().for_each(|child| walk(child, span, found));
+    }
+    let mut found = Vec::new();
+    nodes.iter().for_each(|node| walk(node, span, &mut found));
+    found.sort_by_key(|(_, at)| at.start);
+    found
+}
+
+/// The first all-caps name of a built-in type from before the prelude,
+/// such as `INTEGER`, within `span`, and the type it is now.
+fn old_built_in(nodes: &[Node], span: Span) -> Option<(Span, &'static crate::prelude::Intrinsic)> {
+    words_within(nodes, span)
+        .into_iter()
+        .find_map(|(text, at)| crate::prelude::renamed(text).map(|intrinsic| (at, intrinsic)))
+}
+
+/// Where `word` first is within `span`.
+fn word_within(nodes: &[Node], span: Span, word: &str) -> Option<Span> {
+    words_within(nodes, span)
+        .into_iter()
+        .find(|(text, _)| *text == word)
+        .map(|(_, at)| at)
+}
+
 /// Whether `span` is inside what a `METHOD` returns, written without a name:
-/// `RETURNS (TEXT)` rather than `RETURNS (text: TEXT)`.
+/// `RETURNS (Text)` rather than `RETURNS (text: Text)`.
 fn unnamed_return(nodes: &[Node], span: Span) -> bool {
     after_word(nodes, span, "RETURNS").is_some_and(|returned| {
         !matches!(&returned.kind, NodeKind::Call(call)
@@ -810,7 +889,7 @@ fn unnamed_return(nodes: &[Node], span: Span) -> bool {
 }
 
 /// Where the call with a `DEFAULT` that `span` is in is, when it is not in
-/// a `RECORD`, as in a parameter `(limit: INTEGER DEFAULT 50)`.
+/// a `RECORD`, as in a parameter `(limit: Integer DEFAULT 50)`.
 fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
     fn has_word(node: &Node, word: &str) -> bool {
         matches!(&node.kind, NodeKind::Call(call)
@@ -848,7 +927,7 @@ fn lone_error(nodes: &[Node], span: Span) -> bool {
 }
 
 /// Where the name of the `METHOD` that `span` is in is, if it has a `/`, as
-/// in `METHOD files/read (path: TEXT)`.
+/// in `METHOD files/read (path: Text)`.
 fn slashed_method(nodes: &[Node], span: Span) -> Option<Span> {
     let shape = after_word(nodes, span, "METHOD")?;
     let NodeKind::Call(call) = &shape.kind else {

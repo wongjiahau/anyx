@@ -1,14 +1,56 @@
 == an unknown type
-PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: TEXT),
-schema:1:36: found `thing`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
-  PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: TEXT),
+PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+  PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
                                      ^^^^^
 
+== a built-in type under its old all-caps name
+PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text),
+schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
+  PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text),
+                                     ^^^^^^^
+
+== an old all-caps name inside a list
+PROTOCOL a VERSION 1, RECORD x { tags: LIST: TEXT },
+schema:1:46: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
+  PROTOCOL a VERSION 1, RECORD x { tags: LIST: TEXT },
+                                               ^^^^
+
+== INTRINSIC in a schema
+PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,
+schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
+  PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,
+                        ^^^^^^^^^
+
+== INTRINSIC on a record in a schema
+PROTOCOL a VERSION 1, INTRINSIC RECORD x { a: Text },
+schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
+  PROTOCOL a VERSION 1, INTRINSIC RECORD x { a: Text },
+                        ^^^^^^^^^
+
+== INTRINSIC on a method
+PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text),
+schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
+  PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text),
+                        ^^^^^^^^^
+
+== a type named like a built-in one
+PROTOCOL a VERSION 1, RECORD Integer { a: Text },
+schema:1:30: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every scope; rename it
+  PROTOCOL a VERSION 1, RECORD Integer { a: Text },
+                               ^^^^^^^
+
+== a named type without a type
+PROTOCOL a VERSION 1, TYPE Money,
+schema:1:28: found `TYPE Money` without a type; expected the type it names after a `:`, as in `TYPE Money: Text`
+  PROTOCOL a VERSION 1, TYPE Money,
+                             ^^^^^
+
 == an unnamed return
-PROTOCOL a VERSION 1, METHOD f RETURNS (TEXT),
-schema:1:41: found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: INTEGER)`, since the name says what the value is
-  PROTOCOL a VERSION 1, METHOD f RETURNS (TEXT),
-                                          ^^^^
+PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
+schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is
+  PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
+                                              ^
 
 == a bad error after RETURNS NOTHING, which is not an unnamed return
 PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],
@@ -17,45 +59,45 @@ schema:1:61: found the number `3`; expected the call `… _`, a `#` line string 
                                                               ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, RECORD x { a: TEXT }, CHOICE x { b },
+PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
 schema:1:52: found a second type named `x`; expected each type to be defined once in a scope; rename or remove one of them
-  PROTOCOL a VERSION 1, RECORD x { a: TEXT }, CHOICE x { b },
+  PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
                                                      ^
 
 == a field twice
-PROTOCOL a VERSION 1, RECORD x { a: TEXT, a: INTEGER },
+PROTOCOL a VERSION 1, RECORD x { a: Text, a: Integer },
 schema:1:43: found a second field named `a`; expected each field once; rename or remove one of them
-  PROTOCOL a VERSION 1, RECORD x { a: TEXT, a: INTEGER },
+  PROTOCOL a VERSION 1, RECORD x { a: Text, a: Integer },
                                             ^
 
 == a variant twice
-PROTOCOL a VERSION 1, CHOICE x { a, a (b: TEXT) },
+PROTOCOL a VERSION 1, CHOICE x { a, a (b: Text) },
 schema:1:37: found a second variant named `a`; expected each variant's words once; rename or remove one of them
-  PROTOCOL a VERSION 1, CHOICE x { a, a (b: TEXT) },
+  PROTOCOL a VERSION 1, CHOICE x { a, a (b: Text) },
                                       ^
 
 == a parameter twice
-PROTOCOL a VERSION 1, METHOD f (x: TEXT) g (x: TEXT) RETURNS (y: TEXT),
+PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
 schema:1:45: found a second parameter named `x`; expected each parameter once; rename one of them
-  PROTOCOL a VERSION 1, METHOD f (x: TEXT) g (x: TEXT) RETURNS (y: TEXT),
+  PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
                                               ^
 
 == a method twice
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT), METHOD f RETURNS (z: TEXT),
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
 schema:1:58: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT), METHOD f RETURNS (z: TEXT),
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
                                                            ^
 
 == overloads with the same parameter types
-PROTOCOL a VERSION 1, TYPE id: TEXT, METHOD tag (names: LIST: TEXT) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST: TEXT) RETURNS NOTHING,
-schema:1:137: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, TYPE id: TEXT, METHOD tag (names: LIST: TEXT) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST: TEXT) RETURNS NOTHING,
-                                                                                                                                          ^^^
+PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+schema:1:136: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+                                                                                                                                         ^^^
 
 == overloads that differ only in what they return
-PROTOCOL a VERSION 1, METHOD scale (by: FLOAT) RETURNS (scaled: FLOAT), METHOD scale (by: FLOAT) RETURNS (scaled: INTEGER),
+PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
 schema:1:80: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
-  PROTOCOL a VERSION 1, METHOD scale (by: FLOAT) RETURNS (scaled: FLOAT), METHOD scale (by: FLOAT) RETURNS (scaled: INTEGER),
+  PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
                                                                                  ^^^^^
 
 == a type holding itself
@@ -71,9 +113,9 @@ schema:1:30: found the type `node` holding itself; expected a type that holds it
                                ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: INTEGER DEFAULT [] },
-schema:1:68: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of INTEGER, as in `{ "key" … }`
-  PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: INTEGER DEFAULT [] },
+PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: Integer DEFAULT [] },
+schema:1:68: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: Integer DEFAULT [] },
                                                                      ^^
 
 == a cycle through a choice
@@ -86,42 +128,42 @@ schema:1:49: found the type `b` holding itself; expected a type that holds itsel
                                                   ^
 
 == names that are not lowercase ASCII
-PROTOCOL a VERSION 1, RECORD x { Path: TEXT, café: TEXT },
+PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
 schema:1:34: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, RECORD x { Path: TEXT, café: TEXT },
+  PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
                                    ^^^^
 schema:1:46: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, RECORD x { Path: TEXT, café: TEXT },
+  PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
                                                ^^^^
 
 == a parameter named kind
-PROTOCOL a VERSION 1, CHOICE x { y (kind: TEXT) },
+PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },
 schema:1:37: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
-  PROTOCOL a VERSION 1, CHOICE x { y (kind: TEXT) },
+  PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },
                                       ^^^^
 
 == a missing protocol line
-RECORD x { a: TEXT },
+RECORD x { a: Text },
 schema:1:1: found no `PROTOCOL` header; expected the schema to start with one, such as `PROTOCOL notes VERSION 1`
-  RECORD x { a: TEXT },
+  RECORD x { a: Text },
   ^
 
 == a keyword in a name
-PROTOCOL a VERSION 1, RECORD x { a TEXT b: TEXT },
-schema:1:34: found the call `_ TEXT _`; expected the call `_? … _` or the closing `}`
-  PROTOCOL a VERSION 1, RECORD x { a TEXT b: TEXT },
-                                   ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, RECORD x { a Text b: Text },
+schema:1:34: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, RECORD x { a Text b: Text },
+                                   ^^^^^^^^
 
 == an unknown group
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS gone,
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
 schema:1:57: found `gone`, which is not an error group of this schema; expected the name of an `ERRORS` group, such as `file errors` for `ERRORS file errors [trashed, missing]`
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS gone,
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
                                                           ^^^^
 
 == an error where a group goes
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS [lost] + gone,
+PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
 schema:1:83: found `gone`, which is an error, not a group; expected a group after a `+`; put the error in an `ERRORS` group and join that group, since an error is defined once, in the brackets of the group or method that has it
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS [lost] + gone,
+  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
                                                                                     ^^^^
 
 == groups joining each other
@@ -131,21 +173,21 @@ schema:1:30: found the error group `x` joining itself; expected a group to join 
                                ^
 
 == an error listed twice through a group
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS x + x,
+PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS x + x,
 schema:1:78: found the error `gone` twice among this method's errors, counting those of its groups; expected each error once; remove one
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS x + x,
+  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS x + x,
                                                                                ^
 
 == an error defined twice in a scope
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS [gone],
+PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
 schema:1:75: found a second error `gone` in this schema, after the one on line 1; expected each error once in a scope; to share one, put it in an `ERRORS` group and join the group with `+`
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: TEXT) ERRORS [gone],
+  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
                                                                             ^^^^
 
 == a group joining an unknown group
-PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: TEXT) ERRORS x,
+PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
 schema:1:38: found `lost`, which is not an error group of this schema; expected the name of an `ERRORS` group, such as `file errors` for `ERRORS file errors [trashed, missing]`
-  PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: TEXT) ERRORS x,
+  PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
                                        ^^^^
 
 == a group without a name
@@ -161,39 +203,39 @@ schema:1:44: found a second error group named `x`; expected each group once in a
                                              ^
 
 == a name before a method's errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS mine [gone],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [gone],
 schema:1:57: found the name `mine` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `ERRORS [missing] + file errors`
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS mine [gone],
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [gone],
                                                           ^^^^
 
 == errors in brackets after a group
-PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: TEXT) ERRORS x + [b],
+PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS x + [b],
 schema:1:75: found errors in brackets after a `+`; expected the errors in brackets first, then the groups joined with `+`, such as `[missing] + file errors`
-  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: TEXT) ERRORS x + [b],
+  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS x + [b],
                                                                             ^^^
 
 == an operator other than `+` among errors
-PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: TEXT) ERRORS [b] - x,
-schema:1:71: found `[b] - x` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: TEXT)] + file errors` or `[missing] + files/file errors`
-  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: TEXT) ERRORS [b] - x,
+PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS [b] - x,
+schema:1:71: found `[b] - x` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`
+  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS [b] - x,
                                                                         ^^^^^^^
 
 == an error defined on its own
 PROTOCOL a VERSION 1, ERROR gone,
-schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: TEXT) RETURNS (file: file) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`
+schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: Text) RETURNS (file: File) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`
   PROTOCOL a VERSION 1, ERROR gone,
                         ^^^^^
 
 == a string inside an error
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) # doc
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [gone (a: Text) # doc
 ],
-schema:1:73: found a string in an error's slot; expected a parameter, as in `(revision: INTEGER)`; an error's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) # doc
+schema:1:73: found a string in an error's slot; expected a parameter, as in `(revision: Integer)`; an error's `#` doc goes on the lines before it
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [gone (a: Text) # doc
                                                                           ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) # doc
+PROTOCOL a VERSION 1, CHOICE x { y (a: Text) # doc
 },
-schema:1:46: found a string in a variant's slot; expected a parameter, as in `(revision: INTEGER)`; a variant's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) # doc
+schema:1:46: found a string in a variant's slot; expected a parameter, as in `(revision: Integer)`; a variant's `#` doc goes on the lines before it
+  PROTOCOL a VERSION 1, CHOICE x { y (a: Text) # doc
                                                ^^^^^

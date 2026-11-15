@@ -1,24 +1,24 @@
-RECORD file { path: TEXT, revision: INTEGER, content: TEXT },
+RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
     trashed,
 ] + common/common errors,
 
-READ ONLY METHOD list RETURNS (paths: LIST: TEXT),
+READ ONLY METHOD list RETURNS (paths: LIST Text),
 
-READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (warnings: LIST common/diagnostic)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (warnings: LIST common/Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/diagnostic),
+        rejected (diagnostics: LIST common/Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,

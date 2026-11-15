@@ -16,22 +16,22 @@ const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::Sch
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-RECORD file summary {
+RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: TEXT,
-    revision: INTEGER,
+    path: Text,
+    revision: Integer,
 },
 
-RECORD file { path: TEXT, revision: INTEGER, content: TEXT },
+RECORD File { path: Text, revision: Integer, content: Text },
 
 # One problem in a score.
-RECORD diagnostic {
+RECORD Diagnostic {
     # Counted from 1, in the content you sent.
-    line: INTEGER,
+    line: Integer,
     # Counted from 1, in characters.
-    column: INTEGER,
-    code: TEXT,
-    message: TEXT,
+    column: Integer,
+    code: Text,
+    message: Text,
 },
 
 ERRORS file errors [
@@ -44,21 +44,21 @@ ERRORS file errors [
 
 ERRORS score errors [
     # The score doesn't parse. Nothing was saved.
-    rejected (diagnostics: LIST diagnostic),
+    rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
-READ ONLY METHOD list files RETURNS files: LIST file summary,
+READ ONLY METHOD list files RETURNS files: LIST File Summary,
 
-READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the score, if the file is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (new revision: INTEGER)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (new revision: Integer)
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
-        conflict at revision (revision: INTEGER) content (content: TEXT),
+        conflict at revision (revision: Integer) content (content: Text),
     ] + score errors + file errors
     EXAMPLES [
         # Saving over the revision you read.
@@ -68,18 +68,18 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
     ],
 
 # Makes a new file, and its folders if they don't exist.
-METHOD create (path: TEXT) content (content: TEXT)
-    RETURNS (revision: INTEGER)
+METHOD create (path: Text) content (content: Text)
+    RETURNS (revision: Integer)
     ERRORS [
         # A file already has this path. Read it, or create under another path.
-        already exists at revision (revision: INTEGER),
+        already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
-        invalid path (message: TEXT),
+        invalid path (message: Text),
     ] + score errors,
 
 # The score as a Standard MIDI File.
-READ ONLY METHOD export midi (path: TEXT)
-    RETURNS (midi: BYTES)
+READ ONLY METHOD export midi (path: Text)
+    RETURNS (midi: Bytes)
     ERRORS file errors,
 "#,
 }];

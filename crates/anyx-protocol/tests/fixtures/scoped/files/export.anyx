@@ -1,10 +1,10 @@
 # A page of a note, with what is wrong on it.
-RECORD page { html: TEXT, problem: OPTIONAL common/diagnostic },
+RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
 
-METHOD html (path: TEXT) RETURNS (pages: LIST page) ERRORS files/file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
 
-METHOD pdf (path: TEXT) RETURNS (pdf: BYTES)
+METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/diagnostic),
+        unreadable (diagnostics: LIST common/Diagnostic),
     ] + files/file errors,

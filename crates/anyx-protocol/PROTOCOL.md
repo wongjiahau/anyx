@@ -11,33 +11,33 @@ document of their results. Both are checked against the schema.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-RECORD file summary {
+RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: TEXT,
-    revision: INTEGER,
-    note: OPTIONAL: TEXT,
+    path: Text,
+    revision: Integer,
+    note: OPTIONAL Text,
 },
 
-CHOICE shade { dark, light },
+CHOICE Shade { dark, light },
 
-CHOICE colour { dark, light, custom hue (hue: FLOAT), (base: shade) dimmed },
+CHOICE Colour { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
 
 # Which file, among every account's.
-TYPE file id: TEXT,
+TYPE File Id: Text,
 
 ERRORS file errors [
     # The owner moved this file to the trash.
     trashed,
     missing,
-    (path: TEXT) would be both file and folder,
+    (path: Text) would be both file and folder,
 ],
 
 # Saves the score, if the file is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (new revision: INTEGER)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (new revision: Integer)
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at `revision`.
-        conflict at revision (revision: INTEGER) content (content: TEXT),
+        conflict at revision (revision: Integer) content (content: Text),
     ] + file errors
     EXAMPLES [
         # Saving over the revision you read.
@@ -52,47 +52,53 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   are part of the schema, so the guide an agent reads includes them. `##`
   starts a comment. A doc is always `#` lines: a quoted `"…"` or raw
   `"""…"""` string where a doc goes is an error.
-- **Names** are lowercase words: `file summary`. All-caps words belong to the
-  schema language. Keywords side by side join into one name, so write
-  `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
-- **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `FLOAT` (a finite 64-bit IEEE 754 float: `f64`
-  in Rust, `number` in TypeScript),
-  `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
+- **Names** of types are written in Title Case: `File Summary`, `File Id`.
+  Other names, of fields, parameters, methods, variants and errors, are
+  lowercase words: `new revision`. All-caps words belong to the schema
+  language, so a word with no lowercase letter is a keyword: write `Id`,
+  never `ID`. Title Case is a convention; the checker takes a type name of
+  any case. Keywords side by side join into one name, so write
+  `LIST: LIST Text` and `OPTIONAL: Integer DEFAULT 50` with the `:`; a
+  formatted schema drops a `:` that nothing would join, as in `LIST Text`.
+- **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
+  (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
+  `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
+  `Duration` (a length of time), declared in the [prelude](#the-prelude);
   `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
   `RECORD`, `CHOICE` or `TYPE`, and a use of a generic type,
-  `page of (order)`. A type may hold itself only through a
+  `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
-- **`TYPE name: T`** names a type, `TYPE file id: TEXT`, so that values that
+- **`TYPE Name: T`** names a type, `TYPE File Id: Text`, so that values that
   share a representation but mean different things can't be mixed up. It is
   written exactly like `T`, on the wire and in JSON, and generated code
   keeps it distinct from `T` and from other named types over `T`. `T` is any
-  type, `TYPE tags: LIST: TEXT`, but can't lead back to the named type.
-- **`RECORD name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
+  type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
+- **`RECORD Name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
   may be left out. `DEFAULT value` after its type gives it the value it
-  holds when left out: `limit: OPTIONAL: INTEGER DEFAULT 50`, or
-  `tags: OPTIONAL: LIST: TEXT DEFAULT []`. The value is written as on the
+  holds when left out: `limit: OPTIONAL: Integer DEFAULT 50`, or
+  `tags: OPTIONAL: LIST Text DEFAULT []`. The value is written as on the
   wire and checked against the type. Only an `OPTIONAL` field of a `RECORD`
   takes a `DEFAULT`; a parameter is always written. The reader of a value
   fills the default in, so code sees the field as always there.
-- **`CHOICE name { variant, … }`**: one of its variants. A variant is a
+- **`CHOICE Name { variant, … }`**: one of its variants. A variant is a
   *shape*: words, with `(name: TYPE)` slots anywhere among them, as in
-  `custom hue (hue: FLOAT)` or `(base: shade) dimmed`. Variants differ by
+  `custom hue (hue: Float)` or `(base: Shade) dimmed`. Variants differ by
   their words.
 - **A generic `RECORD` or `CHOICE`** has type parameters in its name. Its
   name is a shape, like a variant's: words, with a `(parameter: TYPE)` slot
   anywhere among them, at the start, between words, or at the end. Its
   fields or variants use each parameter as a type. A use writes the same
   words with a type in parentheses in each slot, in the same places:
-  `page of (order)`, `(receipt) or (decline)`. A value of it is written
+  `Page of (Order)`, `(Receipt) or (Decline)`. A value of it is written
   exactly like the record or choice with those types in place of the
   parameters, on the wire and in JSON, and checked against them, in
   `DEFAULT`s and `EXAMPLES` too.
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  RECORD page of (item: TYPE) {
+  RECORD Page of (item: TYPE) {
       items: LIST: item,
-      next: OPTIONAL: TEXT,
+      next: OPTIONAL Text,
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
@@ -107,26 +113,26 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
       signer: signer,
   },
 
-  METHOD orders RETURNS (orders: page of (order)),
-  METHOD pay (order: order id)
-      RETURNS (outcome: (receipt) or (decline)),
-  METHOD pay all (orders: LIST page of (order id))
-      RETURNS (outcomes: page of ((receipt) or (decline))),
-  METHOD search (words: TEXT)
-      RETURNS (results: page of ((document) signed by (person))),
-  TYPE orders: page of (order),
+  METHOD orders RETURNS (orders: Page of (Order)),
+  METHOD pay (order: Order Id)
+      RETURNS (outcome: (Receipt) or (Decline)),
+  METHOD pay all (orders: LIST Page of (Order Id))
+      RETURNS (outcomes: Page of ((Receipt) or (Decline))),
+  METHOD search (words: Text)
+      RETURNS (results: Page of ((Document) signed by (Person))),
+  TYPE Orders: Page of (Order),
   ```
 
   A slot may also sit between words in the middle of a name,
-  `RECORD box of (item: TYPE) sealed`, used as `box of (letter) sealed`, and
+  `RECORD Box of (item: TYPE) sealed`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `RECORD table from (key: TYPE) to (value: TYPE)`.
+  `RECORD Table from (key: TYPE) to (value: TYPE)`.
 
-  A type is known by its words and where its slots are, so `page` and
-  `page of (item: TYPE)` are two types, and both may be declared; two
+  A type is known by its words and where its slots are, so `Page` and
+  `Page of (item: TYPE)` are two types, and both may be declared; two
   declarations of the same shape are an error. Only a `RECORD` or a
-  `CHOICE` is generic, `TYPE name: T` is not, and
-  `PUBLIC RECORD page of (item: TYPE)` shares one. A parameter is a
+  `CHOICE` is generic, `TYPE Name: T` is not, and
+  `PUBLIC RECORD Page of (item: TYPE)` shares one. A parameter is a
   lowercase name, once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type of its scope,
   or another scope's `PUBLIC` type. A parameter has no slots, and a field
@@ -134,16 +140,16 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   against every argument. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
-  with its own parameters as they are, `LIST tree of (item)`, and only
+  with its own parameters as they are, `LIST Tree of (item)`, and only
   through a `LIST` or a `MAP`. Another scope's type is written with its
-  scope first, `common/page of (order)`.
+  scope first, `common/Page of (Order)`.
 
   Make a type generic only when it is used with different arguments, such
-  as `page of (order)` and `page of (file)`. If every use passes the same
+  as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `RECORD trashed file { file: file summary, trashed at: INSTANT }`,
+  name reads better: `RECORD Trashed File { file: File Summary, trashed at: Instant }`,
   not `RECORD (item: TYPE) in trash since (when: TYPE)` used only as
-  `(file summary) in trash since (INSTANT)`.
+  `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: TYPE) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
@@ -162,7 +168,7 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - **Errors** are written where they are used, in full: a shape like a
   variant's, with its `#` doc before it. A method's `ERRORS` has its own
   errors in brackets, then the groups it shares joined with `+`:
-  `[conflict at revision (revision: INTEGER)] + file errors`, or a group
+  `[conflict at revision (revision: Integer)] + file errors`, or a group
   alone, `file errors`.
 - **`ERRORS name [errors]`** defines a group of errors that methods share.
   It may join other groups with `+`: `ERRORS export errors [unreadable] +
@@ -171,8 +177,8 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - Each error is defined once in a scope, in the brackets of the one method
   or group that has it. To share an error, put it in a group.
 - **Overloads:** methods of a scope may share a shape and differ in their
-  parameters' types, `METHOD tag (paths: LIST: TEXT)` and `METHOD tag (ids:
-  LIST: file id)`. A call runs the one whose parameters have its
+  parameters' types, `METHOD tag (paths: LIST Text)` and `METHOD tag (ids:
+  LIST File Id)`. A call runs the one whose parameters have its
   arguments' types; see [Annotations and
   overloads](#annotations-and-overloads). Two methods of a shape whose
   parameters have the same types are an error, also when they differ only
@@ -189,21 +195,21 @@ so the sentence says what a `#` doc would, and keep `#` for what no shape
 can say.
 
 - **Put each slot where its word goes**, at the start, middle or end:
-  `(path: TEXT) would be both file and folder`, `(email: TEXT) is not a
-  test account`, `move (path: TEXT) to (new path: TEXT)`. On the wire it
+  `(path: Text) would be both file and folder`, `(email: Text) is not a
+  test account`, `move (path: Text) to (new path: Text)`. On the wire it
   reads `"Hymns/a.poentaro" would be both file and folder`.
 - **Words after a slot give its unit**, and the slot's name says what the
-  value is: `locked for (duration: INTEGER) seconds` reads `locked for 30
-  seconds`. Don't repeat the unit as the name, as in `(seconds: INTEGER)
+  value is: `locked for (duration: Integer) seconds` reads `locked for 30
+  seconds`. Don't repeat the unit as the name, as in `(seconds: Integer)
   seconds`.
 - **Don't write a `#` doc that restates the shape**, like `# The path would
-  be both a file and a folder.` above `(path: TEXT) would be both file and
+  be both a file and a folder.` above `(path: Text) would be both file and
   folder`. Keep a doc for a rule the shape can't carry, such as
   `# Nothing moved.`
 - **A shape whose slot is a sentence keeps it last**: `weak password
-  (message: TEXT)`, since no words could follow a message well.
+  (message: Text)`, since no words could follow a message well.
 - Generated code names a variant by its words alone, so
-  `locked for (duration: INTEGER) seconds` is `LockedForSeconds { duration }`.
+  `locked for (duration: Integer) seconds` is `LockedForSeconds { duration }`.
   Two variants can't differ only by where their slots sit.
 
 ### Naming methods
@@ -218,15 +224,15 @@ at such steps, which makes it worse.
 
 ```anyx
 ## Not this: the client works out what a transfer changes, and in what order.
-METHOD update account (id: TEXT) fields (fields: account fields)
+METHOD update account (id: Text) fields (fields: account fields)
     RETURNS (account: account),
 
 ## This: the server does the whole transfer, or none of it.
-METHOD transfer (amount: INTEGER) cents from (source: TEXT) to (target: TEXT)
-    RETURNS (transfer: TEXT)
-    ERRORS [short by (shortfall: INTEGER) cents],
-METHOD close (account: TEXT) RETURNS NOTHING
-    ERRORS [still holds (balance: INTEGER) cents],
+METHOD transfer (amount: Integer) cents from (source: Text) to (target: Text)
+    RETURNS (transfer: Text)
+    ERRORS [short by (shortfall: Integer) cents],
+METHOD close (account: Text) RETURNS NOTHING
+    ERRORS [still holds (balance: Integer) cents],
 ```
 
 - **The shape names the intent.** `transfer (amount) cents from (source) to
@@ -247,24 +253,24 @@ client can decide on its own whether to retry a call whose response was
 lost, and whether to ask a person before sending it.
 
 ```anyx
-READ ONLY METHOD read (path: TEXT) RETURNS (document: document)
+READ ONLY METHOD read (path: Text) RETURNS (document: Document)
     ERRORS [missing],
 
-IDEMPOTENT METHOD archive (path: TEXT) RETURNS NOTHING
+IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING
     ERRORS [missing]
-    UNDONE BY unarchive (path: TEXT),
+    UNDONE BY unarchive (path: Text),
 
-IDEMPOTENT METHOD unarchive (path: TEXT) RETURNS NOTHING ERRORS [missing],
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [missing],
 
-METHOD move (path: TEXT) to (new path: TEXT) RETURNS NOTHING
+METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
     ERRORS [missing, taken]
-    UNDONE BY move (new path: TEXT) to (path: TEXT),
+    UNDONE BY move (new path: Text) to (path: Text),
 
 ## No markers: may change anything, and is never retried on its own.
-METHOD append (text: TEXT) to (path: TEXT) RETURNS NOTHING ERRORS [missing],
+METHOD append (text: Text) to (path: Text) RETURNS NOTHING ERRORS [missing],
 
 ## Can't claim `UNDONE BY`: the recipient has read the document.
-METHOD send (path: TEXT) to (email: TEXT) RETURNS NOTHING ERRORS [missing],
+METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [missing],
 ```
 
 - **`READ ONLY`** before `METHOD`: the caller asks for no change, as HTTP's
@@ -287,7 +293,7 @@ METHOD send (path: TEXT) to (email: TEXT) RETURNS NOTHING ERRORS [missing],
   call of another method of the same scope. It is written like a shape whose
   slots are the method's own parameters, each `(name: TYPE)` with that
   parameter's name and type: `move (path) to (new path)` is undone by
-  `move (new path: TEXT) to (path: TEXT)`. The types say which method it
+  `move (new path: Text) to (path: Text)`. The types say which method it
   is, among methods with the same words, so the call must match exactly one
   method: the same words and the same type in each slot. Only parameters fill
   the slots, not the returned value or a literal value.
@@ -325,7 +331,7 @@ notes/
 A file or folder name is one lowercase word, letters and digits.
 
 - **A method is called by its full name**: the scope's path, `/`, then its
-  shape. `METHOD pdf (path: TEXT)` in `files/export.anyx` is called as
+  shape. `METHOD pdf (path: Text)` in `files/export.anyx` is called as
   `files/export/pdf "a.note"`. A method's own shape has no `/`.
 - **Types and error groups are private** to the scope that declares them;
   folders give no special access, so `files/export` can't see what `files`
@@ -334,21 +340,51 @@ A file or folder name is one lowercase word, letters and digits.
 
 ```anyx
 ## common.anyx
-PUBLIC RECORD diagnostic { line: INTEGER, message: TEXT },
+PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 PUBLIC ERRORS common errors [missing],
 
 ## files.anyx
 PUBLIC ERRORS file errors [trashed] + common/common errors,
-METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 ## files/export.anyx
-METHOD pdf (path: TEXT) RETURNS (pdf: BYTES)
-    ERRORS [unreadable (diagnostics: LIST common/diagnostic)] + files/file errors,
+METHOD pdf (path: Text) RETURNS (pdf: Bytes)
+    ERRORS [unreadable (diagnostics: LIST common/Diagnostic)] + files/file errors,
 ```
 
 - In its own scope, a type or group is named without its path.
 - An error is written on the wire by its words alone, `ERROR missing`, so a
   method can't list two errors of the same words from different scopes.
+
+### The prelude
+
+The built-in types are declared in the prelude,
+[`prelude.anyx`](prelude.anyx), written in the schema language with a `#`
+doc on each. It is read and checked before every schema, and its names are
+visible in every scope, so a schema can't declare a type of the same name:
+`RECORD Integer { … }` is an error.
+
+```anyx
+# A whole number of 64 bits, written without a point: `3`, `-1`.
+INTRINSIC TYPE Integer,
+
+INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
+```
+
+- **`INTRINSIC`** marks a declaration whose meaning the implementation
+  supplies: the prelude gives its name, its doc and, for `Duration`, its
+  units, and the Rust code gives how its values are read, written and
+  generated. Only the prelude may use it; `INTRINSIC` in a schema is an
+  error. An `INTRINSIC TYPE` has no type after it.
+- The guide's list of built-in types is the prelude's docs, and a
+  `Duration`'s units are the prelude's variants.
+- The built-in types were once keywords, `INTEGER`, `TEXT` and so on. An
+  old name is an error that names the new one: "found `INTEGER`; expected
+  `Integer`". `LIST`, `MAP`, `OPTIONAL` and `TYPE` stay keywords.
+- Generated code doesn't change: an `Integer` is still `i64` in Rust and
+  `number` in TypeScript, and values are written as before. A method's
+  typed name, which names an overload in JSON, writes the types as the
+  schema does, so it is now `scale (Float)` where it was `scale (FLOAT)`.
 
 ## Requests
 
@@ -368,7 +404,7 @@ In a schema of scopes, each call starts with its scope's path:
 Every call runs, in order.
 
 `SCHEMA` is a built-in call every server answers, with no code of its own:
-it returns the guide (below) as `TEXT`, without how to send a request,
+it returns the guide (below) as `Text`, without how to send a request,
 since the caller just sent one. A client that has only a server's address
 learns everything else from it:
 
@@ -380,36 +416,39 @@ SCHEMA,
 
 | Type | Written |
 | --- | --- |
-| `TEXT` | `"text"` with `\"`, `\\`, `\n`, `\r`, `\t` and `\u{…}` escapes; or a raw string of three or more quotes, whose closing quotes' indentation is removed from every line |
-| `BYTES` | its standard base64 (RFC 4648, padded) as a string: `"TVRoZA=="` |
-| `INTEGER` | a whole number without a point: `3`, `-1` |
-| `FLOAT` | a number with a point or an exponent: `1.5`, `3.0`, `1e3`; never `3`, which is an `INTEGER` |
-| `BOOLEAN` | `true`, `false` |
-| `INSTANT` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
-| `DURATION` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
+| `Text` | `"text"` with `\"`, `\\`, `\n`, `\r`, `\t` and `\u{…}` escapes; or a raw string of three or more quotes, whose closing quotes' indentation is removed from every line |
+| `Bytes` | its standard base64 (RFC 4648, padded) as a string: `"TVRoZA=="` |
+| `Integer` | a whole number without a point: `3`, `-1` |
+| `Float` | a number with a point or an exponent: `1.5`, `3.0`, `1e3`; never `3`, which is an `Integer` |
+| `Boolean` | `true`, `false` |
+| `Instant` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
+| `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
-| a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `page of (order)` |
+| a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 
 A number's type is how it is written, as in Rust: `3` and `-1` are
-`INTEGER`s, and `3.0`, `1.5` and `1e3` are `FLOAT`s. So every number states
-its own type, and an `INTEGER` where a `FLOAT` goes is an error ("found the
-INTEGER `3`; expected a FLOAT, such as `3.0`"), in a request and in a
-schema's `DEFAULT`s and `EXAMPLES` alike. `FLOAT` was called `NUMBER`
-before; only the name changed. A `FLOAT` is always 64 bits, since the wire
+`Integer`s, and `3.0`, `1.5` and `1e3` are `Float`s. So every number states
+its own type, and an `Integer` where a `Float` goes is an error ("found the
+Integer `3`; expected a Float, such as `3.0`"), in a request and in a
+schema's `DEFAULT`s and `EXAMPLES` alike. `Float` was called `NUMBER`
+before; only the name changed. A `Float` is always 64 bits, since the wire
 carries decimal text and a narrower type would only lose precision; a server
 narrows the value itself. There is no exact decimal type: write money as an
-`INTEGER` of cents.
+`Integer` of cents.
 
-A value written as words, a `BOOLEAN`, a `DURATION` or a variant, goes in
+A value written as words, a `Boolean`, a `Duration` or a variant, goes in
 parentheses in a slot, where it would otherwise join the words around it:
 `set (custom hue 0.5) strict (true)`, `wait (5 minutes)`. In a record, such a
 value follows a `:`: `{ every: 1 hour 30 minutes }`, `{ "tea": 5 minutes }`.
 
-A `DURATION`'s units are `days`, `hours`, `minutes`, `seconds` and
-`milliseconds`, each in the singular for 1: `1 day 1 second`. Each unit comes
+A `Duration`'s units are the variants of its declaration in the
+[prelude](#the-prelude), `day`, `hour`, `minute`, `second` and
+`millisecond`, each in the plural for any count but 1: `1 day 1 second`,
+`90 seconds`. A reader takes either form for any count; a writer uses the
+singular only for 1. Each unit comes
 at most once, after the larger ones; a count may be more than the next unit
 holds, as in `90 seconds`. A duration is written with every count below the
 next unit, and as `0 seconds` when it is empty. Time finer than a millisecond
@@ -418,47 +457,47 @@ is dropped, rounding down, for both types.
 ## Annotations and overloads
 
 `value AS: type` states the type of an argument whose value doesn't show
-it: `tag ([] AS: LIST: TEXT)`, `open ("abc" AS: file id)`. It is the call
+it: `tag ([] AS: LIST Text)`, `open ("abc" AS: File Id)`. It is the call
 `_ AS _`, so in a slot it goes in parentheses. `AS: x` is `AS (x)` by the
 `:` sugar, the same call as `AS x` wherever nothing would join; the `:`
 matters only before an all-caps type, where `AS LIST` would join into one
 keyword. The type is written as a parameter's type is in the method's
 scope: a built-in type, a type of the scope, or the full path of a
-`PUBLIC` one in another, `common/file id`. It must be the parameter's type
+`PUBLIC` one in another, `common/File Id`. It must be the parameter's type
 exactly. An annotation is a checked claim, not a conversion: the value must
-fit the type as written, and `[1] AS: LIST: TEXT` is an error.
+fit the type as written, and `[1] AS: LIST Text` is an error.
 
 A value has a type of its own when how it is written shows it, whatever the
 methods:
 
 | Written | Its own type |
 | --- | --- |
-| a number | `INTEGER` without a point or an exponent, else `FLOAT` |
-| a string | `TEXT` |
-| `true`, `false` | `BOOLEAN` (even where a choice has a variant `true`) |
-| whole numbers each with a unit | `DURATION` |
+| a number | `Integer` without a point or an exponent, else `Float` |
+| a string | `Text` |
+| `true`, `false` | `Boolean` (even where a choice has a variant `true`) |
+| whole numbers each with a unit | `Duration` |
 | a list with items | `LIST` of its items' type, when they all have the same one |
 | braces of string keys | `MAP` of its values' type, the same way |
 | braces of fields | the record of the schema, not generic, that has each field written and is missing none it requires, when only one does |
 | a variant | the choice of the schema, not generic, with a variant of its shape, when only one has one |
 
 Anything else has no type of its own: `[]`, `{}`, a value of a generic
-type, and a record or variant that several types fit. A `BYTES`, an
-`INSTANT` and a value of a named `TYPE` are written like a string, or like
+type, and a record or variant that several types fit. A `Bytes`, an
+`Instant` and a value of a named `TYPE` are written like a string, or like
 the type underneath, so their own type is never theirs.
 
 **An argument of a call must have its parameter's type, of its own or by
 an annotation**, even when the method has no overloads:
 
 ```anyx
-read ("abc" AS: file id),
-upload ("TVRoZA==" AS: BYTES),
-tag ([] AS: LIST: TEXT),
+read ("abc" AS: File Id),
+upload ("TVRoZA==" AS Bytes),
+tag ([] AS: LIST Text),
 ```
 
 Without it, the request is `INVALID REQUEST` and none of its calls run:
-"in `id` of `read _`: `"abc"` has the type TEXT of its own, not `file id`;
-annotate it, as in `read ("abc" AS: file id)`". So adding an overload never
+"in `id` of `read _`: `"abc"` has the type Text of its own, not `File Id`;
+annotate it, as in `read ("abc" AS: File Id)`". So adding an overload never
 breaks a call that worked: every call already states the types it depends
 on. Only a whole argument is annotated; a value inside one is read by the
 type around it, so `AS` inside a value is an error. The schema's
@@ -470,8 +509,8 @@ its arguments' types. When none has, or an argument has no type of its own,
 the request is `INVALID REQUEST`, and the message lists the overloads by
 their typed shapes: "in `tag _`: `[]` has no type of its own, so no
 overload of `tag _` can be chosen by it; annotate it with the type of the
-one to call, as in `tag ([] AS: LIST: TEXT)`; the overloads are `tag
-(names: LIST: TEXT)`, `tag (ids: LIST: INTEGER)`". Since two overloads
+one to call, as in `tag ([] AS: LIST Text)`; the overloads are `tag
+(names: LIST Text)`, `tag (ids: LIST Integer)`". Since two overloads
 can't have the same parameter types, no call fits two.
 
 `encode_request`, and so the generated clients, annotate each argument
@@ -522,7 +561,7 @@ client calling the codec through wasm. Names are camelCase. A record is an
 object; a variant or an error is an object whose `kind` is its words in
 camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
-An `INSTANT` is its text, as on the wire, and a `DURATION` its whole
+An `Instant` is its text, as on the wire, and a `Duration` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
 A field with a `DEFAULT` that is left out or `null` takes its default.
 A `MAP` is an object whose keys are kept as written, not camelCased:
@@ -533,9 +572,9 @@ that returns nothing), `{ "kind": "error",
 `{ "kind": "invalidRequest", "line": …, "column": …, "message": … }`.
 
 JSON names a method by its full name, `files/read _`. JSON can't tell
-`3` from `3.0`, nor a `file id` from a `TEXT`, so an overload is named by
+`3` from `3.0`, nor a `File Id` from a `Text`, so an overload is named by
 its full name with its parameters' types in its slots, as written in its
-scope: `scale (FLOAT)`, `tag (LIST: file id)`. Any method may be named
+scope: `scale (Float)`, `tag (LIST File Id)`. Any method may be named
 that way; an overloaded one must be, and its full name alone is an error
 listing the typed names. `decode_request_json` writes an overload's typed
 name, and the generated TypeScript calls and keys `EFFECTS` by it.

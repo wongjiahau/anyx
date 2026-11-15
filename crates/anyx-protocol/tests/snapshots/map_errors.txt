@@ -1,5 +1,5 @@
 count { counts [1, 2] }
-=> 1:16: in `tally` of `count _`: in `counts`: found a list `[…]`; expected a map of INTEGER, as in `{ "key" … }`
+=> 1:16: in `tally` of `count _`: in `counts`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
 
 count { counts { hymn 3 } }
 => 1:18: in `tally` of `count _`: in `counts`: found the call `hymn _`; expected an entry written as a string key and its value, as in `"key" …`; put a `:` after the key when the value is words, as in `"key": done`

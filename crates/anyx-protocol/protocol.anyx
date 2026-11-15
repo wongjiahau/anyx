@@ -10,6 +10,11 @@ ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 ## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
 ## where a doc goes is an error.
 
+## `INTRINSIC` before a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` says that its
+## shape is written here and the implementation supplies its meaning, as
+## for the built-in types of `prelude.anyx`. The schema checker lets only
+## the prelude use it.
+
 protocol: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   WORD "PROTOCOL", name: type name,
@@ -20,13 +25,14 @@ definition: ONE OF [record, choice, named type, errors, method],
 
 record: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
+  intrinsic: OPTIONAL: WORD "INTRINSIC",
   public: OPTIONAL: WORD "PUBLIC",
   WORD "RECORD", body: record body,
 ],
 
 ## A record's name is a shape, then its fields in braces fill the last slot:
-## `file summary { path: TEXT }`. A generic record has a type parameter in
-## each other slot, anywhere among the words: `page of (item: TYPE) { … }`,
+## `File Summary { path: Text }`. A generic record has a type parameter in
+## each other slot, anywhere among the words: `Page of (item: TYPE) { … }`,
 ## `(item: TYPE) history { … }`. The schema checker reads the shape from the
 ## call's name, and checks that the braces come last.
 record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record part],
@@ -52,31 +58,25 @@ field type: ONE OF [
 optional type: ONE OF [defaulted, type],
 
 ## An `OPTIONAL` field's type and the value it takes when left out:
-## `OPTIONAL: INTEGER DEFAULT 50`. All-caps words side by side join into one
-## call, so `INTEGER DEFAULT 50` is the call `INTEGER DEFAULT _`, and
-## `LIST: TEXT DEFAULT []` is `LIST _` of `TEXT DEFAULT _`: the default
-## still belongs to the whole field.
+## `OPTIONAL: Integer DEFAULT 50`, the call `_ DEFAULT _`. All-caps words
+## side by side join into one call, so `LIST: Text DEFAULT []` is `LIST _`
+## of `Text DEFAULT _`: the default still belongs to the whole field.
 defaulted: ONE OF [
-  text: ANYFIX CALL [WORD "TEXT", WORD "DEFAULT", default: ANY NODE],
-  bytes: ANYFIX CALL [WORD "BYTES", WORD "DEFAULT", default: ANY NODE],
-  integer: ANYFIX CALL [WORD "INTEGER", WORD "DEFAULT", default: ANY NODE],
-  float: ANYFIX CALL [WORD "FLOAT", WORD "DEFAULT", default: ANY NODE],
-  boolean: ANYFIX CALL [WORD "BOOLEAN", WORD "DEFAULT", default: ANY NODE],
-  instant: ANYFIX CALL [WORD "INSTANT", WORD "DEFAULT", default: ANY NODE],
-  duration: ANYFIX CALL [WORD "DURATION", WORD "DEFAULT", default: ANY NODE],
   list: ANYFIX CALL [WORD "LIST", item: defaulted],
-  ## `LIST file summary DEFAULT []`
+  ## `LIST File Summary DEFAULT []`
   list of named: ANYFIX CALL [WORD "LIST", item: type, WORD "DEFAULT", default: ANY NODE],
   map: ANYFIX CALL [WORD "MAP", value: defaulted],
-  ## `MAP file summary DEFAULT {}`
+  ## `MAP File Summary DEFAULT {}`
   map of named: ANYFIX CALL [WORD "MAP", value: type, WORD "DEFAULT", default: ANY NODE],
-  ## `shade DEFAULT dark`, `page of (TEXT) DEFAULT { items [] }`, or a type
-  ## in parentheses, `(LIST: TEXT) DEFAULT []`
+  ## `Integer DEFAULT 50`, `Shade DEFAULT dark`,
+  ## `Page of (Text) DEFAULT { items [] }`, or a type in parentheses,
+  ## `(LIST: Text) DEFAULT []`
   other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
 ],
 
 choice: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
+  intrinsic: OPTIONAL: WORD "INTRINSIC",
   public: OPTIONAL: WORD "PUBLIC",
   WORD "CHOICE", body: choice body,
 ],
@@ -87,14 +87,22 @@ choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice par
 
 choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
 
-## A named type gives a type its own name, `TYPE file id: TEXT`, so values
+## A named type gives a type its own name, `TYPE File Id: Text`, so values
 ## that share a representation but mean different things can't be mixed up.
 ## On the wire it is written exactly like the type underneath.
 named type: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING, public: OPTIONAL: WORD "PUBLIC", WORD "TYPE", body: named type body,
+  doc: OPTIONAL: LINE STRING,
+  intrinsic: OPTIONAL: WORD "INTRINSIC",
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "TYPE", body: named type body,
 ],
 
-named type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
+named type body: ONE OF [
+  typed: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
+  ## A name alone, `INTRINSIC TYPE Integer`: the implementation supplies
+  ## what it is. The schema checker reports one without `INTRINSIC`.
+  bare: ANYFIX CALL [name: WORDS [NO KEYWORD]],
+],
 
 ## A variant is written in the shape it takes on the wire. Its doc comes
 ## first, so it fills the call's first slot.
@@ -104,10 +112,13 @@ variant slot: ONE OF [doc: LINE STRING, parameter],
 
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in
-## `ERRORS export errors [unreadable (diagnostics: LIST diagnostic)] + file errors`.
+## `ERRORS export errors [unreadable (diagnostics: LIST Diagnostic)] + file errors`.
 ## `PUBLIC` lets other scopes use a type or a group, by its full path.
 errors: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING, public: OPTIONAL: WORD "PUBLIC", WORD "ERRORS", body: error list,
+  doc: OPTIONAL: LINE STRING,
+  intrinsic: OPTIONAL: WORD "INTRINSIC",
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "ERRORS", body: error list,
 ],
 
 ## A method's clauses come in this order. It returns a value or `NOTHING`,
@@ -132,7 +143,7 @@ method: ANYFIX CALL [
 ],
 
 ## The call that undoes a method, written like a shape whose slots are the
-## method's own parameters: `UNDONE BY move (new path: TEXT) to (path: TEXT)`.
+## method's own parameters: `UNDONE BY move (new path: Text) to (path: Text)`.
 ## The types say which method it is, among methods of the same words.
 undo: shape,
 
@@ -155,11 +166,11 @@ example: ONE OF [
 ## A method that has nothing to return, such as `sign out`, says
 ## `RETURNS NOTHING`; a call of it that succeeds answers `RETURNS NOTHING`.
 
-## What a method returns is named too: `RETURNS (new revision: INTEGER)`.
+## What a method returns is named too: `RETURNS (new revision: Integer)`.
 returns: parameter,
 
 ## A method's errors: its own in brackets, then groups joined with `+`:
-## `[conflict at revision (revision: INTEGER)] + file errors`. Joined terms
+## `[conflict at revision (revision: Integer)] + file errors`. Joined terms
 ## make one call, `_ + _`, and a group's full path, `files/file errors`,
 ## reads as `_/_` among them, so the schema checker reads the terms from the
 ## call's name: brackets, group names, and in a group's `ERRORS` its name
@@ -178,24 +189,19 @@ shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
 
 parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 
+## A built-in type such as `Integer` is no keyword: the prelude declares
+## it, so it reads as a `reference` like any other type.
 type: ONE OF [
-  WORD "TEXT",
-  WORD "BYTES",
-  WORD "INTEGER",
-  WORD "FLOAT",
-  WORD "BOOLEAN",
-  WORD "INSTANT",
-  WORD "DURATION",
   list: ANYFIX CALL [WORD "LIST", item: type],
   ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
   map: ANYFIX CALL [WORD "MAP", value: type],
   named: reference,
 ],
 
-## A type by its name, `diagnostic`, or a generic one by its shape with a
-## type in each slot, in parentheses: `page of (file)`, `(INTEGER) or
-## (TEXT)`. Another scope's type goes by its full path, `common/diagnostic`
-## or `common/page of (file)`, which reads as the call `_/_` of `common` and
+## A type by its name, `Diagnostic`, or a generic one by its shape with a
+## type in each slot, in parentheses: `Page of (File)`, `(Integer) or
+## (Text)`. Another scope's type goes by its full path, `common/Diagnostic`
+## or `common/Page of (File)`, which reads as the call `_/_` of `common` and
 ## the type. The schema checker tells them apart.
 reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
 

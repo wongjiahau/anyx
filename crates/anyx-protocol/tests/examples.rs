@@ -48,7 +48,7 @@ fn poentaros_examples_read_with_their_docs_values_and_outcomes() {
 fn an_example_may_go_without_a_doc_and_return_nothing() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 RETURNS 3],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS 3],
 METHOD ping RETURNS NOTHING EXAMPLES [
     # Always answers.
     ping RETURNS NOTHING,
@@ -67,7 +67,7 @@ METHOD ping RETURNS NOTHING EXAMPLES [
 fn examples_are_formatted_one_per_line_after_a_break() {
     let formatted = anyx_protocol::format_schema(
         "PROTOCOL t VERSION 1,
-METHOD add (first: INTEGER) to (second: INTEGER) RETURNS (total: INTEGER) ERRORS [overflow] EXAMPLES [add 1 to 2 RETURNS 3, # Too big.
+METHOD add (first: Integer) to (second: Integer) RETURNS (total: Integer) ERRORS [overflow] EXAMPLES [add 1 to 2 RETURNS 3, # Too big.
 add 9223372036854775807 to 1 ERROR overflow],
 METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
 ",
@@ -78,8 +78,8 @@ METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
     assert_eq!(
         formatted,
         "PROTOCOL t VERSION 1,
-METHOD add (first: INTEGER) to (second: INTEGER)
-    RETURNS (total: INTEGER)
+METHOD add (first: Integer) to (second: Integer)
+    RETURNS (total: Integer)
     ERRORS [overflow]
     EXAMPLES [
         add 1 to 2 RETURNS 3,
@@ -97,7 +97,7 @@ fn a_scoped_example_calls_the_method_by_its_full_name() {
         ("protocol.anyx", "PROTOCOL notes VERSION 1,"),
         (
             "files.anyx",
-            "METHOD read (path: TEXT) RETURNS (content: TEXT) EXAMPLES [
+            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [
     # Reading a file.
     files/read \"a\" RETURNS \"x\",
 ],",
@@ -112,7 +112,7 @@ fn a_scoped_example_calls_the_method_by_its_full_name() {
         ("protocol.anyx", "PROTOCOL notes VERSION 1,"),
         (
             "files.anyx",
-            "METHOD read (path: TEXT) RETURNS (content: TEXT) EXAMPLES [read \"a\" RETURNS \"x\"],",
+            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [read \"a\" RETURNS \"x\"],",
         ),
     ];
     let diagnostics = parse_files(&files).unwrap_err();
@@ -128,15 +128,15 @@ fn mistakes_in_examples_are_diagnosed() {
         // A call of another method.
         "PROTOCOL t VERSION 1,
 METHOD ping RETURNS NOTHING,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [ping RETURNS NOTHING],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [ping RETURNS NOTHING],
 ",
         // An argument of the wrong type.
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add \"1\" to 2 RETURNS 3],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add \"1\" to 2 RETURNS 3],
 ",
         // A value it doesn't return.
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 RETURNS \"3\"],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS \"3\"],
 ",
         // A value from a method that returns nothing.
         "PROTOCOL t VERSION 1,
@@ -144,15 +144,15 @@ METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS 3],
 ",
         // `NOTHING` from a method that returns a value.
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 RETURNS NOTHING],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS NOTHING],
 ",
         // An error from a method without errors.
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 ERROR overflow],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 ERROR overflow],
 ",
         // An error that isn't one of the method's.
         "PROTOCOL t VERSION 1,
-METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) ERRORS [overflow] EXAMPLES [add 1 to 2 ERROR missing],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [overflow] EXAMPLES [add 1 to 2 ERROR missing],
 ",
         // An empty list.
         "PROTOCOL t VERSION 1,
@@ -174,7 +174,7 @@ METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
 fn an_example_reads_its_values_with_their_defaults() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
-RECORD reminder { at: INSTANT, times: OPTIONAL: INTEGER DEFAULT 3 },
+RECORD reminder { at: Instant, times: OPTIONAL: Integer DEFAULT 3 },
 METHOD next RETURNS (reminder: reminder) EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
 ",
     );

@@ -1,13 +1,13 @@
 schema:3:74: in an example of `add _ to _`: found a call of `ping`; expected a call of `add _ to _`, the method the example is under, written by its full name as a request writes it
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [ping RETURNS NOTHING],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [ping RETURNS NOTHING],
                                                                            ^^^^
 
 schema:2:78: in an example of `add _ to _`: in `a` of `add _ to _`: found a string; expected a whole number, as in `3`
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add "1" to 2 RETURNS 3],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add "1" to 2 RETURNS 3],
                                                                                ^^^
 
 schema:2:93: in an example of `add _ to _`: found a string; expected a whole number, as in `3`
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 RETURNS "3"],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS "3"],
                                                                                               ^^^
 
 schema:2:52: in an example of `ping`: found a value after `RETURNS`; expected `RETURNS NOTHING`, since `ping` returns nothing
@@ -15,21 +15,21 @@ schema:2:52: in an example of `ping`: found a value after `RETURNS`; expected `R
                                                      ^
 
 schema:2:74: in an example of `add _ to _`: found `RETURNS NOTHING`; expected `RETURNS` and its `sum`, which `add _ to _` returns
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 RETURNS NOTHING],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS NOTHING],
                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 schema:2:91: in an example of `add _ to _`: found an error after `ERROR`; expected `RETURNS` and what `add _ to _` returns, since it has no errors
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) EXAMPLES [add 1 to 2 ERROR overflow],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 ERROR overflow],
                                                                                             ^^^^^^^^
 
 schema:2:109: in an example of `add _ to _`: found the call `missing`; expected an error of `add _ to _`: `overflow`
-  METHOD add (a: INTEGER) to (b: INTEGER) RETURNS (sum: INTEGER) ERRORS [overflow] EXAMPLES [add 1 to 2 ERROR missing],
+  METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [overflow] EXAMPLES [add 1 to 2 ERROR missing],
                                                                                                               ^^^^^^^
 
 schema:2:38: found `EXAMPLES` without an example; expected a call of `ping` and its outcome in the brackets, such as `ping RETURNS …`, or no `EXAMPLES` at all
   METHOD ping RETURNS NOTHING EXAMPLES [],
                                        ^^
 
-schema:2:16: found `unknown`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `unknown`, or fix the name
+schema:2:16: found `unknown`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `unknown`, or fix the name
   METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
                  ^^^^^^^

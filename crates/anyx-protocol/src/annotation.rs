@@ -13,10 +13,10 @@ use crate::schema::{Schema, Type, TypeKind};
 /// schema's types, never from its methods, so adding an overload never
 /// changes how a call reads:
 ///
-/// - a number: `INTEGER` without a point or an exponent, else `FLOAT`;
-/// - a string: `TEXT` (a `BYTES`, `INSTANT` or named type is annotated);
-/// - `true` or `false`: `BOOLEAN`;
-/// - whole numbers each with a unit: `DURATION`;
+/// - a number: `Integer` without a point or an exponent, else `Float`;
+/// - a string: `Text` (a `Bytes`, `Instant` or named type is annotated);
+/// - `true` or `false`: `Boolean`;
+/// - whole numbers each with a unit: `Duration`;
 /// - a list: `LIST` of its items' type, when it has items and they all have
 ///   the same one;
 /// - braces of string keys: `MAP` of its values' type, the same way;
@@ -146,16 +146,12 @@ pub(crate) fn annotated_type(schema: &Schema, scope: &[String], node: &Node) -> 
 
 fn resolve(schema: &Schema, scope: &[String], written: &ast::Type) -> Option<Type> {
     Some(match written {
-        ast::Type::Text(_) => Type::Text,
-        ast::Type::Bytes(_) => Type::Bytes,
-        ast::Type::Integer(_) => Type::Integer,
-        ast::Type::Float(_) => Type::Float,
-        ast::Type::Boolean(_) => Type::Boolean,
-        ast::Type::Instant(_) => Type::Instant,
-        ast::Type::Duration(_) => Type::Duration,
         ast::Type::List { item, .. } => Type::List(Box::new(resolve(schema, scope, item)?)),
         ast::Type::Map { value, .. } => Type::Map(Box::new(resolve(schema, scope, value)?)),
         ast::Type::Named(reference) => {
+            if let Some(built_in) = crate::prelude::reference(reference) {
+                return Some(built_in);
+            }
             let (path, name, arguments) = path(scope, reference)?;
             let index = schema.types.iter().position(|definition| {
                 definition.scope == path
@@ -175,7 +171,7 @@ fn resolve(schema: &Schema, scope: &[String], written: &ast::Type) -> Option<Typ
 }
 
 /// A type's scope, its shape, and the types in its slots: `file id` in
-/// `scope`, or `common/page of (TEXT)` by its full path.
+/// `scope`, or `common/Page of (Text)` by its full path.
 fn path<'r>(
     scope: &[String],
     reference: &'r ast::Reference,

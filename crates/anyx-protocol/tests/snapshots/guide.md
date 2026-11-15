@@ -29,8 +29,8 @@ safe to send without asking:
   and ask the person you work for when unsure.
 
 `UNDONE BY` after a method's results is the call that undoes it, with the
-method's own arguments in its slots: `UNDONE BY move (new path: TEXT) to
-(path: TEXT)` means that after `move "a" to "b"`, the call `move "b" to
+method's own arguments in its slots: `UNDONE BY move (new path: Text) to
+(path: Text)` means that after `move "a" to "b"`, the call `move "b" to
 "a"` takes it back. The state afterwards is equivalent, not always exactly
 the same. A method without `UNDONE BY` can't be undone by a call: its
 effect may be permanent, or it may have shown something to people outside
@@ -38,7 +38,7 @@ the account, such as by sending or sharing it.
 
 ## Values
 
-- TEXT is a string: `"some text"`. Escape `\"` and `\\`, and write a line
+- `Text`: A string: `"some text"`. Escape `\"` and `\\`, and write a line
   break as `\n`. For text with many lines, use a raw string: three quotes,
   the lines, then three quotes on a line of their own. The closing quotes'
   indentation is removed from every line. A raw string has no escapes.
@@ -48,16 +48,20 @@ the account, such as by sending or sharing it.
           second line
           """
 
-- BYTES is base64 in a string: `"TVRoZA=="`.
-- INTEGER is a whole number, written without a point: `3`, `-1`.
-- FLOAT is a 64-bit float, written with a point or an exponent: `1.5`,
-  `3.0`, `1e3`. `3` is an INTEGER, so it doesn't fit a FLOAT; write `3.0`.
-- BOOLEAN is `true` or `false`.
-- INSTANT is a point in time, in UTC to the millisecond, as a string:
+- `Bytes`: Raw bytes, such as a file: their base64 in a string,
+  `"TVRoZA=="`.
+- `Integer`: A whole number of 64 bits, written without a point: `3`, `-1`.
+- `Float`: A finite 64-bit float, written with a point or an exponent:
+  `1.5`, `3.0`, `1e3`. `3` is an `Integer`, so it doesn't fit a `Float`;
+  write `3.0`.
+- `Boolean`: `true` or `false`.
+- `Instant`: A point in time, in UTC to the millisecond, as a string:
   `"2026-11-14T06:00:08.000Z"`.
-- DURATION is whole numbers each followed by its unit, the largest first:
-  `90 seconds`, `1 hour 30 minutes`. The units are `days`, `hours`,
-  `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
+- `Duration`: A length of time, to the millisecond: whole numbers each
+  followed by its unit, the largest first, as in `90 seconds` or
+  `1 hour 30 minutes`. A unit is in the plural for any count but 1:
+  `1 day 1 second`. The units are `day`, `hour`, `minute`, `second` and
+  `millisecond`.
 - `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
@@ -73,14 +77,14 @@ the account, such as by sending or sharing it.
   `wait (5 minutes)`.
 
 An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST: TEXT)`,
-`open ("a" AS: file id)`. A value shows its type when it is a number, a
-string (TEXT), `true` or `false`, a duration, a list or map whose items
+its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
+`open ("a" AS: File Id)`. A value shows its type when it is a number, a
+string (`Text`), `true` or `false`, a duration, a list or map whose items
 show one type, or a record or variant that only one type of the schema
-fits. `[]`, `{}`, and a value of a named TYPE, a generic type, BYTES or
-INSTANT never do. Without its annotation, the request is invalid. Only a
-whole argument is annotated; a value inside it is read by the type around
-it. An annotation states the type; it doesn't convert the value.
+fits. `[]`, `{}`, and a value of a named TYPE, a generic type, `Bytes`
+or `Instant` never do. Without its annotation, the request is invalid.
+Only a whole argument is annotated; a value inside it is read by the type
+around it. An annotation states the type; it doesn't convert the value.
 
 ## Responses
 
@@ -109,9 +113,10 @@ A request that can't be read gets one result, and none of its calls run:
 
 ## The schema
 
-In the schema, a `#` line before a definition says what it means. Lowercase
-words are names; all-caps words belong to the schema language. `ERRORS name
-[…]` is a group of errors that methods share by joining it with `+`.
+In the schema, a `#` line before a definition says what it means. Types
+are named in Title Case, such as `File Summary`; other names are lowercase
+words; all-caps words belong to the schema language. `ERRORS name […]`
+is a group of errors that methods share by joining it with `+`.
 `EXAMPLES […]` after a method lists calls of it, each with its result side
 by side, as in `read "a" RETURNS …`, and a `#` line saying what it shows.
 A response writes the result alone.
@@ -128,22 +133,22 @@ A response writes the result alone.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-RECORD file summary {
+RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: TEXT,
-    revision: INTEGER,
+    path: Text,
+    revision: Integer,
 },
 
-RECORD file { path: TEXT, revision: INTEGER, content: TEXT },
+RECORD File { path: Text, revision: Integer, content: Text },
 
 # One problem in a score.
-RECORD diagnostic {
+RECORD Diagnostic {
     # Counted from 1, in the content you sent.
-    line: INTEGER,
+    line: Integer,
     # Counted from 1, in characters.
-    column: INTEGER,
-    code: TEXT,
-    message: TEXT,
+    column: Integer,
+    code: Text,
+    message: Text,
 },
 
 ERRORS file errors [
@@ -156,21 +161,21 @@ ERRORS file errors [
 
 ERRORS score errors [
     # The score doesn't parse. Nothing was saved.
-    rejected (diagnostics: LIST diagnostic),
+    rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
-READ ONLY METHOD list files RETURNS files: LIST file summary,
+READ ONLY METHOD list files RETURNS files: LIST File Summary,
 
-READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the score, if the file is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (new revision: INTEGER)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (new revision: Integer)
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
-        conflict at revision (revision: INTEGER) content (content: TEXT),
+        conflict at revision (revision: Integer) content (content: Text),
     ] + score errors + file errors
     EXAMPLES [
         # Saving over the revision you read.
@@ -180,16 +185,16 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
     ],
 
 # Makes a new file, and its folders if they don't exist.
-METHOD create (path: TEXT) content (content: TEXT)
-    RETURNS (revision: INTEGER)
+METHOD create (path: Text) content (content: Text)
+    RETURNS (revision: Integer)
     ERRORS [
         # A file already has this path. Read it, or create under another path.
-        already exists at revision (revision: INTEGER),
+        already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
-        invalid path (message: TEXT),
+        invalid path (message: Text),
     ] + score errors,
 
 # The score as a Standard MIDI File.
-READ ONLY METHOD export midi (path: TEXT)
-    RETURNS (midi: BYTES)
+READ ONLY METHOD export midi (path: Text)
+    RETURNS (midi: Bytes)
     ERRORS file errors,

@@ -8,7 +8,7 @@ read 3
 => 1:6: in `path` of `read _`: found the number `3`; expected a string, as in `"text"`
 
 write "a" at revision 1.5 content "x"
-=> 1:23: in `revision` of `write _ at revision _ content _`: found the FLOAT `1.5`; expected an INTEGER, a whole number written without a point, such as `3`
+=> 1:23: in `revision` of `write _ at revision _ content _`: found the Float `1.5`; expected an Integer, a whole number written without a point, such as `3`
 
 write "a" at revision 99999999999999999999 content "x"
 => 1:23: in `revision` of `write _ at revision _ content _`: found the number `99999999999999999999`; expected a whole number that fits in 64 bits

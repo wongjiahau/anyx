@@ -1,4 +1,4 @@
-//! Named types: `TYPE file id: TEXT` gives a type a name of its own, and is
+//! Named types: `TYPE file id: Text` gives a type a name of its own, and is
 //! written on the wire exactly like the type underneath.
 
 mod common;
@@ -10,9 +10,9 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 const SHARING: &str = "PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-TYPE file id: TEXT,
+TYPE file id: Text,
 
-TYPE tags: LIST: TEXT,
+TYPE tags: LIST Text,
 
 RECORD file link { file id: file id, tags: tags },
 
@@ -106,8 +106,8 @@ fn the_guide_names_each_named_type_and_the_type_underneath() {
         guide.contains(
             "- A named TYPE is written exactly like the type it names, but holds
   only what its name says:
-  - `file id`: `TEXT`. Which file, among every account's.
-  - `tags`: `LIST: TEXT`.
+  - `file id`: `Text`. Which file, among every account's.
+  - `tags`: `LIST Text`.
   - `link`: `file link`.
 "
         ),
@@ -125,11 +125,11 @@ fn a_public_named_type_is_shared_by_its_full_path() {
         ("protocol.anyx", "PROTOCOL p VERSION 1,"),
         (
             "common.anyx",
-            "PUBLIC TYPE file id: TEXT, TYPE secret: TEXT,",
+            "PUBLIC TYPE file id: Text, TYPE secret: Text,",
         ),
         (
             "files.anyx",
-            "METHOD read (id: common/file id) RETURNS (text: TEXT),",
+            "METHOD read (id: common/file id) RETURNS (text: Text),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -139,20 +139,20 @@ fn a_public_named_type_is_shared_by_its_full_path() {
         "common/file id"
     );
     let guide = anyx_protocol::guide(&schema, "");
-    assert!(guide.contains("  - `common/file id`: `TEXT`.\n"), "{guide}");
+    assert!(guide.contains("  - `common/file id`: `Text`.\n"), "{guide}");
     let files = [
         files[0],
         files[1],
         (
             "files.anyx",
-            "METHOD read (id: common/secret) RETURNS (text: TEXT),",
+            "METHOD read (id: common/secret) RETURNS (text: Text),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
     assert_eq!(
         render(&files, &found),
         "files.anyx:1:18: found `common/secret`, which is private to the scope `common`; expected a `PUBLIC` type, or one of the scope `files`; write `PUBLIC` before its definition in `common.anyx` to share it
-  METHOD read (id: common/secret) RETURNS (text: TEXT),
+  METHOD read (id: common/secret) RETURNS (text: Text),
                    ^^^^^^^^^^^^^"
     );
 }
@@ -170,7 +170,7 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, TYPE a: TEXT, RECORD a { b: TEXT },",
+            "PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },",
         ),
         (
             "a named type over an unknown type",
@@ -178,7 +178,7 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type over an optional type",
-            "PROTOCOL a VERSION 1, TYPE a: OPTIONAL: TEXT,",
+            "PROTOCOL a VERSION 1, TYPE a: OPTIONAL Text,",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -195,9 +195,9 @@ fn mistakes_in_named_types_are_diagnosed() {
 fn a_named_type_may_be_an_instant_a_map_or_have_a_default() {
     let schema = schema(
         "PROTOCOL visits VERSION 1,
-TYPE opened at: INSTANT,
+TYPE opened at: Instant,
 TYPE openings: MAP: opened at,
-TYPE label: TEXT,
+TYPE label: Text,
 RECORD visit { at: opened at, by person: openings, label: OPTIONAL: label DEFAULT \"none\" },
 METHOD visits RETURNS (visits: LIST: visit),
 ",
@@ -220,7 +220,7 @@ METHOD visits RETURNS (visits: LIST: visit),
     assert_eq!(
         diagnostics(
             "PROTOCOL visits VERSION 1,
-TYPE label: TEXT,
+TYPE label: Text,
 RECORD visit { label: OPTIONAL: label DEFAULT 3 },
 "
         ),

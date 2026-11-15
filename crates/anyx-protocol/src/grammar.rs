@@ -32,6 +32,7 @@ pub enum Definition {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: RecordBody,
     pub span: Span,
@@ -85,34 +86,6 @@ pub enum OptionalType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Defaulted {
-    Text {
-        default: Node,
-        span: Span,
-    },
-    Bytes {
-        default: Node,
-        span: Span,
-    },
-    Integer {
-        default: Node,
-        span: Span,
-    },
-    Float {
-        default: Node,
-        span: Span,
-    },
-    Boolean {
-        default: Node,
-        span: Span,
-    },
-    Instant {
-        default: Node,
-        span: Span,
-    },
-    Duration {
-        default: Node,
-        span: Span,
-    },
     List {
         item: Box<Defaulted>,
         span: Span,
@@ -141,6 +114,7 @@ pub enum Defaulted {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Choice {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: ChoiceBody,
     pub span: Span,
@@ -162,16 +136,23 @@ pub enum ChoicePart {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NamedType {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: NamedTypeBody,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct NamedTypeBody {
-    pub name: Spanned<String>,
-    pub r#type: Type,
-    pub span: Span,
+pub enum NamedTypeBody {
+    Typed {
+        name: Spanned<String>,
+        r#type: Type,
+        span: Span,
+    },
+    Bare {
+        name: Spanned<String>,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -190,6 +171,7 @@ pub enum VariantSlot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Errors {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: ErrorList,
     pub span: Span,
@@ -261,13 +243,6 @@ pub struct Parameter {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    Text(Span),
-    Bytes(Span),
-    Integer(Span),
-    Float(Span),
-    Boolean(Span),
-    Instant(Span),
-    Duration(Span),
     List { item: Box<Type>, span: Span },
     Map { value: Box<Type>, span: Span },
     Named(Reference),
@@ -338,14 +313,7 @@ impl OptionalType {
 impl Defaulted {
     pub fn span(&self) -> Span {
         match self {
-            Defaulted::Text { span, .. }
-            | Defaulted::Bytes { span, .. }
-            | Defaulted::Integer { span, .. }
-            | Defaulted::Float { span, .. }
-            | Defaulted::Boolean { span, .. }
-            | Defaulted::Instant { span, .. }
-            | Defaulted::Duration { span, .. }
-            | Defaulted::List { span, .. }
+            Defaulted::List { span, .. }
             | Defaulted::ListOfNamed { span, .. }
             | Defaulted::Map { span, .. }
             | Defaulted::MapOfNamed { span, .. }
@@ -359,6 +327,14 @@ impl ChoicePart {
         match self {
             ChoicePart::Variants(value) => value.span,
             ChoicePart::TypeParameter(value) => value.span,
+        }
+    }
+}
+
+impl NamedTypeBody {
+    pub fn span(&self) -> Span {
+        match self {
+            NamedTypeBody::Typed { span, .. } | NamedTypeBody::Bare { span, .. } => *span,
         }
     }
 }
@@ -403,15 +379,7 @@ impl ErrorTerm {
 impl Type {
     pub fn span(&self) -> Span {
         match self {
-            Type::Text(span)
-            | Type::Bytes(span)
-            | Type::Integer(span)
-            | Type::Float(span)
-            | Type::Boolean(span)
-            | Type::Instant(span)
-            | Type::Duration(span)
-            | Type::List { span, .. }
-            | Type::Map { span, .. } => *span,
+            Type::List { span, .. } | Type::Map { span, .. } => *span,
             Type::Named(value) => value.span,
         }
     }
@@ -447,6 +415,7 @@ impl support::Errors for Definition {
 impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -515,27 +484,6 @@ impl support::Errors for OptionalType {
 impl support::Errors for Defaulted {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Defaulted::Text { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Bytes { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Integer { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Float { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Boolean { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Instant { default, .. } => {
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Duration { default, .. } => {
-                support::Errors::errors(default, found);
-            }
             Defaulted::List { item, .. } => {
                 support::Errors::errors(item, found);
             }
@@ -563,6 +511,7 @@ impl support::Errors for Defaulted {
 impl support::Errors for Choice {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -587,6 +536,7 @@ impl support::Errors for ChoicePart {
 impl support::Errors for NamedType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -594,8 +544,15 @@ impl support::Errors for NamedType {
 
 impl support::Errors for NamedTypeBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.r#type, found);
+        match self {
+            NamedTypeBody::Typed { name, r#type, .. } => {
+                support::Errors::errors(name, found);
+                support::Errors::errors(r#type, found);
+            }
+            NamedTypeBody::Bare { name, .. } => {
+                support::Errors::errors(name, found);
+            }
+        }
     }
 }
 
@@ -618,6 +575,7 @@ impl support::Errors for VariantSlot {
 impl support::Errors for Errors {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -700,13 +658,6 @@ impl support::Errors for Parameter {
 impl support::Errors for Type {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Type::Text(_) => {}
-            Type::Bytes(_) => {}
-            Type::Integer(_) => {}
-            Type::Float(_) => {}
-            Type::Boolean(_) => {}
-            Type::Instant(_) => {}
-            Type::Duration(_) => {}
             Type::List { item, .. } => {
                 support::Errors::errors(item, found);
             }
@@ -781,6 +732,14 @@ pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
     let mut parts = support::call(node, "the call `_? RECORD _`")?;
     let decoded = Record {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: if parts
+            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("INTRINSIC")?)
+        } else {
+            None
+        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -888,109 +847,11 @@ pub fn decode_optional_type(node: &Node) -> Result<OptionalType, DecodeError> {
 }
 
 pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
-    decode_defaulted_text(node)
-        .or_else(|error| error.or(decode_defaulted_bytes(node)))
-        .or_else(|error| error.or(decode_defaulted_integer(node)))
-        .or_else(|error| error.or(decode_defaulted_float(node)))
-        .or_else(|error| error.or(decode_defaulted_boolean(node)))
-        .or_else(|error| error.or(decode_defaulted_instant(node)))
-        .or_else(|error| error.or(decode_defaulted_duration(node)))
-        .or_else(|error| error.or(decode_defaulted_list(node)))
+    decode_defaulted_list(node)
         .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
         .or_else(|error| error.or(decode_defaulted_map(node)))
         .or_else(|error| error.or(decode_defaulted_map_of_named(node)))
         .or_else(|error| error.or(decode_defaulted_other(node)))
-}
-
-fn decode_defaulted_text(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `TEXT DEFAULT _`")?;
-    let decoded = Defaulted::Text {
-        default: parts
-            .word("TEXT")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_bytes(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `BYTES DEFAULT _`")?;
-    let decoded = Defaulted::Bytes {
-        default: parts
-            .word("BYTES")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_integer(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `INTEGER DEFAULT _`")?;
-    let decoded = Defaulted::Integer {
-        default: parts
-            .word("INTEGER")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_float(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `FLOAT DEFAULT _`")?;
-    let decoded = Defaulted::Float {
-        default: parts
-            .word("FLOAT")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_boolean(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `BOOLEAN DEFAULT _`")?;
-    let decoded = Defaulted::Boolean {
-        default: parts
-            .word("BOOLEAN")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_instant(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `INSTANT DEFAULT _`")?;
-    let decoded = Defaulted::Instant {
-        default: parts
-            .word("INSTANT")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_duration(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `DURATION DEFAULT _`")?;
-    let decoded = Defaulted::Duration {
-        default: parts
-            .word("DURATION")?
-            .word("DEFAULT")?
-            .one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
 }
 
 fn decode_defaulted_list(node: &Node) -> Result<Defaulted, DecodeError> {
@@ -1054,6 +915,14 @@ pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
     let mut parts = support::call(node, "the call `_? CHOICE _`")?;
     let decoded = Choice {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: if parts
+            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("INTRINSIC")?)
+        } else {
+            None
+        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1107,6 +976,14 @@ pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
     let mut parts = support::call(node, "the call `_? TYPE _`")?;
     let decoded = NamedType {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: if parts
+            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("INTRINSIC")?)
+        } else {
+            None
+        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1125,13 +1002,30 @@ pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
 }
 
 pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError> {
+    decode_named_type_body_typed(node).or_else(|error| error.or(decode_named_type_body_bare(node)))
+}
+
+fn decode_named_type_body_typed(node: &Node) -> Result<NamedTypeBody, DecodeError> {
     let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = NamedTypeBody {
+    let decoded = NamedTypeBody::Typed {
         name: parts.words(
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
         )?,
         r#type: parts.one(decode_type, "a type")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_named_type_body_bare(node: &Node) -> Result<NamedTypeBody, DecodeError> {
+    let mut parts = support::call(node, "the call `…`")?;
+    let decoded = NamedTypeBody::Bare {
+        name: parts.words(
+            |text| !text.split(' ').any(anyx::is_keyword),
+            "words whose text has no keyword",
+        )?,
         span: node.span,
     };
     parts.finish()?;
@@ -1164,6 +1058,14 @@ pub fn decode_errors(node: &Node) -> Result<Errors, DecodeError> {
     let mut parts = support::call(node, "the call `_? ERRORS _`")?;
     let decoded = Errors {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: if parts
+            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("INTRINSIC")?)
+        } else {
+            None
+        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1387,15 +1289,7 @@ pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {
 }
 
 pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
-    support::word(node, "TEXT")
-        .map(Type::Text)
-        .or_else(|error| error.or(support::word(node, "BYTES").map(Type::Bytes)))
-        .or_else(|error| error.or(support::word(node, "INTEGER").map(Type::Integer)))
-        .or_else(|error| error.or(support::word(node, "FLOAT").map(Type::Float)))
-        .or_else(|error| error.or(support::word(node, "BOOLEAN").map(Type::Boolean)))
-        .or_else(|error| error.or(support::word(node, "INSTANT").map(Type::Instant)))
-        .or_else(|error| error.or(support::word(node, "DURATION").map(Type::Duration)))
-        .or_else(|error| error.or(decode_type_list(node)))
+    decode_type_list(node)
         .or_else(|error| error.or(decode_type_map(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }

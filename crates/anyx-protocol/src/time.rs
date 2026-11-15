@@ -1,4 +1,4 @@
-//! `INSTANT` and `DURATION` as written on the wire.
+//! `Instant` and `Duration` as written on the wire.
 //!
 //! An instant is RFC 3339 text in UTC, to the millisecond:
 //! `2026-11-14T06:00:08.000Z`. A duration is a run of whole numbers, each
@@ -8,16 +8,63 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MILLISECONDS_PER_DAY: i64 = 86_400_000;
 
-/// The units of a duration, largest first, with their length in
-/// milliseconds: each written in the singular for 1 and the plural
-/// otherwise.
-pub(crate) const UNITS: [(&str, &str, u64); 5] = [
-    ("day", "days", 86_400_000),
-    ("hour", "hours", 3_600_000),
-    ("minute", "minutes", 60_000),
-    ("second", "seconds", 1_000),
-    ("millisecond", "milliseconds", 1),
-];
+/// The length in milliseconds of each unit a duration may have: the
+/// variants of `Duration` in the prelude, which names them.
+fn unit_length(unit: &str) -> Option<u64> {
+    Some(match unit {
+        "day" => 86_400_000,
+        "hour" => 3_600_000,
+        "minute" => 60_000,
+        "second" => 1_000,
+        "millisecond" => 1,
+        _ => return None,
+    })
+}
+
+/// Checks the variants of `Duration` as the prelude declares them: each a
+/// unit with a length, largest first.
+pub(crate) fn check_units(variants: &[String]) -> Result<(), String> {
+    let mut previous: Option<u64> = None;
+    for unit in variants {
+        let Some(length) = unit_length(unit) else {
+            return Err(format!(
+                "found the unit `{unit}` of `Duration`, whose length the implementation doesn't know"
+            ));
+        };
+        if previous.is_some_and(|previous| length >= previous) {
+            return Err(format!(
+                "found the unit `{unit}` of `Duration` after a shorter or as long a unit; expected the units largest first"
+            ));
+        }
+        previous = Some(length);
+    }
+    Ok(())
+}
+
+/// A unit of a duration: written in the singular for 1 and the plural,
+/// the singular and `s`, otherwise.
+pub(crate) struct Unit {
+    pub singular: &'static str,
+    pub plural: String,
+    pub milliseconds: u64,
+}
+
+/// The units of a duration, largest first: the variants of `Duration` in
+/// the prelude.
+pub(crate) fn units() -> &'static [Unit] {
+    static UNITS: std::sync::LazyLock<Vec<Unit>> = std::sync::LazyLock::new(|| {
+        crate::prelude::of(&crate::schema::Type::Duration)
+            .map_or(&[][..], |duration| &duration.variants)
+            .iter()
+            .map(|unit| Unit {
+                singular: unit.as_str(),
+                plural: format!("{unit}s"),
+                milliseconds: unit_length(unit).unwrap_or(1),
+            })
+            .collect()
+    });
+    &UNITS
+}
 
 /// Milliseconds since the Unix epoch, rounded down: what an instant keeps.
 pub(crate) fn milliseconds_since_epoch(instant: SystemTime) -> Option<i64> {
@@ -145,13 +192,17 @@ pub(crate) fn parse_instant(text: &str) -> Option<SystemTime> {
 pub(crate) fn format_duration(duration: Duration) -> Option<String> {
     let mut rest = u64::try_from(duration.as_millis()).ok()?;
     let mut parts = Vec::new();
-    for (singular, plural, length) in UNITS {
-        let count = rest / length;
-        rest %= length;
+    for unit in units() {
+        let count = rest / unit.milliseconds;
+        rest %= unit.milliseconds;
         if count > 0 {
             parts.push(format!(
                 "{count} {}",
-                if count == 1 { singular } else { plural }
+                if count == 1 {
+                    unit.singular
+                } else {
+                    &unit.plural
+                }
             ));
         }
     }
@@ -171,9 +222,9 @@ pub(crate) fn parse_duration(pairs: &[(&str, &str)]) -> Result<Duration, String>
     let mut milliseconds: u64 = 0;
     let mut smallest = None;
     for (count, unit) in pairs {
-        let Some(position) = UNITS
+        let Some(position) = units()
             .iter()
-            .position(|(singular, plural, _)| unit == singular || unit == plural)
+            .position(|known| *unit == known.singular || *unit == known.plural)
         else {
             return Err(format!("the unit `{unit}`"));
         };
@@ -185,7 +236,7 @@ pub(crate) fn parse_duration(pairs: &[(&str, &str)]) -> Result<Duration, String>
             .parse()
             .map_err(|_| format!("`{count}`, which is not a whole number from 0"))?;
         milliseconds = count
-            .checked_mul(UNITS[position].2)
+            .checked_mul(units()[position].milliseconds)
             .and_then(|part| milliseconds.checked_add(part))
             .ok_or_else(|| "a duration too long to hold".to_string())?;
     }

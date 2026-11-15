@@ -2,32 +2,32 @@
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-TYPE file id: TEXT,
+TYPE File Id: Text,
 
-CHOICE shade { dark, light },
+CHOICE Shade { dark, light },
 
 # Tags files by their paths.
-METHOD tag (paths: LIST: TEXT)
-    RETURNS (tagged: INTEGER)
-    ERRORS [missing (path: TEXT)]
+METHOD tag (paths: LIST Text)
+    RETURNS (tagged: Integer)
+    ERRORS [missing (path: Text)]
     EXAMPLES [tag ["a"] RETURNS 1],
 
 # Tags files by their ids.
-METHOD tag (ids: LIST: file id)
-    RETURNS (tagged: INTEGER)
-    ERRORS [unknown (id: file id)]
-    EXAMPLES [tag ([] AS: LIST: file id) RETURNS 0],
+METHOD tag (ids: LIST: File Id)
+    RETURNS (tagged: Integer)
+    ERRORS [unknown (id: File Id)]
+    EXAMPLES [tag ([] AS: LIST: File Id) RETURNS 0],
 
-READ ONLY METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT),
+READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float),
 
-READ ONLY METHOD scale (times: INTEGER) RETURNS (scaled: INTEGER),
+READ ONLY METHOD scale (times: Integer) RETURNS (scaled: Integer),
 
-IDEMPOTENT METHOD hide (path: TEXT) RETURNS NOTHING UNDONE BY show (path: TEXT),
+IDEMPOTENT METHOD hide (path: Text) RETURNS NOTHING UNDONE BY show (path: Text),
 
-IDEMPOTENT METHOD hide (id: file id) RETURNS NOTHING UNDONE BY show (id: file id),
+IDEMPOTENT METHOD hide (id: File Id) RETURNS NOTHING UNDONE BY show (id: File Id),
 
-IDEMPOTENT METHOD show (path: TEXT) RETURNS NOTHING,
+IDEMPOTENT METHOD show (path: Text) RETURNS NOTHING,
 
-IDEMPOTENT METHOD show (id: file id) RETURNS NOTHING,
+IDEMPOTENT METHOD show (id: File Id) RETURNS NOTHING,
 
-METHOD paint (shade: shade) RETURNS NOTHING,
+METHOD paint (shade: Shade) RETURNS NOTHING,

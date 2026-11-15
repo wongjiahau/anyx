@@ -1,5 +1,5 @@
-//! A number's type is how it is written: `3` is an `INTEGER`, `3.0` a
-//! `FLOAT`.
+//! A number's type is how it is written: `3` is an `Integer`, `3.0` a
+//! `Float`.
 
 mod common;
 
@@ -7,8 +7,8 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SCALE: &str = "PROTOCOL a VERSION 1,
-METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT),
-METHOD repeat (count: INTEGER) RETURNS NOTHING,";
+METHOD scale (factor: Float) RETURNS (scaled: Float),
+METHOD repeat (count: Integer) RETURNS NOTHING,";
 
 #[test]
 fn a_number_with_a_point_or_an_exponent_is_a_float() {
@@ -33,15 +33,15 @@ fn an_integer_does_not_fit_a_float_nor_a_float_an_integer() {
     let message = |request: &str| decode_request(&schema, request).unwrap_err().message;
     assert_eq!(
         message("scale 3"),
-        "in `factor` of `scale _`: found the INTEGER `3`; expected a FLOAT, such as `3.0`"
+        "in `factor` of `scale _`: found the Integer `3`; expected a Float, such as `3.0`"
     );
     assert_eq!(
         message("scale -1"),
-        "in `factor` of `scale _`: found the INTEGER `-1`; expected a FLOAT, such as `-1.0`"
+        "in `factor` of `scale _`: found the Integer `-1`; expected a Float, such as `-1.0`"
     );
     assert_eq!(
         message("repeat 1e3"),
-        "in `count` of `repeat _`: found the FLOAT `1e3`; expected an INTEGER, a whole number written without a point, such as `3`"
+        "in `count` of `repeat _`: found the Float `1e3`; expected an Integer, a whole number written without a point, such as `3`"
     );
 }
 
@@ -60,23 +60,23 @@ fn a_float_is_written_with_a_point() {
 #[test]
 fn a_default_and_an_example_type_their_numbers_too() {
     let default =
-        diagnostics("PROTOCOL a VERSION 1, RECORD r { ratio: OPTIONAL: FLOAT DEFAULT 1 },");
+        diagnostics("PROTOCOL a VERSION 1, RECORD r { ratio: OPTIONAL: Float DEFAULT 1 },");
     assert!(
-        default.contains("found the INTEGER `1`; expected a FLOAT, such as `1.0`"),
+        default.contains("found the Integer `1`; expected a Float, such as `1.0`"),
         "{default}"
     );
     let example = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT) EXAMPLES [scale 2 RETURNS 4.0],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) EXAMPLES [scale 2 RETURNS 4.0],",
     );
     assert!(
-        example.contains("found the INTEGER `2`; expected a FLOAT, such as `2.0`"),
+        example.contains("found the Integer `2`; expected a Float, such as `2.0`"),
         "{example}"
     );
     let returned = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT) EXAMPLES [scale 2.0 RETURNS 4],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) EXAMPLES [scale 2.0 RETURNS 4],",
     );
     assert!(
-        returned.contains("found the INTEGER `4`; expected a FLOAT, such as `4.0`"),
+        returned.contains("found the Integer `4`; expected a Float, such as `4.0`"),
         "{returned}"
     );
 }

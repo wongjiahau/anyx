@@ -16,7 +16,7 @@ PROTOCOL notes VERSION 1,
     anyx_protocol::SchemaFile {
         path: "common.anyx",
         source: r#"# One problem in a note.
-PUBLIC RECORD diagnostic { line: INTEGER, message: TEXT },
+PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
 PUBLIC ERRORS common errors [
     # No note has this path.
@@ -26,27 +26,27 @@ PUBLIC ERRORS common errors [
     },
     anyx_protocol::SchemaFile {
         path: "files.anyx",
-        source: r#"RECORD file { path: TEXT, revision: INTEGER, content: TEXT },
+        source: r#"RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
     trashed,
 ] + common/common errors,
 
-READ ONLY METHOD list RETURNS (paths: LIST: TEXT),
+READ ONLY METHOD list RETURNS (paths: LIST Text),
 
-READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
-METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
-    RETURNS (warnings: LIST common/diagnostic)
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (warnings: LIST common/Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/diagnostic),
+        rejected (diagnostics: LIST common/Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,
@@ -55,14 +55,14 @@ METHOD empty trash RETURNS NOTHING,
     anyx_protocol::SchemaFile {
         path: "files/export.anyx",
         source: r#"# A page of a note, with what is wrong on it.
-RECORD page { html: TEXT, problem: OPTIONAL common/diagnostic },
+RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
 
-METHOD html (path: TEXT) RETURNS (pages: LIST page) ERRORS files/file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
 
-METHOD pdf (path: TEXT) RETURNS (pdf: BYTES)
+METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/diagnostic),
+        unreadable (diagnostics: LIST common/Diagnostic),
     ] + files/file errors,
 "#,
     },

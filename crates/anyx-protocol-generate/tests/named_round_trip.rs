@@ -131,7 +131,7 @@ fn named_types_cross_the_wire_as_the_types_underneath() {
     assert_eq!(
         exchanged[0],
         (
-            "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n".to_string(),
+            "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n".to_string(),
             "RETURNS { share id \"share of a\", file id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );
@@ -163,7 +163,7 @@ fn each_method_has_its_effects_as_a_constant() {
     let revoke = named::REVOKE_EFFECTS;
     assert!(!revoke.read_only);
     assert!(revoke.idempotent && revoke.may_retry());
-    assert_eq!(revoke.undone_by, Some("restore (id: share id)"));
+    assert_eq!(revoke.undone_by, Some("restore (id: Share Id)"));
     assert!(named::LINKS_EFFECTS.read_only && named::LINKS_EFFECTS.may_retry());
     // No markers: the worst case, never retried on its own.
     let share = named::SHARE_TAGGED_EFFECTS;

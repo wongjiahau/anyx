@@ -32,7 +32,7 @@ pub fn camel_case(name: &str) -> String {
 
 /// Writes one call of the method `full_name`, such as `files/read _` or
 /// `SCHEMA`, as a request. An overload is named with its parameters'
-/// types, `tag (LIST: TEXT)`, which its full name alone leaves open.
+/// types, `tag (LIST Text)`, which its full name alone leaves open.
 /// `arguments` is a JSON array with one value per parameter.
 pub fn encode_request_json(
     schema: &Schema,
@@ -96,7 +96,7 @@ fn call_from_json(schema: &Schema, full_name: &str, arguments: &Json) -> Result<
 /// Reads a request, as a JSON array with one `{ "method": …, "arguments":
 /// […] }` per call, `method` being its full name such as `files/read _`,
 /// or for an overload its name with its parameters' types, `tag (LIST:
-/// TEXT)`.
+/// Text)`.
 /// For a tool that watches requests go by, like a test faking a server.
 pub fn decode_request_json(schema: &Schema, text: &str) -> Result<String, String> {
     let calls = decode_request(schema, text).map_err(|problem| problem.to_string())?;
@@ -261,7 +261,7 @@ fn outcome_to_json(schema: &Schema, index: usize, outcome: Option<Outcome>) -> J
 }
 
 /// The method that `name` calls: by its full name, `tag _`, or by its
-/// typed name, `tag (LIST: TEXT)`, which an overload needs.
+/// typed name, `tag (LIST Text)`, which an overload needs.
 fn method_index(schema: &Schema, name: &str) -> Result<usize, String> {
     let methods = 0..=schema.introspection();
     if let Some(index) = methods

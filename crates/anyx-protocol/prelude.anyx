@@ -1,0 +1,41 @@
+## The prelude: the built-in types of the anyx protocol, in the schema
+## language. It is read and checked before every schema, and its names are
+## visible in every scope, so a schema can't declare them again.
+##
+## Every declaration is `INTRINSIC`: its shape is written here, and the
+## implementation supplies what it means (`src/prelude.rs`). Only the
+## prelude may use `INTRINSIC`. The `#` lines are what the guide says about
+## each type, so they say how a value of it is written.
+
+# A string: `"some text"`. Escape `\"` and `\\`, and write a line break as
+# `\n`. For text with many lines, use a raw string: three quotes, the
+# lines, then three quotes on a line of their own. The closing quotes'
+# indentation is removed from every line. A raw string has no escapes.
+#
+#     """
+#         first line
+#         second line
+#         """
+INTRINSIC TYPE Text,
+
+# Raw bytes, such as a file: their base64 in a string, `"TVRoZA=="`.
+INTRINSIC TYPE Bytes,
+
+# A whole number of 64 bits, written without a point: `3`, `-1`.
+INTRINSIC TYPE Integer,
+
+# A finite 64-bit float, written with a point or an exponent: `1.5`, `3.0`,
+# `1e3`. `3` is an `Integer`, so it doesn't fit a `Float`; write `3.0`.
+INTRINSIC TYPE Float,
+
+# `true` or `false`.
+INTRINSIC TYPE Boolean,
+
+# A point in time, in UTC to the millisecond, as a string:
+# `"2026-11-14T06:00:08.000Z"`.
+INTRINSIC TYPE Instant,
+
+# A length of time, to the millisecond: whole numbers each followed by its
+# unit, the largest first, as in `90 seconds` or `1 hour 30 minutes`. A
+# unit is in the plural for any count but 1: `1 day 1 second`.
+INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },

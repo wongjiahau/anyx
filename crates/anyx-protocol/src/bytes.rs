@@ -1,4 +1,4 @@
-//! How a `BYTES` value is written: standard, padded base64 (RFC 4648).
+//! How a `Bytes` value is written: standard, padded base64 (RFC 4648).
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;

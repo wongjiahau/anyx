@@ -37,7 +37,7 @@ fn methods_are_named_by_their_scope() {
         .unwrap();
     assert_eq!(
         schema.type_name(&write.returns.as_ref().unwrap().r#type),
-        "LIST: common/diagnostic"
+        "LIST common/Diagnostic"
     );
     let errors: Vec<&str> = schema
         .errors_of(schema.method("files/export/pdf _").unwrap())
@@ -126,7 +126,7 @@ const ROOT: (&str, &str) = ("protocol.anyx", "PROTOCOL notes VERSION 1,");
 
 const COMMON: (&str, &str) = (
     "common.anyx",
-    "PUBLIC RECORD diagnostic { line: INTEGER }, RECORD secret { a: TEXT }, ERRORS gone errors [gone], PUBLIC ERRORS common errors [missing],",
+    "PUBLIC RECORD diagnostic { line: Integer }, RECORD secret { a: Text }, ERRORS gone errors [gone], PUBLIC ERRORS common errors [missing],",
 );
 
 /// Each case: a title and the schema's files.
@@ -162,7 +162,7 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
             COMMON,
             (
                 "files.anyx",
-                "METHOD read RETURNS (a: TEXT) ERRORS common/gone errors,",
+                "METHOD read RETURNS (a: Text) ERRORS common/gone errors,",
             ),
         ],
     ),
@@ -173,7 +173,7 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
             COMMON,
             (
                 "files.anyx",
-                "METHOD read RETURNS (a: TEXT) ERRORS common errors,",
+                "METHOD read RETURNS (a: Text) ERRORS common errors,",
             ),
         ],
     ),
@@ -184,7 +184,7 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
             COMMON,
             (
                 "files.anyx",
-                "METHOD read RETURNS (a: TEXT) ERRORS [missing] + common/common errors,",
+                "METHOD read RETURNS (a: Text) ERRORS [missing] + common/common errors,",
             ),
         ],
     ),
@@ -201,7 +201,7 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
         &[
             (
                 "protocol.anyx",
-                "PROTOCOL notes VERSION 1, RECORD x { a: TEXT },",
+                "PROTOCOL notes VERSION 1, RECORD x { a: Text },",
             ),
             COMMON,
         ],
@@ -210,14 +210,14 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
         "a header in a scope",
         &[ROOT, ("files.anyx", "PROTOCOL files VERSION 1,")],
     ),
-    ("no root file", &[("files.anyx", "RECORD x { a: TEXT },")]),
+    ("no root file", &[("files.anyx", "RECORD x { a: Text },")]),
     (
         "a file name that is no scope",
-        &[ROOT, ("Files.anyx", "RECORD x { a: TEXT },")],
+        &[ROOT, ("Files.anyx", "RECORD x { a: Text },")],
     ),
     (
         "a file that is not anyx",
-        &[ROOT, ("files.txt", "RECORD x { a: TEXT },")],
+        &[ROOT, ("files.txt", "RECORD x { a: Text },")],
     ),
     (
         "a `/` in a method's name",
@@ -225,7 +225,7 @@ const CASES: &[(&str, &[(&str, &str)])] = &[
             ROOT,
             (
                 "files.anyx",
-                "METHOD files/read (path: TEXT) RETURNS (a: TEXT),",
+                "METHOD files/read (path: Text) RETURNS (a: Text),",
             ),
         ],
     ),

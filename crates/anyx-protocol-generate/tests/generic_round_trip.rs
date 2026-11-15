@@ -180,7 +180,7 @@ fn a_named_type_over_a_generic_type_is_written_like_it() {
 fn a_field_left_out_of_a_generic_record_reaches_the_server_with_its_default() {
     let response = run(generic::handle(
         &Shop,
-        "count ({ items [{ amount 3, at \"2026-11-14T06:00:08Z\" }] } AS: page of (payment))",
+        "count ({ items [{ amount 3, at \"2026-11-14T06:00:08Z\" }] } AS: Page of (Payment))",
         |_| {},
     ));
     assert_eq!(response, "RETURNS 3\n");

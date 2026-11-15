@@ -85,7 +85,7 @@ pub fn effects_doc(method: &Method) -> String {
 /// The words that name `method` in generated code: its shape's, or for an
 /// overload, its shape's then `with` and its parameters' types, joined by
 /// `and`, so that each overload has a name of its own:
-/// `tag (names: LIST: TEXT)` is `tag with list of text`, and
+/// `tag (names: LIST Text)` is `tag with list of text`, and
 /// `open (id: file id)` is `open with file id`. A method without overloads
 /// keeps its shape's words.
 pub fn method_words(schema: &Schema, method: &Method) -> String {
@@ -101,8 +101,8 @@ pub fn method_words(schema: &Schema, method: &Method) -> String {
     format!("{} with {}", method.shape.text, types.join(" and "))
 }
 
-/// A type in lowercase words, for a name: `LIST: TEXT` is `list of text`,
-/// `common/file id` is `common file id`, and `page of (INTEGER)` is
+/// A type in lowercase words, for a name: `LIST Text` is `list of text`,
+/// `common/File Id` is `common file id`, and `Page of (Integer)` is
 /// `page of integer`.
 fn type_words(schema: &Schema, r#type: &Type) -> String {
     let named = |index: usize, arguments: &[Type]| {
@@ -117,7 +117,7 @@ fn type_words(schema: &Schema, r#type: &Type) -> String {
                     "_" => arguments
                         .next()
                         .map_or_else(String::new, |argument| type_words(schema, argument)),
-                    word => word.to_string(),
+                    word => word.to_lowercase(),
                 }
             }))
             .collect::<Vec<_>>()
@@ -203,7 +203,7 @@ const RESERVED_TYPE_NAMES: [&str; 18] = [
     "IntoValue",
     "CallError",
     "Transport",
-    // TypeScript's own types for `INSTANT` and `MAP`, and the client's.
+    // TypeScript's own types for `Instant` and `MAP`, and the client's.
     "Date",
     "Record",
     "Reviver",

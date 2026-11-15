@@ -64,8 +64,8 @@ safe to send without asking:
   and ask the person you work for when unsure.
 
 `UNDONE BY` after a method's results is the call that undoes it, with the
-method's own arguments in its slots: `UNDONE BY move (new path: TEXT) to
-(path: TEXT)` means that after `move \"a\" to \"b\"`, the call `move \"b\" to
+method's own arguments in its slots: `UNDONE BY move (new path: Text) to
+(path: Text)` means that after `move \"a\" to \"b\"`, the call `move \"b\" to
 \"a\"` takes it back. The state afterwards is equivalent, not always exactly
 the same. A method without `UNDONE BY` can't be undone by a call: its
 effect may be permanent, or it may have shown something to people outside
@@ -73,27 +73,7 @@ the account, such as by sending or sharing it.
 
 ## Values
 
-- TEXT is a string: `\"some text\"`. Escape `\\\"` and `\\\\`, and write a line
-  break as `\\n`. For text with many lines, use a raw string: three quotes,
-  the lines, then three quotes on a line of their own. The closing quotes'
-  indentation is removed from every line. A raw string has no escapes.
-
-      \"\"\"
-          first line
-          second line
-          \"\"\"
-
-- BYTES is base64 in a string: `\"TVRoZA==\"`.
-- INTEGER is a whole number, written without a point: `3`, `-1`.
-- FLOAT is a 64-bit float, written with a point or an exponent: `1.5`,
-  `3.0`, `1e3`. `3` is an INTEGER, so it doesn't fit a FLOAT; write `3.0`.
-- BOOLEAN is `true` or `false`.
-- INSTANT is a point in time, in UTC to the millisecond, as a string:
-  `\"2026-11-14T06:00:08.000Z\"`.
-- DURATION is whole numbers each followed by its unit, the largest first:
-  `90 seconds`, `1 hour 30 minutes`. The units are `days`, `hours`,
-  `minutes`, `seconds` and `milliseconds`, or `day`, `hour` and so on for 1.
-- `LIST: T` is `[a, b, c]`.
+{built_in}- `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
   words, put `:` after its key: `{{ \"hymn\": done }}`.
@@ -108,14 +88,14 @@ the account, such as by sending or sharing it.
   `wait (5 minutes)`.
 
 An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST: TEXT)`,
-`open (\"a\" AS: file id)`. A value shows its type when it is a number, a
-string (TEXT), `true` or `false`, a duration, a list or map whose items
+its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
+`open (\"a\" AS: File Id)`. A value shows its type when it is a number, a
+string (`Text`), `true` or `false`, a duration, a list or map whose items
 show one type, or a record or variant that only one type of the schema
-fits. `[]`, `{{}}`, and a value of a named TYPE, a generic type, BYTES or
-INSTANT never do. Without its annotation, the request is invalid. Only a
-whole argument is annotated; a value inside it is read by the type around
-it. An annotation states the type; it doesn't convert the value.
+fits. `[]`, `{{}}`, and a value of a named TYPE, a generic type, `Bytes`
+or `Instant` never do. Without its annotation, the request is invalid.
+Only a whole argument is annotated; a value inside it is read by the type
+around it. An annotation states the type; it doesn't convert the value.
 
 ## Responses
 
@@ -144,9 +124,10 @@ A request that can't be read gets one result, and none of its calls run:
 
 ## The schema
 
-In the schema, a `#` line before a definition says what it means. Lowercase
-words are names; all-caps words belong to the schema language. `ERRORS name
-[…]` is a group of errors that methods share by joining it with `+`.{examples}{scopes}
+In the schema, a `#` line before a definition says what it means. Types
+are named in Title Case, such as `File Summary`; other names are lowercase
+words; all-caps words belong to the schema language. `ERRORS name […]`
+is a group of errors that methods share by joining it with `+`.{examples}{scopes}
 
 {source}
 ",
@@ -163,6 +144,7 @@ words are names; all-caps words belong to the schema language. `ERRORS name
         source = sources(schema),
         overloads = overloads(schema),
         named_types = named_types(schema),
+        built_in = built_in_types(),
         generic_types = generic_types(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
             true => EXAMPLES,
@@ -211,6 +193,100 @@ fn overloads(schema: &Schema) -> String {
     )
 }
 
+/// The built-in types, each with its `#` lines from the prelude: "`Text`:
+/// A string: …". `Duration`'s are followed by its units.
+fn built_in_types() -> String {
+    crate::prelude::intrinsics()
+        .iter()
+        .map(|intrinsic| {
+            let mut doc = intrinsic.doc.clone();
+            if intrinsic.r#type == Type::Duration {
+                let units: Vec<String> = crate::time::units()
+                    .iter()
+                    .map(|unit| format!("`{}`", unit.singular))
+                    .collect();
+                let (last, others) = units.split_last().expect("Duration has units");
+                doc.push_str(&format!(" The units are {} and {last}.", others.join(", ")));
+            }
+            let item = wrap(&format!("- `{}`: {doc}", intrinsic.name), "  ");
+            match doc.lines().any(str::is_empty) {
+                true => format!("{item}\n\n"),
+                false => format!("{item}\n"),
+            }
+        })
+        .collect()
+}
+
+/// The words of `line`, keeping a `code` span whole so that it doesn't
+/// break across lines.
+fn words(line: &str) -> Vec<&str> {
+    let mut words = Vec::new();
+    let mut start = None;
+    let mut in_code = false;
+    for (index, character) in line.char_indices() {
+        match character {
+            ' ' if !in_code => {
+                if let Some(start) = start.take() {
+                    words.push(&line[start..index]);
+                }
+            }
+            _ => {
+                if character == '`' {
+                    in_code = !in_code;
+                }
+                start.get_or_insert(index);
+            }
+        }
+    }
+    if let Some(start) = start {
+        words.push(&line[start..]);
+    }
+    words
+}
+
+/// `text` wrapped to the guide's width, its paragraphs' lines after the
+/// first indented by `indent`. A line indented by four spaces, such as an
+/// example, is kept as it is, and a blank line stays.
+fn wrap(text: &str, indent: &str) -> String {
+    const WIDTH: usize = 76;
+    let mut lines: Vec<String> = Vec::new();
+    let mut paragraph: Vec<&str> = Vec::new();
+    let flush = |paragraph: &mut Vec<&str>, lines: &mut Vec<String>| {
+        let mut line = match lines.is_empty() {
+            true => String::new(),
+            false => indent.to_string(),
+        };
+        let mut empty = true;
+        for word in paragraph.drain(..) {
+            if !empty && line.chars().count() + 1 + word.chars().count() > WIDTH {
+                lines.push(std::mem::replace(&mut line, indent.to_string()));
+                empty = true;
+            }
+            if !empty {
+                line.push(' ');
+            }
+            line.push_str(word);
+            empty = false;
+        }
+        if !empty {
+            lines.push(line);
+        }
+    };
+    for line in text.lines() {
+        if line.is_empty() || line.starts_with("    ") {
+            flush(&mut paragraph, &mut lines);
+            lines.push(match line.is_empty() {
+                true => String::new(),
+                false => format!("{indent}{line}"),
+            });
+        } else {
+            paragraph.extend(words(line));
+        }
+    }
+    flush(&mut paragraph, &mut lines);
+    lines.join("\n")
+}
+
 /// The rule for generic types, shown with the schema's first one: "`RECORD
 /// page of (item: TYPE)`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
@@ -230,7 +306,7 @@ fn generic_types(schema: &Schema) -> String {
         .iter()
         .map(|parameter| format!("{parameter}: TYPE"))
         .collect();
-    let arguments = vec!["TEXT".to_string(); definition.parameters.len()];
+    let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(
         "- A generic RECORD or CHOICE has a type parameter in each slot of its\n  name, which its fields or variants use as a type: `{keyword} {}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
         fill_slots(&definition.name, &declared),
@@ -239,7 +315,7 @@ fn generic_types(schema: &Schema) -> String {
 }
 
 /// The rule for named types, and each of them with the type it is written
-/// as: "`file id`: `TEXT`", then its doc. Empty for a schema without any.
+/// as: "`file id`: `Text`", then its doc. Empty for a schema without any.
 fn named_types(schema: &Schema) -> String {
     let named: Vec<String> = schema
         .types
@@ -271,7 +347,7 @@ const SCOPES: &str = "
 
 The schema is a file per scope, each shown below under its full name. A
 type or an error group is private to its scope unless it is `PUBLIC`; another
-scope writes its full path, such as `common/diagnostic`. A response writes
+scope writes its full path, such as `common/Diagnostic`. A response writes
 an error in its shape alone, without its scope: `ERROR missing`.";
 
 const EXAMPLES: &str = "
@@ -355,7 +431,7 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
 }
 
 /// Whether no value of `type` shows it, so an argument of it is always
-/// annotated: a named type, a generic one, BYTES, INSTANT, and a list or a
+/// annotated: a named type, a generic one, Bytes, Instant, and a list or a
 /// map of one of them.
 fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
     match r#type {
