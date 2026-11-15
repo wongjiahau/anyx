@@ -66,6 +66,11 @@ grammar:1:35: warning: found two ways to write this call that can match the same
   ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL: ONE OF [a: WORD "A", v: STRING], y: OPTIONAL: STRING]
                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+## ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD "X", b: STRING, y: OPTIONAL: WORD "X", c: ZERO OR MORE: STRING]
+grammar:1:35: warning: found two ways to write this call that can match the same input, `_* X _ _*` and `_* _ X _*`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group
+  ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD "X", b: STRING, y: OPTIONAL: WORD "X", c: ZERO OR MORE: STRING]
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 ## ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", WORD "B", y: STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]
 grammar:1:128: error: found `BREAK BEFORE WORD "A"`, the call's first part; expected a later word, since a call can't break before it starts
   ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", WORD "B", y: STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]

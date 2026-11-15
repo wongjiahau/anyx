@@ -5,10 +5,9 @@ use crate::diagnostic::Diagnostic;
 use anyx::Span;
 
 use crate::model::{
-    ContainerKind, Element, Grammar, Order, Pattern, Repetition, call_picture, expansions,
-    has_groups,
+    ContainerKind, Element, Grammar, Order, Pattern, Repetition, call_picture, has_groups,
 };
-use crate::overlap::Overlap;
+use crate::overlap::{Fork, Junction, Known, Overlap, branches_taken, call_graph, way_taken};
 
 pub fn analyze(grammar: &Grammar) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -241,35 +240,83 @@ fn competing_choices(pattern: &Pattern, overlap: &mut Overlap, diagnostics: &mut
 
 /// Warns when two ways of writing a call with groups can match the same
 /// input, as the decoder would take the first of them.
+///
+/// The checks on groups when a grammar is read (`check_groups` in
+/// `lower.rs`) make a word tell each group apart: a group starts with a
+/// word, choices start with words of their own, and a group's first word
+/// can't come right after it. So where a group is there in one way and not
+/// in another, the item after the same parts is that word in one and
+/// something else in the other, and the two ways can't fit the same input.
+/// That holds only while the parts before the group take the same items in
+/// both, and while a word decides. Two cases are left, which this check
+/// finds:
+/// - a `ONE OF` between groups may have a slot choice, which a node
+///   decides, and the parts after it may start with a node too:
+///   `F _ _?` and `F _?` of `[WORD "F", OPTIONAL: ONE OF [a: WORD "A",
+///   v: STRING], OPTIONAL: STRING]` both fit `F "s"`;
+/// - parts before a group may take more or fewer nodes, which moves the
+///   group's word to where a later word stands: `_* X _ _*` and
+///   `_* _ X _*` of `[_*, OPTIONAL: WORD "X", _, OPTIONAL: WORD "X", _*]`
+///   both fit `a X b`.
+///
+/// Rather than compare every pair of ways, which doubles with each group,
+/// it walks the call's graph twice side by side, once for each branch of
+/// one branch point, and asks whether both walks can take the same items.
+/// That is a walk for each pair of branches at each branch point, each
+/// over pairs of the call's points, and each pair of node patterns is
+/// compared once.
 fn competing_ways(parts: &[Element], overlap: &mut Overlap, diagnostics: &mut Vec<Diagnostic>) {
-    let ways: Vec<Pattern> = expansions(parts)
-        .into_iter()
-        .map(Pattern::SpecificCall)
-        .collect();
-    for (index, later) in ways.iter().enumerate() {
-        let Some(earlier) = ways[..index]
-            .iter()
-            .find(|earlier| overlap.patterns(earlier, later))
-        else {
+    let graph = call_graph(parts);
+    let mut known = Known::new();
+    for (at, junction) in graph.iter().enumerate() {
+        let Junction::Branch(starts) = junction else {
             continue;
         };
-        let picture = |way: &Pattern| match way {
-            Pattern::SpecificCall(parts) => call_picture(parts),
-            _ => String::new(),
-        };
-        let (Some(first), Some(last)) = (parts.first(), parts.last()) else {
-            return;
-        };
-        let span = Span::new(first.span.start, last.span.end);
-        diagnostics.push(Diagnostic::warning(
-            span,
-            format!(
-                "found two ways to write this call that can match the same input, `{}` and `{}`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group",
-                picture(earlier),
-                picture(later)
-            ),
-        ));
-        return;
+        for second in 1..starts.len() {
+            for first in 0..second {
+                let fork = Fork { at, first, second };
+                let Some(walked) = overlap.fork(&graph, fork, &mut known) else {
+                    continue;
+                };
+                let one = walked.iter().map(|walking| walking.0);
+                let other = walked.iter().map(|walking| walking.1);
+                let (one, other) = (branches_taken(&graph, one), branches_taken(&graph, other));
+                // The earlier of the two in the order the ways are listed:
+                // at the first branch point where they part, the one that
+                // took the earlier branch.
+                let mut points: Vec<&usize> = one.keys().chain(other.keys()).collect();
+                points.sort();
+                let swap =
+                    points
+                        .iter()
+                        .find_map(|point| match (one.get(*point), other.get(*point)) {
+                            (Some(a), Some(b)) if a != b => Some(a > b),
+                            _ => None,
+                        });
+                let (earlier, later) = match swap {
+                    Some(true) => (other, one),
+                    _ => (one, other),
+                };
+                let picture = |taken| {
+                    let way: Vec<Element> =
+                        way_taken(&graph, &taken).into_iter().cloned().collect();
+                    call_picture(&way)
+                };
+                let (Some(first), Some(last)) = (parts.first(), parts.last()) else {
+                    return;
+                };
+                let span = Span::new(first.span.start, last.span.end);
+                diagnostics.push(Diagnostic::warning(
+                    span,
+                    format!(
+                        "found two ways to write this call that can match the same input, `{}` and `{}`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group",
+                        picture(earlier),
+                        picture(later)
+                    ),
+                ));
+                return;
+            }
+        }
     }
 }
 

@@ -41,11 +41,44 @@ enum Atom<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct Step<'a> {
+pub struct Step<'a> {
     atom: Atom<'a>,
     optional: bool,
     repeats: bool,
+    /// The element or call part it comes from.
+    element: &'a Element,
 }
+
+/// A point of a sequence laid out as a graph, which a call with groups
+/// needs: a step, or where the ways of writing the call part. The graph
+/// ends just past its last point.
+#[derive(Clone)]
+pub enum Junction<'a> {
+    Step(Step<'a>),
+    /// A group there or not, or the choices of a `ONE OF` between groups:
+    /// the point each branch starts at, in the order [`expansions`] lists
+    /// them, so that an absent group is the last branch.
+    Branch(Vec<usize>),
+    /// The end of a branch, on to the point after its group.
+    Jump(usize),
+}
+
+/// Where two ways of writing a call part: at the branch point `at`, one
+/// way takes the branch `first`, the other the branch `second`.
+#[derive(Clone, Copy)]
+pub struct Fork {
+    pub at: usize,
+    pub first: usize,
+    pub second: usize,
+}
+
+/// Where two walks through sequences stand, and whether each has taken its
+/// branch of a [`Fork`] yet.
+pub type Walking = (usize, usize, bool, bool);
+
+/// The overlap of node patterns found so far in one walk, by their
+/// addresses.
+pub type Known = HashMap<(usize, usize), bool>;
 
 impl<'a> Overlap<'a> {
     pub fn new(grammar: &'a Grammar) -> Self {
@@ -195,6 +228,11 @@ impl<'a> Overlap<'a> {
     }
 
     fn compare(&mut self, a: &Pattern, b: &Pattern) -> bool {
+        // Two calls are walked side by side, groups and all, rather than
+        // compared way by way.
+        if let (Pattern::SpecificCall(_), Pattern::SpecificCall(_)) = (a, b) {
+            return self.calls(a, b);
+        }
         if let Some(a) = self.expanded(a) {
             return self.patterns(&a, b);
         }
@@ -348,62 +386,238 @@ impl<'a> Overlap<'a> {
                     })
             }
             (Pattern::SpecificCall(a), Pattern::SpecificCall(b)) => {
-                self.sequences(&part_steps(a), &part_steps(b))
+                self.sequences(&call_graph(a), &call_graph(b))
             }
             _ => false,
         }
     }
 
     /// Whether some list of items fits both sequences.
-    fn sequences(&mut self, a: &[Step], b: &[Step]) -> bool {
-        let mut seen = HashSet::new();
-        let mut pending = vec![(0, 0)];
-        while let Some((i, j)) = pending.pop() {
-            if !seen.insert((i, j)) {
-                continue;
+    fn sequences(&mut self, a: &[Junction], b: &[Junction]) -> bool {
+        self.walk(a, b, None, &mut Known::new()).is_some()
+    }
+
+    /// The walks through the graph of a call with groups, `graph`, by which
+    /// two ways of writing it that part at `fork` fit the same items, if
+    /// there are any. `known` keeps the overlap of node patterns from one
+    /// call to the next, which is sound only while nothing else is being
+    /// compared, as when [`crate::analyze`] starts a comparison.
+    pub fn fork(
+        &mut self,
+        graph: &[Junction],
+        fork: Fork,
+        known: &mut Known,
+    ) -> Option<Vec<Walking>> {
+        self.walk(graph, graph, Some(fork), known)
+    }
+
+    /// Walks `a` and `b` side by side, both taking each item in turn, to
+    /// the ends of both. With a `fork`, the walk through `a` takes its first
+    /// branch and the walk through `b` its second. Gives the points passed,
+    /// from the start.
+    fn walk(
+        &mut self,
+        a: &[Junction],
+        b: &[Junction],
+        fork: Option<Fork>,
+        known: &mut Known,
+    ) -> Option<Vec<Walking>> {
+        let start: Walking = (0, 0, fork.is_none(), fork.is_none());
+        let mut came_from: HashMap<Walking, Walking> = HashMap::new();
+        let mut pending = vec![start];
+        let path_to = |end: Walking, came_from: &HashMap<Walking, Walking>| {
+            let mut path = vec![end];
+            while let Some(before) = path.last().and_then(|at| came_from.get(at)) {
+                path.push(*before);
             }
-            match (a.get(i), b.get(j)) {
-                (None, None) => return true,
-                (Some(step), _) if step.optional => pending.push((i + 1, j)),
-                _ => {}
+            path.reverse();
+            path
+        };
+        while let Some(at) = pending.pop() {
+            let (i, j, a_forked, b_forked) = at;
+            if i == a.len() && j == b.len() && a_forked && b_forked {
+                return Some(path_to(at, &came_from));
             }
-            if b.get(j).is_some_and(|step| step.optional) {
-                pending.push((i, j + 1));
+            let mut next: Vec<Walking> = Vec::new();
+            let a_branch = fork.map(|fork| (fork.at, fork.first));
+            for (i, a_forked) in alone(a, i, a_branch, a_forked) {
+                next.push((i, j, a_forked, b_forked));
             }
-            let (Some(x), Some(y)) = (a.get(i), b.get(j)) else {
-                continue;
-            };
-            let both = match (x.atom, y.atom) {
-                (Atom::NameWord(x), Atom::NameWord(y)) => x == y,
-                (Atom::NameWord(word), Atom::NameWords(conditions))
-                | (Atom::NameWords(conditions), Atom::NameWord(word)) => {
-                    may_be_among(word, conditions)
-                }
-                (Atom::NameWords(x), Atom::NameWords(y)) => conditions_overlap(x, y),
-                (Atom::Node(x), Atom::Node(y)) => self.patterns(x, y),
-                (Atom::AnyNode, Atom::Node(_) | Atom::AnyNode) | (Atom::Node(_), Atom::AnyNode) => {
-                    true
-                }
-                _ => false,
-            };
-            if both {
+            let b_branch = fork.map(|fork| (fork.at, fork.second));
+            for (j, b_forked) in alone(b, j, b_branch, b_forked) {
+                next.push((i, j, a_forked, b_forked));
+            }
+            if let (Some(Junction::Step(x)), Some(Junction::Step(y))) = (a.get(i), b.get(j))
+                && self.atoms(x.atom, y.atom, known)
+            {
                 for next_i in [i + 1, i] {
                     for next_j in [j + 1, j] {
                         if (next_i == i + 1 || x.repeats) && (next_j == j + 1 || y.repeats) {
-                            pending.push((next_i, next_j));
+                            next.push((next_i, next_j, a_forked, b_forked));
                         }
                     }
                 }
             }
+            for next in next {
+                if next != start && !came_from.contains_key(&next) {
+                    came_from.insert(next, at);
+                    pending.push(next);
+                }
+            }
         }
-        false
+        None
+    }
+
+    /// Whether one item may be both atoms.
+    fn atoms(&mut self, x: Atom, y: Atom, known: &mut Known) -> bool {
+        match (x, y) {
+            (Atom::NameWord(x), Atom::NameWord(y)) => x == y,
+            (Atom::NameWord(word), Atom::NameWords(conditions))
+            | (Atom::NameWords(conditions), Atom::NameWord(word)) => may_be_among(word, conditions),
+            (Atom::NameWords(x), Atom::NameWords(y)) => conditions_overlap(x, y),
+            (Atom::Node(x), Atom::Node(y)) => {
+                let key = (
+                    std::ptr::from_ref(x) as usize,
+                    std::ptr::from_ref(y) as usize,
+                );
+                if let Some(overlap) = known.get(&key) {
+                    return *overlap;
+                }
+                let overlap = self.patterns(x, y);
+                known.insert(key, overlap);
+                overlap
+            }
+            (Atom::AnyNode, Atom::Node(_) | Atom::AnyNode) | (Atom::Node(_), Atom::AnyNode) => true,
+            _ => false,
+        }
+    }
+}
+
+/// Where one walk through `graph` may go from the point `at` without taking
+/// an item: past an optional step, into a branch, or on from the end of
+/// one. At the branch point of `branch`, it takes only that branch, and
+/// notes that it has.
+fn alone(
+    graph: &[Junction],
+    at: usize,
+    branch: Option<(usize, usize)>,
+    forked: bool,
+) -> Vec<(usize, bool)> {
+    match graph.get(at) {
+        Some(Junction::Step(step)) if step.optional => vec![(at + 1, forked)],
+        Some(Junction::Branch(starts)) => starts
+            .iter()
+            .enumerate()
+            .filter_map(|(index, start)| match branch {
+                Some((point, taken)) if point == at => (index == taken).then_some((*start, true)),
+                _ => Some((*start, forked)),
+            })
+            .collect(),
+        Some(Junction::Jump(to)) => vec![(*to, forked)],
+        _ => Vec::new(),
+    }
+}
+
+/// The parts of the way of writing a call that a walk through its graph
+/// took, from the branches it took ([`branches_taken`]).
+pub fn way_taken<'a>(graph: &[Junction<'a>], taken: &HashMap<usize, usize>) -> Vec<&'a Element> {
+    let mut parts: Vec<&Element> = Vec::new();
+    let mut at = 0;
+    while let Some(junction) = graph.get(at) {
+        at = match junction {
+            Junction::Step(step) => {
+                if !parts
+                    .last()
+                    .is_some_and(|last| std::ptr::eq(*last, step.element))
+                {
+                    parts.push(step.element);
+                }
+                at + 1
+            }
+            Junction::Branch(starts) => match taken.get(&at) {
+                Some(start) => *start,
+                None => starts.last().copied().unwrap_or(at + 1),
+            },
+            Junction::Jump(to) => *to,
+        };
+    }
+    parts
+}
+
+/// The start of the branch a walk took at each branch point it passed.
+pub fn branches_taken(
+    graph: &[Junction],
+    passed: impl Iterator<Item = usize>,
+) -> HashMap<usize, usize> {
+    let passed: Vec<usize> = passed.collect();
+    passed
+        .windows(2)
+        .filter(|pair| pair[0] != pair[1] && matches!(graph[pair[0]], Junction::Branch(_)))
+        .map(|pair| (pair[0], pair[1]))
+        .collect()
+}
+
+/// A call's parts as a graph: its words and slots in a row, and each group
+/// a branch point, with a branch for each way of writing it.
+pub fn call_graph(parts: &[Element]) -> Vec<Junction<'_>> {
+    let mut graph = Vec::new();
+    add_parts(parts, &mut graph);
+    graph
+}
+
+fn add_parts<'a>(parts: &'a [Element], graph: &mut Vec<Junction<'a>>) {
+    for part in parts {
+        let branches: Vec<&'a [Element]> = match &part.pattern {
+            Pattern::Group(inner) => vec![inner],
+            Pattern::PartChoice(choices) => choices
+                .iter()
+                .map(|choice| match &choice.pattern {
+                    Pattern::Group(inner) => inner.as_slice(),
+                    _ => &[],
+                })
+                .collect(),
+            _ => {
+                graph.extend(
+                    part_steps(std::slice::from_ref(part))
+                        .into_iter()
+                        .map(Junction::Step),
+                );
+                continue;
+            }
+        };
+        let optional = part.repetition == Repetition::Optional;
+        if let ([only], false) = (&branches[..], optional) {
+            add_parts(only, graph);
+            continue;
+        }
+        let point = graph.len();
+        graph.push(Junction::Branch(Vec::new()));
+        let mut starts = Vec::new();
+        let mut ends = Vec::new();
+        for inner in branches {
+            starts.push(graph.len());
+            add_parts(inner, graph);
+            ends.push(graph.len());
+            graph.push(Junction::Jump(0));
+        }
+        let after = graph.len();
+        if optional {
+            starts.push(after);
+        }
+        for end in ends {
+            graph[end] = Junction::Jump(after);
+        }
+        graph[point] = Junction::Branch(starts);
     }
 }
 
 /// The steps of a bracket's elements. `ONE OR MORE: x` is `x`, then
 /// `ZERO OR MORE: x`.
-fn node_steps(elements: &[Element]) -> Vec<Step<'_>> {
+fn node_steps(elements: &[Element]) -> Vec<Junction<'_>> {
     steps(elements, |element| Atom::Node(&element.pattern))
+        .into_iter()
+        .map(Junction::Step)
+        .collect()
 }
 
 /// The steps of a call's parts, where a `WORD` is a name word and a
@@ -450,6 +664,7 @@ fn steps<'a>(elements: &'a [Element], atom: impl Fn(&'a Element) -> Atom<'a>) ->
             atom,
             optional,
             repeats,
+            element,
         };
         match element.repetition {
             Repetition::One => steps.push(step(false, false)),

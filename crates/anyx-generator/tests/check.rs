@@ -247,6 +247,7 @@ fn groups_are_told_apart_by_their_first_word() {
             "ENTRY: value, value: ANYFIX CALL [x: WORDS, y: OPTIONAL: WORD \"A\", z: STRING]",
             "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", y: STRING]",
             "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL: ONE OF [a: WORD \"A\", v: STRING], y: OPTIONAL: STRING]",
+            "ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD \"X\", b: STRING, y: OPTIONAL: WORD \"X\", c: ZERO OR MORE: STRING]",
             "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", WORD \"B\", y: STRING] FORMAT [BREAK BEFORE WORD \"B\", BREAK BEFORE WORD \"A\"]",
             "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [y: STRING]]",
             &too_many,
