@@ -1,5 +1,5 @@
 ---
-title: Schema files import each other explicitly with paths relative to the importing file, and the generator starts from an entry file
+title: A protocol is one flat namespace split across files that import each other with USE and a relative path
 author: Wongjiahau
 date: 2026-11-15
 branch: master
@@ -14,15 +14,22 @@ touches:
 ---
 
 ## Decided
-- No implicit imports. `USE name FROM "relative path"` mounts a file under a name the importer chooses. Each file imports what it uses and refers to the imported file's `PUBLIC` declarations as `name/Thing` (#27).
-- The mount name is the API, not the file name. Call paths are built from mount names starting at the entry file, so renaming a file doesn't change the wire.
-- A library is just a file without a `PROTOCOL` header. There is no `LIBRARY` keyword. A file is loaded once, however many files import it.
-- The generator takes an entry file, the one with the `PROTOCOL` header, and follows `USE` lines. Folder input and the special `protocol.anyx` name go away.
+- A protocol is one flat namespace. Folders and files are purely cosmetic and informational (#27).
+- `USE "relative path"` is the only import form, with no names in it. It makes the file part of the protocol, and makes the file's `PUBLIC` declarations visible here, unqualified. There is no re-export.
+- Every type and error-group name is declared once in the whole protocol, private ones included. Method shapes are unique except for valid overloads. There are no call paths (`files/export/pdf` becomes `pdf`), and annotations use plain names (`AS File Id`).
+- Paths are relative to the importing file, and `..` is allowed. A file without a `PROTOCOL` header is a library, and its methods, if any, join every protocol that uses it.
+- Tools take an entry file (the one with the header) as an argument and follow `USE`. Folder input and `ROOT_FILE` go away.
+- In the anyx shell, each program is the namespace (`notes/pdf`). That is the only qualification, and the program name the user picks is the only alias.
 
 ## Tried and ruled out
-- Folder-based scopes (every `.anyx` file under the root is a scope named by its path, the current behaviour): moving or renaming a file changes the API, a stray file joins the protocol, and a file can't be read on its own.
-- Root-relative paths (`/common.anyx`): they need a marker to find the root, which is implicit again. A shared library would need its own root, which means designing packages too early. Subtrees can't be copied. Checking can't start from any file.
-- "Relative imports are harder to maintain": with agents and LSP rename refactors, rewriting `../` is cheap, and a broken path fails loudly. A named package root can come later.
+- Folder-based scopes (the current behaviour): moving a file changes the API, stray files join the protocol, and the layout leaks into requests (`AS common/File Id`).
+- Root-relative paths (`/common.anyx`): they need a root marker (implicit again) and per-library roots (packages too early), subtrees can't be copied, and checking can't start from any file. Relative paths' maintenance cost is cheap with agents and LSP refactors.
+- Per-file namespaces (`USE common FROM …`, then `common/Diagnostic`): adds aliases and clash rules for nothing. GraphQL shows that one flat type namespace scales. The shell's per-program prefix covers names from different authors.
+- `MOUNT` beside `USE`, to separate "methods callable at a path" from "names imported": with no call paths, a method can't be reachable twice, so one keyword is enough. The entry file is chosen by the tool's argument, not by a keyword.
+- Deriving call paths from mounted file paths (`MOUNT "./files/export.anyx"` → `files/export/pdf`): it contradicts folders being cosmetic.
+
+## Watch out
+- Sharing a file between two programs gives the same declaration two names in the shell. Match values across programs by shape, not name.
 
 In the code:
-- Today's folder loading: `read_schema` and `collect` in `crates/anyx-protocol-generate/src/bin/anyx-protocol-generate.rs`, `ROOT_FILE` and `Schema::parse_files` in `crates/anyx-protocol/src/schema.rs`.
+- Today's folder loading: `read_schema` and `collect` in `crates/anyx-protocol-generate/src/bin/anyx-protocol-generate.rs`, `ROOT_FILE` and `Schema::parse_files` in `crates/anyx-protocol/src/schema.rs`. Scopes are described in PROTOCOL.md's "Scopes" section.
