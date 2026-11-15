@@ -164,6 +164,10 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, METHOD f RETURNS (TEXT),",
         ),
         (
+            "a bad error after RETURNS NOTHING, which is not an unnamed return",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],",
+        ),
+        (
             "a type defined twice",
             "PROTOCOL a VERSION 1, RECORD x { a: TEXT }, CHOICE x { b },",
         ),

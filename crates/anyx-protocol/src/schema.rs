@@ -723,25 +723,34 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
     })
 }
 
-/// The argument after `word` in a top-level call that has it, if `span` is
-/// inside it, such as the name of a `METHOD`.
+/// The argument right after `word` in a top-level call that has it, if
+/// `span` is inside it, such as the name of a `METHOD`. Only a slot that
+/// comes straight after the word counts: in `METHOD _ RETURNS NOTHING
+/// ERRORS _`, nothing comes after `RETURNS`, and the `ERRORS` list belongs
+/// to `ERRORS`.
 fn after_word<'a>(nodes: &'a [Node], span: Span, word: &str) -> Option<&'a Node> {
     nodes.iter().find_map(|node| {
         let NodeKind::Call(call) = &node.kind else {
             return None;
         };
         let mut slot = 0;
-        call.name.iter().find_map(|part| match part {
-            NamePart::Slot => {
-                slot += 1;
-                None
-            }
-            NamePart::Word { text, .. } if text == word => call
-                .arguments
-                .get(slot)
-                .filter(|after| after.span.start <= span.start && span.end <= after.span.end),
-            NamePart::Word { .. } => None,
-        })
+        call.name
+            .iter()
+            .enumerate()
+            .find_map(|(index, part)| match part {
+                NamePart::Slot => {
+                    slot += 1;
+                    None
+                }
+                NamePart::Word { text, .. }
+                    if text == word && call.name.get(index + 1) == Some(&NamePart::Slot) =>
+                {
+                    call.arguments.get(slot).filter(|after| {
+                        after.span.start <= span.start && span.end <= after.span.end
+                    })
+                }
+                NamePart::Word { .. } => None,
+            })
     })
 }
 
