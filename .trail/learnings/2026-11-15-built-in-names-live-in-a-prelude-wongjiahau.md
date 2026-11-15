@@ -8,7 +8,9 @@ scope: repo
 status: active
 src: agent
 touches:
+  - crates/anyx-protocol/prelude.anyx
   - crates/anyx-protocol/protocol.anyx
+  - crates/anyx-protocol/src/prelude.rs
   - crates/anyx-protocol/src/time.rs
 ---
 
@@ -28,4 +30,6 @@ touches:
 - A word with no lowercase letters is a keyword (`is_keyword` in `crates/anyx/src/lexer.rs`). Write `Id` and `Http Request`, never `ID` and `HTTP Request`.
 
 In the code:
-- Units table to replace: `UNITS` and `parse_duration` in `crates/anyx-protocol/src/time.rs`. Issues #26 (prelude) and #25 (request grammar).
+- The prelude is `crates/anyx-protocol/prelude.anyx`; `crates/anyx-protocol/src/prelude.rs` loads it (`load`, `intrinsics`), maps each name to its `Type` (`implementation`), resolves a plain reference to a built-in (`reference`) and finds the new name of an old all-caps one (`renamed`).
+- Duration's units: `unit_length`, `check_units` and `units` in `crates/anyx-protocol/src/time.rs`. The guide's list of built-ins: `built_in_types` in `crates/anyx-protocol/src/guide.rs`.
+- `check_intrinsic` and `check_type_words` in `crates/anyx-protocol/src/check.rs`; the old-name hint `old_built_in` in `crates/anyx-protocol/src/schema.rs`. Issues #26 (prelude) and #25 (request grammar, still hand-written).
