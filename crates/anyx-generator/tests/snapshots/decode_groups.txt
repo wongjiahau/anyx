@@ -68,3 +68,8 @@ input:1:1: found the word `PRIVATE`; expected the word `METHOD`, `PUBLIC` or `RE
   PRIVATE RECORD "item"
   ^^^^^^^
 
+## [METHOD find RETURNS item]
+input:1:1: found `[...]`; expected the call `_? METHOD _ RETURNS _`, `_? METHOD _ RETURNS NOTHING`, `RECORD _ SIZE` or the end of the document
+  [METHOD find RETURNS item]
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+

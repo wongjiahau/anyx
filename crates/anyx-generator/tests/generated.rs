@@ -494,6 +494,7 @@ fn groups_say_what_is_wrong_where_it_is() {
             "RECORD \"item\" SIZE 1.5",
             "RECORD \"item\" SIZE BIG",
             "PRIVATE RECORD \"item\"",
+            "[METHOD find RETURNS item]",
         ],
         |nodes| Ok(groups::decode_document(nodes)?),
     );

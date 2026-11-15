@@ -618,6 +618,31 @@ impl Lowerer<'_> {
                 break_before.push(text);
             }
         }
+        // A break before a word that is not in a call changes nothing, so
+        // one rule naming the words every way has serves them all, unless a
+        // word to break before is the first part of some way: a call can't
+        // break before it starts, so each way then gets a rule of its own.
+        let first_in_some_way = ways.iter().any(|way| {
+            matches!(way.first(), Some(Element { pattern: Pattern::Word(word), .. }) if break_before.contains(word))
+        });
+        if !first_in_some_way && let Some(shortest) = ways.last() {
+            let in_every_way: Vec<Element> = shortest
+                .iter()
+                .filter(|part| {
+                    ways.iter()
+                        .all(|way| way.iter().any(|other| other.span == part.span))
+                })
+                .cloned()
+                .collect();
+            let rule = LayoutRule {
+                words: words_of(&in_every_way),
+                break_before,
+            };
+            if !self.layouts.contains(&rule) {
+                self.layouts.push(rule);
+            }
+            return;
+        }
         for way in ways {
             let rule = LayoutRule {
                 words: words_of(way),

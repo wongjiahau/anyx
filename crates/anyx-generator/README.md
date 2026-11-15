@@ -236,9 +236,12 @@ The decoder reads a call with groups from left to right, and takes a group
 whenever its first word is next. So the groups of a call, and the choices
 of a `ONE OF` between them, each start with a word of their own, and that
 word can't also come right after the group. `WORDS` can't be in a group or
-next to one. Errors still name every way of writing the call, as a `ONE OF`
-of calls would: ``expected the call `METHOD _ RETURNS _`, `METHOD _ RETURNS
-NOTHING` …``. A call may have at most 256 ways.
+next to one. An error names what was expected where the call went wrong:
+``expected the word `ERRORS`, `AT`, `READ ONLY`, `IDEMPOTENT` or the end of
+the call``. Where the node is not the call at all, it names the shortest
+ways of writing it, with every optional group left out: ``expected the call
+`METHOD _ RETURNS _` or `METHOD _ RETURNS NOTHING` ``. A call may have at
+most 256 ways.
 
 `FORMAT` may break before a word in a group, and does so in each way of
 writing the call where the word is not first.

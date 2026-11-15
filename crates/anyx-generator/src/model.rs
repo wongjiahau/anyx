@@ -128,12 +128,30 @@ pub const MOST_EXPANSIONS: usize = 256;
 /// A call without groups has one way, its parts. It stops at
 /// [`MOST_EXPANSIONS`].
 pub fn expansions(parts: &[Element]) -> Vec<Vec<Element>> {
+    ways(parts, true)
+}
+
+/// The ways of writing a call with every optional group left out: one for
+/// each choice of each `ONE OF` between groups that must be there. Errors
+/// name a call by these, the shortest ways of writing it, rather than by
+/// every way, which doubles with each optional group: the decoder says
+/// which optional word it missed where it misses it.
+pub fn shortest_ways(parts: &[Element]) -> Vec<Vec<Element>> {
+    ways(parts, false)
+}
+
+/// [`expansions`], or with `optional_groups` false, [`shortest_ways`].
+fn ways(parts: &[Element], optional_groups: bool) -> Vec<Vec<Element>> {
     let mut all: Vec<Vec<Element>> = vec![Vec::new()];
     for part in parts {
+        let optional = part.repetition == Repetition::Optional;
         let options: Vec<Vec<Element>> = match &part.pattern {
+            Pattern::Group(_) | Pattern::PartChoice(_) if optional && !optional_groups => {
+                vec![Vec::new()]
+            }
             Pattern::Group(inner) => {
-                let mut options = expansions(inner);
-                if part.repetition == Repetition::Optional {
+                let mut options = ways(inner, optional_groups);
+                if optional {
                     options.push(Vec::new());
                 }
                 options
@@ -142,11 +160,11 @@ pub fn expansions(parts: &[Element]) -> Vec<Vec<Element>> {
                 let mut options: Vec<Vec<Element>> = choices
                     .iter()
                     .flat_map(|choice| match &choice.pattern {
-                        Pattern::Group(inner) => expansions(inner),
+                        Pattern::Group(inner) => ways(inner, optional_groups),
                         _ => vec![Vec::new()],
                     })
                     .collect();
-                if part.repetition == Repetition::Optional {
+                if optional {
                     options.push(Vec::new());
                 }
                 options
@@ -475,7 +493,7 @@ impl Grammar {
             Pattern::Container { kind, .. } => kind.picture().to_string(),
             Pattern::SpecificCall(parts) if has_groups(parts) => {
                 let mut all = Vec::new();
-                for way in expansions(parts) {
+                for way in shortest_ways(parts) {
                     let one = format!("the call `{}`", call_picture(&way));
                     if !all.contains(&one) {
                         all.push(one);
@@ -625,7 +643,7 @@ impl Grammar {
                     calls.extend(choices.iter().map(|choice| &choice.pattern))
                 }
                 Pattern::SpecificCall(parts) => {
-                    for way in expansions(parts) {
+                    for way in shortest_ways(parts) {
                         let words: Vec<&str> = way
                             .iter()
                             .map_while(|part| match &part.pattern {
