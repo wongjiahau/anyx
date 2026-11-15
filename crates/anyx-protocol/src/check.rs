@@ -2,7 +2,7 @@
 //! in, keeps private types and errors to their scope, and reports what is
 //! defined twice.
 
-use anyx::{NamePart, Node, NodeKind, Span, StringLiteral};
+use anyx::{NamePart, Node, NodeKind, Span, StringKind, StringLiteral};
 
 use crate::codec;
 use crate::response::{self, WrittenOutcome};
@@ -562,7 +562,7 @@ impl<'a> Checker<'a> {
                         (call, WrittenOutcome::Error(error), *span)
                     }
                 };
-                let (doc, call) = self.without_doc(call);
+                let (doc, call) = Self::without_doc(call);
                 let read = codec::decode_call_of(schema, method, &call).and_then(|arguments| {
                     response::read_outcome(schema, method, written, span)
                         .map(|outcome| (arguments, outcome))
@@ -597,7 +597,7 @@ impl<'a> Checker<'a> {
     /// first slot of its leftmost call, and the doc: in `# Saving.` then
     /// `files/write "a"`, the doc is the first argument of the call
     /// `_ files`.
-    fn without_doc(&self, node: &Node) -> (Option<String>, Node) {
+    fn without_doc(node: &Node) -> (Option<String>, Node) {
         let unchanged = || (None, node.clone());
         let NodeKind::Call(call) = &node.kind else {
             return unchanged();
@@ -608,12 +608,11 @@ impl<'a> Checker<'a> {
         };
         let (doc, first) = match &first.kind {
             NodeKind::String(literal)
-                if self.sources[self.file][first.span.start..].starts_with('#')
-                    && call.name.len() > 1 =>
+                if literal.kind == StringKind::Line && call.name.len() > 1 =>
             {
                 (literal.value.clone(), None)
             }
-            NodeKind::Call(_) => match self.without_doc(first) {
+            NodeKind::Call(_) => match Self::without_doc(first) {
                 (Some(doc), first) => (doc, Some(first)),
                 (None, _) => return unchanged(),
             },

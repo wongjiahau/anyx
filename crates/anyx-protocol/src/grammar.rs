@@ -746,7 +746,7 @@ pub fn decode_document(nodes: &[Node]) -> Result<Document, DecodeError> {
 pub fn decode_protocol(node: &Node) -> Result<Protocol, DecodeError> {
     let mut parts = support::call(node, "the call `_? PROTOCOL _ VERSION _`")?;
     let decoded = Protocol {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         name: parts
             .word("PROTOCOL")?
             .one(decode_type_name, "a type name")?,
@@ -783,7 +783,7 @@ pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
         &["the call `_? PUBLIC RECORD _`", "the call `_? RECORD _`"],
     )?;
     let decoded = Record {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -854,7 +854,7 @@ pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
     let mut parts = support::call(node, "the call `_? … _`")?;
     let decoded = Field {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         name: parts.words(
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
@@ -1059,7 +1059,7 @@ pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
         &["the call `_? PUBLIC CHOICE _`", "the call `_? CHOICE _`"],
     )?;
     let decoded = Choice {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1115,7 +1115,7 @@ pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
         &["the call `_? PUBLIC TYPE _`", "the call `_? TYPE _`"],
     )?;
     let decoded = NamedType {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1164,7 +1164,7 @@ pub fn decode_variant(node: &Node) -> Result<Variant, DecodeError> {
 }
 
 pub fn decode_variant_slot(node: &Node) -> Result<VariantSlot, DecodeError> {
-    support::string(node, |_| true, "a string")
+    support::line_string(node, |_| true, "a `#` line string")
         .map(VariantSlot::Doc)
         .or_else(|error| error.or(decode_parameter(node).map(VariantSlot::Parameter)))
 }
@@ -1175,7 +1175,7 @@ pub fn decode_errors(node: &Node) -> Result<Errors, DecodeError> {
         &["the call `_? PUBLIC ERRORS _`", "the call `_? ERRORS _`"],
     )?;
     let decoded = Errors {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1264,7 +1264,7 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
         ],
     )?;
     let decoded = Method {
-        doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         read_only: if parts
             .choose(&["READ"], false, true, &["the word `READ ONLY`"])?
             .is_some()

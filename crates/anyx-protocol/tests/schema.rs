@@ -262,11 +262,11 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a string inside an error",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) \"doc\"],",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) # doc\n],",
         ),
         (
             "a string inside a variant",
-            "PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) \"doc\" },",
+            "PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) # doc\n},",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -274,6 +274,60 @@ fn mistakes_in_a_schema_are_diagnosed() {
         .map(|(title, source)| format!("== {title}\n{source}\n{}\n", diagnostics(source)))
         .collect();
     assert_snapshot("tests/snapshots/diagnostics.txt", &rendered.join("\n"));
+}
+
+#[test]
+fn a_doc_is_a_line_string() {
+    let cases = [
+        (
+            "a quoted doc on the protocol",
+            "\"A protocol.\" PROTOCOL a VERSION 1,",
+        ),
+        (
+            "a quoted doc on a method",
+            "PROTOCOL a VERSION 1,\n\"Moves a file.\" METHOD move (path: TEXT) to (new path: TEXT) RETURNS NOTHING,",
+        ),
+        (
+            "a raw doc on a method",
+            "PROTOCOL a VERSION 1,\n\"\"\"\nMoves a file.\n\"\"\" METHOD move (path: TEXT) RETURNS NOTHING,",
+        ),
+        (
+            "a quoted doc on a record",
+            "PROTOCOL a VERSION 1, \"A file.\" RECORD file { path: TEXT },",
+        ),
+        (
+            "a quoted doc on a field",
+            "PROTOCOL a VERSION 1, RECORD file { \"Where it is.\" path: TEXT },",
+        ),
+        (
+            "a quoted doc on a choice",
+            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE shade { dark, light },",
+        ),
+        (
+            "a quoted doc on a variant",
+            "PROTOCOL a VERSION 1, CHOICE shade { \"Dim.\" dark, light },",
+        ),
+        (
+            "a quoted doc on a type",
+            "PROTOCOL a VERSION 1, \"A path.\" TYPE path: TEXT,",
+        ),
+        (
+            "a quoted doc on a group of errors",
+            "PROTOCOL a VERSION 1, \"Shared.\" ERRORS file errors [missing],",
+        ),
+        (
+            "a quoted doc on an error",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [\"Gone.\" missing],",
+        ),
+    ];
+    let rendered: Vec<String> = cases
+        .iter()
+        .map(|(title, source)| format!("== {title}\n{source}\n{}\n", diagnostics(source)))
+        .collect();
+    assert_snapshot(
+        "tests/snapshots/quoted_doc_diagnostics.txt",
+        &rendered.join("\n"),
+    );
 }
 
 #[test]

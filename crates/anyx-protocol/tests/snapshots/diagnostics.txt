@@ -167,13 +167,15 @@ schema:1:23: found an `ERROR` on its own; expected each error in the brackets of
                         ^^^^^
 
 == a string inside an error
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) "doc"],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) # doc
+],
 schema:1:73: found a string in an error's slot; expected a parameter, as in `(revision: INTEGER)`; an error's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) "doc"],
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT) ERRORS [gone (a: TEXT) # doc
                                                                           ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) "doc" },
+PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) # doc
+},
 schema:1:46: found a string in a variant's slot; expected a parameter, as in `(revision: INTEGER)`; a variant's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) "doc" },
+  PROTOCOL a VERSION 1, CHOICE x { y (a: TEXT) # doc
                                                ^^^^^

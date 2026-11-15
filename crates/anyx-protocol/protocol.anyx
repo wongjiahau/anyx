@@ -7,8 +7,11 @@
 ## holds only definitions.
 ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 
+## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
+## where a doc goes is an error.
+
 protocol: ANYFIX CALL [
-  doc: OPTIONAL: STRING,
+  doc: OPTIONAL: LINE STRING,
   WORD "PROTOCOL", name: type name,
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
@@ -16,7 +19,7 @@ protocol: ANYFIX CALL [
 definition: ONE OF [record, choice, named type, errors, method],
 
 record: ANYFIX CALL [
-  doc: OPTIONAL: STRING,
+  doc: OPTIONAL: LINE STRING,
   public: OPTIONAL: WORD "PUBLIC",
   WORD "RECORD", body: record body,
 ],
@@ -36,7 +39,7 @@ type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
 
 type marker: ONE OF [WORD "TYPE"],
 
-field: ANYFIX CALL [doc: OPTIONAL: STRING, name: WORDS [NO KEYWORD], type: field type],
+field: ANYFIX CALL [doc: OPTIONAL: LINE STRING, name: WORDS [NO KEYWORD], type: field type],
 
 field type: ONE OF [
   optional: ANYFIX CALL [WORD "OPTIONAL", type: optional type],
@@ -73,7 +76,7 @@ defaulted: ONE OF [
 ],
 
 choice: ANYFIX CALL [
-  doc: OPTIONAL: STRING,
+  doc: OPTIONAL: LINE STRING,
   public: OPTIONAL: WORD "PUBLIC",
   WORD "CHOICE", body: choice body,
 ],
@@ -88,7 +91,7 @@ choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type paramete
 ## that share a representation but mean different things can't be mixed up.
 ## On the wire it is written exactly like the type underneath.
 named type: ANYFIX CALL [
-  doc: OPTIONAL: STRING, public: OPTIONAL: WORD "PUBLIC", WORD "TYPE", body: named type body,
+  doc: OPTIONAL: LINE STRING, public: OPTIONAL: WORD "PUBLIC", WORD "TYPE", body: named type body,
 ],
 
 named type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
@@ -97,14 +100,14 @@ named type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 ## first, so it fills the call's first slot.
 variant: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: variant slot],
 
-variant slot: ONE OF [doc: STRING, parameter],
+variant slot: ONE OF [doc: LINE STRING, parameter],
 
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in
 ## `ERRORS export errors [unreadable (diagnostics: LIST diagnostic)] + file errors`.
 ## `PUBLIC` lets other scopes use a type or a group, by its full path.
 errors: ANYFIX CALL [
-  doc: OPTIONAL: STRING, public: OPTIONAL: WORD "PUBLIC", WORD "ERRORS", body: error list,
+  doc: OPTIONAL: LINE STRING, public: OPTIONAL: WORD "PUBLIC", WORD "ERRORS", body: error list,
 ],
 
 ## A method's clauses come in this order. It returns a value or `NOTHING`,
@@ -113,7 +116,7 @@ errors: ANYFIX CALL [
 ## once per call. Both together are read, so that the schema checker can say
 ## that `READ ONLY` already means `IDEMPOTENT`.
 method: ANYFIX CALL [
-  doc: OPTIONAL: STRING,
+  doc: OPTIONAL: LINE STRING,
   read only: OPTIONAL: WORDS "READ ONLY",
   idempotent: OPTIONAL: WORD "IDEMPOTENT",
   WORD "METHOD", shape: shape,

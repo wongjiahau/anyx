@@ -50,7 +50,8 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - **`PROTOCOL name VERSION n`** comes first. `n` is a whole number from 1.
 - **`#` lines** before a definition, a field or a variant document it. They
   are part of the schema, so the guide an agent reads includes them. `##`
-  starts a comment.
+  starts a comment. A doc is always `#` lines: a quoted `"…"` or raw
+  `"""…"""` string where a doc goes is an error.
 - **Names** are lowercase words: `file summary`. All-caps words belong to the
   schema language. Keywords side by side join into one name, so write
   `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
