@@ -29,6 +29,7 @@ touches:
 - Deriving call paths from mounted file paths (`MOUNT "./files/export.anyx"` → `files/export/pdf`): it contradicts folders being cosmetic.
 
 ## Watch out
+- Circular imports are invalid, the user's explicit choice. Types that refer to each other must be declared in the same file. Recursion within one file is fine.
 - Sharing a file between two programs gives the same declaration two names in the shell. Match values across programs by shape, not name.
 
 In the code:
