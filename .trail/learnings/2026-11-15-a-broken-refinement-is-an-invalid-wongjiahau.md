@@ -21,6 +21,8 @@ touches:
   The aim is that an agent can fix the request in one try.
 - Enforcement lives in the codec's decoder, so every generated server enforces it whatever its target language. Generated clients may check the same predicate before sending.
 - A returned value that breaks a refinement or postcondition is the server's bug: `INTERNAL ERROR`.
+- Postconditions are enforced on the producer side. The generated server checks every result before sending it, and on a violation sends `INTERNAL ERROR` and logs the details. A client check is only extra protection.
+- A postcondition may only relate the method's own arguments to its result, as in `new revision = revision + 1`. Anything the producer can't check from that one call is a schema error: other methods, state, time, or what a later call returns. Invariants like that go in the method's `#` doc until there is a syntax for proving them.
 - Even if generated code didn't enforce them, refinements and conditions are worth having as documentation, because they tell callers which values are right.
 
 ## Tried and ruled out
