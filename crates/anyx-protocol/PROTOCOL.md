@@ -20,7 +20,7 @@ RECORD file summary {
 
 CHOICE shade { dark, light },
 
-CHOICE colour { dark, light, custom hue (hue: NUMBER), (base: shade) dimmed },
+CHOICE colour { dark, light, custom hue (hue: FLOAT), (base: shade) dimmed },
 
 # Which file, among every account's.
 TYPE file id: TEXT,
@@ -55,7 +55,8 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - **Names** are lowercase words: `file summary`. All-caps words belong to the
   schema language. Keywords side by side join into one name, so write
   `LIST: TEXT` and `OPTIONAL: TEXT` with the `:`.
-- **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `NUMBER` (a finite float),
+- **Types:** `TEXT`, `BYTES` (such as a file), `INTEGER` (64-bit), `FLOAT` (a finite 64-bit IEEE 754 float: `f64`
+  in Rust, `number` in TypeScript),
   `BOOLEAN`, `INSTANT` (a point in time), `DURATION` (a length of time),
   `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
   `RECORD`, `CHOICE` or `TYPE`, and a use of a generic type,
@@ -75,7 +76,7 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   fills the default in, so code sees the field as always there.
 - **`CHOICE name { variant, … }`**: one of its variants. A variant is a
   *shape*: words, with `(name: TYPE)` slots anywhere among them, as in
-  `custom hue (hue: NUMBER)` or `(base: shade) dimmed`. Variants differ by
+  `custom hue (hue: FLOAT)` or `(base: shade) dimmed`. Variants differ by
   their words.
 - **A generic `RECORD` or `CHOICE`** has type parameters in its name. Its
   name is a shape, like a variant's: words, with a `(parameter: TYPE)` slot
@@ -371,7 +372,8 @@ SCHEMA,
 | --- | --- |
 | `TEXT` | `"text"` with `\"`, `\\`, `\n`, `\r`, `\t` and `\u{…}` escapes; or a raw string of three or more quotes, whose closing quotes' indentation is removed from every line |
 | `BYTES` | its standard base64 (RFC 4648, padded) as a string: `"TVRoZA=="` |
-| `INTEGER`, `NUMBER` | `3`, `-1.5` |
+| `INTEGER` | a whole number without a point: `3`, `-1` |
+| `FLOAT` | a number with a point or an exponent: `1.5`, `3.0`, `1e3`; never `3`, which is an `INTEGER` |
 | `BOOLEAN` | `true`, `false` |
 | `INSTANT` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
 | `DURATION` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
@@ -380,6 +382,16 @@ SCHEMA,
 | a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
 | a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `page of (order)` |
+
+A number's type is how it is written, as in Rust: `3` and `-1` are
+`INTEGER`s, and `3.0`, `1.5` and `1e3` are `FLOAT`s. So every number states
+its own type, and an `INTEGER` where a `FLOAT` goes is an error ("found the
+INTEGER `3`; expected a FLOAT, such as `3.0`"), in a request and in a
+schema's `DEFAULT`s and `EXAMPLES` alike. `FLOAT` was called `NUMBER`
+before; only the name changed. A `FLOAT` is always 64 bits, since the wire
+carries decimal text and a narrower type would only lose precision; a server
+narrows the value itself. There is no exact decimal type: write money as an
+`INTEGER` of cents.
 
 A value written as words, a `BOOLEAN`, a `DURATION` or a variant, goes in
 parentheses in a slot, where it would otherwise join the words around it:

@@ -270,7 +270,7 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
         Value::Text(text) => Json::String(text.clone()),
         Value::Bytes(bytes) => Json::String(crate::bytes::encode(bytes)),
         Value::Integer(integer) => json!(integer),
-        Value::Number(number) => json!(number),
+        Value::Float(number) => json!(number),
         Value::Boolean(boolean) => Json::Bool(*boolean),
         Value::Instant(instant) => {
             crate::time::format_instant(*instant).map_or(Json::Null, Json::String)
@@ -381,8 +381,8 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
             Some(integer) => Ok(Value::Integer(integer)),
             None => mismatch("a whole number"),
         },
-        Type::Number => match json.as_f64() {
-            Some(number) => Ok(Value::Number(number)),
+        Type::Float => match json.as_f64() {
+            Some(number) => Ok(Value::Float(number)),
             None => mismatch("a number"),
         },
         Type::Boolean => match json {

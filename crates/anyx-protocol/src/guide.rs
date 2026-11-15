@@ -84,7 +84,9 @@ the account, such as by sending or sharing it.
           \"\"\"
 
 - BYTES is base64 in a string: `\"TVRoZA==\"`.
-- INTEGER is a whole number, NUMBER any number: `3`, `-1.5`.
+- INTEGER is a whole number, written without a point: `3`, `-1`.
+- FLOAT is a 64-bit float, written with a point or an exponent: `1.5`,
+  `3.0`, `1e3`. `3` is an INTEGER, so it doesn't fit a FLOAT; write `3.0`.
 - BOOLEAN is `true` or `false`.
 - INSTANT is a point in time, in UTC to the millisecond, as a string:
   `\"2026-11-14T06:00:08.000Z\"`.
@@ -291,7 +293,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Text => "\"a\"".to_string(),
         Type::Bytes => "\"AQI=\"".to_string(),
         Type::Integer => "3".to_string(),
-        Type::Number => "1.5".to_string(),
+        Type::Float => "1.5".to_string(),
         Type::Boolean => "(true)".to_string(),
         Type::Instant => "\"2026-11-14T06:00:08.000Z\"".to_string(),
         Type::Duration => "(5 minutes)".to_string(),

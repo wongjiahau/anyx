@@ -114,7 +114,7 @@ fn choice_variants_are_shapes_with_docs() {
         CHOICE mode {
             dark,
             # A colour of the wheel.
-            custom hue (hue: NUMBER) lightness (lightness: NUMBER),
+            custom hue (hue: FLOAT) lightness (lightness: FLOAT),
             # Plain.
             plain,
             (base: TEXT) tinted,
@@ -496,7 +496,7 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
             names: OPTIONAL: MAP: LIST: TEXT DEFAULT { \"b\" [\"c\"] },
             lights: OPTIONAL: MAP shade DEFAULT {},
         },
-        METHOD sizes (sizes: MAP: NUMBER) RETURNS (folder: folder),",
+        METHOD sizes (sizes: MAP: FLOAT) RETURNS (folder: folder),",
     );
     let TypeKind::Record(fields) = &schema.types[1].kind else {
         panic!("folder is a record")
@@ -536,6 +536,6 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
     assert_eq!(fields[4].default, Some(Value::Map([].into())));
     assert_eq!(
         schema.methods[0].shape.parameters[0].r#type,
-        Type::Map(Box::new(Type::Number))
+        Type::Map(Box::new(Type::Float))
     );
 }

@@ -1,6 +1,6 @@
 == a named type can't be generic
 PROTOCOL a VERSION 1, TYPE list of (value: TYPE): LIST: value,
-schema:1:44: found the word `TYPE`; expected the word `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST`, `MAP`, a call whose name has no keyword or the end of the call
+schema:1:44: found the word `TYPE`; expected the word `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST`, `MAP`, a call whose name has no keyword or the end of the call
   PROTOCOL a VERSION 1, TYPE list of (value: TYPE): LIST: value,
                                              ^^^^
 
@@ -54,13 +54,13 @@ schema:1:69: found a `DEFAULT` on the field `value`, whose type holds the type p
 
 == a parameter with a type in a slot
 PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item, other: item of (TEXT) },
-schema:1:72: found `item of (TEXT)`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `item of (TEXT)`, or fix the name; `item` is a type parameter, which stands for a whole type and has no slots
+schema:1:72: found `item of (TEXT)`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `item of (TEXT)`, or fix the name; `item` is a type parameter, which stands for a whole type and has no slots
   PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item, other: item of (TEXT) },
                                                                          ^^^^^^^^^^^^^^
 
 == a generic type without its arguments, and an argument for a type that isn't generic
 PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),
-schema:1:113: found `box`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `box`, or fix the name; the types of this schema that start with `box` are `box of (item)`
+schema:1:113: found `box`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `box`, or fix the name; the types of this schema that start with `box` are `box of (item)`
   PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),
                                                                                                                   ^^^
 schema:1:140: found `r (TEXT)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `r`; expected one of them, with a type in parentheses in each slot it has
@@ -81,7 +81,7 @@ schema:1:229: found `(TEXT) or`, with a type in 1 slot, but this schema has no t
 
 == a type argument that names no type
 PROTOCOL a VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, METHOD a RETURNS (x: page of (prson)),
-schema:1:104: found `prson`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `prson`, or fix the name
+schema:1:104: found `prson`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `prson`, or fix the name
   PROTOCOL a VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, METHOD a RETURNS (x: page of (prson)),
                                                                                                          ^^^^^
 

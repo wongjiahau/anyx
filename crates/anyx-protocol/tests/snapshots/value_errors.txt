@@ -17,7 +17,7 @@ apply { mode: dark hue 1 }
 => 1:15: in `options` of `apply _`: in `mode`: found the call `dark hue _`; expected a variant of `mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
 
 apply { mode: custom hue "red" }
-=> 1:26: in `options` of `apply _`: in `mode`: in `hue` of `custom hue _`: found a string; expected a number, as in `1.5`
+=> 1:26: in `options` of `apply _`: in `mode`: in `hue` of `custom hue _`: found a string; expected a FLOAT, as in `1.5`
 
 apply { mode dark }
 => 1:9: in `options` of `apply _`: found the call `mode dark`; expected a field written as its name and value, as in `mode …`; put a `:` after the name when the value is a word, as in `status: done`

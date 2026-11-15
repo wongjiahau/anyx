@@ -1145,7 +1145,7 @@ impl<'a> Checker<'a> {
                 "found `{written}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`{similar}"
             ),
             false => format!(
-                "found `{written}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
+                "found `{written}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
                 hint = self.elsewhere(self.types.iter(), &path.name),
             ),
         };
@@ -1649,7 +1649,7 @@ impl<'a> Checker<'a> {
             ast::Type::Text(_) => Type::Text,
             ast::Type::Bytes(_) => Type::Bytes,
             ast::Type::Integer(_) => Type::Integer,
-            ast::Type::Number(_) => Type::Number,
+            ast::Type::Float(_) => Type::Float,
             ast::Type::Boolean(_) => Type::Boolean,
             ast::Type::Instant(_) => Type::Instant,
             ast::Type::Duration(_) => Type::Duration,
@@ -1697,7 +1697,7 @@ impl<'a> Checker<'a> {
             ast::Defaulted::Text { default, .. } => (Type::Text, default),
             ast::Defaulted::Bytes { default, .. } => (Type::Bytes, default),
             ast::Defaulted::Integer { default, .. } => (Type::Integer, default),
-            ast::Defaulted::Number { default, .. } => (Type::Number, default),
+            ast::Defaulted::Float { default, .. } => (Type::Float, default),
             ast::Defaulted::Boolean { default, .. } => (Type::Boolean, default),
             ast::Defaulted::Instant { default, .. } => (Type::Instant, default),
             ast::Defaulted::Duration { default, .. } => (Type::Duration, default),

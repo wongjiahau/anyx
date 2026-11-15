@@ -10,7 +10,7 @@ pub enum Value {
     Text(String),
     Bytes(Vec<u8>),
     Integer(i64),
-    Number(f64),
+    Float(f64),
     Boolean(bool),
     /// An `INSTANT`. The wire keeps it to the millisecond, rounded down.
     Instant(SystemTime),
@@ -109,14 +109,14 @@ impl FromValue for i64 {
 
 impl IntoValue for f64 {
     fn into_value(self) -> Value {
-        Value::Number(self)
+        Value::Float(self)
     }
 }
 
 impl FromValue for f64 {
     fn from_value(value: Value) -> Option<Self> {
         match value {
-            Value::Number(number) => Some(number),
+            Value::Float(number) => Some(number),
             Value::Integer(integer) => Some(integer as f64),
             _ => None,
         }

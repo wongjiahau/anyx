@@ -342,7 +342,7 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         Type::Text => "string".to_string(),
         // The JSON the wasm bindings speak carries bytes as base64.
         Type::Bytes => "string".to_string(),
-        Type::Integer | Type::Number => "number".to_string(),
+        Type::Integer | Type::Float => "number".to_string(),
         Type::Boolean => "boolean".to_string(),
         Type::Instant => "Date".to_string(),
         // Whole milliseconds, as the JSON carries it.

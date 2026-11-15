@@ -48,7 +48,7 @@ pub enum CallError<E, T> {
     Method(E),
     /// The server failed. It logged why.
     Internal,
-    /// An argument has no form on the wire, such as a `NUMBER` that is not
+    /// An argument has no form on the wire, such as a `FLOAT` that is not
     /// finite.
     Encode(EncodeError),
     /// The server couldn't read the request.

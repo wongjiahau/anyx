@@ -27,7 +27,7 @@ schema:1:44: found a second type named `a`; expected each type to be defined onc
 
 == a named type over an unknown type
 PROTOCOL a VERSION 1, TYPE a: thing,
-schema:1:31: found `thing`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+schema:1:31: found `thing`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
   PROTOCOL a VERSION 1, TYPE a: thing,
                                 ^^^^^
 

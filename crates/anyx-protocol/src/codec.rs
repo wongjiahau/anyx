@@ -56,7 +56,7 @@ impl std::fmt::Display for Problem {
 
 impl std::error::Error for Problem {}
 
-/// A value that has no form on the wire, such as a `NUMBER` that is not
+/// A value that has no form on the wire, such as a `FLOAT` that is not
 /// finite.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EncodeError {
@@ -325,16 +325,28 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
         (Type::Bytes, _) => Err(mismatch(
             "base64 in a string, as in `\"TVRoZA==\"`".to_string(),
         )),
+        (Type::Integer, NodeKind::Number(text)) if is_float_text(text) => Err(Mismatch {
+            span: node.span,
+            message: format!(
+                "found the FLOAT `{text}`; expected an INTEGER, a whole number written without a point, such as `3`"
+            ),
+        }),
         (Type::Integer, NodeKind::Number(text)) => text
             .parse()
             .map(Value::Integer)
             .map_err(|_| mismatch("a whole number that fits in 64 bits".to_string())),
         (Type::Integer, _) => Err(mismatch("a whole number, as in `3`".to_string())),
-        (Type::Number, NodeKind::Number(text)) => text
+        (Type::Float, NodeKind::Number(text)) if !is_float_text(text) => Err(Mismatch {
+            span: node.span,
+            message: format!("found the INTEGER `{text}`; expected a FLOAT, such as `{text}.0`"),
+        }),
+        (Type::Float, NodeKind::Number(text)) => text
             .parse()
-            .map(Value::Number)
-            .map_err(|_| mismatch("a number".to_string())),
-        (Type::Number, _) => Err(mismatch("a number, as in `1.5`".to_string())),
+            .ok()
+            .filter(|number: &f64| number.is_finite())
+            .map(Value::Float)
+            .ok_or_else(|| mismatch("a finite FLOAT, as in `1.5`".to_string())),
+        (Type::Float, _) => Err(mismatch("a FLOAT, as in `1.5`".to_string())),
         (Type::Boolean, NodeKind::Call(call)) if call.arguments.is_empty() => {
             match call.name_text().as_str() {
                 "true" => Ok(Value::Boolean(true)),
@@ -422,6 +434,17 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
             "a value of a type in place of the type parameter `{name}`"
         ))),
     }
+}
+
+/// Whether a number is written as a `FLOAT`, with a point or an exponent:
+/// `1.5`, `3.0`, `1e3`. Any other number, such as `3` or `-1`, is an
+/// `INTEGER`, so every number literal states its own type.
+pub(crate) fn is_float_text(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
+        .iter()
+        .any(|prefix| digits.starts_with(prefix));
+    !based && digits.contains(['.', 'e', 'E'])
 }
 
 pub(crate) const INSTANT_EXAMPLE: &str = "2026-11-14T06:00:08.000Z";
@@ -696,10 +719,10 @@ pub(crate) fn write(
         Value::Text(text) => write_text(text, out),
         Value::Bytes(bytes) => write_text(&crate::bytes::encode(bytes), out),
         Value::Integer(integer) => out.push_str(&integer.to_string()),
-        Value::Number(number) if number.is_finite() => out.push_str(&format!("{number:?}")),
-        Value::Number(number) => {
+        Value::Float(number) if number.is_finite() => out.push_str(&format!("{number:?}")),
+        Value::Float(number) => {
             return Err(EncodeError {
-                message: format!("found the number {number}; expected a finite number"),
+                message: format!("found the FLOAT {number}; expected a finite one"),
             });
         }
         Value::Boolean(boolean) => out.push_str(if *boolean { "true" } else { "false" }),

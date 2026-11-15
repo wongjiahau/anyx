@@ -157,7 +157,7 @@ fn an_invalid_request_reads_back() {
 
 const MODES: &str = "PROTOCOL a VERSION 1,
 CHOICE shade { dark, light },
-CHOICE mode { dark, light, custom hue (hue: NUMBER), (base: shade) dimmed },
+CHOICE mode { dark, light, custom hue (hue: FLOAT), (base: shade) dimmed },
 RECORD options { mode: mode, strict: OPTIONAL: BOOLEAN },
 METHOD set (mode: mode) strict (strict: BOOLEAN) RETURNS (ok: BOOLEAN),
 METHOD apply (options: options) RETURNS (modes: LIST: mode),";
@@ -165,7 +165,7 @@ METHOD apply (options: options) RETURNS (modes: LIST: mode),";
 #[test]
 fn words_in_slots_go_in_parentheses() {
     let schema = schema(MODES);
-    let custom = variant("custom hue _", vec![Value::Number(0.5)]);
+    let custom = variant("custom hue _", vec![Value::Float(0.5)]);
     let calls = vec![
         Call {
             method: 0,
@@ -221,10 +221,10 @@ fn text_that_a_raw_string_cannot_hold_is_quoted() {
 
 #[test]
 fn a_number_that_is_not_finite_has_no_form() {
-    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: NUMBER) RETURNS (y: NUMBER),");
+    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: FLOAT) RETURNS (y: FLOAT),");
     let calls = vec![Call {
         method: 0,
-        arguments: vec![Value::Number(f64::NAN)],
+        arguments: vec![Value::Float(f64::NAN)],
     }];
     assert!(encode_request(&schema, &calls).is_err());
 }

@@ -135,7 +135,7 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
         Type::Text => "String".to_string(),
         Type::Bytes => "Vec<u8>".to_string(),
         Type::Integer => "i64".to_string(),
-        Type::Number => "f64".to_string(),
+        Type::Float => "f64".to_string(),
         Type::Boolean => "bool".to_string(),
         Type::Instant => "::std::time::SystemTime".to_string(),
         Type::Duration => "::std::time::Duration".to_string(),

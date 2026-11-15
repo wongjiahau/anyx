@@ -9,7 +9,7 @@ files.anyx:1:18: found `common/nothing`, which names no type; expected the full 
                    ^^^^^^^^^^^^^^
 
 == a public type written without its path
-files.anyx:1:18: found `diagnostic`, which is not a type of the scope `files`; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `diagnostic`, or fix the name; another scope has `common/diagnostic`, so write its full path
+files.anyx:1:18: found `diagnostic`, which is not a type of the scope `files`; expected `TEXT`, `BYTES`, `INTEGER`, `FLOAT`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `diagnostic`, or fix the name; another scope has `common/diagnostic`, so write its full path
   RECORD file { a: diagnostic },
                    ^^^^^^^^^^
 

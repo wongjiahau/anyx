@@ -14,7 +14,7 @@ The schema is one file, or a folder of scopes (see
 ## Rust
 
 - A struct per `RECORD` and an enum per `CHOICE`, with a variant per shape:
-  `custom hue (hue: NUMBER)` is `CustomHue { hue: f64 }`.
+  `custom hue (hue: FLOAT)` is `CustomHue { hue: f64 }`.
 - `INSTANT` is `std::time::SystemTime` and `DURATION` is
   `std::time::Duration`; the wire keeps both to the millisecond.
 - `MAP: T` is `std::collections::BTreeMap<String, T>`, and

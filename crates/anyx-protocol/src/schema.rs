@@ -261,7 +261,9 @@ pub enum Type {
     /// Raw bytes, such as a file. On the wire, a base64 string.
     Bytes,
     Integer,
-    Number,
+    /// A finite 64-bit IEEE 754 float: `f64` in Rust, `number` in
+    /// TypeScript. Written with a point or an exponent, `1.5`, `3.0`, `1e3`.
+    Float,
     Boolean,
     /// A point in time, to the millisecond. On the wire, RFC 3339 text in
     /// UTC: `"2026-11-14T06:00:08.000Z"`.
@@ -513,7 +515,7 @@ impl Schema {
             Type::Text => "TEXT".to_string(),
             Type::Bytes => "BYTES".to_string(),
             Type::Integer => "INTEGER".to_string(),
-            Type::Number => "NUMBER".to_string(),
+            Type::Float => "FLOAT".to_string(),
             Type::Boolean => "BOOLEAN".to_string(),
             Type::Instant => "INSTANT".to_string(),
             Type::Duration => "DURATION".to_string(),
