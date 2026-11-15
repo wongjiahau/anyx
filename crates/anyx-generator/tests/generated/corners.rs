@@ -52,6 +52,20 @@ pub enum Node {
         span: anyx::Span,
     },
     Exact(Spanned<StringLiteral>),
+    ExactLine(Spanned<StringLiteral>),
+    Note {
+        text: Spanned<StringLiteral>,
+        span: anyx::Span,
+    },
+    Line {
+        text: Spanned<StringLiteral>,
+        span: anyx::Span,
+    },
+    Noted {
+        doc: std::option::Option<Spanned<StringLiteral>>,
+        value: Spanned<f64>,
+        span: anyx::Span,
+    },
     Spanned(Span),
     PerPage {
         key: anyx::Span,
@@ -146,6 +160,9 @@ impl Node {
             | Node::Raw { span, .. }
             | Node::Set { span, .. }
             | Node::Unset { span, .. }
+            | Node::Note { span, .. }
+            | Node::Line { span, .. }
+            | Node::Noted { span, .. }
             | Node::Spanned(span)
             | Node::PerPage { span, .. }
             | Node::SansSerif { span, .. }
@@ -158,6 +175,7 @@ impl Node {
             Node::Vec(value) => value.span,
             Node::Wrapped(value) => value.span,
             Node::Exact(value) => value.span,
+            Node::ExactLine(value) => value.span,
         }
     }
 }
@@ -199,6 +217,17 @@ impl support::Errors for Node {
                 support::Errors::errors(name, found);
             }
             Node::Exact(value) => support::Errors::errors(value, found),
+            Node::ExactLine(value) => support::Errors::errors(value, found),
+            Node::Note { text, .. } => {
+                support::Errors::errors(text, found);
+            }
+            Node::Line { text, .. } => {
+                support::Errors::errors(text, found);
+            }
+            Node::Noted { doc, value, .. } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(value, found);
+            }
             Node::Spanned(value) => support::Errors::errors(value, found),
             Node::PerPage { key, size, .. } => {
                 support::Errors::errors(key, found);
@@ -329,6 +358,17 @@ pub fn decode_node(node: &anyx::Node) -> Result<Node, DecodeError> {
                     .map(Node::Exact),
             )
         })
+        .or_else(|error| {
+            error.or(support::line_string(
+                node,
+                |text| text == "exact line",
+                "the `#` line string \"exact line\"",
+            )
+            .map(Node::ExactLine))
+        })
+        .or_else(|error| error.or(decode_node_note(node)))
+        .or_else(|error| error.or(decode_node_line(node)))
+        .or_else(|error| error.or(decode_node_noted(node)))
         .or_else(|error| error.or(decode_span(node).map(Node::Spanned)))
         .or_else(|error| error.or(decode_node_per_page(node)))
         .or_else(|error| error.or(decode_node_sans_serif(node)))
@@ -439,6 +479,52 @@ fn decode_node_unset_name(node: &anyx::Node) -> Result<NodeUnsetName, DecodeErro
         arguments: arguments.to_vec(),
         span: node.span,
     })
+}
+
+fn decode_node_note(node: &anyx::Node) -> Result<Node, DecodeError> {
+    let mut parts = support::call(node, "the call `NOTE _`")?;
+    let decoded = Node::Note {
+        text: parts.word("NOTE")?.one(
+            |node| {
+                support::line_string(
+                    node,
+                    |text| text.starts_with("to "),
+                    "a `#` line string that starts with \"to \"",
+                )
+            },
+            "a `#` line string that starts with \"to \"",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_node_line(node: &anyx::Node) -> Result<Node, DecodeError> {
+    let mut parts = support::call(node, "the call `LINE _`")?;
+    let decoded = Node::Line {
+        text: parts.word("LINE")?.one(
+            |node| support::line_string(node, |_| true, "a `#` line string"),
+            "a `#` line string",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_node_noted(node: &anyx::Node) -> Result<Node, DecodeError> {
+    let mut parts = support::call(node, "the call `_? NOTED _`")?;
+    let decoded = Node::Noted {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        value: parts.word("NOTED")?.one(
+            |node| support::float(node, f64::NEG_INFINITY, f64::INFINITY, false, "a number"),
+            "a number",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 fn decode_node_per_page(node: &anyx::Node) -> Result<Node, DecodeError> {
@@ -667,7 +753,10 @@ pub mod support {
     //! generated parser depends only on `anyx` (and on `regex`, when its
     //! grammar uses `MATCHING REGEX`).
 
-    use anyx::{FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringLiteral, line_column};
+    use anyx::{
+        FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringKind, StringLiteral,
+        line_column,
+    };
 
     /// A value and where it was written.
     #[derive(Clone, Debug, PartialEq)]
@@ -906,13 +995,7 @@ pub mod support {
     pub fn describe(node: &Node) -> String {
         match &node.kind {
             NodeKind::Number(text) => format!("the number `{text}`"),
-            NodeKind::String(literal) => {
-                let mut value: String = literal.value.chars().take(40).collect();
-                if value.len() < literal.value.len() {
-                    value.push('…');
-                }
-                format!("the string {value:?}")
-            }
+            NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
                 [NamePart::Word { text, .. }] => format!("the word `{text}`"),
                 _ => format!("the call `{}`", call.name_text()),
@@ -923,6 +1006,15 @@ pub mod support {
             NodeKind::Underscore => "`_`".to_string(),
             NodeKind::Missing => "nothing".to_string(),
         }
+    }
+
+    /// A string's value as an error quotes it, cut short after 40 characters.
+    fn string_value(literal: &StringLiteral) -> String {
+        let mut value: String = literal.value.chars().take(40).collect();
+        if value.len() < literal.value.len() {
+            value.push('…');
+        }
+        format!("{value:?}")
     }
 
     /// The error for a node that is not what the grammar expects there.
@@ -1124,6 +1216,20 @@ pub mod support {
             self.other_call.clone().expect("the sequence of a call")
         }
 
+        /// Whether the call may be another shape: not when the item at the
+        /// front is a string that an optional part refused, such as a quoted
+        /// string where a `#` line string goes. The call then has the expected
+        /// shape, a slot where the part goes, and the string is what is wrong.
+        fn may_be_other_call(&self) -> bool {
+            let refused_string = match (self.items.get(self.index), &self.missed) {
+                (Some(Item::Node(node)), Some(missed)) => {
+                    matches!(node.kind, NodeKind::String(_)) && missed.span == node.span
+                }
+                _ => false,
+            };
+            self.other_call.is_some() && !refused_string
+        }
+
         fn fail(&mut self, error: DecodeError) -> DecodeError {
             match self.missed.take() {
                 Some(missed) => missed.merge(error),
@@ -1188,7 +1294,7 @@ pub mod support {
                 self.missed = Some(self.fail(error));
                 return Ok(None);
             }
-            if self.other_call.is_some() {
+            if self.may_be_other_call() {
                 return Err(self.is_other_call());
             }
             Err(self.fail(error))
@@ -1210,7 +1316,7 @@ pub mod support {
                 let found = match self.items.get(self.index) {
                     Some(Item::Word(found, at)) if *found == word => *at,
                     Some(Item::Node(node)) if is_word(node, word) => node.span,
-                    Some(Item::Node(_)) if self.other_call.is_some() => {
+                    Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
                     _ => return Err(self.unexpected(&format!("the word `{text}`"))),
@@ -1237,7 +1343,7 @@ pub mod support {
                 })
                 .collect();
             let (Some((_, first)), Some((_, last))) = (words.first(), words.last()) else {
-                if self.other_call.is_some() {
+                if self.may_be_other_call() {
                     return Err(self.is_other_call());
                 }
                 return Err(self.unexpected(expected));
@@ -1495,6 +1601,29 @@ pub mod support {
                 span: node.span,
             }),
             _ => Err(mismatch(node, expected)),
+        }
+    }
+
+    /// A `#` line string whose value passes `condition`. A quoted or raw string
+    /// is named by its kind, since its kind is what is wrong.
+    pub fn line_string(
+        node: &Node,
+        condition: impl Fn(&str) -> bool,
+        expected: &str,
+    ) -> Result<Spanned<StringLiteral>, DecodeError> {
+        match &node.kind {
+            NodeKind::String(literal) if literal.kind != StringKind::Line => {
+                let kind = match literal.kind {
+                    StringKind::Raw => "raw",
+                    _ => "quoted",
+                };
+                Err(DecodeError::new(
+                    node.span,
+                    format!("the {kind} string {}", string_value(literal)),
+                    expected,
+                ))
+            }
+            _ => string(node, condition, expected),
         }
     }
 

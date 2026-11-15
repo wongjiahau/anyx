@@ -238,7 +238,11 @@ impl<'a> Overlap<'a> {
                         _ => true,
                     }
             }
-            (Pattern::String(a), Pattern::String(b)) => conditions_overlap(a, b),
+            // Every `#` line string is also a string, so only the
+            // conditions can tell a `LINE STRING` from a `STRING`.
+            (Pattern::String(a), Pattern::String(b)) => {
+                conditions_overlap(&a.conditions, &b.conditions)
+            }
             (Pattern::Number(a), Pattern::Number(b)) => numbers_overlap(a, b),
             // `+ 4` and `- 4` are calls.
             (Pattern::Number(number), other) | (other, Pattern::Number(number))

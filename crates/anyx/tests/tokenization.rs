@@ -1,6 +1,6 @@
 mod common;
 
-use anyx::{ErrorCode, Expression, Item, TokenKind, TriviaKind, parse};
+use anyx::{ErrorCode, Expression, Item, StringKind, TokenKind, TriviaKind, parse};
 use common::{errors, parse_round_trip, tree};
 
 /// An atom token of the concrete tree.
@@ -211,6 +211,36 @@ fn a_line_string_value_offset_maps_back_to_the_source() {
     };
     let offset = literal.source_offset(literal.value.find("cd").unwrap());
     assert_eq!(&source[offset..offset + 2], "cd");
+}
+
+#[test]
+fn a_string_keeps_how_it_was_written() {
+    let kinds = |source: &str| -> Vec<StringKind> {
+        parse(source)
+            .syntax
+            .nodes()
+            .iter()
+            .flat_map(|node| match &node.kind {
+                anyx::NodeKind::String(literal) => vec![literal.kind],
+                anyx::NodeKind::Call(call) => call
+                    .arguments
+                    .iter()
+                    .filter_map(|argument| match &argument.kind {
+                        anyx::NodeKind::String(literal) => Some(literal.kind),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect()
+    };
+    assert_eq!(kinds("# a\n# b"), vec![StringKind::Line]);
+    assert_eq!(kinds("x \"a\""), vec![StringKind::Quoted]);
+    assert_eq!(kinds("x \"\"\"\n  a\n  \"\"\""), vec![StringKind::Raw]);
+    assert_eq!(
+        kinds("x \"a\" # b"),
+        vec![StringKind::Quoted, StringKind::Line]
+    );
 }
 
 #[test]

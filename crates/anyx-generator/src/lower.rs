@@ -10,8 +10,8 @@ use crate::grammar as ast;
 use crate::grammar::support::number_value;
 use crate::model::{
     Choice, ContainerKind, Element, Grammar, LayoutRule, MOST_EXPANSIONS, NumberPattern, Order,
-    Pattern, Repetition, Rule, StringCondition, WordKind, call_picture, expansion_count,
-    expansions, values,
+    Pattern, Repetition, Rule, StringCondition, StringPattern, WordKind, call_picture,
+    expansion_count, expansions, values,
 };
 
 /// Names that can't be turned into a Rust field, type or variant.
@@ -181,7 +181,7 @@ impl Lowerer<'_> {
                     *span,
                     "found `OPTIONAL [...]` outside the parts of a call; expected a group of parts only among the parts of an `ANYFIX CALL [...]`, since only a call has name words to leave out together; write `OPTIONAL: pattern` for one element that may be missing",
                 );
-                Pattern::String(Vec::new())
+                Pattern::String(StringPattern::any())
             }
             ast::Pattern::Repetition(repetition) => {
                 self.error(
@@ -241,12 +241,29 @@ impl Lowerer<'_> {
                 );
                 self.words(words)
             }
-            ast::Pattern::String(string) => Pattern::String(match string {
-                ast::String::Any(_) => Vec::new(),
-                ast::String::Exact { text, .. } => {
-                    vec![StringCondition::Is(text.value.value.clone())]
-                }
-                ast::String::Conditions { conditions, .. } => self.string_conditions(conditions),
+            ast::Pattern::String(string) => Pattern::String(StringPattern {
+                line_only: false,
+                conditions: match string {
+                    ast::String::Any(_) => Vec::new(),
+                    ast::String::Exact { text, .. } => {
+                        vec![StringCondition::Is(text.value.value.clone())]
+                    }
+                    ast::String::Conditions { conditions, .. } => {
+                        self.string_conditions(conditions)
+                    }
+                },
+            }),
+            ast::Pattern::LineString(string) => Pattern::String(StringPattern {
+                line_only: true,
+                conditions: match string {
+                    ast::LineString::Any { .. } => Vec::new(),
+                    ast::LineString::Exact { text, .. } => {
+                        vec![StringCondition::Is(text.value.value.clone())]
+                    }
+                    ast::LineString::Conditions { conditions, .. } => {
+                        self.string_conditions(conditions)
+                    }
+                },
             }),
             ast::Pattern::Number(number) => Pattern::Number(self.number(number)),
             ast::Pattern::AnyNode(_) => Pattern::AnyNode,
@@ -268,7 +285,7 @@ impl Lowerer<'_> {
                 "found a reference to `{name}`, which is not a rule; expected the name of a rule of this grammar; {fix}"
             ),
         );
-        Pattern::String(Vec::new())
+        Pattern::String(StringPattern::any())
     }
 
     fn choices(&mut self, choices: &[ast::Element]) -> Vec<Choice> {

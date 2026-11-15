@@ -195,8 +195,9 @@ comment, turning each of those comments into `##`.
 `cargo run --bin anyx-migrate-comments -- <file>…` rewrites files in place.
 
 A consumer that parses a string's content can point its own errors back into
-the file. A `String` node holds a `StringLiteral`: its `value`, and the
-`pieces` of the value with the source each came from. `source_offset` maps a
+the file. A `String` node holds a `StringLiteral`: its `kind` (a `#` line,
+quoted or raw string), its `value`, and the `pieces` of the value with the
+source each came from. `source_offset` maps a
 byte offset in the value to one in the source, past stripped indentation and
 escapes. An offset inside an escape maps to the escape's start.
 

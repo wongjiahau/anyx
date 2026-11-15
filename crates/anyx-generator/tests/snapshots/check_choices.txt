@@ -14,6 +14,27 @@ grammar:1:59: warning: found the choices `a` and `b` able to match the same inpu
 ## ENTRY: value, value: ONE OF [a: STRING [STARTS WITH "x"], b: STRING [STARTS WITH "y"]]
 nothing to report
 
+## ENTRY: value, value: ONE OF [a: LINE STRING, b: STRING]
+grammar:1:46: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
+  ENTRY: value, value: ONE OF [a: LINE STRING, b: STRING]
+                                               ^^^^^^^^^
+
+## ENTRY: value, value: ONE OF [a: STRING, b: LINE STRING "x"]
+grammar:1:41: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
+  ENTRY: value, value: ONE OF [a: STRING, b: LINE STRING "x"]
+                                          ^^^^^^^^^^^^^^^^^^
+
+## ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: STRING [STARTS WITH "y"]]
+nothing to report
+
+## ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: LINE STRING [ENDS WITH "y"]]
+grammar:1:64: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
+  ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: LINE STRING [ENDS WITH "y"]]
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+## ENTRY: value, value: ONE OF [a: LINE STRING "x", b: LINE STRING "y"]
+nothing to report
+
 ## ENTRY: value, value: ONE OF [small: NUMBER [INTEGER, AT MOST 255], big: NUMBER]
 grammar:1:68: warning: found the choices `small` and `big` able to match the same input; expected at most one choice to fit any input, since `small` comes first and always wins it; make one of them more specific, or put the more specific one first
   ENTRY: value, value: ONE OF [small: NUMBER [INTEGER, AT MOST 255], big: NUMBER]

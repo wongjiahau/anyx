@@ -1,6 +1,6 @@
 use crate::error::{Error, ErrorCode};
 use crate::span::Span;
-use crate::string::StringLiteral;
+use crate::string::{StringKind, StringLiteral};
 use crate::syntax::{Token, TokenKind, Trivia, TriviaKind};
 
 /// The eleven characters that never appear inside a word.
@@ -243,7 +243,7 @@ impl Lexer<'_> {
         if self.rest().starts_with("\"\"") {
             return TokenKind::String(Box::new(self.raw_string(start)));
         }
-        let mut literal = StringLiteral::new(self.position);
+        let mut literal = StringLiteral::new(StringKind::Quoted, self.position);
         loop {
             match self.peek() {
                 None => {
@@ -458,7 +458,7 @@ impl Lexer<'_> {
             ),
         ));
         let content_start = lines.first().map_or(self.position, |line| line.start);
-        let mut literal = StringLiteral::new(content_start);
+        let mut literal = StringLiteral::new(StringKind::Raw, content_start);
         literal.push_verbatim(
             &self.source[content_start..self.position],
             Span::new(content_start, self.position),
@@ -472,7 +472,7 @@ impl Lexer<'_> {
     /// below it (not `##`) continue it, each on a line of the value.
     fn line_string(&mut self, start: usize) -> StringLiteral {
         let joins = starts_line(self.source, start);
-        let mut literal = StringLiteral::new(self.position);
+        let mut literal = StringLiteral::new(StringKind::Line, self.position);
         self.line_string_line(&mut literal);
         while joins && let Some(next) = self.line_string_continuation() {
             let newline = self.source[self.position..next]
@@ -515,7 +515,7 @@ impl Lexer<'_> {
     fn raw_value(&mut self, lines: &[Span], indentation: Span) -> StringLiteral {
         let prefix = &self.source[indentation.start..indentation.end];
         let content_start = lines.first().map_or(indentation.start, |line| line.start);
-        let mut literal = StringLiteral::new(content_start);
+        let mut literal = StringLiteral::new(StringKind::Raw, content_start);
         literal.content.end = indentation.start;
         for (index, line) in lines.iter().enumerate() {
             let text = self.source[line.start..line.end].trim_end_matches('\r');

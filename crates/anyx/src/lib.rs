@@ -32,7 +32,7 @@ pub use migrate::migrate_comments;
 pub use node::{Call, FlatWord, FlatWordKind, NamePart, Node, NodeKind, flat_words};
 pub use parser::{MAX_DEPTH, Parsed, parse};
 pub use span::{LineColumn, Span, line_column};
-pub use string::{StringLiteral, StringPiece};
+pub use string::{StringKind, StringLiteral, StringPiece};
 pub use syntax::{
     BinaryExpression, Element, Expression, Group, GroupKind, Item, Run, Sequence, SyntaxTree,
     Token, TokenKind, Trivia, TriviaKind,

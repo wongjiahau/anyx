@@ -2,7 +2,7 @@
 
 use anyx::Span;
 use anyx_generator::grammar::{
-    Contents, Document, Element, Named, Number, NumberCondition, Pattern, Repetition,
+    Contents, Document, Element, LineString, Named, Number, NumberCondition, Pattern, Repetition,
     String as Text, decode_document,
 };
 
@@ -77,6 +77,7 @@ fn the_grammar_of_grammars_decodes() {
             "any word _",
             "word condition _",
             "string _",
+            "line string _",
             "string condition _",
             "number _",
             "number condition _",
@@ -149,6 +150,25 @@ fn strings_keep_their_decoded_value() {
         panic!("value is an exact string");
     };
     assert_eq!(text.value.value, "a\n");
+}
+
+#[test]
+fn line_string_is_one_keyword_apart_from_string() {
+    let document = decode(
+        "ENTRY: [a, b, c, d], a: LINE STRING, b: LINE STRING \"x\", c: LINE STRING [STARTS WITH \"x\"], d: STRING",
+    )
+    .unwrap();
+    let patterns: Vec<&Pattern> = document.rule.iter().map(body).collect();
+    let [
+        Pattern::LineString(LineString::Any { .. }),
+        Pattern::LineString(LineString::Exact { text, .. }),
+        Pattern::LineString(LineString::Conditions { .. }),
+        Pattern::String(Text::Any(_)),
+    ] = &patterns[..]
+    else {
+        panic!("{patterns:?}");
+    };
+    assert_eq!(text.value.value, "x");
 }
 
 #[test]
@@ -243,19 +263,19 @@ fn bad_grammars_say_what_was_found_and_what_was_expected() {
         ),
         (
             "ENTRY: value, value: ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]",
-            "grammar:1:45: found the word `NAME`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING` or `NUMBER`
+            "grammar:1:45: found the word `NAME`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING`, `LINE` or `NUMBER`
   ENTRY: value, value: ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]
                                               ^^^^",
         ),
         (
             "ENTRY: value, value: a_b",
-            "grammar:1:22: found the word `a_b`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING`, `NUMBER` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
+            "grammar:1:22: found the word `a_b`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING`, `LINE`, `NUMBER` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
   ENTRY: value, value: a_b
                        ^^^",
         ),
         (
             "ENTRY: value, value: (a, b)",
-            "grammar:1:22: found `(...)`; expected the word `STRING`, `NUMBER`, the call `ONE OF _`, `ZERO OR MORE _`, `ONE OR MORE _`, `OPTIONAL _`, `EACH _`, `CURLY BRACE _`, `SQUARE BRACKET _`, `PARENTHESIS _`, `ANYFIX CALL _ FORMAT _`, `ANYFIX CALL _`, `ANYFIX CALL _?`, `WORD _`, `ANY WORD _?`, `WORDS _`, `WORDS _?`, `STRING _`, `NUMBER _`, `ANY NODE` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
+            "grammar:1:22: found `(...)`; expected the word `STRING`, `NUMBER`, the call `ONE OF _`, `ZERO OR MORE _`, `ONE OR MORE _`, `OPTIONAL _`, `EACH _`, `CURLY BRACE _`, `SQUARE BRACKET _`, `PARENTHESIS _`, `ANYFIX CALL _ FORMAT _`, `ANYFIX CALL _`, `ANYFIX CALL _?`, `WORD _`, `ANY WORD _?`, `WORDS _`, `WORDS _?`, `STRING _`, `LINE STRING`, `LINE STRING _`, `NUMBER _`, `ANY NODE` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
   ENTRY: value, value: (a, b)
                        ^^^^^^",
         ),

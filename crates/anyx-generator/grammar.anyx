@@ -46,6 +46,7 @@ pattern: ONE OF [
   exact words,
   words,
   string,
+  line string,
   number,
   any node,
 ],
@@ -143,6 +144,17 @@ string: ONE OF [
   exact: ANYFIX CALL [WORD "STRING", text: STRING],
   conditions: ANYFIX CALL [
     WORD "STRING",
+    conditions: SQUARE BRACKET [ONE OR MORE: string condition],
+  ],
+],
+
+## Only a `#` line string, not a quoted or raw one: `LINE STRING` is one
+## call, since all-caps words side by side join into one name.
+line string: ONE OF [
+  any: ANYFIX CALL [WORD "LINE", WORD "STRING"],
+  exact: ANYFIX CALL [WORD "LINE", WORD "STRING", text: STRING],
+  conditions: ANYFIX CALL [
+    WORD "LINE", WORD "STRING",
     conditions: SQUARE BRACKET [ONE OR MORE: string condition],
   ],
 ],

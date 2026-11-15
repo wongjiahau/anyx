@@ -1,5 +1,5 @@
 ## [256, 0, 0, 0, 0, 0.5, 42]
-input:1:2: found the number `256`; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `max size _ per page`, `sans serif`, an integer from 0 to 255, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw " or the string "exact"
+input:1:2: found the number `256`; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, an integer from 0 to 255, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact" or the `#` line string "exact line"
   [256, 0, 0, 0, 0, 0.5, 42]
    ^^^
 
@@ -34,12 +34,12 @@ input:1:26: found the string "x"; expected an integer from -10 to 10
                            ^^^
 
 ## "#a", [x]
-input:1:1: found the string "#a"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `max size _ per page`, `sans serif`, a string that starts with "#", ends with "!", contains "a" and matches the regex `^.{3,}$`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact" or the end of the document
+input:1:1: found the string "#a"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, a string that starts with "#", ends with "!", contains "a" and matches the regex `^.{3,}$`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact", the `#` line string "exact line" or the end of the document
   "#a", [x]
   ^^^^
 
 ## "#a!", "exact", "other"
-input:1:17: found the string "other"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `max size _ per page`, `sans serif`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact" or the end of the document
+input:1:17: found the string "other"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact", the `#` line string "exact line" or the end of the document
   "#a!", "exact", "other"
                   ^^^^^^^
 
@@ -82,7 +82,7 @@ input:1:8: found the word `word`; expected the word `words`
          ^^^^
 
 ## raw 1 2, rawer 1
-input:1:10: found the word `rawer`; expected the word `OPTION`, `WORDS`, `EACH`, `KEEP`, `SET`, `UNSET`, `max size` or `sans serif`
+input:1:10: found the word `rawer`; expected the word `OPTION`, `WORDS`, `EACH`, `KEEP`, `SET`, `UNSET`, `NOTE`, `LINE`, `NOTED`, `max size` or `sans serif`
   raw 1 2, rawer 1
            ^^^^^
 
@@ -130,4 +130,41 @@ input:1:16: found the word `pages`; expected the word `per page`
 input:1:5: found the end of the call; expected the word `sans serif`
   sans
       ^
+
+## "exact line"
+input:1:1: found the string "exact line"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, a string that starts with "#", ends with "!", contains "a" and matches the regex `^.{3,}$`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact", the `#` line string "exact line" or the end of the document
+  "exact line"
+  ^^^^^^^^^^^^
+
+## """
+  exact line
+  """
+input:1:1: found the string "exact line"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, a string that starts with "#", ends with "!", contains "a" and matches the regex `^.{3,}$`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact", the `#` line string "exact line" or the end of the document
+  """
+  ^^^
+
+## # exact lines
+input:1:1: found the string "exact lines"; expected the word `span`, `type`, `NOT_NULL`, the call `OPTION _ _? THEN _? END`, `WORDS _`, `EACH _*`, `KEEP _`, `SET _`, `UNSET _`, `NOTE _`, `LINE _`, `_? NOTED _`, `max size _ per page`, `sans serif`, a string that starts with "#", ends with "!", contains "a" and matches the regex `^.{3,}$`, `[...]`, `{...}`, `(...)`, a call whose name starts with "raw ", the string "exact", the `#` line string "exact line" or the end of the document
+  # exact lines
+  ^^^^^^^^^^^^^
+
+## NOTE "to do"
+input:1:6: found the quoted string "to do"; expected a `#` line string that starts with "to "
+  NOTE "to do"
+       ^^^^^^^
+
+## NOTE # done
+input:1:6: found the string "done"; expected a `#` line string that starts with "to "
+  NOTE # done
+       ^^^^^^
+
+## LINE "text"
+input:1:6: found the quoted string "text"; expected a `#` line string
+  LINE "text"
+       ^^^^^^
+
+## "A doc." NOTED 1
+input:1:1: found the quoted string "A doc."; expected the word `NOTED` or a `#` line string
+  "A doc." NOTED 1
+  ^^^^^^^^
 

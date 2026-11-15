@@ -446,12 +446,16 @@ impl Builder<'_> {
                 kind: Leaf::Node,
                 call: "support::any_node(node)".to_string(),
             },
-            Pattern::String(conditions) => {
-                let terms = self.terms(conditions, "text");
+            Pattern::String(string) => {
+                let terms = self.terms(&string.conditions, "text");
+                let function = match string.line_only {
+                    true => "line_string",
+                    false => "string",
+                };
                 Value::Leaf {
                     kind: Leaf::StringLiteral,
                     call: format!(
-                        "support::string(node, {}, {expected:?})",
+                        "support::{function}(node, {}, {expected:?})",
                         closure(&terms, "text")
                     ),
                 }

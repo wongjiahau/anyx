@@ -56,7 +56,7 @@ pub enum Pattern {
         kind: Option<WordKind>,
         conditions: Vec<StringCondition>,
     },
-    String(Vec<StringCondition>),
+    String(StringPattern),
     /// `WORDS`: among the parts of a call, one or more of its name words in
     /// a row, decoded to their text joined by spaces. The conditions apply
     /// to that text.
@@ -261,6 +261,24 @@ pub enum WordKind {
     Keyword,
     Name,
     Symbol,
+}
+
+/// `STRING` or `LINE STRING`, with conditions on the value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StringPattern {
+    /// `LINE STRING`: only a `#` line string, not a quoted or raw one.
+    pub line_only: bool,
+    pub conditions: Vec<StringCondition>,
+}
+
+impl StringPattern {
+    /// `STRING`: any string.
+    pub fn any() -> Self {
+        StringPattern {
+            line_only: false,
+            conditions: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -502,11 +520,21 @@ impl Grammar {
                     false => format!("{kind} that {}", conditions_text(conditions)),
                 }
             }
-            Pattern::String(conditions) => match &conditions[..] {
-                [] => "a string".to_string(),
-                [StringCondition::Is(text)] => format!("the string {text:?}"),
-                _ => format!("a string that {}", conditions_text(conditions)),
-            },
+            Pattern::String(string) => {
+                let noun = match string.line_only {
+                    true => "`#` line string",
+                    false => "string",
+                };
+                match &string.conditions[..] {
+                    [] => with_article(noun),
+                    [StringCondition::Is(text)] => format!("the {noun} {text:?}"),
+                    conditions => format!(
+                        "{} that {}",
+                        with_article(noun),
+                        conditions_text(conditions)
+                    ),
+                }
+            }
             Pattern::Words(conditions) => match conditions.is_empty() {
                 true => "words".to_string(),
                 false => format!("words whose text {}", conditions_text(conditions)),

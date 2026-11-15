@@ -10,12 +10,25 @@ use crate::span::Span;
 /// back into the file, past escapes and stripped indentation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringLiteral {
+    /// How the string was written.
+    pub kind: StringKind,
     pub value: String,
     /// The parts of `value` in order, each with the source it came from.
     pub pieces: Vec<StringPiece>,
     /// The source between the delimiters. For a raw string, the lines between
     /// the opening and closing lines.
     pub content: Span,
+}
+
+/// How a string literal was written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum StringKind {
+    /// A `#` line string, running to the end of its line.
+    Line,
+    /// A `"…"` string, with escapes.
+    Quoted,
+    /// A `"""…"""` raw string, over lines of its own, without escapes.
+    Raw,
 }
 
 /// A part of a string's value and the source it came from.
@@ -64,8 +77,9 @@ impl StringLiteral {
         }
     }
 
-    pub(crate) fn new(content_start: usize) -> Self {
+    pub(crate) fn new(kind: StringKind, content_start: usize) -> Self {
         StringLiteral {
+            kind,
             value: String::new(),
             pieces: Vec::new(),
             content: Span::empty(content_start),

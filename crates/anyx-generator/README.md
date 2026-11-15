@@ -324,6 +324,35 @@ value. Until one-line raw strings arrive
 ([#2](https://github.com/wongjiahau/anyx/issues/2)), write a regex
 backslash twice: `"^\\d+$"`.
 
+### `LINE STRING`
+
+```text
+LINE STRING                             ## any `#` line string
+LINE STRING "Moves a file."             ## exactly this `#` line string
+LINE STRING [STARTS WITH "v", ENDS WITH "x", CONTAINS "-", MATCHING REGEX "^[a-z]+$"]
+```
+
+`STRING` matches every kind of string: a `#` line string, a quoted `"…"`
+string and a raw `"""…"""` string. `LINE STRING` matches only a `#` line
+string, so a grammar can ask for documentation the way it is written:
+
+```anyx
+method: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "METHOD", name: WORDS],
+```
+
+It takes the same conditions as `STRING`, and decodes to the same value.
+Another kind of string is an error that names its kind:
+``found the quoted string "Moves a file."; expected a `#` line string``.
+Among the parts of a call, such a string in the slot of an `OPTIONAL: LINE
+STRING` gets this error too, and not one saying the call has another shape:
+its shape fits, and only the string is wrong.
+
+`LINE STRING` is one keyword, `LINE STRING`, since all-caps words side by
+side join into one name; it is not `STRING` after a word. So `LINE` stays
+free as a word of your own language: `WORD "LINE"`. A `LINE STRING` and a
+`STRING` overlap, unless their conditions can't both hold, since every
+`#` line string is a string.
+
 ### `NUMBER`
 
 ```text
@@ -468,7 +497,7 @@ pub struct Array { pub value: Vec<Value>, pub span: Span }
 | `EACH:` | `Vec<Result<T, DecodeError>>` |
 | `ANY ORDER [...]` | a field per element, and `errors: Vec<DecodeError>` |
 | `OPTIONAL:` | `Option<T>` |
-| `STRING` | `Spanned<StringLiteral>`: the value, and its pieces as written |
+| `STRING`, `LINE STRING` | `Spanned<StringLiteral>`: the value, its kind, and its pieces as written |
 | `NUMBER` | `Spanned<f64>`, or an integer type (see below) |
 | `ANY WORD` | `Spanned<String>` |
 | `WORDS` | `Spanned<String>`: the words joined by spaces |

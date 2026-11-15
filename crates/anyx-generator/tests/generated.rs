@@ -568,10 +568,35 @@ fn conditions_are_checked_where_the_value_is() {
             "max sise 3 per page",
             "max size 3 per pages",
             "sans",
+            "\"exact line\"",
+            "\"\"\"\n  exact line\n  \"\"\"",
+            "# exact lines",
+            "NOTE \"to do\"",
+            "NOTE # done",
+            "LINE \"text\"",
+            "\"A doc.\" NOTED 1",
         ],
         |nodes| Ok(corners::decode_document(nodes)?),
     );
     common::assert_snapshot("decode_corners.txt", &report);
+}
+
+#[test]
+fn a_line_string_decodes_like_any_string() {
+    let source = "# exact line\n,\nNOTE # to do\n,\nLINE # any text";
+    let document = corners::decode_document(&parse(source)).unwrap();
+    let [
+        corners::Node::ExactLine(exact),
+        corners::Node::Note { text: note, .. },
+        corners::Node::Line { text: line, .. },
+    ] = &document.node[..]
+    else {
+        panic!("{:?}", document.node);
+    };
+    assert_eq!(exact.value.value, "exact line");
+    assert_eq!(note.value.value, "to do");
+    assert_eq!(&source[note.span.start..note.span.end], "# to do");
+    assert_eq!(line.value.kind, anyx::StringKind::Line);
 }
 
 #[test]

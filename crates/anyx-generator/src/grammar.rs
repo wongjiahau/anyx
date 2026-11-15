@@ -75,6 +75,7 @@ pub enum Pattern {
     ExactWords(ExactWords),
     Words(Words),
     String(String),
+    LineString(LineString),
     Number(Number),
     AnyNode(AnyNode),
 }
@@ -222,6 +223,21 @@ pub enum String {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum LineString {
+    Any {
+        span: Span,
+    },
+    Exact {
+        text: Spanned<StringLiteral>,
+        span: Span,
+    },
+    Conditions {
+        conditions: Spanned<Vec<StringCondition>>,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum StringCondition {
     StartsWith {
         text: Spanned<StringLiteral>,
@@ -303,6 +319,7 @@ impl Pattern {
             Pattern::ExactWords(value) => value.span,
             Pattern::Words(value) => value.span,
             Pattern::String(value) => value.span(),
+            Pattern::LineString(value) => value.span(),
             Pattern::Number(value) => value.span(),
             Pattern::AnyNode(value) => value.span,
         }
@@ -375,6 +392,16 @@ impl String {
             String::Any(span) | String::Exact { span, .. } | String::Conditions { span, .. } => {
                 *span
             }
+        }
+    }
+}
+
+impl LineString {
+    pub fn span(&self) -> Span {
+        match self {
+            LineString::Any { span, .. }
+            | LineString::Exact { span, .. }
+            | LineString::Conditions { span, .. } => *span,
         }
     }
 }
@@ -486,6 +513,7 @@ impl support::Errors for Pattern {
             Pattern::ExactWords(value) => support::Errors::errors(value, found),
             Pattern::Words(value) => support::Errors::errors(value, found),
             Pattern::String(value) => support::Errors::errors(value, found),
+            Pattern::LineString(value) => support::Errors::errors(value, found),
             Pattern::Number(value) => support::Errors::errors(value, found),
             Pattern::AnyNode(value) => support::Errors::errors(value, found),
         }
@@ -639,6 +667,20 @@ impl support::Errors for String {
                 support::Errors::errors(text, found);
             }
             String::Conditions { conditions, .. } => {
+                support::Errors::errors(conditions, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for LineString {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            LineString::Any { .. } => {}
+            LineString::Exact { text, .. } => {
+                support::Errors::errors(text, found);
+            }
+            LineString::Conditions { conditions, .. } => {
                 support::Errors::errors(conditions, found);
             }
         }
@@ -815,6 +857,7 @@ pub fn decode_pattern(node: &Node) -> Result<Pattern, DecodeError> {
         .or_else(|error| error.or(decode_exact_words(node).map(Pattern::ExactWords)))
         .or_else(|error| error.or(decode_words(node).map(Pattern::Words)))
         .or_else(|error| error.or(decode_string(node).map(Pattern::String)))
+        .or_else(|error| error.or(decode_line_string(node).map(Pattern::LineString)))
         .or_else(|error| error.or(decode_number(node).map(Pattern::Number)))
         .or_else(|error| error.or(decode_any_node(node).map(Pattern::AnyNode)))
 }
@@ -1281,6 +1324,58 @@ fn decode_string_conditions_conditions(
     })
 }
 
+pub fn decode_line_string(node: &Node) -> Result<LineString, DecodeError> {
+    decode_line_string_any(node)
+        .or_else(|error| error.or(decode_line_string_exact(node)))
+        .or_else(|error| error.or(decode_line_string_conditions(node)))
+}
+
+fn decode_line_string_any(node: &Node) -> Result<LineString, DecodeError> {
+    let mut parts = support::call(node, "the call `LINE STRING`")?;
+    let decoded = LineString::Any { span: node.span };
+    parts.word("LINE")?.word("STRING")?;
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_line_string_exact(node: &Node) -> Result<LineString, DecodeError> {
+    let mut parts = support::call(node, "the call `LINE STRING _`")?;
+    let decoded = LineString::Exact {
+        text: parts.word("LINE")?.word("STRING")?.one(
+            |node| support::string(node, |_| true, "a string"),
+            "a string",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_line_string_conditions(node: &Node) -> Result<LineString, DecodeError> {
+    let mut parts = support::call(node, "the call `LINE STRING _`")?;
+    let decoded = LineString::Conditions {
+        conditions: parts
+            .word("LINE")?
+            .word("STRING")?
+            .one(decode_line_string_conditions_conditions, "`[...]`")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_line_string_conditions_conditions(
+    node: &Node,
+) -> Result<Spanned<Vec<StringCondition>>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.one_or_more(decode_string_condition, "a string condition")?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
 pub fn decode_string_condition(node: &Node) -> Result<StringCondition, DecodeError> {
     decode_string_condition_starts_with(node)
         .or_else(|error| error.or(decode_string_condition_ends_with(node)))
@@ -1443,7 +1538,10 @@ pub mod support {
     //! generated parser depends only on `anyx` (and on `regex`, when its
     //! grammar uses `MATCHING REGEX`).
 
-    use anyx::{FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringLiteral, line_column};
+    use anyx::{
+        FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringKind, StringLiteral,
+        line_column,
+    };
 
     /// A value and where it was written.
     #[derive(Clone, Debug, PartialEq)]
@@ -1682,13 +1780,7 @@ pub mod support {
     pub fn describe(node: &Node) -> String {
         match &node.kind {
             NodeKind::Number(text) => format!("the number `{text}`"),
-            NodeKind::String(literal) => {
-                let mut value: String = literal.value.chars().take(40).collect();
-                if value.len() < literal.value.len() {
-                    value.push('…');
-                }
-                format!("the string {value:?}")
-            }
+            NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
                 [NamePart::Word { text, .. }] => format!("the word `{text}`"),
                 _ => format!("the call `{}`", call.name_text()),
@@ -1699,6 +1791,15 @@ pub mod support {
             NodeKind::Underscore => "`_`".to_string(),
             NodeKind::Missing => "nothing".to_string(),
         }
+    }
+
+    /// A string's value as an error quotes it, cut short after 40 characters.
+    fn string_value(literal: &StringLiteral) -> String {
+        let mut value: String = literal.value.chars().take(40).collect();
+        if value.len() < literal.value.len() {
+            value.push('…');
+        }
+        format!("{value:?}")
     }
 
     /// The error for a node that is not what the grammar expects there.
@@ -1900,6 +2001,20 @@ pub mod support {
             self.other_call.clone().expect("the sequence of a call")
         }
 
+        /// Whether the call may be another shape: not when the item at the
+        /// front is a string that an optional part refused, such as a quoted
+        /// string where a `#` line string goes. The call then has the expected
+        /// shape, a slot where the part goes, and the string is what is wrong.
+        fn may_be_other_call(&self) -> bool {
+            let refused_string = match (self.items.get(self.index), &self.missed) {
+                (Some(Item::Node(node)), Some(missed)) => {
+                    matches!(node.kind, NodeKind::String(_)) && missed.span == node.span
+                }
+                _ => false,
+            };
+            self.other_call.is_some() && !refused_string
+        }
+
         fn fail(&mut self, error: DecodeError) -> DecodeError {
             match self.missed.take() {
                 Some(missed) => missed.merge(error),
@@ -1964,7 +2079,7 @@ pub mod support {
                 self.missed = Some(self.fail(error));
                 return Ok(None);
             }
-            if self.other_call.is_some() {
+            if self.may_be_other_call() {
                 return Err(self.is_other_call());
             }
             Err(self.fail(error))
@@ -1986,7 +2101,7 @@ pub mod support {
                 let found = match self.items.get(self.index) {
                     Some(Item::Word(found, at)) if *found == word => *at,
                     Some(Item::Node(node)) if is_word(node, word) => node.span,
-                    Some(Item::Node(_)) if self.other_call.is_some() => {
+                    Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
                     _ => return Err(self.unexpected(&format!("the word `{text}`"))),
@@ -2013,7 +2128,7 @@ pub mod support {
                 })
                 .collect();
             let (Some((_, first)), Some((_, last))) = (words.first(), words.last()) else {
-                if self.other_call.is_some() {
+                if self.may_be_other_call() {
                     return Err(self.is_other_call());
                 }
                 return Err(self.unexpected(expected));
@@ -2271,6 +2386,29 @@ pub mod support {
                 span: node.span,
             }),
             _ => Err(mismatch(node, expected)),
+        }
+    }
+
+    /// A `#` line string whose value passes `condition`. A quoted or raw string
+    /// is named by its kind, since its kind is what is wrong.
+    pub fn line_string(
+        node: &Node,
+        condition: impl Fn(&str) -> bool,
+        expected: &str,
+    ) -> Result<Spanned<StringLiteral>, DecodeError> {
+        match &node.kind {
+            NodeKind::String(literal) if literal.kind != StringKind::Line => {
+                let kind = match literal.kind {
+                    StringKind::Raw => "raw",
+                    _ => "quoted",
+                };
+                Err(DecodeError::new(
+                    node.span,
+                    format!("the {kind} string {}", string_value(literal)),
+                    expected,
+                ))
+            }
+            _ => string(node, condition, expected),
         }
     }
 

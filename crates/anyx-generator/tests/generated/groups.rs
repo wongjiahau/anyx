@@ -660,7 +660,10 @@ pub mod support {
     //! generated parser depends only on `anyx` (and on `regex`, when its
     //! grammar uses `MATCHING REGEX`).
 
-    use anyx::{FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringLiteral, line_column};
+    use anyx::{
+        FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringKind, StringLiteral,
+        line_column,
+    };
 
     /// A value and where it was written.
     #[derive(Clone, Debug, PartialEq)]
@@ -899,13 +902,7 @@ pub mod support {
     pub fn describe(node: &Node) -> String {
         match &node.kind {
             NodeKind::Number(text) => format!("the number `{text}`"),
-            NodeKind::String(literal) => {
-                let mut value: String = literal.value.chars().take(40).collect();
-                if value.len() < literal.value.len() {
-                    value.push('…');
-                }
-                format!("the string {value:?}")
-            }
+            NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
                 [NamePart::Word { text, .. }] => format!("the word `{text}`"),
                 _ => format!("the call `{}`", call.name_text()),
@@ -916,6 +913,15 @@ pub mod support {
             NodeKind::Underscore => "`_`".to_string(),
             NodeKind::Missing => "nothing".to_string(),
         }
+    }
+
+    /// A string's value as an error quotes it, cut short after 40 characters.
+    fn string_value(literal: &StringLiteral) -> String {
+        let mut value: String = literal.value.chars().take(40).collect();
+        if value.len() < literal.value.len() {
+            value.push('…');
+        }
+        format!("{value:?}")
     }
 
     /// The error for a node that is not what the grammar expects there.
@@ -1117,6 +1123,20 @@ pub mod support {
             self.other_call.clone().expect("the sequence of a call")
         }
 
+        /// Whether the call may be another shape: not when the item at the
+        /// front is a string that an optional part refused, such as a quoted
+        /// string where a `#` line string goes. The call then has the expected
+        /// shape, a slot where the part goes, and the string is what is wrong.
+        fn may_be_other_call(&self) -> bool {
+            let refused_string = match (self.items.get(self.index), &self.missed) {
+                (Some(Item::Node(node)), Some(missed)) => {
+                    matches!(node.kind, NodeKind::String(_)) && missed.span == node.span
+                }
+                _ => false,
+            };
+            self.other_call.is_some() && !refused_string
+        }
+
         fn fail(&mut self, error: DecodeError) -> DecodeError {
             match self.missed.take() {
                 Some(missed) => missed.merge(error),
@@ -1181,7 +1201,7 @@ pub mod support {
                 self.missed = Some(self.fail(error));
                 return Ok(None);
             }
-            if self.other_call.is_some() {
+            if self.may_be_other_call() {
                 return Err(self.is_other_call());
             }
             Err(self.fail(error))
@@ -1203,7 +1223,7 @@ pub mod support {
                 let found = match self.items.get(self.index) {
                     Some(Item::Word(found, at)) if *found == word => *at,
                     Some(Item::Node(node)) if is_word(node, word) => node.span,
-                    Some(Item::Node(_)) if self.other_call.is_some() => {
+                    Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
                     _ => return Err(self.unexpected(&format!("the word `{text}`"))),
@@ -1230,7 +1250,7 @@ pub mod support {
                 })
                 .collect();
             let (Some((_, first)), Some((_, last))) = (words.first(), words.last()) else {
-                if self.other_call.is_some() {
+                if self.may_be_other_call() {
                     return Err(self.is_other_call());
                 }
                 return Err(self.unexpected(expected));
@@ -1488,6 +1508,29 @@ pub mod support {
                 span: node.span,
             }),
             _ => Err(mismatch(node, expected)),
+        }
+    }
+
+    /// A `#` line string whose value passes `condition`. A quoted or raw string
+    /// is named by its kind, since its kind is what is wrong.
+    pub fn line_string(
+        node: &Node,
+        condition: impl Fn(&str) -> bool,
+        expected: &str,
+    ) -> Result<Spanned<StringLiteral>, DecodeError> {
+        match &node.kind {
+            NodeKind::String(literal) if literal.kind != StringKind::Line => {
+                let kind = match literal.kind {
+                    StringKind::Raw => "raw",
+                    _ => "quoted",
+                };
+                Err(DecodeError::new(
+                    node.span,
+                    format!("the {kind} string {}", string_value(literal)),
+                    expected,
+                ))
+            }
+            _ => string(node, condition, expected),
         }
     }
 
