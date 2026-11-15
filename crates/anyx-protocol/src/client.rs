@@ -15,6 +15,32 @@ pub trait Transport {
     fn send(&self, request: String) -> impl Future<Output = Result<String, Self::Error>>;
 }
 
+/// What a call of a method may do, as the schema's markers claim, for a
+/// tool to decide on its own whether to retry a call or ask a person before
+/// sending it. A method without markers is the worst case: all `false`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Effects {
+    /// `READ ONLY`: the call changes nothing, so it may be sent freely.
+    pub read_only: bool,
+    /// `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+    /// the same arguments changes nothing more, so it may be retried after
+    /// a lost response. The retry may still answer differently, such as
+    /// with an error saying it is already done.
+    pub idempotent: bool,
+    /// `UNDONE BY`: the call that undoes it, as written in the schema, in
+    /// the method's scope, with the method's own arguments in its slots:
+    /// `move (new path: TEXT) to (path: TEXT)`.
+    pub undone_by: Option<&'static str>,
+}
+
+impl Effects {
+    /// Whether a call may be sent again on its own when its response was
+    /// lost: only when it is idempotent.
+    pub fn may_retry(&self) -> bool {
+        self.idempotent
+    }
+}
+
 /// Why a call returned no value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CallError<E, T> {

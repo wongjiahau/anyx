@@ -171,24 +171,68 @@ export class Client {
   }
 
   readonly files = {
+    /** Read only: it changes nothing, so it is safe to call freely. */
     list: (): Promise<Outcome<string[], never>> =>
       this.call("files/list", []),
+    /** Read only: it changes nothing, so it is safe to call freely. */
     read: (path: string): Promise<Outcome<FilesFile, FilesReadError>> =>
       this.call("files/read _", [path]),
-    /** Saves the note, if it is still at `revision`. */
+    /**
+     * Saves the note, if it is still at `revision`.
+     *
+     * It may change anything, and calling it again may do it again, so don't retry it blindly.
+     */
     writeAtRevisionContent: (path: string, revision: number, content: string): Promise<Outcome<CommonDiagnostic[], FilesWriteAtRevisionContentError>> =>
       this.call("files/write _ at revision _ content _", [path, revision, content]),
-    /** Moves the note to the trash. */
+    /**
+     * Moves the note to the trash.
+     *
+     * Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+     */
     trash: (path: string): Promise<Outcome<void, FilesTrashError>> =>
       this.call("files/trash _", [path]),
-    /** Forgets every note in the trash. */
+    /**
+     * Forgets every note in the trash.
+     *
+     * It may change anything, and calling it again may do it again, so don't retry it blindly.
+     */
     emptyTrash: (): Promise<Outcome<void, never>> =>
       this.call("files/empty trash", []),
     export: {
+      /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
       html: (path: string): Promise<Outcome<FilesExportPage[], FilesExportHtmlError>> =>
         this.call("files/export/html _", [path]),
+      /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
       pdf: (path: string): Promise<Outcome<string, FilesExportPdfError>> =>
         this.call("files/export/pdf _", [path]),
     },
   };
 }
+
+/** What a call of a method may do, as the schema's markers claim. A method
+ * without markers is the worst case: all `false` and `null`. */
+export interface Effects {
+  /** `READ ONLY`: the call changes nothing, so it may be sent freely. */
+  readonly readOnly: boolean;
+  /** `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+   * the same arguments changes nothing more, so it may be retried after a
+   * lost response. The retry may still answer differently, such as with an
+   * error saying it is already done. */
+  readonly idempotent: boolean;
+  /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
+   * method's scope, with the method's own arguments in its slots. */
+  readonly undoneBy: string | null;
+}
+
+/** Each method's `Effects`, by the full name the client calls it by. Only a
+ * method whose `idempotent` is true may be retried on its own. */
+export const EFFECTS: { readonly [method: string]: Effects } = {
+  "files/list": { readOnly: true, idempotent: true, undoneBy: null },
+  "files/read _": { readOnly: true, idempotent: true, undoneBy: null },
+  "files/write _ at revision _ content _": { readOnly: false, idempotent: false, undoneBy: null },
+  "files/trash _": { readOnly: false, idempotent: true, undoneBy: null },
+  "files/empty trash": { readOnly: false, idempotent: false, undoneBy: null },
+  "files/export/html _": { readOnly: false, idempotent: false, undoneBy: null },
+  "files/export/pdf _": { readOnly: false, idempotent: false, undoneBy: null },
+  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+};

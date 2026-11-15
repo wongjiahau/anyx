@@ -15,7 +15,7 @@ mod wasm;
 use std::collections::BTreeMap;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Method, TypeKind, scoped};
+use anyx_protocol::schema::{Effect, Method, TypeKind, scoped};
 
 pub use names::{camel_case, pascal_case, snake_case};
 pub use rust::rust;
@@ -63,6 +63,23 @@ pub fn examples_doc(method: &Method) -> Option<String> {
         })
         .collect();
     Some(format!("Examples:\n\n```anyx\n{examples}```"))
+}
+
+/// What `method`'s markers claim, for its doc comment, in a sentence or two.
+pub fn effects_doc(method: &Method) -> String {
+    let effect = match method.effect {
+        Effect::ReadOnly => "Read only: it changes nothing, so it is safe to call freely.",
+        Effect::Idempotent => {
+            "Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response."
+        }
+        Effect::Unmarked => {
+            "It may change anything, and calling it again may do it again, so don't retry it blindly."
+        }
+    };
+    match &method.undone_by {
+        Some(undo) => format!("{effect} Undone by `{}`.", undo.text),
+        None => effect.to_string(),
+    }
 }
 
 /// The enum of a method's errors, in the module of its scope:
@@ -120,7 +137,7 @@ pub fn methods_in<'s>(schema: &'s Schema, scope: &[String]) -> Vec<(usize, &'s M
 
 /// Names the generated code declares or uses, which a schema's types would
 /// shadow.
-const RESERVED_TYPE_NAMES: [&str; 17] = [
+const RESERVED_TYPE_NAMES: [&str; 18] = [
     "Client",
     "Server",
     "Value",
@@ -139,6 +156,8 @@ const RESERVED_TYPE_NAMES: [&str; 17] = [
     "Date",
     "Record",
     "Reviver",
+    // The TypeScript client's description of a method's markers.
+    "Effects",
 ];
 
 /// The name of a type parameter in the generated code: the parameter in

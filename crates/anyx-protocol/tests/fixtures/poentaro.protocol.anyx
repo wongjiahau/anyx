@@ -42,9 +42,9 @@ ERRORS score errors [
 ],
 
 # Every file this account owns.
-METHOD list files RETURNS files: LIST file summary,
+READ ONLY METHOD list files RETURNS files: LIST file summary,
 
-METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
@@ -72,6 +72,6 @@ METHOD create (path: TEXT) content (content: TEXT)
     ] + score errors,
 
 # The score as a Standard MIDI File.
-METHOD export midi (path: TEXT)
+READ ONLY METHOD export midi (path: TEXT)
     RETURNS (midi: BYTES)
     ERRORS file errors,

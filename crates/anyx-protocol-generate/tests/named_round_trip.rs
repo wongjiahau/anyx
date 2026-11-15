@@ -61,6 +61,10 @@ impl Server for Sharing {
         Ok(())
     }
 
+    async fn restore(&self, _id: ShareId) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     async fn links(&self) -> Result<Vec<ShareId>, Self::Error> {
         Ok(vec![ShareId::from("a".to_string()), "b".to_string().into()])
     }
@@ -152,4 +156,17 @@ fn a_named_type_over_an_instant_or_a_map_crosses_the_wire() {
         client.transport.exchanged.borrow()[0].1,
         "RETURNS [\n    { at \"1970-01-01T00:00:01.000Z\", by person { \"ann\" \"1970-01-01T00:00:01.000Z\" }, label \"none\" },\n]\n"
     );
+}
+
+#[test]
+fn each_method_has_its_effects_as_a_constant() {
+    let revoke = named::REVOKE_EFFECTS;
+    assert!(!revoke.read_only);
+    assert!(revoke.idempotent && revoke.may_retry());
+    assert_eq!(revoke.undone_by, Some("restore (id: share id)"));
+    assert!(named::LINKS_EFFECTS.read_only && named::LINKS_EFFECTS.may_retry());
+    // No markers: the worst case, never retried on its own.
+    let share = named::SHARE_TAGGED_EFFECTS;
+    assert!(!share.read_only && !share.may_retry());
+    assert_eq!(share.undone_by, None);
 }

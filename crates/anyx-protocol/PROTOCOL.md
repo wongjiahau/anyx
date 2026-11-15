@@ -120,7 +120,9 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
 - **`METHOD shape RETURNS (name: TYPE) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
-  nothing to return, such as `sign out`, says `RETURNS NOTHING`.
+  nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
+  or `IDEMPOTENT` may come before `METHOD`, and `UNDONE BY` after `ERRORS`:
+  see [Effects](#effects).
 - **`EXAMPLES [example, …]`**, last in a method, shows how it is used. Each
   example is a call of the method and its outcome side by side, since it
   shows a request and its response together: the call by its full name, as
@@ -198,7 +200,76 @@ METHOD close (account: TEXT) RETURNS NOTHING
   as intents.
 
 Schemas are formatted with `anyx_protocol::format_schema`, which puts a long
-`METHOD`'s `RETURNS` and `ERRORS` on lines of their own.
+`METHOD`'s `RETURNS`, `ERRORS`, `UNDONE BY` and `EXAMPLES` on lines of their
+own.
+
+### Effects
+
+Words around a method say what a call of it does to the world, so that a
+client can decide on its own whether to retry a call whose response was
+lost, and whether to ask a person before sending it.
+
+```anyx
+READ ONLY METHOD read (path: TEXT) RETURNS (document: document)
+    ERRORS [missing],
+
+IDEMPOTENT METHOD archive (path: TEXT) RETURNS NOTHING
+    ERRORS [missing]
+    UNDONE BY unarchive (path: TEXT),
+
+IDEMPOTENT METHOD unarchive (path: TEXT) RETURNS NOTHING ERRORS [missing],
+
+METHOD move (path: TEXT) to (new path: TEXT) RETURNS NOTHING
+    ERRORS [missing, taken]
+    UNDONE BY move (new path: TEXT) to (path: TEXT),
+
+## No markers: may change anything, and is never retried on its own.
+METHOD append (text: TEXT) to (path: TEXT) RETURNS NOTHING ERRORS [missing],
+
+## Can't claim `UNDONE BY`: the recipient has read the document.
+METHOD send (path: TEXT) to (email: TEXT) RETURNS NOTHING ERRORS [missing],
+```
+
+- **`READ ONLY`** before `METHOD`: the caller asks for no change, as HTTP's
+  *safe* methods do. The server may still log or count calls. Safe to call
+  freely.
+- **`IDEMPOTENT`** before `METHOD`: calling it again with the same arguments
+  leaves the same state as calling it once, so it is safe to retry after a
+  lost response. This is about the effect, not the response (RFC 9110): a
+  second `archive` may answer with an error that says it is already done,
+  and is still idempotent. Prefer making a repeated call succeed where you
+  can. `READ ONLY` already means idempotent, so `READ ONLY IDEMPOTENT` is an
+  error.
+- **No marker is the worst case**: the call may change anything, may do it
+  again when sent again, and can't be undone. A client doesn't retry it
+  blindly, and an agent asks before sending it when unsure. Every marker is
+  a claim of safety, so leaving one out is never unsafe, as with MCP's tool
+  annotations and Protobuf's `IDEMPOTENCY_UNKNOWN`.
+- **`UNDONE BY call`**, after `RETURNS` and `ERRORS`, names the call that
+  compensates the method's effect, as a step of a saga is compensated: a
+  call of another method of the same scope. It is written like a shape whose
+  slots are the method's own parameters, each `(name: TYPE)` with that
+  parameter's name and type: `move (path) to (new path)` is undone by
+  `move (new path: TEXT) to (path: TEXT)`. The types say which method it
+  is, among methods with the same words, so the call must match exactly one
+  method: the same words and the same type in each slot. Only parameters fill
+  the slots, not the returned value or a literal value.
+  - It claims the state afterwards is equivalent to before, not exactly the
+    same: an unarchived document may come back with a new revision.
+  - It also claims the call **disclosed nothing to anyone outside the
+    account** that undoing wouldn't take back. Sending an email, publishing,
+    or sharing with another user can't be undone, since someone may have
+    seen it, so such a method has no `UNDONE BY`. Only what a call newly
+    opens up counts: writing to a document that is already shared doesn't.
+  - A `READ ONLY` method has nothing to undo, so it takes no `UNDONE BY`.
+    The undoing method may carry any markers of its own, including its own
+    `UNDONE BY`.
+- Markers are the server's promise, and describe the most a call can do.
+  `SCHEMA` is `READ ONLY`.
+
+Generated clients expose each method's markers as data, so that a tool can
+build a policy on them, such as running read only calls freely and asking
+before anything that can't be undone.
 
 ### Scopes
 

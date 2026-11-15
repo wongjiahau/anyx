@@ -192,26 +192,32 @@ export class Client {
     }
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   pay(amount: number): Promise<Outcome<Attempt<Payment, Decline>, never>> {
     return this.call("pay _", [amount], reviveAttempt(revivePayment, unchanged));
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   payAll(amounts: number[]): Promise<Outcome<Page<Attempt<Payment, Decline>>, never>> {
     return this.call("pay all _", [amounts], revivePage(reviveAttempt(revivePayment, unchanged)));
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   payments(): Promise<Outcome<Payments, never>> {
     return this.call("payments", [], revivePage(revivePayment));
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   count(payments: Page<Payment>): Promise<Outcome<number, never>> {
     return this.call("count _", [payments]);
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   categories(): Promise<Outcome<Tree<string>, never>> {
     return this.call("categories", []);
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   latest(): Promise<Outcome<Dated<string>, never>> {
     return this.call("latest", [], reviveDated(unchanged));
   }
@@ -221,3 +227,30 @@ export class Client {
     return this.call("SCHEMA", []);
   }
 }
+
+/** What a call of a method may do, as the schema's markers claim. A method
+ * without markers is the worst case: all `false` and `null`. */
+export interface Effects {
+  /** `READ ONLY`: the call changes nothing, so it may be sent freely. */
+  readonly readOnly: boolean;
+  /** `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+   * the same arguments changes nothing more, so it may be retried after a
+   * lost response. The retry may still answer differently, such as with an
+   * error saying it is already done. */
+  readonly idempotent: boolean;
+  /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
+   * method's scope, with the method's own arguments in its slots. */
+  readonly undoneBy: string | null;
+}
+
+/** Each method's `Effects`, by the full name the client calls it by. Only a
+ * method whose `idempotent` is true may be retried on its own. */
+export const EFFECTS: { readonly [method: string]: Effects } = {
+  "pay _": { readOnly: false, idempotent: false, undoneBy: null },
+  "pay all _": { readOnly: false, idempotent: false, undoneBy: null },
+  "payments": { readOnly: false, idempotent: false, undoneBy: null },
+  "count _": { readOnly: false, idempotent: false, undoneBy: null },
+  "categories": { readOnly: false, idempotent: false, undoneBy: null },
+  "latest": { readOnly: false, idempotent: false, undoneBy: null },
+  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+};

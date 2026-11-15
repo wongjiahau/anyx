@@ -31,9 +31,12 @@ METHOD share (id: file id) tagged (tags: tags)
     RETURNS (link: link)
     ERRORS [missing (id: file id)],
 
-METHOD revoke (id: share id) RETURNS NOTHING,
+IDEMPOTENT METHOD revoke (id: share id) RETURNS NOTHING UNDONE BY restore (id: share id),
 
-METHOD links RETURNS (ids: LIST: share id),
+# Opens a revoked link again.
+IDEMPOTENT METHOD restore (id: share id) RETURNS NOTHING,
+
+READ ONLY METHOD links RETURNS (ids: LIST: share id),
 
 METHOD grant (level: level) on (id: file id) RETURNS (granted: level),
 
@@ -44,7 +47,7 @@ TYPE openings: MAP: opened at,
 
 RECORD visit { at: opened at, by person: openings, label: OPTIONAL: share id DEFAULT "none" },
 
-METHOD visits RETURNS (visits: LIST: visit),
+READ ONLY METHOD visits RETURNS (visits: LIST: visit),
 "#,
 }];
 
@@ -391,6 +394,8 @@ pub trait Server {
     type Error;
 
     /// `share _ tagged _`, returning `link`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn share_tagged(
         &self,
         id: FileId,
@@ -398,15 +403,30 @@ pub trait Server {
     ) -> Result<Result<Link, ShareTaggedError>, Self::Error>;
 
     /// `revoke _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: share id)`.
     async fn revoke(&self, id: ShareId) -> Result<(), Self::Error>;
 
+    /// Opens a revoked link again.
+    ///
+    /// `restore _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+    async fn restore(&self, id: ShareId) -> Result<(), Self::Error>;
+
     /// `links`, returning `ids`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     async fn links(&self) -> Result<Vec<ShareId>, Self::Error>;
 
     /// `grant _ on _`, returning `granted`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn grant_on(&self, level: Level, id: FileId) -> Result<Level, Self::Error>;
 
     /// `visits`, returning `visits`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     async fn visits(&self) -> Result<Vec<Visit>, Self::Error>;
 }
 
@@ -447,8 +467,15 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            2 => anyx_protocol::server::value(<S as Server>::links(implementation).await),
-            3 => anyx_protocol::server::value(
+            2 => anyx_protocol::server::value(
+                <S as Server>::restore(
+                    implementation,
+                    anyx_protocol::server::argument(&mut arguments),
+                )
+                .await,
+            ),
+            3 => anyx_protocol::server::value(<S as Server>::links(implementation).await),
+            4 => anyx_protocol::server::value(
                 <S as Server>::grant_on(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
@@ -456,8 +483,8 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            4 => anyx_protocol::server::value(<S as Server>::visits(implementation).await),
-            5 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
+            5 => anyx_protocol::server::value(<S as Server>::visits(implementation).await),
+            6 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
             _ => unreachable!("the codec read a method of the schema"),
         };
         outcomes.push(outcome.unwrap_or_else(|error| {
@@ -481,6 +508,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `share _ tagged _`, returning `link`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn share_tagged(
         &self,
         id: FileId,
@@ -496,6 +525,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `revoke _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: share id)`.
     pub async fn revoke(
         &self,
         id: ShareId,
@@ -503,14 +534,30 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![id.into_value()]).await
     }
 
+    /// Opens a revoked link again.
+    ///
+    /// `restore _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+    pub async fn restore(
+        &self,
+        id: ShareId,
+    ) -> Result<(), CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 2, vec![id.into_value()]).await
+    }
+
     /// `links`, returning `ids`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn links(
         &self,
     ) -> Result<Vec<ShareId>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 2, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 3, vec![]).await
     }
 
     /// `grant _ on _`, returning `granted`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn grant_on(
         &self,
         level: Level,
@@ -519,21 +566,65 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(
             &self.transport,
             schema(),
-            3,
+            4,
             vec![level.into_value(), id.into_value()],
         )
         .await
     }
 
     /// `visits`, returning `visits`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn visits(
         &self,
     ) -> Result<Vec<Visit>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
     }
 
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
     }
 }
+
+/// What a call of `share _ tagged _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const SHARE_TAGGED_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `revoke _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: share id)`.
+pub const REVOKE_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: true,
+    undone_by: Some("restore (id: share id)"),
+};
+
+/// What a call of `restore _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+pub const RESTORE_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: true,
+    undone_by: None,
+};
+
+/// What a call of `links` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const LINKS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};
+
+/// What a call of `grant _ on _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const GRANT_ON_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `visits` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const VISITS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};

@@ -52,9 +52,9 @@ ERRORS score errors [
 ],
 
 # Every file this account owns.
-METHOD list files RETURNS files: LIST file summary,
+READ ONLY METHOD list files RETURNS files: LIST file summary,
 
-METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
@@ -82,7 +82,7 @@ METHOD create (path: TEXT) content (content: TEXT)
     ] + score errors,
 
 # The score as a Standard MIDI File.
-METHOD export midi (path: TEXT)
+READ ONLY METHOD export midi (path: TEXT)
     RETURNS (midi: BYTES)
     ERRORS file errors,
 "#,
@@ -404,14 +404,20 @@ pub trait Server {
     /// Every file this account owns.
     ///
     /// `list files`, returning `files`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     async fn list_files(&self) -> Result<Vec<FileSummary>, Self::Error>;
 
     /// `read _`, returning `file`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     async fn read(&self, path: String) -> Result<Result<File, ReadError>, Self::Error>;
 
     /// Saves the score, if the file is still at `revision`.
     ///
     /// `write _ at revision _ content _`, returning `new revision`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
@@ -431,6 +437,8 @@ pub trait Server {
     /// Makes a new file, and its folders if they don't exist.
     ///
     /// `create _ content _`, returning `revision`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn create_content(
         &self,
         path: String,
@@ -440,6 +448,8 @@ pub trait Server {
     /// The score as a Standard MIDI File.
     ///
     /// `export midi _`, returning `midi`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     async fn export_midi(
         &self,
         path: String,
@@ -526,6 +536,8 @@ impl<T: Transport> Client<T> {
     /// Every file this account owns.
     ///
     /// `list files`, returning `files`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn list_files(
         &self,
     ) -> Result<Vec<FileSummary>, CallError<::std::convert::Infallible, T::Error>> {
@@ -533,6 +545,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `read _`, returning `file`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn read(&self, path: String) -> Result<File, CallError<ReadError, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![path.into_value()]).await
     }
@@ -540,6 +554,8 @@ impl<T: Transport> Client<T> {
     /// Saves the score, if the file is still at `revision`.
     ///
     /// `write _ at revision _ content _`, returning `new revision`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
@@ -571,6 +587,8 @@ impl<T: Transport> Client<T> {
     /// Makes a new file, and its folders if they don't exist.
     ///
     /// `create _ content _`, returning `revision`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn create_content(
         &self,
         path: String,
@@ -588,6 +606,8 @@ impl<T: Transport> Client<T> {
     /// The score as a Standard MIDI File.
     ///
     /// `export midi _`, returning `midi`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
     pub async fn export_midi(
         &self,
         path: String,
@@ -600,3 +620,39 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
     }
 }
+
+/// What a call of `list files` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const LIST_FILES_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};
+
+/// What a call of `read _` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const READ_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};
+
+/// What a call of `write _ at revision _ content _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const WRITE_AT_REVISION_CONTENT_EFFECTS: anyx_protocol::client::Effects =
+    anyx_protocol::client::Effects {
+        read_only: false,
+        idempotent: false,
+        undone_by: None,
+    };
+
+/// What a call of `create _ content _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const CREATE_CONTENT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `export midi _` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const EXPORT_MIDI_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};

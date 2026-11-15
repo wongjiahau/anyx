@@ -111,14 +111,30 @@ errors: ANYFIX CALL [
 ],
 
 ## A method's clauses come in this order. It returns a value or `NOTHING`,
-## and `ERRORS` and `EXAMPLES` may be left out.
+## and the rest may be left out. `READ ONLY` and `IDEMPOTENT` claim it is
+## safe to call freely, or to retry; without them it may change anything,
+## once per call. Both together are read, so that the schema checker can say
+## that `READ ONLY` already means `IDEMPOTENT`.
 method: ANYFIX CALL [
   doc: OPTIONAL: STRING,
+  read only: OPTIONAL: WORDS "READ ONLY",
+  idempotent: OPTIONAL: WORD "IDEMPOTENT",
   WORD "METHOD", shape: shape,
   WORD "RETURNS", returns: ONE OF [value: returns, nothing: WORD "NOTHING"],
   errors: OPTIONAL [WORD "ERRORS", error list],
+  undone by: OPTIONAL [WORD "UNDONE", WORD "BY", undo],
   examples: OPTIONAL [WORD "EXAMPLES", examples],
-] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "ERRORS", BREAK BEFORE WORD "EXAMPLES"],
+] FORMAT [
+  BREAK BEFORE WORD "RETURNS",
+  BREAK BEFORE WORD "ERRORS",
+  BREAK BEFORE WORD "UNDONE",
+  BREAK BEFORE WORD "EXAMPLES",
+],
+
+## The call that undoes a method, written like a shape whose slots are the
+## method's own parameters: `UNDONE BY move (new path: TEXT) to (path: TEXT)`.
+## The types say which method it is, among methods of the same words.
+undo: shape,
 
 ## Examples of a method, each a call of it and its outcome side by side, the
 ## call as a request writes it and the outcome as a response writes it:

@@ -5,9 +5,9 @@ PUBLIC ERRORS file errors [
     trashed,
 ] + common/common errors,
 
-METHOD list RETURNS (paths: LIST: TEXT),
+READ ONLY METHOD list RETURNS (paths: LIST: TEXT),
 
-METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
@@ -18,7 +18,7 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
     ] + file errors,
 
 # Moves the note to the trash.
-METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,

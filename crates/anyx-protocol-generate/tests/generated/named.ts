@@ -184,22 +184,36 @@ export class Client {
     }
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   shareTagged(id: FileId, tags: Tags): Promise<Outcome<Link, ShareTaggedError>> {
     return this.call("share _ tagged _", [id, tags]);
   }
 
+  /** Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: share id)`. */
   revoke(id: ShareId): Promise<Outcome<void, never>> {
     return this.call("revoke _", [id]);
   }
 
+  /**
+   * Opens a revoked link again.
+   *
+   * Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+   */
+  restore(id: ShareId): Promise<Outcome<void, never>> {
+    return this.call("restore _", [id]);
+  }
+
+  /** Read only: it changes nothing, so it is safe to call freely. */
   links(): Promise<Outcome<ShareId[], never>> {
     return this.call("links", []);
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   grantOn(level: Level, id: FileId): Promise<Outcome<Level, never>> {
     return this.call("grant _ on _", [level, id]);
   }
 
+  /** Read only: it changes nothing, so it is safe to call freely. */
   visits(): Promise<Outcome<Visit[], never>> {
     return this.call("visits", [], (json: any[]) => json.map(reviveVisit));
   }
@@ -209,3 +223,30 @@ export class Client {
     return this.call("SCHEMA", []);
   }
 }
+
+/** What a call of a method may do, as the schema's markers claim. A method
+ * without markers is the worst case: all `false` and `null`. */
+export interface Effects {
+  /** `READ ONLY`: the call changes nothing, so it may be sent freely. */
+  readonly readOnly: boolean;
+  /** `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+   * the same arguments changes nothing more, so it may be retried after a
+   * lost response. The retry may still answer differently, such as with an
+   * error saying it is already done. */
+  readonly idempotent: boolean;
+  /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
+   * method's scope, with the method's own arguments in its slots. */
+  readonly undoneBy: string | null;
+}
+
+/** Each method's `Effects`, by the full name the client calls it by. Only a
+ * method whose `idempotent` is true may be retried on its own. */
+export const EFFECTS: { readonly [method: string]: Effects } = {
+  "share _ tagged _": { readOnly: false, idempotent: false, undoneBy: null },
+  "revoke _": { readOnly: false, idempotent: true, undoneBy: "restore (id: share id)" },
+  "restore _": { readOnly: false, idempotent: true, undoneBy: null },
+  "links": { readOnly: true, idempotent: true, undoneBy: null },
+  "grant _ on _": { readOnly: false, idempotent: false, undoneBy: null },
+  "visits": { readOnly: true, idempotent: true, undoneBy: null },
+  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+};

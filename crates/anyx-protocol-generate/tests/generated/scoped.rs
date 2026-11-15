@@ -33,9 +33,9 @@ PUBLIC ERRORS file errors [
     trashed,
 ] + common/common errors,
 
-METHOD list RETURNS (paths: LIST: TEXT),
+READ ONLY METHOD list RETURNS (paths: LIST: TEXT),
 
-METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
+READ ONLY METHOD read (path: TEXT) RETURNS (file: file) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)
@@ -46,7 +46,7 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
     ] + file errors,
 
 # Moves the note to the trash.
-METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: TEXT) RETURNS NOTHING ERRORS file errors,
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,
@@ -390,14 +390,20 @@ pub mod files {
     #[allow(async_fn_in_trait)]
     pub trait Server: super::Server {
         /// `files/list`, returning `paths`.
+        ///
+        /// Read only: it changes nothing, so it is safe to call freely.
         async fn list(&self) -> Result<Vec<String>, Self::Error>;
 
         /// `files/read _`, returning `file`.
+        ///
+        /// Read only: it changes nothing, so it is safe to call freely.
         async fn read(&self, path: String) -> Result<Result<File, ReadError>, Self::Error>;
 
         /// Saves the note, if it is still at `revision`.
         ///
         /// `files/write _ at revision _ content _`, returning `warnings`.
+        ///
+        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
         async fn write_at_revision_content(
             &self,
             path: String,
@@ -408,11 +414,15 @@ pub mod files {
         /// Moves the note to the trash.
         ///
         /// `files/trash _`, returning nothing.
+        ///
+        /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
         async fn trash(&self, path: String) -> Result<Result<(), TrashError>, Self::Error>;
 
         /// Forgets every note in the trash.
         ///
         /// `files/empty trash`, returning nothing.
+        ///
+        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
         async fn empty_trash(&self) -> Result<(), Self::Error>;
     }
 
@@ -424,6 +434,8 @@ pub mod files {
 
     impl<'a, T: Transport> Client<'a, T> {
         /// `files/list`, returning `paths`.
+        ///
+        /// Read only: it changes nothing, so it is safe to call freely.
         pub async fn list(
             &self,
         ) -> Result<Vec<String>, CallError<::std::convert::Infallible, T::Error>> {
@@ -431,6 +443,8 @@ pub mod files {
         }
 
         /// `files/read _`, returning `file`.
+        ///
+        /// Read only: it changes nothing, so it is safe to call freely.
         pub async fn read(&self, path: String) -> Result<File, CallError<ReadError, T::Error>> {
             anyx_protocol::client::call(self.transport, super::schema(), 1, vec![path.into_value()])
                 .await
@@ -439,6 +453,8 @@ pub mod files {
         /// Saves the note, if it is still at `revision`.
         ///
         /// `files/write _ at revision _ content _`, returning `warnings`.
+        ///
+        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
         pub async fn write_at_revision_content(
             &self,
             path: String,
@@ -462,6 +478,8 @@ pub mod files {
         /// Moves the note to the trash.
         ///
         /// `files/trash _`, returning nothing.
+        ///
+        /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
         pub async fn trash(&self, path: String) -> Result<(), CallError<TrashError, T::Error>> {
             anyx_protocol::client::call(self.transport, super::schema(), 3, vec![path.into_value()])
                 .await
@@ -470,6 +488,8 @@ pub mod files {
         /// Forgets every note in the trash.
         ///
         /// `files/empty trash`, returning nothing.
+        ///
+        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
         pub async fn empty_trash(
             &self,
         ) -> Result<(), CallError<::std::convert::Infallible, T::Error>> {
@@ -483,6 +503,43 @@ pub mod files {
             }
         }
     }
+
+    /// What a call of `files/list` may do. Read only: it changes nothing, so it is safe to call freely.
+    pub const LIST_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+        read_only: true,
+        idempotent: true,
+        undone_by: None,
+    };
+
+    /// What a call of `files/read _` may do. Read only: it changes nothing, so it is safe to call freely.
+    pub const READ_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+        read_only: true,
+        idempotent: true,
+        undone_by: None,
+    };
+
+    /// What a call of `files/write _ at revision _ content _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub const WRITE_AT_REVISION_CONTENT_EFFECTS: anyx_protocol::client::Effects =
+        anyx_protocol::client::Effects {
+            read_only: false,
+            idempotent: false,
+            undone_by: None,
+        };
+
+    /// What a call of `files/trash _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+    pub const TRASH_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+        read_only: false,
+        idempotent: true,
+        undone_by: None,
+    };
+
+    /// What a call of `files/empty trash` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub const EMPTY_TRASH_EFFECTS: anyx_protocol::client::Effects =
+        anyx_protocol::client::Effects {
+            read_only: false,
+            idempotent: false,
+            undone_by: None,
+        };
 
     /// The scope `files/export`.
     pub mod export {
@@ -612,10 +669,14 @@ pub mod files {
         #[allow(async_fn_in_trait)]
         pub trait Server: super::super::Server {
             /// `files/export/html _`, returning `pages`.
+            ///
+            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
             async fn html(&self, path: String)
             -> Result<Result<Vec<Page>, HtmlError>, Self::Error>;
 
             /// `files/export/pdf _`, returning `pdf`.
+            ///
+            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
             async fn pdf(&self, path: String) -> Result<Result<Vec<u8>, PdfError>, Self::Error>;
         }
 
@@ -627,6 +688,8 @@ pub mod files {
 
         impl<'a, T: Transport> Client<'a, T> {
             /// `files/export/html _`, returning `pages`.
+            ///
+            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
             pub async fn html(
                 &self,
                 path: String,
@@ -641,6 +704,8 @@ pub mod files {
             }
 
             /// `files/export/pdf _`, returning `pdf`.
+            ///
+            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
             pub async fn pdf(
                 &self,
                 path: String,
@@ -654,5 +719,19 @@ pub mod files {
                 .await
             }
         }
+
+        /// What a call of `files/export/html _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+        pub const HTML_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+            read_only: false,
+            idempotent: false,
+            undone_by: None,
+        };
+
+        /// What a call of `files/export/pdf _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+        pub const PDF_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+            read_only: false,
+            idempotent: false,
+            undone_by: None,
+        };
     }
 }

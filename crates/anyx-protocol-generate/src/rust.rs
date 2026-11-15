@@ -115,6 +115,7 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
     if scope.is_empty() || has_methods(schema, scope) {
         client(out, schema, scope);
     }
+    effects(out, &methods);
     for child in children(schema, scope) {
         writeln!(
             out,
@@ -454,6 +455,8 @@ fn method_doc(method: &Method) -> String {
         None => writeln!(doc, "    /// `{}`, returning nothing.", method.full_name()),
     }
     .unwrap();
+    doc.push_str("    ///\n");
+    doc.push_str(&doc_comment(&Some(crate::effects_doc(method)), "    ///"));
     if let Some(examples) = crate::examples_doc(method) {
         doc.push_str("    ///\n");
         doc.push_str(&doc_comment(&Some(examples), "    ///"));
@@ -553,6 +556,27 @@ fn handle(out: &mut String, schema: &Schema) {
         introspection = schema.introspection(),
     )
     .unwrap();
+}
+
+/// A constant of each method's markers, `READ_EFFECTS` for `read _`, for a
+/// tool to decide whether to retry a call or ask before sending it.
+fn effects(out: &mut String, methods: &[(usize, &Method)]) {
+    for (_, method) in methods {
+        let undone_by = match &method.undone_by {
+            Some(undo) => format!("Some({:?})", undo.text),
+            None => "None".to_string(),
+        };
+        write!(
+            out,
+            "/// What a call of `{}` may do. {}\npub const {}_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {{\n    read_only: {},\n    idempotent: {},\n    undone_by: {undone_by},\n}};\n\n",
+            method.full_name(),
+            crate::effects_doc(method),
+            snake_case(&method.shape.text).to_uppercase(),
+            method.effect.read_only(),
+            method.effect.idempotent(),
+        )
+        .unwrap();
+    }
 }
 
 /// The client of `scope`: the root's owns its transport, and a scope's

@@ -10,8 +10,8 @@ use crate::response::{self, WrittenOutcome};
 use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
-    DecodedFile, Diagnostic, ErrorDefinition, Example, Field, Method, Parameter, ROOT_FILE, Schema,
-    Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, scope_file, scoped,
+    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, Method, Parameter, ROOT_FILE,
+    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, scope_file, scoped,
 };
 
 /// A type, error or alias, where it is declared.
@@ -113,6 +113,7 @@ struct MethodParts<'b> {
     /// `None` for `RETURNS NOTHING`.
     returns: Option<&'b ast::Returns>,
     errors: Option<&'b ast::ErrorList>,
+    undone_by: Option<&'b ast::Undo>,
     examples: Option<&'b ast::Examples>,
 }
 
@@ -125,8 +126,19 @@ fn method_parts(method: &ast::Method) -> MethodParts<'_> {
             ast::MethodReturns::Nothing(_) => None,
         },
         errors: method.errors.as_ref(),
+        undone_by: method.undone_by.as_ref(),
         examples: method.examples.as_ref(),
     }
+}
+
+/// A method's `UNDONE BY`, checked once every method is read, since it may
+/// name a method declared after it.
+struct PendingUndo<'a> {
+    /// The method's index in the schema.
+    method: usize,
+    file: usize,
+    scope: Vec<String>,
+    undo: &'a ast::Undo,
 }
 
 /// A method's `EXAMPLES`, checked once the schema they are checked against
@@ -171,6 +183,7 @@ pub(crate) struct Checker<'a> {
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
     examples: Vec<PendingExamples<'a>>,
+    undos: Vec<PendingUndo<'a>>,
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
@@ -325,6 +338,14 @@ impl<'a> Checker<'a> {
                 if let ast::Definition::Method(found) = definition {
                     let method = self.method(found, &mut errors_found);
                     let parts = method_parts(found);
+                    if let Some(undo) = parts.undone_by {
+                        self.undos.push(PendingUndo {
+                            method: methods.len(),
+                            file: index,
+                            scope: file.scope.clone(),
+                            undo,
+                        });
+                    }
                     if let Some(examples) = parts.examples {
                         self.examples.push(PendingExamples {
                             method: methods.len(),
@@ -368,6 +389,12 @@ impl<'a> Checker<'a> {
             errors: errors_found,
             methods,
         };
+        for pending in std::mem::take(&mut self.undos) {
+            let undo = self.within(pending.file, &pending.scope, |checker| {
+                checker.undo(&schema, &schema.methods[pending.method], pending.undo)
+            });
+            schema.methods[pending.method].undone_by = undo;
+        }
         self.check_recursion(&schema);
         if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
@@ -1198,8 +1225,27 @@ impl<'a> Checker<'a> {
             shape,
             returns,
             errors: list,
+            undone_by,
             ..
         } = method_parts(method);
+        let effect = match (&method.read_only, &method.idempotent) {
+            (Some(_), Some(idempotent)) => {
+                self.error(
+                    *idempotent,
+                    "found `READ ONLY IDEMPOTENT`; expected `READ ONLY` alone, since a method that changes nothing is already idempotent; remove `IDEMPOTENT`",
+                );
+                Effect::ReadOnly
+            }
+            (Some(_), None) => Effect::ReadOnly,
+            (None, Some(_)) => Effect::Idempotent,
+            (None, None) => Effect::Unmarked,
+        };
+        if let (Effect::ReadOnly, Some(undo)) = (effect, undone_by) {
+            self.error(
+                undo.span,
+                "found `UNDONE BY` on a `READ ONLY` method; expected no `UNDONE BY`, since a method that changes nothing has nothing to undo; remove it, or the `READ ONLY`",
+            );
+        }
         let checked_shape = self.shape(&shape.name, &shape.arguments, "a method");
         let terms = list.and_then(|list| self.error_terms(list));
         let mut listed: Vec<Listed> = Vec::new();
@@ -1264,6 +1310,128 @@ impl<'a> Checker<'a> {
             returns: returns.map(|returns| self.parameter(returns)),
             errors,
             examples: Vec::new(),
+            effect,
+            undone_by: None,
+        }
+    }
+
+    /// Reads `UNDONE BY move (new path: TEXT) to (path: TEXT)` of `method`:
+    /// each slot one of the method's parameters, with its type, and the
+    /// call one method of the scope, by its words and the type in each
+    /// slot.
+    fn undo(&mut self, schema: &Schema, method: &Method, undo: &ast::Undo) -> Option<Undo> {
+        let written = self
+            .written(undo.span)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if method.effect.read_only() {
+            // Reported with the method.
+            return None;
+        }
+        let mut arguments = Vec::new();
+        let mut types = Vec::new();
+        for slot in &undo.arguments {
+            let r#type = self.r#type(&slot.r#type);
+            let Some(index) = method
+                .shape
+                .parameters
+                .iter()
+                .position(|parameter| parameter.name == slot.name.value)
+            else {
+                let names: Vec<String> = method
+                    .shape
+                    .parameters
+                    .iter()
+                    .map(|parameter| format!("`{}`", parameter.name))
+                    .collect();
+                let expected = match names.is_empty() {
+                    true => "a call without slots, since the method has no parameters and an undo is called with its arguments".to_string(),
+                    false => format!(
+                        "one of its parameters in each slot, {}, since an undo is called with the method's own arguments",
+                        names.join(", ")
+                    ),
+                };
+                self.error(
+                    slot.name.span,
+                    format!(
+                        "found `{}` in `UNDONE BY`, which is not a parameter of `{}`; expected {expected}",
+                        slot.name.value, method.shape.text
+                    ),
+                );
+                return None;
+            };
+            let parameter = &method.shape.parameters[index];
+            if r#type != parameter.r#type {
+                self.error(
+                    slot.r#type.span(),
+                    format!(
+                        "found the type `{}` for `{}` in `UNDONE BY`; expected `{}`, the type of the parameter `{}`",
+                        schema.type_name(&r#type),
+                        parameter.name,
+                        schema.type_name(&parameter.r#type),
+                        parameter.name,
+                    ),
+                );
+                return None;
+            }
+            arguments.push(index);
+            types.push(r#type);
+        }
+        let same_words: Vec<(usize, &Method)> = schema
+            .methods
+            .iter()
+            .enumerate()
+            .filter(|(_, other)| other.scope == self.scope && other.shape.text == undo.name.text)
+            .collect();
+        let matching: Vec<usize> = same_words
+            .iter()
+            .filter(|(_, other)| {
+                other
+                    .shape
+                    .parameters
+                    .iter()
+                    .map(|parameter| &parameter.r#type)
+                    .eq(types.iter())
+            })
+            .map(|(index, _)| *index)
+            .collect();
+        match matching.as_slice() {
+            [found] => Some(Undo {
+                method: *found,
+                arguments,
+                text: written,
+            }),
+            _ if same_words.is_empty() => {
+                self.error(
+                    undo.name.span,
+                    format!(
+                        "found `UNDONE BY {written}`, but {} has no method `{}`; expected the call of a method of {}, with this method's parameters in its slots",
+                        self.this_scope(),
+                        undo.name.text,
+                        self.this_scope(),
+                    ),
+                );
+                None
+            }
+            matching => {
+                let candidates: Vec<String> = same_words
+                    .iter()
+                    .map(|(_, other)| format!("`{}`", schema.typed_shape(&other.shape)))
+                    .collect();
+                let problem = match matching.is_empty() {
+                    true => "matches no method".to_string(),
+                    false => format!("matches {} methods", matching.len()),
+                };
+                self.error(
+                    undo.span,
+                    format!(
+                        "found `UNDONE BY {written}`, which {problem}; expected the type in each slot to be the same as in exactly one of: {}",
+                        candidates.join(", ")
+                    ),
+                );
+                None
+            }
         }
     }
 

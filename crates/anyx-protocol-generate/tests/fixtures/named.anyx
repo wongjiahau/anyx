@@ -21,9 +21,12 @@ METHOD share (id: file id) tagged (tags: tags)
     RETURNS (link: link)
     ERRORS [missing (id: file id)],
 
-METHOD revoke (id: share id) RETURNS NOTHING,
+IDEMPOTENT METHOD revoke (id: share id) RETURNS NOTHING UNDONE BY restore (id: share id),
 
-METHOD links RETURNS (ids: LIST: share id),
+# Opens a revoked link again.
+IDEMPOTENT METHOD restore (id: share id) RETURNS NOTHING,
+
+READ ONLY METHOD links RETURNS (ids: LIST: share id),
 
 METHOD grant (level: level) on (id: file id) RETURNS (granted: level),
 
@@ -34,4 +37,4 @@ TYPE openings: MAP: opened at,
 
 RECORD visit { at: opened at, by person: openings, label: OPTIONAL: share id DEFAULT "none" },
 
-METHOD visits RETURNS (visits: LIST: visit),
+READ ONLY METHOD visits RETURNS (visits: LIST: visit),

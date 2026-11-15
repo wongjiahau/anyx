@@ -39,8 +39,15 @@ The schema is one file, or a folder of scopes (see
   returns `Result<Result<T, MethodError>, Self::Error>`; the outer `Err` is
   the server's own failure, which the caller sees as `INTERNAL ERROR`. A
   method that `RETURNS NOTHING` returns `()`, and `void` in TypeScript.
-  Each method's doc comment, in Rust and TypeScript, ends with its
-  `EXAMPLES`, each after its `#` line, in an `anyx` code block.
+  Each method's doc comment, in Rust and TypeScript, says what its effect
+  markers claim (`READ ONLY`, `IDEMPOTENT`, neither, and `UNDONE BY`), then
+  ends with its `EXAMPLES`, each after its `#` line, in an `anyx` code block.
+- A constant of each method's markers, `READ_EFFECTS` for `read _`, an
+  `anyx_protocol::client::Effects` with `read_only`, `idempotent` and
+  `undone_by`, so a tool can decide whether to retry a call or ask before
+  sending it. Only an idempotent call (`may_retry()`) may be retried on its
+  own. TypeScript has `EFFECTS`, the same by the method's full name:
+  `EFFECTS["read _"].readOnly`. Neither client retries anything itself.
 - `handle(server, request, on_internal_error)`, which reads a request, runs
   its calls and writes the response. It answers `SCHEMA` itself.
 - A `Client<T: Transport>` with a method per schema method, and `schema()`,

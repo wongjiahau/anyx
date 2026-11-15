@@ -128,6 +128,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             .join("\n"),
     );
     out.push_str("}\n");
+    effects(&mut out, schema);
     Ok(out)
 }
 
@@ -388,13 +389,60 @@ fn generic_name(schema: &Schema, name: &str, parameters: &[String]) -> String {
     }
 }
 
-/// A method's doc, then its examples.
+/// A method's doc, what its markers claim, then its examples.
 fn method_doc(method: &Method) -> Option<String> {
-    match (&method.doc, crate::examples_doc(method)) {
-        (Some(doc), Some(examples)) => Some(format!("{doc}\n\n{examples}")),
-        (doc, examples) => examples.or_else(|| doc.clone()),
-    }
+    let parts: Vec<String> = method
+        .doc
+        .clone()
+        .into_iter()
+        .chain([crate::effects_doc(method)])
+        .chain(crate::examples_doc(method))
+        .collect();
+    Some(parts.join("\n\n"))
 }
+
+/// `EFFECTS`, each method's markers by its full name, as the client calls
+/// it, for a tool to decide whether to retry a call or ask before sending
+/// it.
+fn effects(out: &mut String, schema: &Schema) {
+    out.push_str(EFFECTS);
+    for method in &schema.methods {
+        let undone_by = match &method.undone_by {
+            Some(undo) => format!("{:?}", undo.text),
+            None => "null".to_string(),
+        };
+        writeln!(
+            out,
+            "  {:?}: {{ readOnly: {}, idempotent: {}, undoneBy: {undone_by} }},",
+            method.full_name(),
+            method.effect.read_only(),
+            method.effect.idempotent(),
+        )
+        .unwrap();
+    }
+    out.push_str("  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },\n};\n");
+}
+
+const EFFECTS: &str = r#"
+/** What a call of a method may do, as the schema's markers claim. A method
+ * without markers is the worst case: all `false` and `null`. */
+export interface Effects {
+  /** `READ ONLY`: the call changes nothing, so it may be sent freely. */
+  readonly readOnly: boolean;
+  /** `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+   * the same arguments changes nothing more, so it may be retried after a
+   * lost response. The retry may still answer differently, such as with an
+   * error saying it is already done. */
+  readonly idempotent: boolean;
+  /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
+   * method's scope, with the method's own arguments in its slots. */
+  readonly undoneBy: string | null;
+}
+
+/** Each method's `Effects`, by the full name the client calls it by. Only a
+ * method whose `idempotent` is true may be retried on its own. */
+export const EFFECTS: { readonly [method: string]: Effects } = {
+"#;
 
 fn doc(doc: &Option<String>, indent: &str) -> String {
     let Some(doc) = doc else { return String::new() };

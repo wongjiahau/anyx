@@ -48,6 +48,29 @@ Every call runs, in order, and the response has one result per call.
 
 `SCHEMA` is a call every server answers, with this guide.
 
+## Effects
+
+Words before `METHOD` say what a call of it may do, and decide when it is
+safe to send without asking:
+
+- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` is
+  read only.
+- `IDEMPOTENT METHOD`: calling it again with the same arguments changes
+  nothing more, so it is safe to retry when a response was lost. A retry may
+  still answer differently, such as with an error saying it is already done,
+  because the first call went through.
+- `METHOD` alone: it may change anything, and calling it twice may do it
+  twice. Don't retry it blindly: check first whether the call went through,
+  and ask the person you work for when unsure.
+
+`UNDONE BY` after a method's results is the call that undoes it, with the
+method's own arguments in its slots: `UNDONE BY move (new path: TEXT) to
+(path: TEXT)` means that after `move \"a\" to \"b\"`, the call `move \"b\" to
+\"a\"` takes it back. The state afterwards is equivalent, not always exactly
+the same. A method without `UNDONE BY` can't be undone by a call: its
+effect may be permanent, or it may have shown something to people outside
+the account, such as by sending or sharing it.
+
 ## Values
 
 - TEXT is a string: `\"some text\"`. Escape `\\\"` and `\\\\`, and write a line

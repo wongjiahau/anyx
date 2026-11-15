@@ -175,15 +175,21 @@ pub trait Server {
     type Error;
 
     /// `remind _`, returning `schedule`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn remind(&self, reminder: Reminder) -> Result<Schedule, Self::Error>;
 
     /// `count _`, returning `times`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn count(
         &self,
         reminders: ::std::collections::BTreeMap<String, Reminder>,
     ) -> Result<::std::collections::BTreeMap<String, i64>, Self::Error>;
 
     /// `snooze _ for _`, returning `reminders`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn snooze_for(
         &self,
         reminder: Reminder,
@@ -259,6 +265,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `remind _`, returning `schedule`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn remind(
         &self,
         reminder: Reminder,
@@ -267,6 +275,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `count _`, returning `times`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn count(
         &self,
         reminders: ::std::collections::BTreeMap<String, Reminder>,
@@ -279,6 +289,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `snooze _ for _`, returning `reminders`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn snooze_for(
         &self,
         reminder: Reminder,
@@ -298,3 +310,24 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![]).await
     }
 }
+
+/// What a call of `remind _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const REMIND_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `count _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const COUNT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `snooze _ for _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const SNOOZE_FOR_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};

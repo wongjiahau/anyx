@@ -194,9 +194,12 @@ pub struct Errors {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Method {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub read_only: Option<Span>,
+    pub idempotent: Option<Span>,
     pub shape: Shape,
     pub returns: MethodReturns,
     pub errors: Option<ErrorList>,
+    pub undone_by: Option<Undo>,
     pub examples: Option<Examples>,
     pub span: Span,
 }
@@ -206,6 +209,8 @@ pub enum MethodReturns {
     Value(Returns),
     Nothing(Span),
 }
+
+pub type Undo = Shape;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Examples {
@@ -622,9 +627,12 @@ impl support::Errors for Errors {
 impl support::Errors for Method {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.read_only, found);
+        support::Errors::errors(&self.idempotent, found);
         support::Errors::errors(&self.shape, found);
         support::Errors::errors(&self.returns, found);
         support::Errors::errors(&self.errors, found);
+        support::Errors::errors(&self.undone_by, found);
         support::Errors::errors(&self.examples, found);
     }
 }
@@ -1251,18 +1259,90 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
     let mut parts = support::call_of(
         node,
         &[
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ ERRORS _ UNDONE BY _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ ERRORS _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ ERRORS _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ UNDONE BY _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING UNDONE BY _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING EXAMPLES _`",
+            "the call `_? READ ONLY IDEMPOTENT METHOD _ RETURNS NOTHING`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ ERRORS _ UNDONE BY _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ ERRORS _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ ERRORS _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ UNDONE BY _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING ERRORS _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING UNDONE BY _ EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING UNDONE BY _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING EXAMPLES _`",
+            "the call `_? READ ONLY METHOD _ RETURNS NOTHING`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ ERRORS _ UNDONE BY _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ ERRORS _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ ERRORS _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ UNDONE BY _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING ERRORS _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING UNDONE BY _ EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING UNDONE BY _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING EXAMPLES _`",
+            "the call `_? IDEMPOTENT METHOD _ RETURNS NOTHING`",
+            "the call `_? METHOD _ RETURNS _ ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS _ ERRORS _ UNDONE BY _`",
             "the call `_? METHOD _ RETURNS _ ERRORS _ EXAMPLES _`",
             "the call `_? METHOD _ RETURNS _ ERRORS _`",
+            "the call `_? METHOD _ RETURNS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS _ UNDONE BY _`",
             "the call `_? METHOD _ RETURNS _ EXAMPLES _`",
             "the call `_? METHOD _ RETURNS _`",
+            "the call `_? METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS NOTHING ERRORS _ UNDONE BY _`",
             "the call `_? METHOD _ RETURNS NOTHING ERRORS _ EXAMPLES _`",
             "the call `_? METHOD _ RETURNS NOTHING ERRORS _`",
+            "the call `_? METHOD _ RETURNS NOTHING UNDONE BY _ EXAMPLES _`",
+            "the call `_? METHOD _ RETURNS NOTHING UNDONE BY _`",
             "the call `_? METHOD _ RETURNS NOTHING EXAMPLES _`",
             "the call `_? METHOD _ RETURNS NOTHING`",
         ],
     )?;
     let decoded = Method {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
+        read_only: if parts
+            .choose(&["READ"], false, true, &["the word `READ ONLY`"])?
+            .is_some()
+        {
+            Some(parts.word_span("READ ONLY")?)
+        } else {
+            None
+        },
+        idempotent: if parts
+            .choose(&["IDEMPOTENT"], false, true, &["the word `IDEMPOTENT`"])?
+            .is_some()
+        {
+            Some(parts.word_span("IDEMPOTENT")?)
+        } else {
+            None
+        },
         shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
         returns: {
             parts.word("RETURNS")?;
@@ -1288,6 +1368,19 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
         } else {
             None
         },
+        undone_by: if parts
+            .choose(&["UNDONE"], false, true, &["the word `UNDONE`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("UNDONE")?
+                    .word("BY")?
+                    .one(decode_undo, "an undo")?,
+            )
+        } else {
+            None
+        },
         examples: if parts
             .choose(&["EXAMPLES"], false, true, &["the word `EXAMPLES`"])?
             .is_some()
@@ -1300,6 +1393,10 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
     };
     parts.finish()?;
     Ok(decoded)
+}
+
+pub fn decode_undo(node: &Node) -> Result<Undo, DecodeError> {
+    decode_shape(node)
 }
 
 pub fn decode_examples(node: &Node) -> Result<Examples, DecodeError> {
@@ -1534,12 +1631,399 @@ pub const DOCUMENTATION: &[(&str, &str)] = &[];
 /// How [`format`] lays out calls, from the grammar's `FORMAT`s.
 pub const LAYOUT: &[support::LayoutRule] = &[
     support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "ERRORS",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "IDEMPOTENT", "METHOD", "RETURNS", "ERRORS"],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "UNDONE",
+            "BY",
+        ],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "IDEMPOTENT", "METHOD", "RETURNS"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+        ],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "UNDONE",
+            "BY",
+        ],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ",
+            "ONLY",
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "IDEMPOTENT", "METHOD", "RETURNS", "NOTHING"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "ERRORS", "UNDONE", "BY", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "ERRORS", "UNDONE", "BY",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "ERRORS", "EXAMPLES"],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "ERRORS"],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "UNDONE", "BY", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "ERRORS", "UNDONE", "BY", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "ERRORS", "UNDONE", "BY",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "ERRORS", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "ERRORS"],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "UNDONE", "BY", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "UNDONE", "BY",
+        ],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "NOTHING", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["READ", "ONLY", "METHOD", "RETURNS", "NOTHING"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "ERRORS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "ERRORS", "EXAMPLES"],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "ERRORS"],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "UNDONE",
+            "BY",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "ERRORS",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "NOTHING", "ERRORS"],
+        break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &[
+            "IDEMPOTENT",
+            "METHOD",
+            "RETURNS",
+            "NOTHING",
+            "UNDONE",
+            "BY",
+            "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "NOTHING", "UNDONE", "BY"],
+        break_before: &["RETURNS", "UNDONE"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "NOTHING", "EXAMPLES"],
+        break_before: &["RETURNS", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["IDEMPOTENT", "METHOD", "RETURNS", "NOTHING"],
+        break_before: &["RETURNS"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "ERRORS", "UNDONE", "BY", "EXAMPLES"],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "ERRORS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
         words: &["METHOD", "RETURNS", "ERRORS", "EXAMPLES"],
         break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS", "ERRORS"],
         break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "UNDONE", "BY", "EXAMPLES"],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "UNDONE"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS", "EXAMPLES"],
@@ -1550,12 +2034,30 @@ pub const LAYOUT: &[support::LayoutRule] = &[
         break_before: &["RETURNS"],
     },
     support::LayoutRule {
+        words: &[
+            "METHOD", "RETURNS", "NOTHING", "ERRORS", "UNDONE", "BY", "EXAMPLES",
+        ],
+        break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "NOTHING", "ERRORS", "UNDONE", "BY"],
+        break_before: &["RETURNS", "ERRORS", "UNDONE"],
+    },
+    support::LayoutRule {
         words: &["METHOD", "RETURNS", "NOTHING", "ERRORS", "EXAMPLES"],
         break_before: &["RETURNS", "ERRORS", "EXAMPLES"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS", "NOTHING", "ERRORS"],
         break_before: &["RETURNS", "ERRORS"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "NOTHING", "UNDONE", "BY", "EXAMPLES"],
+        break_before: &["RETURNS", "UNDONE", "EXAMPLES"],
+    },
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS", "NOTHING", "UNDONE", "BY"],
+        break_before: &["RETURNS", "UNDONE"],
     },
     support::LayoutRule {
         words: &["METHOD", "RETURNS", "NOTHING", "EXAMPLES"],

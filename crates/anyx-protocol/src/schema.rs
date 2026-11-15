@@ -144,6 +144,56 @@ pub struct Method {
     pub errors: Vec<usize>,
     /// Its `EXAMPLES`, in the order written, each checked against it.
     pub examples: Vec<Example>,
+    /// What a call may do to the world: `READ ONLY`, `IDEMPOTENT`, or
+    /// neither.
+    pub effect: Effect,
+    /// The call that undoes it, from `UNDONE BY`.
+    pub undone_by: Option<Undo>,
+}
+
+/// What a call of a method may do, as its markers claim. Each marker is a
+/// claim of safety, so a method without one is the worst case.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Effect {
+    /// No marker: a call may change anything, and calling it again may do
+    /// it again, so it is never retried on its own.
+    #[default]
+    Unmarked,
+    /// `IDEMPOTENT`: calling it again with the same arguments leaves the
+    /// same state as calling it once, even when the second response
+    /// differs. Safe to retry after a lost response.
+    Idempotent,
+    /// `READ ONLY`: a call asks for no change, so it is also idempotent.
+    /// Safe to call freely.
+    ReadOnly,
+}
+
+impl Effect {
+    pub fn read_only(self) -> bool {
+        self == Effect::ReadOnly
+    }
+
+    /// Whether calling it again is safe: `IDEMPOTENT`, or `READ ONLY`, which
+    /// implies it.
+    pub fn idempotent(self) -> bool {
+        self != Effect::Unmarked
+    }
+}
+
+/// `UNDONE BY move (new path: TEXT) to (path: TEXT)`: the call of another
+/// method of the same protocol that compensates a call of this one, with
+/// this method's parameters as its arguments. It also claims that the call
+/// disclosed nothing outside the account that undoing would not take back.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Undo {
+    /// The undoing method, an index into [`Schema::methods`].
+    pub method: usize,
+    /// For each parameter of the undoing method, the index of the parameter
+    /// of this method that fills it.
+    pub arguments: Vec<usize>,
+    /// The call as written after `UNDONE BY`, such as
+    /// `move (new path: TEXT) to (path: TEXT)`.
+    pub text: String,
 }
 
 /// An example of a method: a call of it and its outcome side by side, as
@@ -310,6 +360,8 @@ pub fn introspection() -> &'static Method {
         }),
         errors: Vec::new(),
         examples: Vec::new(),
+        effect: Effect::ReadOnly,
+        undone_by: None,
     });
     &METHOD
 }
@@ -401,6 +453,30 @@ impl Schema {
         });
         diagnostics.dedup();
         Err(diagnostics)
+    }
+
+    /// `shape` with each slot written as its parameter and type:
+    /// `move (path: TEXT) to (new path: TEXT)`.
+    pub fn typed_shape(&self, shape: &Shape) -> String {
+        let mut parameters = shape.parameters.iter();
+        shape
+            .text
+            .split(' ')
+            .map(|word| match word {
+                "_" => parameters.next().map_or_else(
+                    || "_".to_string(),
+                    |parameter| {
+                        format!(
+                            "({}: {})",
+                            parameter.name,
+                            self.type_name(&parameter.r#type)
+                        )
+                    },
+                ),
+                word => word.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     pub fn type_name(&self, r#type: &Type) -> String {

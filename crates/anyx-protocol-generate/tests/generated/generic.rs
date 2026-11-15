@@ -298,24 +298,36 @@ pub trait Server {
     type Error;
 
     /// `pay _`, returning `attempt`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn pay(&self, amount: i64) -> Result<Attempt<Payment, Decline>, Self::Error>;
 
     /// `pay all _`, returning `attempts`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn pay_all(
         &self,
         amounts: Vec<i64>,
     ) -> Result<Page<Attempt<Payment, Decline>>, Self::Error>;
 
     /// `payments`, returning `payments`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn payments(&self) -> Result<Payments, Self::Error>;
 
     /// `count _`, returning `count`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn count(&self, payments: Page<Payment>) -> Result<i64, Self::Error>;
 
     /// `categories`, returning `categories`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn categories(&self) -> Result<Tree<String>, Self::Error>;
 
     /// `latest`, returning `latest`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn latest(&self) -> Result<Dated<String>, Self::Error>;
 }
 
@@ -389,6 +401,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `pay _`, returning `attempt`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn pay(
         &self,
         amount: i64,
@@ -397,6 +411,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `pay all _`, returning `attempts`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn pay_all(
         &self,
         amounts: Vec<i64>,
@@ -406,6 +422,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `payments`, returning `payments`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn payments(
         &self,
     ) -> Result<Payments, CallError<::std::convert::Infallible, T::Error>> {
@@ -413,6 +431,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `count _`, returning `count`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn count(
         &self,
         payments: Page<Payment>,
@@ -421,6 +441,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `categories`, returning `categories`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn categories(
         &self,
     ) -> Result<Tree<String>, CallError<::std::convert::Infallible, T::Error>> {
@@ -428,6 +450,8 @@ impl<T: Transport> Client<T> {
     }
 
     /// `latest`, returning `latest`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn latest(
         &self,
     ) -> Result<Dated<String>, CallError<::std::convert::Infallible, T::Error>> {
@@ -439,3 +463,45 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
     }
 }
+
+/// What a call of `pay _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const PAY_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `pay all _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const PAY_ALL_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `payments` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const PAYMENTS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `count _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const COUNT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `categories` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const CATEGORIES_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `latest` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const LATEST_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};

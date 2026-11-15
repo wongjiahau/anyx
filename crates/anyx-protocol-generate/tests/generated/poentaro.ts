@@ -177,17 +177,24 @@ export class Client {
     }
   }
 
-  /** Every file this account owns. */
+  /**
+   * Every file this account owns.
+   *
+   * Read only: it changes nothing, so it is safe to call freely.
+   */
   listFiles(): Promise<Outcome<FileSummary[], never>> {
     return this.call("list files", []);
   }
 
+  /** Read only: it changes nothing, so it is safe to call freely. */
   read(path: string): Promise<Outcome<File, ReadError>> {
     return this.call("read _", [path]);
   }
 
   /**
    * Saves the score, if the file is still at `revision`.
+   *
+   * It may change anything, and calling it again may do it again, so don't retry it blindly.
    *
    * Examples:
    *
@@ -202,12 +209,20 @@ export class Client {
     return this.call("write _ at revision _ content _", [path, revision, content]);
   }
 
-  /** Makes a new file, and its folders if they don't exist. */
+  /**
+   * Makes a new file, and its folders if they don't exist.
+   *
+   * It may change anything, and calling it again may do it again, so don't retry it blindly.
+   */
   createContent(path: string, content: string): Promise<Outcome<number, CreateContentError>> {
     return this.call("create _ content _", [path, content]);
   }
 
-  /** The score as a Standard MIDI File. */
+  /**
+   * The score as a Standard MIDI File.
+   *
+   * Read only: it changes nothing, so it is safe to call freely.
+   */
   exportMidi(path: string): Promise<Outcome<string, ExportMidiError>> {
     return this.call("export midi _", [path]);
   }
@@ -217,3 +232,29 @@ export class Client {
     return this.call("SCHEMA", []);
   }
 }
+
+/** What a call of a method may do, as the schema's markers claim. A method
+ * without markers is the worst case: all `false` and `null`. */
+export interface Effects {
+  /** `READ ONLY`: the call changes nothing, so it may be sent freely. */
+  readonly readOnly: boolean;
+  /** `IDEMPOTENT`, or `READ ONLY`, which implies it: calling it again with
+   * the same arguments changes nothing more, so it may be retried after a
+   * lost response. The retry may still answer differently, such as with an
+   * error saying it is already done. */
+  readonly idempotent: boolean;
+  /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
+   * method's scope, with the method's own arguments in its slots. */
+  readonly undoneBy: string | null;
+}
+
+/** Each method's `Effects`, by the full name the client calls it by. Only a
+ * method whose `idempotent` is true may be retried on its own. */
+export const EFFECTS: { readonly [method: string]: Effects } = {
+  "list files": { readOnly: true, idempotent: true, undoneBy: null },
+  "read _": { readOnly: true, idempotent: true, undoneBy: null },
+  "write _ at revision _ content _": { readOnly: false, idempotent: false, undoneBy: null },
+  "create _ content _": { readOnly: false, idempotent: false, undoneBy: null },
+  "export midi _": { readOnly: true, idempotent: true, undoneBy: null },
+  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+};
