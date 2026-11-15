@@ -19,6 +19,7 @@ touches:
 - Every type and error-group name is declared once in the whole protocol, private ones included. Method shapes are unique except for valid overloads. There are no call paths (`files/export/pdf` becomes `pdf`), and annotations use plain names (`AS File Id`).
 - Paths are relative to the importing file, and `..` is allowed. A file without a `PROTOCOL` header is a library, and its methods, if any, join every protocol that uses it.
 - Tools take an entry file (the one with the header) as an argument and follow `USE`. Folder input and `ROOT_FILE` go away.
+- Generated code copies a shared file's types into each protocol's output (`notes::Session` and `billing::Session` are separate types). Generating a shared file once is a possible later option.
 - In the anyx shell, each program is the namespace (`notes/pdf`). That is the only qualification, and the program name the user picks is the only alias.
 
 ## Tried and ruled out
