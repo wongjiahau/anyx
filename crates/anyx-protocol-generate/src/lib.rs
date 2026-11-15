@@ -15,7 +15,7 @@ mod wasm;
 use std::collections::BTreeMap;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Effect, Method, TypeKind, scoped};
+use anyx_protocol::schema::{Effect, Method, Type, TypeKind, scoped};
 
 pub use names::{camel_case, pascal_case, snake_case};
 pub use rust::rust;
@@ -82,10 +82,61 @@ pub fn effects_doc(method: &Method) -> String {
     }
 }
 
+/// The words that name `method` in generated code: its shape's, or for an
+/// overload, its shape's then `with` and its parameters' types, joined by
+/// `and`, so that each overload has a name of its own:
+/// `tag (names: LIST: TEXT)` is `tag with list of text`, and
+/// `open (id: file id)` is `open with file id`. A method without overloads
+/// keeps its shape's words.
+pub fn method_words(schema: &Schema, method: &Method) -> String {
+    if !schema.is_overloaded(method) {
+        return method.shape.text.clone();
+    }
+    let types: Vec<String> = method
+        .shape
+        .parameters
+        .iter()
+        .map(|parameter| type_words(schema, &parameter.r#type))
+        .collect();
+    format!("{} with {}", method.shape.text, types.join(" and "))
+}
+
+/// A type in lowercase words, for a name: `LIST: TEXT` is `list of text`,
+/// `common/file id` is `common file id`, and `page of (INTEGER)` is
+/// `page of integer`.
+fn type_words(schema: &Schema, r#type: &Type) -> String {
+    let named = |index: usize, arguments: &[Type]| {
+        let definition = &schema.types[index];
+        let mut arguments = arguments.iter();
+        definition
+            .scope
+            .iter()
+            .cloned()
+            .chain(definition.name.split(' ').map(|word| {
+                match word {
+                    "_" => arguments
+                        .next()
+                        .map_or_else(String::new, |argument| type_words(schema, argument)),
+                    word => word.to_string(),
+                }
+            }))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    match r#type {
+        Type::List(item) => format!("list of {}", type_words(schema, item)),
+        Type::Map(value) => format!("map of {}", type_words(schema, value)),
+        Type::Named(index) => named(*index, &[]),
+        Type::Generic(index, arguments) => named(*index, arguments),
+        Type::Parameter(name) => name.clone(),
+        built_in => schema.type_name(built_in).to_lowercase(),
+    }
+}
+
 /// The enum of a method's errors, in the module of its scope:
 /// `write _ at revision _ content _` has `WriteAtRevisionContentError`.
-pub fn error_enum_name(method: &Method) -> String {
-    format!("{}Error", pascal_case(&method.shape.text))
+pub fn error_enum_name(schema: &Schema, method: &Method) -> String {
+    format!("{}Error", pascal_case(&method_words(schema, method)))
 }
 
 /// A name in TypeScript, where every scope shares one namespace, so the
@@ -100,10 +151,10 @@ pub fn scoped_pascal_case(scope: &[String], name: &str) -> String {
 }
 
 /// The TypeScript union of a method's errors: `FilesReadError`.
-pub fn typescript_error_name(method: &Method) -> String {
+pub fn typescript_error_name(schema: &Schema, method: &Method) -> String {
     format!(
         "{}Error",
-        scoped_pascal_case(&method.scope, &method.shape.text)
+        scoped_pascal_case(&method.scope, &method_words(schema, method))
     )
 }
 
@@ -185,7 +236,7 @@ pub fn rust_type_taken(schema: &Schema, scope: &[String], name: &str) -> bool {
             .any(|definition| definition.scope == scope && pascal_case(&definition.name) == name)
         || methods_in(schema, scope)
             .into_iter()
-            .any(|(_, method)| !method.errors.is_empty() && error_enum_name(method) == name)
+            .any(|(_, method)| !method.errors.is_empty() && error_enum_name(schema, method) == name)
 }
 
 /// Whether `name` is a type a type parameter in the TypeScript code would
@@ -199,10 +250,9 @@ pub fn typescript_type_taken(schema: &Schema, name: &str) -> bool {
             .types
             .iter()
             .any(|definition| scoped_pascal_case(&definition.scope, &definition.name) == name)
-        || schema
-            .methods
-            .iter()
-            .any(|method| !method.errors.is_empty() && typescript_error_name(method) == name)
+        || schema.methods.iter().any(|method| {
+            !method.errors.is_empty() && typescript_error_name(schema, method) == name
+        })
 }
 
 /// Names the Rust and TypeScript clients declare next to the methods.
@@ -245,15 +295,15 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
             .filter(|(_, method)| !method.errors.is_empty())
             .map(|(_, method)| {
                 (
-                    error_enum_name(method),
-                    format!("the errors of `{}`", method.full_name()),
+                    error_enum_name(schema, method),
+                    format!("the errors of `{}`", schema.call_name(method)),
                 )
             });
         distinct("type", reserved_types().chain(types).chain(error_enums))?;
         let methods = methods_in(schema, &scope).into_iter().map(|(_, method)| {
             (
-                snake_case(&method.shape.text),
-                format!("`{}`", method.full_name()),
+                snake_case(&method_words(schema, method)),
+                format!("`{}`", schema.call_name(method)),
             )
         });
         let scopes = children(schema, &scope).into_iter().map(|child| {
@@ -306,8 +356,8 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                 .filter(|method| !method.errors.is_empty())
                 .map(|method| {
                     (
-                        typescript_error_name(method),
-                        format!("the errors of `{}`", method.full_name()),
+                        typescript_error_name(schema, method),
+                        format!("the errors of `{}`", schema.call_name(method)),
                     )
                 }),
         );

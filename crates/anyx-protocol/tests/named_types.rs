@@ -52,7 +52,10 @@ fn a_named_type_is_written_like_the_type_underneath() {
         ],
     };
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
-    assert_eq!(request, "share \"a\" tagged [\"hymn\"]\n");
+    assert_eq!(
+        request,
+        "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n"
+    );
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
     let response = "RETURNS { file id \"a\", tags [\"hymn\"] }";
     let anyx_protocol::Response::Outcomes(outcomes) =
@@ -79,7 +82,7 @@ fn a_named_type_is_the_type_underneath_in_json() {
     let schema = schema(SHARING);
     assert_eq!(
         encode_request_json(&schema, "share _ tagged _", r#"["a", ["hymn"]]"#).unwrap(),
-        "share \"a\" tagged [\"hymn\"]\n"
+        "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n"
     );
     assert_eq!(
         decode_response_json(&schema, "share _ tagged _", "ERROR missing \"a\"").unwrap(),
@@ -110,7 +113,10 @@ fn the_guide_names_each_named_type_and_the_type_underneath() {
         ),
         "{guide}"
     );
-    assert!(guide.contains("    share \"a\" tagged […]\n"), "{guide}");
+    assert!(
+        guide.contains("    share (\"a\" AS: file id) tagged ([…] AS: tags)\n"),
+        "{guide}"
+    );
 }
 
 #[test]

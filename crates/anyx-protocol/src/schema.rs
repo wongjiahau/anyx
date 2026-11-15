@@ -511,6 +511,17 @@ impl Schema {
     }
 
     pub fn type_name(&self, r#type: &Type) -> String {
+        self.type_name_in(r#type, &[])
+    }
+
+    /// `type` as it is written in `scope`: a type of that scope by its
+    /// name, `file id`, and one of another by its full path,
+    /// `common/file id`.
+    pub fn type_name_in(&self, r#type: &Type, scope: &[String]) -> String {
+        let path = |definition: &TypeDefinition, name: &str| match definition.scope == scope {
+            true => name.to_string(),
+            false => scoped(&definition.scope, name),
+        };
         match r#type {
             Type::Text => "TEXT".to_string(),
             Type::Bytes => "BYTES".to_string(),
@@ -519,19 +530,19 @@ impl Schema {
             Type::Boolean => "BOOLEAN".to_string(),
             Type::Instant => "INSTANT".to_string(),
             Type::Duration => "DURATION".to_string(),
-            Type::List(item) => format!("LIST: {}", self.type_name(item)),
-            Type::Map(value) => format!("MAP: {}", self.type_name(value)),
+            Type::List(item) => format!("LIST: {}", self.type_name_in(item, scope)),
+            Type::Map(value) => format!("MAP: {}", self.type_name_in(value, scope)),
             Type::Named(index) => {
                 let definition = &self.types[*index];
-                scoped(&definition.scope, &definition.name)
+                path(definition, &definition.name)
             }
             Type::Generic(index, arguments) => {
                 let definition = &self.types[*index];
                 let arguments: Vec<String> = arguments
                     .iter()
-                    .map(|argument| self.type_name(argument))
+                    .map(|argument| self.type_name_in(argument, scope))
                     .collect();
-                scoped(&definition.scope, &fill_slots(&definition.name, &arguments))
+                path(definition, &fill_slots(&definition.name, &arguments))
             }
             Type::Parameter(name) => name.clone(),
         }
@@ -592,6 +603,38 @@ impl Schema {
             .iter()
             .chain([introspection()])
             .find(|method| method.full_name() == full_name)
+    }
+
+    /// Whether another method of `method`'s scope has its shape: an
+    /// overload, which a call chooses by its arguments' types.
+    pub fn is_overloaded(&self, method: &Method) -> bool {
+        self.methods
+            .iter()
+            .filter(|other| other.scope == method.scope && other.shape.text == method.shape.text)
+            .nth(1)
+            .is_some()
+    }
+
+    /// `method`'s full name with each slot holding its parameter's type, as
+    /// written in its scope: `tag (LIST: TEXT)`, `files/open (file id)`.
+    pub fn typed_name(&self, method: &Method) -> String {
+        let types: Vec<String> = method
+            .shape
+            .parameters
+            .iter()
+            .map(|parameter| self.type_name_in(&parameter.r#type, &method.scope))
+            .collect();
+        scoped(&method.scope, &fill_slots(&method.shape.text, &types))
+    }
+
+    /// What JSON and the generated TypeScript call `method` by: its full
+    /// name, `tag _`, or its typed name, `tag (LIST: TEXT)`, when it is
+    /// overloaded.
+    pub fn call_name(&self, method: &Method) -> String {
+        match self.is_overloaded(method) {
+            true => self.typed_name(method),
+            false => method.full_name(),
+        }
     }
 
     /// The index of the built-in `SCHEMA` call, one past the schema's own

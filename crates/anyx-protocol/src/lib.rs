@@ -2,6 +2,7 @@
 //! anyx, and requests and responses are anyx documents checked against it.
 //! See `PROTOCOL.md` for the schema language and the wire format.
 
+mod annotation;
 mod bytes;
 mod check;
 pub mod client;

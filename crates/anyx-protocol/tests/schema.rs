@@ -188,6 +188,14 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT), METHOD f RETURNS (z: TEXT),",
         ),
         (
+            "overloads with the same parameter types",
+            "PROTOCOL a VERSION 1, TYPE id: TEXT, METHOD tag (names: LIST: TEXT) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST: TEXT) RETURNS NOTHING,",
+        ),
+        (
+            "overloads that differ only in what they return",
+            "PROTOCOL a VERSION 1, METHOD scale (by: FLOAT) RETURNS (scaled: FLOAT), METHOD scale (by: FLOAT) RETURNS (scaled: INTEGER),",
+        ),
+        (
             "a type holding itself",
             "PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },",
         ),

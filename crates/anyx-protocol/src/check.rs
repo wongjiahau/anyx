@@ -428,16 +428,33 @@ impl<'a> Checker<'a> {
                             examples,
                         });
                     }
-                    if methods.iter().any(|other| {
-                        other.scope == method.scope && other.shape.text == method.shape.text
-                    }) {
-                        self.error(
-                                parts.shape.name.span,
-                                format!(
-                                    "found a second method `{}`; expected each method shape once in a scope; rename or remove one of them",
-                                    method.shape.text
-                                ),
-                            );
+                    let overlapping = methods.iter().find(|other: &&Method| {
+                        other.scope == method.scope
+                            && other.shape.text == method.shape.text
+                            && other
+                                .shape
+                                .parameters
+                                .iter()
+                                .zip(&method.shape.parameters)
+                                .all(|(a, b)| crate::annotation::overlaps(&a.r#type, &b.r#type))
+                    });
+                    if let Some(other) = overlapping {
+                        let only_returns = match other
+                            .returns
+                            .as_ref()
+                            .map(|returns| &returns.r#type)
+                            != method.returns.as_ref().map(|returns| &returns.r#type)
+                        {
+                            true => {
+                                "; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types"
+                            }
+                            false => "",
+                        };
+                        let message = format!(
+                            "found a second method `{}` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type{only_returns}",
+                            method.shape.text
+                        );
+                        self.error(parts.shape.name.span, message);
                     }
                     methods.push(method);
                 }
@@ -563,10 +580,11 @@ impl<'a> Checker<'a> {
                     }
                 };
                 let (doc, call) = Self::without_doc(call);
-                let read = codec::decode_call_of(schema, method, &call).and_then(|arguments| {
-                    response::read_outcome(schema, method, written, span)
-                        .map(|outcome| (arguments, outcome))
-                });
+                let read = codec::decode_call_of(schema, &self.sources[self.file], method, &call)
+                    .and_then(|arguments| {
+                        response::read_outcome(schema, method, written, span)
+                            .map(|outcome| (arguments, outcome))
+                    });
                 match read {
                     Ok((arguments, outcome)) => Some(Example {
                         doc,

@@ -170,6 +170,16 @@ METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT
   method goes in that method's brackets.
 - Each error is defined once in a scope, in the brackets of the one method
   or group that has it. To share an error, put it in a group.
+- **Overloads:** methods of a scope may share a shape and differ in their
+  parameters' types, `METHOD tag (paths: LIST: TEXT)` and `METHOD tag (ids:
+  LIST: file id)`. A call runs the one whose parameters have its
+  arguments' types; see [Annotations and
+  overloads](#annotations-and-overloads). Two methods of a shape whose
+  parameters have the same types are an error, also when they differ only
+  in what they return, since a call states only its arguments' types. (A
+  type parameter would overlap every type, should methods ever be
+  generic.) `UNDONE BY` writes the types in its call, so it names one
+  overload.
 - A parameter can't be named `kind`, which JSON uses for a variant's name.
 
 ### Writing shapes
@@ -405,6 +415,69 @@ holds, as in `90 seconds`. A duration is written with every count below the
 next unit, and as `0 seconds` when it is empty. Time finer than a millisecond
 is dropped, rounding down, for both types.
 
+## Annotations and overloads
+
+`value AS: type` states the type of an argument whose value doesn't show
+it: `tag ([] AS: LIST: TEXT)`, `open ("abc" AS: file id)`. It is the call
+`_ AS _`, so in a slot it goes in parentheses. `AS: x` is `AS (x)` by the
+`:` sugar, the same call as `AS x` wherever nothing would join; the `:`
+matters only before an all-caps type, where `AS LIST` would join into one
+keyword. The type is written as a parameter's type is in the method's
+scope: a built-in type, a type of the scope, or the full path of a
+`PUBLIC` one in another, `common/file id`. It must be the parameter's type
+exactly. An annotation is a checked claim, not a conversion: the value must
+fit the type as written, and `[1] AS: LIST: TEXT` is an error.
+
+A value has a type of its own when how it is written shows it, whatever the
+methods:
+
+| Written | Its own type |
+| --- | --- |
+| a number | `INTEGER` without a point or an exponent, else `FLOAT` |
+| a string | `TEXT` |
+| `true`, `false` | `BOOLEAN` (even where a choice has a variant `true`) |
+| whole numbers each with a unit | `DURATION` |
+| a list with items | `LIST` of its items' type, when they all have the same one |
+| braces of string keys | `MAP` of its values' type, the same way |
+| braces of fields | the record of the schema, not generic, that has each field written and is missing none it requires, when only one does |
+| a variant | the choice of the schema, not generic, with a variant of its shape, when only one has one |
+
+Anything else has no type of its own: `[]`, `{}`, a value of a generic
+type, and a record or variant that several types fit. A `BYTES`, an
+`INSTANT` and a value of a named `TYPE` are written like a string, or like
+the type underneath, so their own type is never theirs.
+
+**An argument of a call must have its parameter's type, of its own or by
+an annotation**, even when the method has no overloads:
+
+```anyx
+read ("abc" AS: file id),
+upload ("TVRoZA==" AS: BYTES),
+tag ([] AS: LIST: TEXT),
+```
+
+Without it, the request is `INVALID REQUEST` and none of its calls run:
+"in `id` of `read _`: `"abc"` has the type TEXT of its own, not `file id`;
+annotate it, as in `read ("abc" AS: file id)`". So adding an overload never
+breaks a call that worked: every call already states the types it depends
+on. Only a whole argument is annotated; a value inside one is read by the
+type around it, so `AS` inside a value is an error. The schema's
+`EXAMPLES` are calls, so they follow these rules too; a `DEFAULT` is read by
+its field's type.
+
+A call of a shape with overloads runs the one whose parameters have exactly
+its arguments' types. When none has, or an argument has no type of its own,
+the request is `INVALID REQUEST`, and the message lists the overloads by
+their typed shapes: "in `tag _`: `[]` has no type of its own, so no
+overload of `tag _` can be chosen by it; annotate it with the type of the
+one to call, as in `tag ([] AS: LIST: TEXT)`; the overloads are `tag
+(names: LIST: TEXT)`, `tag (ids: LIST: INTEGER)`". Since two overloads
+can't have the same parameter types, no call fits two.
+
+`encode_request`, and so the generated clients, annotate each argument
+whose value as written doesn't show its parameter's type, so their callers
+never write an annotation.
+
 ## Responses
 
 One result per call, in the order of the calls, separated by commas. A
@@ -459,11 +532,21 @@ that returns nothing), `{ "kind": "error",
 "error": … }`, `{ "kind": "notRun" }`, `{ "kind": "internalError" }` or
 `{ "kind": "invalidRequest", "line": …, "column": …, "message": … }`.
 
+JSON names a method by its full name, `files/read _`. JSON can't tell
+`3` from `3.0`, nor a `file id` from a `TEXT`, so an overload is named by
+its full name with its parameters' types in its slots, as written in its
+scope: `scale (FLOAT)`, `tag (LIST: file id)`. Any method may be named
+that way; an overloaded one must be, and its full name alone is an error
+listing the typed names. `decode_request_json` writes an overload's typed
+name, and the generated TypeScript calls and keys `EFFECTS` by it.
+
 ## The guide
 
 `anyx_protocol::guide(schema, how_to_send)` writes the markdown an agent
 reads before its first request, and what `SCHEMA` answers (with
 `how_to_send` empty): these rules, briefly, then the schema with
-its `#` lines, a section per scope's file. Its sample call is the first
+its `#` lines, a section per scope's file. It lists the overloads of each
+shape together, by their typed shapes, and annotates its made-up sample
+calls where a request must. Its sample call is the first
 example of the widest method with `EXAMPLES`, or, in a schema without
 any, one it makes up with a sample value in each slot.

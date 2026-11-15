@@ -43,7 +43,7 @@ A request is a list of calls separated by commas. Each call is written in the
 shape of one of the methods below, with a value in each `(name: TYPE)` slot:
 
     {example}
-{scoped_example}
+{scoped_example}{overloads}
 Every call runs, in order, and the response has one result per call.
 
 `SCHEMA` is a call every server answers, with this guide.
@@ -107,6 +107,16 @@ the account, such as by sending or sharing it.
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
 
+An argument whose type its value doesn't show is annotated with `AS:` and
+its parameter's type, in parentheses: `tag ([] AS: LIST: TEXT)`,
+`open (\"a\" AS: file id)`. A value shows its type when it is a number, a
+string (TEXT), `true` or `false`, a duration, a list or map whose items
+show one type, or a record or variant that only one type of the schema
+fits. `[]`, `{{}}`, and a value of a named TYPE, a generic type, BYTES or
+INSTANT never do. Without its annotation, the request is invalid. Only a
+whole argument is annotated; a value inside it is read by the type around
+it. An annotation states the type; it doesn't convert the value.
+
 ## Responses
 
 The response has one result per call, in the order of the calls, separated
@@ -151,12 +161,53 @@ words are names; all-caps words belong to the schema language. `ERRORS name
             _ => SCOPES,
         },
         source = sources(schema),
+        overloads = overloads(schema),
         named_types = named_types(schema),
         generic_types = generic_types(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
             true => EXAMPLES,
             false => "",
         },
+    )
+}
+
+/// The methods that share a shape with another, each shape's together,
+/// and how a call chooses one. Empty for a schema without any.
+fn overloads(schema: &Schema) -> String {
+    let mut shapes: Vec<Vec<&Method>> = Vec::new();
+    for method in schema
+        .methods
+        .iter()
+        .filter(|method| schema.is_overloaded(method))
+    {
+        match shapes
+            .iter_mut()
+            .find(|shape| shape[0].full_name() == method.full_name())
+        {
+            Some(shape) => shape.push(method),
+            None => shapes.push(vec![method]),
+        }
+    }
+    if shapes.is_empty() {
+        return String::new();
+    }
+    let lines: String = shapes
+        .iter()
+        .map(|shape| {
+            let typed: Vec<String> = shape
+                .iter()
+                .map(|method| {
+                    format!(
+                        "`{}`",
+                        scoped(&method.scope, &schema.typed_shape(&method.shape))
+                    )
+                })
+                .collect();
+            format!("- {}\n", typed.join(", "))
+        })
+        .collect();
+    format!(
+        "\nSome methods share a shape, and differ in their parameters' types. A call\nruns the one whose parameters have its arguments' types, so annotate an\nargument whose value doesn't show its type (see Values):\n\n{lines}"
     )
 }
 
@@ -238,12 +289,23 @@ fn sources(schema: &Schema) -> String {
         .files
         .iter()
         .map(|file| {
-            let methods: Vec<String> = schema
-                .methods
-                .iter()
-                .filter(|method| method.scope == file.scope)
-                .map(|method| format!("`{}`", method.full_name()))
-                .collect();
+            // Overloads together, each by its name with its parameters'
+            // types.
+            let mut methods: Vec<String> = Vec::new();
+            let in_scope = || {
+                schema
+                    .methods
+                    .iter()
+                    .filter(|method| method.scope == file.scope)
+            };
+            for method in in_scope() {
+                for overload in in_scope().filter(|other| other.shape.text == method.shape.text) {
+                    let name = format!("`{}`", schema.call_name(overload));
+                    if !methods.contains(&name) {
+                        methods.push(name);
+                    }
+                }
+            }
             let heading = match file.scope.is_empty() {
                 true => format!("### `{}`", file.path),
                 false => format!("### `{}` (`{}`)", file.scope.join("/"), file.path),
@@ -269,11 +331,16 @@ fn call_of(schema: &Schema, method: &Method) -> String {
 
 /// A call of `method` by its full name, with a sample value in each slot.
 fn sample_call(schema: &Schema, method: &Method) -> String {
-    let mut values = method
-        .shape
-        .parameters
-        .iter()
-        .map(|parameter| sample(schema, &parameter.r#type));
+    let mut values = method.shape.parameters.iter().map(|parameter| {
+        match always_annotated(schema, &parameter.r#type) {
+            true => format!(
+                "({} AS: {})",
+                sample(schema, &parameter.r#type),
+                schema.type_name_in(&parameter.r#type, &method.scope)
+            ),
+            false => sample(schema, &parameter.r#type),
+        }
+    });
     let call = method
         .shape
         .text
@@ -285,6 +352,18 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     scoped(&method.scope, &call)
+}
+
+/// Whether no value of `type` shows it, so an argument of it is always
+/// annotated: a named type, a generic one, BYTES, INSTANT, and a list or a
+/// map of one of them.
+fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
+    match r#type {
+        Type::Bytes | Type::Instant | Type::Generic(..) => true,
+        Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
+        Type::List(item) | Type::Map(item) => always_annotated(schema, item),
+        _ => false,
+    }
 }
 
 /// A value of `type` as an example fills a slot with it.

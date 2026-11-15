@@ -89,7 +89,7 @@ fn bytes_are_base64_in_json() {
     let schema =
         common::schema("PROTOCOL a VERSION 1, METHOD upload (file: BYTES) RETURNS (file: BYTES),");
     let request = encode_request_json(&schema, "upload _", r#"["TVRoZA=="]"#).unwrap();
-    assert_eq!(request, "upload \"TVRoZA==\"\n");
+    assert_eq!(request, "upload (\"TVRoZA==\" AS: BYTES)\n");
     assert_eq!(
         decode_response_json(&schema, "upload _", "RETURNS \"TVRoZA==\"").unwrap(),
         r#"{"kind":"value","value":"TVRoZA=="}"#
@@ -121,7 +121,7 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
     .unwrap();
     assert_eq!(
         request,
-        "wait (1 hour 30 minutes) from \"2026-11-14T06:00:08.000Z\"\n"
+        "wait (1 hour 30 minutes) from (\"2026-11-14T06:00:08.000Z\" AS: INSTANT)\n"
     );
     assert_eq!(
         decode_request_json(&schema, &request).unwrap(),

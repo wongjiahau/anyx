@@ -15,8 +15,8 @@ use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind, scoped};
 
 use crate::names::camel_case;
 use crate::{
-    Error, children, has_methods, methods_in, scoped_pascal_case, type_parameter_name,
-    typescript_error_name, typescript_type_taken,
+    Error, children, has_methods, method_words, methods_in, scoped_pascal_case,
+    type_parameter_name, typescript_error_name, typescript_type_taken,
 };
 
 pub fn typescript(schema: &Schema) -> Result<String, Error> {
@@ -46,9 +46,14 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
     }
     for method in &schema.methods {
         if !method.errors.is_empty() {
-            writeln!(out, "/** The errors of `{}`. */", method.full_name()).unwrap();
+            writeln!(out, "/** The errors of `{}`. */", schema.call_name(method)).unwrap();
             let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
-            union(&mut out, schema, &typescript_error_name(method), &errors);
+            union(
+                &mut out,
+                schema,
+                &typescript_error_name(schema, method),
+                &errors,
+            );
         }
     }
     let revivers = Revivers::new(schema);
@@ -77,7 +82,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 &mut out,
                 schema,
                 &revivers,
-                &typescript_error_name(method),
+                &typescript_error_name(schema, method),
                 &[],
                 &errors,
             );
@@ -98,10 +103,10 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             format!(
                 "{}  {}({}): {} {{\n    return this.call({:?}, [{}]{});\n  }}\n",
                 doc(&method_doc(method), "  "),
-                camel_case(&method.shape.text),
+                camel_case(&method_words(schema, method)),
                 signature.parameters,
                 signature.returned,
-                method.full_name(),
+                schema.call_name(method),
                 signature.arguments,
                 signature.revivers,
             )
@@ -149,7 +154,7 @@ fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature
     let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
     let error = revivers
         .union_holds(&errors)
-        .then(|| format!("revive{}", typescript_error_name(method)));
+        .then(|| format!("revive{}", typescript_error_name(schema, method)));
     let revive = match (value, error) {
         (None, None) => String::new(),
         (Some(value), None) => format!(", {value}"),
@@ -161,7 +166,7 @@ fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature
     let parameters = &method.shape.parameters;
     let errors = match method.errors.is_empty() {
         true => "never".to_string(),
-        false => typescript_error_name(method),
+        false => typescript_error_name(schema, method),
     };
     Signature {
         parameters: parameters
@@ -200,10 +205,10 @@ fn scope_object(schema: &Schema, revivers: &Revivers, scope: &[String], indent: 
         format!(
             "{}{inner}{}: ({}): {} =>\n{inner}  this.call({:?}, [{}]{}),\n",
             doc(&method_doc(method), &inner),
-            camel_case(&method.shape.text),
+            camel_case(&method_words(schema, method)),
             signature.parameters,
             signature.returned,
-            method.full_name(),
+            schema.call_name(method),
             signature.arguments,
             signature.revivers,
         )
@@ -401,8 +406,8 @@ fn method_doc(method: &Method) -> Option<String> {
     Some(parts.join("\n\n"))
 }
 
-/// `EFFECTS`, each method's markers by its full name, as the client calls
-/// it, for a tool to decide whether to retry a call or ask before sending
+/// `EFFECTS`, each method's markers by its full name, or an overload's by
+/// its name with its parameters' types, as the client calls it, for a tool to decide whether to retry a call or ask before sending
 /// it.
 fn effects(out: &mut String, schema: &Schema) {
     out.push_str(EFFECTS);
@@ -414,7 +419,7 @@ fn effects(out: &mut String, schema: &Schema) {
         writeln!(
             out,
             "  {:?}: {{ readOnly: {}, idempotent: {}, undoneBy: {undone_by} }},",
-            method.full_name(),
+            schema.call_name(method),
             method.effect.read_only(),
             method.effect.idempotent(),
         )

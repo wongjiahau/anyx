@@ -131,7 +131,7 @@ fn named_types_cross_the_wire_as_the_types_underneath() {
     assert_eq!(
         exchanged[0],
         (
-            "share \"a\" tagged [\"hymn\"]\n".to_string(),
+            "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n".to_string(),
             "RETURNS { share id \"share of a\", file id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );

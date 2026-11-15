@@ -8,7 +8,8 @@ use anyx_protocol::schema::{Field, Method, Parameter, Schema, Shape, Shaped, Typ
 
 use crate::names::{doc_comment, pascal_case, raw_string, snake_case};
 use crate::{
-    Error, children, error_enum_name, has_methods, methods_in, rust_type_taken, type_parameter_name,
+    Error, children, error_enum_name, has_methods, method_words, methods_in, rust_type_taken,
+    type_parameter_name,
 };
 
 const IMPORTS: &str = "use anyx_protocol::client::{CallError, Transport};\nuse anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};\n\n";
@@ -91,14 +92,14 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
     for (_, method) in &methods {
         if !method.errors.is_empty() {
             let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
-            let doc = format!("/// The errors of `{}`.\n", method.full_name());
+            let doc = format!("/// The errors of `{}`.\n", schema.call_name(method));
             let generics = Generics::new(schema, scope, &[]);
             choice(
                 out,
                 schema,
                 scope,
                 &doc,
-                &error_enum_name(method),
+                &error_enum_name(schema, method),
                 &generics,
                 &errors,
             );
@@ -115,7 +116,7 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
     if scope.is_empty() || has_methods(schema, scope) {
         client(out, schema, scope);
     }
-    effects(out, &methods);
+    effects(out, schema, &methods);
     for child in children(schema, scope) {
         writeln!(
             out,
@@ -436,11 +437,11 @@ fn returned(schema: &Schema, method: &Method) -> String {
     let value = returned_value(schema, &method.scope, method);
     match method.errors.is_empty() {
         true => value,
-        false => format!("Result<{value}, {}>", error_enum_name(method)),
+        false => format!("Result<{value}, {}>", error_enum_name(schema, method)),
     }
 }
 
-fn method_doc(method: &Method) -> String {
+fn method_doc(schema: &Schema, method: &Method) -> String {
     let mut doc = doc_comment(&method.doc, "    ///");
     if !doc.is_empty() {
         doc.push_str("    ///\n");
@@ -449,10 +450,14 @@ fn method_doc(method: &Method) -> String {
         Some(returns) => writeln!(
             doc,
             "    /// `{}`, returning `{}`.",
-            method.full_name(),
+            schema.call_name(method),
             returns.name
         ),
-        None => writeln!(doc, "    /// `{}`, returning nothing.", method.full_name()),
+        None => writeln!(
+            doc,
+            "    /// `{}`, returning nothing.",
+            schema.call_name(method)
+        ),
     }
     .unwrap();
     doc.push_str("    ///\n");
@@ -471,8 +476,8 @@ fn trait_methods(schema: &Schema, scope: &[String]) -> String {
         .map(|(_, method)| {
             format!(
                 "{}    async fn {}(&self{}) -> Result<{}, Self::Error>;\n\n",
-                method_doc(method),
-                snake_case(&method.shape.text),
+                method_doc(schema, method),
+                snake_case(&method_words(schema, method)),
                 parameters(schema, scope, &method.shape.parameters),
                 returned(schema, method)
             )
@@ -534,7 +539,7 @@ fn handle(out: &mut String, schema: &Schema) {
             format!(
                 "            {index} => anyx_protocol::server::{wrap}(<S as {}Server>::{}(implementation{arguments}).await),\n",
                 path_to(&[], &method.scope),
-                snake_case(&method.shape.text)
+                snake_case(&method_words(schema, method))
             )
         })
         .collect();
@@ -560,7 +565,7 @@ fn handle(out: &mut String, schema: &Schema) {
 
 /// A constant of each method's markers, `READ_EFFECTS` for `read _`, for a
 /// tool to decide whether to retry a call or ask before sending it.
-fn effects(out: &mut String, methods: &[(usize, &Method)]) {
+fn effects(out: &mut String, schema: &Schema, methods: &[(usize, &Method)]) {
     for (_, method) in methods {
         let undone_by = match &method.undone_by {
             Some(undo) => format!("Some({:?})", undo.text),
@@ -569,9 +574,9 @@ fn effects(out: &mut String, methods: &[(usize, &Method)]) {
         write!(
             out,
             "/// What a call of `{}` may do. {}\npub const {}_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {{\n    read_only: {},\n    idempotent: {},\n    undone_by: {undone_by},\n}};\n\n",
-            method.full_name(),
+            schema.call_name(method),
             crate::effects_doc(method),
-            snake_case(&method.shape.text).to_uppercase(),
+            snake_case(&method_words(schema, method)).to_uppercase(),
             method.effect.read_only(),
             method.effect.idempotent(),
         )
@@ -594,7 +599,7 @@ fn client(out: &mut String, schema: &Schema, scope: &[String]) {
         .map(|(index, method)| {
             let errors = match method.errors.is_empty() {
                 true => "::std::convert::Infallible".to_string(),
-                false => error_enum_name(method),
+                false => error_enum_name(schema, method),
             };
             let arguments = method
                 .shape
@@ -605,8 +610,8 @@ fn client(out: &mut String, schema: &Schema, scope: &[String]) {
                 .join(", ");
             format!(
                 "{}    pub async fn {}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        anyx_protocol::client::call({transport}, {to_root}schema(), {index}, vec![{arguments}]).await\n    }}\n\n",
-                method_doc(method),
-                snake_case(&method.shape.text),
+                method_doc(schema, method),
+                snake_case(&method_words(schema, method)),
                 parameters(schema, scope, &method.shape.parameters),
                 returned_value(schema, scope, method),
             )

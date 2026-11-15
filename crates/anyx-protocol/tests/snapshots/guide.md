@@ -72,6 +72,16 @@ the account, such as by sending or sharing it.
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
 
+An argument whose type its value doesn't show is annotated with `AS:` and
+its parameter's type, in parentheses: `tag ([] AS: LIST: TEXT)`,
+`open ("a" AS: file id)`. A value shows its type when it is a number, a
+string (TEXT), `true` or `false`, a duration, a list or map whose items
+show one type, or a record or variant that only one type of the schema
+fits. `[]`, `{}`, and a value of a named TYPE, a generic type, BYTES or
+INSTANT never do. Without its annotation, the request is invalid. Only a
+whole argument is annotated; a value inside it is read by the type around
+it. An annotation states the type; it doesn't convert the value.
+
 ## Responses
 
 The response has one result per call, in the order of the calls, separated

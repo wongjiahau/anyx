@@ -185,7 +185,7 @@ METHOD sum (numbers: page of (INTEGER)) RETURNS (sum: INTEGER),
         )],
     };
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
-    assert_eq!(request, "sum { items [1, 2] }\n");
+    assert_eq!(request, "sum ({ items [1, 2] } AS page of (INTEGER))\n");
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
     assert_eq!(
         decode_request(&schema, "sum { items [\"1\"] }")
@@ -221,7 +221,7 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
     let schema = super_schema();
     assert_eq!(
         encode_request_json(&schema, "sum _", r#"[{"items": [1, 2]}]"#).unwrap(),
-        "sum { items [1, 2] }\n"
+        "sum ({ items [1, 2] } AS page of (INTEGER))\n"
     );
     assert_eq!(
         encode_request_json(&schema, "sum _", r#"[{"items": ["1"]}]"#).unwrap_err(),
@@ -249,7 +249,7 @@ RECORD search {
     pages: OPTIONAL: LIST page of (INTEGER) DEFAULT [],
 },
 METHOD find (search: search) RETURNS (found: page of (TEXT))
-    EXAMPLES [find {} RETURNS { items [\"a\"], size 3 }],
+    EXAMPLES [find ({} AS: search) RETURNS { items [\"a\"], size 3 }],
 ",
     );
     let TypeKind::Record(fields) = &schema.types[1].kind else {

@@ -31,8 +31,9 @@ pub fn camel_case(name: &str) -> String {
 }
 
 /// Writes one call of the method `full_name`, such as `files/read _` or
-/// `SCHEMA`, as a
-/// request. `arguments` is a JSON array with one value per parameter.
+/// `SCHEMA`, as a request. An overload is named with its parameters'
+/// types, `tag (LIST: TEXT)`, which its full name alone leaves open.
+/// `arguments` is a JSON array with one value per parameter.
 pub fn encode_request_json(
     schema: &Schema,
     full_name: &str,
@@ -93,7 +94,9 @@ fn call_from_json(schema: &Schema, full_name: &str, arguments: &Json) -> Result<
 }
 
 /// Reads a request, as a JSON array with one `{ "method": …, "arguments":
-/// […] }` per call, `method` being its full name such as `files/read _`.
+/// […] }` per call, `method` being its full name such as `files/read _`,
+/// or for an overload its name with its parameters' types, `tag (LIST:
+/// TEXT)`.
 /// For a tool that watches requests go by, like a test faking a server.
 pub fn decode_request_json(schema: &Schema, text: &str) -> Result<String, String> {
     let calls = decode_request(schema, text).map_err(|problem| problem.to_string())?;
@@ -102,7 +105,7 @@ pub fn decode_request_json(schema: &Schema, text: &str) -> Result<String, String
         .map(|call| {
             let method = schema.method_at(call.method);
             json!({
-                "method": method.full_name(),
+                "method": schema.call_name(method),
                 "arguments": method
                     .shape
                     .parameters
@@ -257,10 +260,33 @@ fn outcome_to_json(schema: &Schema, index: usize, outcome: Option<Outcome>) -> J
     }
 }
 
-fn method_index(schema: &Schema, full_name: &str) -> Result<usize, String> {
-    (0..=schema.introspection())
-        .find(|index| schema.method_at(*index).full_name() == full_name)
-        .ok_or_else(|| format!("found the method `{full_name}`; expected a method of the schema"))
+/// The method that `name` calls: by its full name, `tag _`, or by its
+/// typed name, `tag (LIST: TEXT)`, which an overload needs.
+fn method_index(schema: &Schema, name: &str) -> Result<usize, String> {
+    let methods = 0..=schema.introspection();
+    if let Some(index) = methods
+        .clone()
+        .find(|index| schema.typed_name(schema.method_at(*index)) == name)
+    {
+        return Ok(index);
+    }
+    let named: Vec<usize> = methods
+        .filter(|index| schema.method_at(*index).full_name() == name)
+        .collect();
+    match named[..] {
+        [index] => Ok(index),
+        [] => Err(format!(
+            "found the method `{name}`; expected a method of the schema"
+        )),
+        _ => Err(format!(
+            "found the method `{name}`, which has overloads; expected one of them by its name with its parameters' types: {}",
+            named
+                .iter()
+                .map(|index| format!("`{}`", schema.typed_name(schema.method_at(*index))))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
 }
 
 /// `value` as JSON.

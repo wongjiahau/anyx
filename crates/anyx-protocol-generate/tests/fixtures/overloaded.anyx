@@ -1,0 +1,33 @@
+# Tags files, by path or by id.
+PROTOCOL tagging VERSION 1,
+
+# Which file, among every account's.
+TYPE file id: TEXT,
+
+CHOICE shade { dark, light },
+
+# Tags files by their paths.
+METHOD tag (paths: LIST: TEXT)
+    RETURNS (tagged: INTEGER)
+    ERRORS [missing (path: TEXT)]
+    EXAMPLES [tag ["a"] RETURNS 1],
+
+# Tags files by their ids.
+METHOD tag (ids: LIST: file id)
+    RETURNS (tagged: INTEGER)
+    ERRORS [unknown (id: file id)]
+    EXAMPLES [tag ([] AS: LIST: file id) RETURNS 0],
+
+READ ONLY METHOD scale (factor: FLOAT) RETURNS (scaled: FLOAT),
+
+READ ONLY METHOD scale (times: INTEGER) RETURNS (scaled: INTEGER),
+
+IDEMPOTENT METHOD hide (path: TEXT) RETURNS NOTHING UNDONE BY show (path: TEXT),
+
+IDEMPOTENT METHOD hide (id: file id) RETURNS NOTHING UNDONE BY show (id: file id),
+
+IDEMPOTENT METHOD show (path: TEXT) RETURNS NOTHING,
+
+IDEMPOTENT METHOD show (id: file id) RETURNS NOTHING,
+
+METHOD paint (shade: shade) RETURNS NOTHING,

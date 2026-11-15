@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
+use crate::annotation::{annotated_type, annotation, own_type};
 use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind, scoped};
 use crate::value::Value;
 
@@ -118,7 +119,7 @@ pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Proble
     }
     nodes
         .iter()
-        .map(|node| decode_call(schema, node))
+        .map(|node| decode_call(schema, source, node))
         .collect::<Result<Vec<_>, Mismatch>>()
         .map_err(|mismatch| problem(source, mismatch.span, mismatch.message))
 }
@@ -164,8 +165,9 @@ fn scoped_call(node: &Node) -> Option<ScopedCall<'_>> {
 }
 
 /// Reads `node` as a call of one of the schema's methods: in the root, or
-/// in the scope its path names.
-fn decode_call(schema: &Schema, node: &Node) -> Result<Call, Mismatch> {
+/// in the scope its path names. Of the methods of its shape, the call is of
+/// the one whose parameters have its arguments' types.
+fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Mismatch> {
     let ScopedCall { scope, call } = scoped_call(node).unwrap_or(ScopedCall {
         scope: Vec::new(),
         call: node,
@@ -173,17 +175,15 @@ fn decode_call(schema: &Schema, node: &Node) -> Result<Call, Mismatch> {
     let methods: Vec<usize> = (0..=schema.introspection())
         .filter(|index| schema.method_at(*index).scope == scope)
         .collect();
-    let shapes: Vec<&Shape> = methods
-        .iter()
-        .map(|index| &schema.method_at(*index).shape)
-        .collect();
     let all_methods = || {
-        schema
-            .methods
-            .iter()
-            .map(|method| format!("`{}`", method.full_name()))
-            .collect::<Vec<_>>()
-            .join(", ")
+        let mut names: Vec<String> = Vec::new();
+        for method in &schema.methods {
+            let name = format!("`{}`", method.full_name());
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names.join(", ")
     };
     if methods.is_empty() {
         return Err(Mismatch {
@@ -195,45 +195,61 @@ fn decode_call(schema: &Schema, node: &Node) -> Result<Call, Mismatch> {
             ),
         });
     }
-    let (index, arguments) = decode_shape(schema, &shapes, call).map_err(|mismatch| match mismatch {
-        ShapeMismatch::NoShape(found) => {
-            let found = match &call.kind {
-                NodeKind::Call(call) => format!("the call `{}`", scoped(&scope, &call.name_text())),
-                _ => found,
-            };
-            let elsewhere: Vec<String> = match &call.kind {
-                NodeKind::Call(call) => schema
-                    .methods
-                    .iter()
-                    .filter(|method| method.shape.text == call.name_text() && method.scope != scope)
-                    .map(|method| format!("`{}`", method.full_name()))
-                    .collect(),
-                _ => Vec::new(),
-            };
-            let hint = match elsewhere.is_empty() {
-                true => String::new(),
-                false => format!("; a method of that shape is in a scope, so write its full name: {}", elsewhere.join(", ")),
-            };
-            Mismatch {
-                span: node.span,
-                message: format!(
-                    "found {found}; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses{hint}",
-                    all_methods()
-                ),
-            }
-        }
-        ShapeMismatch::Argument(mismatch) => mismatch,
-    })?;
+    let NodeKind::Call(found) = &call.kind else {
+        return Err(Mismatch {
+            span: node.span,
+            message: format!(
+                "found {}; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses",
+                describe(call),
+                all_methods()
+            ),
+        });
+    };
+    let text = found.name_text();
+    let candidates: Vec<usize> = methods
+        .into_iter()
+        .filter(|index| schema.method_at(*index).shape.text == text)
+        .collect();
+    if candidates.is_empty() {
+        let elsewhere: Vec<String> = schema
+            .methods
+            .iter()
+            .filter(|method| method.shape.text == text && method.scope != scope)
+            .map(|method| format!("`{}`", method.full_name()))
+            .collect();
+        let hint = match elsewhere.is_empty() {
+            true => String::new(),
+            false => format!(
+                "; a method of that shape is in a scope, so write its full name: {}",
+                elsewhere.join(", ")
+            ),
+        };
+        return Err(Mismatch {
+            span: node.span,
+            message: format!(
+                "found the call `{}`; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses{hint}",
+                scoped(&scope, &text),
+                all_methods()
+            ),
+        });
+    }
+    let methods: Vec<&Method> = candidates
+        .iter()
+        .map(|index| schema.method_at(*index))
+        .collect();
+    let (chosen, arguments) = decode_arguments(schema, source, &methods, node, found)?;
     Ok(Call {
-        method: methods[index],
+        method: candidates[chosen],
         arguments,
     })
 }
 
 /// Reads `node` as a call of `method` alone, by its full name, with every
 /// argument written in full, as an example of the method in its schema is.
+/// `source` is the text `node` is read from.
 pub(crate) fn decode_call_of(
     schema: &Schema,
+    source: &str,
     method: &Method,
     node: &Node,
 ) -> Result<Vec<Value>, Mismatch> {
@@ -252,14 +268,284 @@ pub(crate) fn decode_call_of(
             "found {found}; expected a call of `{expected}`, the method the example is under, written by its full name as a request writes it"
         ),
     };
-    if scope != method.scope {
-        return Err(mismatch(found));
+    match &call.kind {
+        NodeKind::Call(call) if scope == method.scope && call.name_text() == method.shape.text => {
+            decode_arguments(schema, source, &[method], node, call).map(|(_, arguments)| arguments)
+        }
+        _ => Err(mismatch(found)),
     }
-    match decode_shape(schema, &[&method.shape], call) {
-        Ok((_, arguments)) => Ok(arguments),
-        Err(ShapeMismatch::NoShape(_)) => Err(mismatch(found)),
-        Err(ShapeMismatch::Argument(mismatch)) => Err(mismatch),
+}
+
+/// An argument of a call as written: its value, the type an annotation
+/// claims for it, and the type it has of its own.
+struct Argument<'n> {
+    /// The whole argument, with its annotation.
+    node: &'n Node,
+    value: &'n Node,
+    annotated: Option<Type>,
+    own: Option<Type>,
+}
+
+impl Argument<'_> {
+    /// The type it states: its annotation's, else its own.
+    fn stated(&self) -> Option<&Type> {
+        self.annotated.as_ref().or(self.own.as_ref())
     }
+}
+
+/// Reads the arguments of `call`, a call of one of `methods`, all of the
+/// same shape and scope: which one it is a call of, and the arguments.
+fn decode_arguments(
+    schema: &Schema,
+    source: &str,
+    methods: &[&Method],
+    node: &Node,
+    call: &anyx::Call,
+) -> Result<(usize, Vec<Value>), Mismatch> {
+    let scope = &methods[0].scope;
+    let text = call.name_text();
+    let arguments = call
+        .arguments
+        .iter()
+        .map(|argument| read_argument(schema, source, scope, argument))
+        .collect::<Result<Vec<_>, _>>()?;
+    let chosen = match methods {
+        [_] => 0,
+        _ => choose(schema, source, methods, node, call, &arguments)?,
+    };
+    let method = methods[chosen];
+    let values = method
+        .shape
+        .parameters
+        .iter()
+        .zip(&arguments)
+        .enumerate()
+        .map(|(index, (parameter, argument))| {
+            let in_parameter = |mismatch: Mismatch| Mismatch {
+                message: format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message),
+                ..mismatch
+            };
+            if let Some(annotated) = argument
+                .annotated
+                .as_ref()
+                .filter(|annotated| **annotated != parameter.r#type)
+            {
+                return Err(in_parameter(Mismatch {
+                    span: argument.node.span,
+                    message: format!(
+                        "found `AS: {}`; expected `AS: {}`, the type of `{}`",
+                        schema.type_name_in(annotated, scope),
+                        schema.type_name_in(&parameter.r#type, scope),
+                        parameter.name
+                    ),
+                }));
+            }
+            let value = decode(schema, &parameter.r#type, argument.value).map_err(in_parameter)?;
+            if argument.stated() != Some(&parameter.r#type) {
+                let fix = fix(schema, source, method, call, index);
+                let written = written(source, argument.value);
+                let message = match &argument.own {
+                    None => format!("`{written}` has no type of its own; annotate it, as in `{fix}`"),
+                    Some(own) => format!(
+                        "`{written}` has the type {} of its own, not `{}`; annotate it, as in `{fix}`",
+                        schema.type_name_in(own, scope),
+                        schema.type_name_in(&parameter.r#type, scope)
+                    ),
+                };
+                return Err(in_parameter(Mismatch {
+                    span: argument.node.span,
+                    message,
+                }));
+            }
+            Ok(value)
+        })
+        .collect::<Result<_, _>>()?;
+    Ok((chosen, values))
+}
+
+/// Reads an argument, `value` or `value AS: type`.
+fn read_argument<'n>(
+    schema: &Schema,
+    source: &str,
+    scope: &[String],
+    node: &'n Node,
+) -> Result<Argument<'n>, Mismatch> {
+    let (value, written_type) = match annotation(node) {
+        Some((value, written_type)) => (value, Some(written_type)),
+        None => (node, None),
+    };
+    if let Some(inner) = inner_annotation(value) {
+        return Err(Mismatch {
+            span: inner.span,
+            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST: TEXT)`; a value inside another is read by the type around it".to_string(),
+        });
+    }
+    let Some(written_type) = written_type else {
+        return Ok(Argument {
+            node,
+            value: node,
+            annotated: None,
+            own: own_type(schema, node),
+        });
+    };
+    let annotated = annotated_type(schema, scope, written_type).ok_or_else(|| Mismatch {
+        span: written_type.span,
+        message: format!(
+            "found `{}` after `AS`, which names no type of {}; expected a type written as a parameter's is: `TEXT`, `LIST: TEXT`, a type of the scope, such as `file id`, or the full path of a `PUBLIC` one in another, such as `common/file id`",
+            written(source, written_type),
+            match scope.is_empty() {
+                true => "the schema's root".to_string(),
+                false => format!("the scope `{}`", scope.join("/")),
+            }
+        ),
+    })?;
+    Ok(Argument {
+        node,
+        value,
+        annotated: Some(annotated),
+        own: own_type(schema, value),
+    })
+}
+
+/// The first annotation inside `node`, or `node` itself if it is one.
+fn inner_annotation(node: &Node) -> Option<&Node> {
+    if annotation(node).is_some() {
+        return Some(node);
+    }
+    match &node.kind {
+        NodeKind::Call(call) => call.arguments.iter().find_map(inner_annotation),
+        NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
+            nodes.iter().find_map(inner_annotation)
+        }
+        _ => None,
+    }
+}
+
+/// Which of `methods`, overloads of one shape, a call is of: the one whose
+/// parameters have exactly the types its arguments state.
+fn choose(
+    schema: &Schema,
+    source: &str,
+    methods: &[&Method],
+    node: &Node,
+    call: &anyx::Call,
+    arguments: &[Argument],
+) -> Result<usize, Mismatch> {
+    let scope = &methods[0].scope;
+    let text = scoped(scope, &call.name_text());
+    let fits = |method: &Method, except: Option<usize>| {
+        method
+            .shape
+            .parameters
+            .iter()
+            .zip(arguments)
+            .enumerate()
+            .all(|(index, (parameter, argument))| {
+                Some(index) == except || argument.stated() == Some(&parameter.r#type)
+            })
+    };
+    let fitting: Vec<usize> = (0..methods.len())
+        .filter(|index| fits(methods[*index], None))
+        .collect();
+    if let [chosen] = fitting[..] {
+        return Ok(chosen);
+    }
+    let overloads = |indices: &mut dyn Iterator<Item = usize>| {
+        indices
+            .map(|index| {
+                format!(
+                    "`{}`",
+                    scoped(scope, &schema.typed_shape(&methods[index].shape))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let all = overloads(&mut (0..methods.len()));
+    if !fitting.is_empty() {
+        return Err(Mismatch {
+            span: node.span,
+            message: format!(
+                "found `{text}` with arguments that fit several of its overloads, {}; expected them to fit one; annotate each argument with its parameter's type, as in `value AS: type`",
+                overloads(&mut fitting.into_iter())
+            ),
+        });
+    }
+    let untyped = arguments
+        .iter()
+        .position(|argument| argument.stated().is_none());
+    if let Some(index) = untyped {
+        let example = methods
+            .iter()
+            .find(|method| fits(method, Some(index)))
+            .unwrap_or(&methods[0]);
+        return Err(Mismatch {
+            span: arguments[index].node.span,
+            message: format!(
+                "in `{text}`: `{}` has no type of its own, so no overload of `{text}` can be chosen by it; annotate it with the type of the one to call, as in `{}`; the overloads are {all}",
+                written(source, arguments[index].value),
+                fix(schema, source, example, call, index)
+            ),
+        });
+    }
+    let types: Vec<String> = arguments
+        .iter()
+        .filter_map(|argument| argument.stated())
+        .map(|stated| format!("`{}`", schema.type_name_in(stated, scope)))
+        .collect();
+    Err(Mismatch {
+        span: node.span,
+        message: format!(
+            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of a named type, or of `BYTES` or `INSTANT`, is written like another type's, so annotate it, as in `(\"abc\" AS: file id)`",
+            match types.len() {
+                1 => "an argument of the type",
+                _ => "arguments of the types",
+            },
+            types.join(", ")
+        ),
+    })
+}
+
+/// A value as written in `source`, shortened when it is long: `[…]`.
+fn written(source: &str, node: &Node) -> String {
+    let text = &source[node.span.start..node.span.end];
+    if text.chars().count() <= 40 && !text.contains('\n') {
+        return text.to_string();
+    }
+    match &node.kind {
+        NodeKind::Brackets(_) => "[…]".to_string(),
+        NodeKind::Braces(_) => "{…}".to_string(),
+        NodeKind::String(_) => "\"…\"".to_string(),
+        _ => "…".to_string(),
+    }
+}
+
+/// `call` as a call of `method`, with its argument at `index` annotated
+/// with its parameter's type: `tag ([] AS: LIST: TEXT)`.
+fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index: usize) -> String {
+    let mut slots = call.arguments.iter().enumerate().peekable();
+    let text = method
+        .shape
+        .text
+        .split(' ')
+        .map(|word| match (word, slots.next_if(|_| word == "_")) {
+            (_, Some((slot, argument))) if slot == index => {
+                let value = annotation(argument).map_or(argument, |(value, _)| value);
+                format!(
+                    "({} AS: {})",
+                    written(source, value),
+                    schema.type_name_in(&method.shape.parameters[slot].r#type, &method.scope)
+                )
+            }
+            (_, Some((_, argument))) => match &argument.kind {
+                NodeKind::Call(_) => format!("({})", written(source, argument)),
+                _ => written(source, argument),
+            },
+            (word, None) => word.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    scoped(&method.scope, &text)
 }
 
 enum ShapeMismatch {
@@ -311,6 +597,12 @@ pub(crate) fn describe(node: &Node) -> String {
 
 /// Reads `node` as a value of `type`.
 pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Value, Mismatch> {
+    if annotation(node).is_some() {
+        return Err(Mismatch {
+            span: node.span,
+            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST: TEXT)`; a value inside another is read by the type around it".to_string(),
+        });
+    }
     let r#type = schema.underlying(r#type);
     let mismatch = |expected: String| Mismatch {
         span: node.span,
@@ -462,7 +754,7 @@ fn duration_units() -> String {
 /// A duration's numbers and units, `[("1", "hour"), ("30", "minutes")]`,
 /// if `call` alternates a number and a word: `1 hour 30 minutes` is the
 /// call `_ hour _ minutes` of `1` and `30`.
-fn duration_pairs(call: &anyx::Call) -> Option<Vec<(&str, &str)>> {
+pub(crate) fn duration_pairs(call: &anyx::Call) -> Option<Vec<(&str, &str)>> {
     if call.name.len() != call.arguments.len() * 2 {
         return None;
     }
@@ -640,7 +932,7 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
         .map(|call| {
             let method = schema.method_at(call.method);
             let mut shape = String::new();
-            write_shape(schema, &method.shape, &call.arguments, &mut shape)?;
+            write_call(schema, method, &call.arguments, &mut shape)?;
             Ok(scoped(&method.scope, layout(shape).trim_end()))
         })
         .collect::<Result<Vec<_>, EncodeError>>()?;
@@ -656,6 +948,57 @@ pub(crate) fn layout(text: String) -> String {
     anyx::format(&text).unwrap_or(text)
 }
 
+/// Writes a call of `method` in a request: its words, with `arguments` in
+/// its slots, each annotated with its parameter's type, `([] AS: LIST:
+/// TEXT)`, unless it has that type of its own as written.
+fn write_call(
+    schema: &Schema,
+    method: &Method,
+    arguments: &[Value],
+    out: &mut String,
+) -> Result<(), EncodeError> {
+    let shape = &method.shape;
+    check_count(shape, arguments)?;
+    let mut slots = shape.parameters.iter().zip(arguments).peekable();
+    for (index, word) in shape.text.split(' ').enumerate() {
+        if index > 0 {
+            out.push(' ');
+        }
+        let Some((parameter, value)) = slots.next_if(|_| word == "_") else {
+            out.push_str(word);
+            continue;
+        };
+        let mut written = String::new();
+        write(schema, &parameter.r#type, value, &mut written)?;
+        let own = match &parse(&written).as_deref() {
+            Ok([node]) => own_type(schema, node),
+            _ => None,
+        };
+        match own.as_ref() == Some(&parameter.r#type) {
+            true => write_slot(schema, &parameter.r#type, value, out)?,
+            false => out.push_str(&format!(
+                "({written} AS: {})",
+                schema.type_name_in(&parameter.r#type, &method.scope)
+            )),
+        }
+    }
+    Ok(())
+}
+
+fn check_count(shape: &Shape, arguments: &[Value]) -> Result<(), EncodeError> {
+    match arguments.len() == shape.parameters.len() {
+        true => Ok(()),
+        false => Err(EncodeError {
+            message: format!(
+                "found {} arguments for `{}`; expected {}",
+                arguments.len(),
+                shape.text,
+                shape.parameters.len()
+            ),
+        }),
+    }
+}
+
 /// Writes a call of `shape`: its words, with `arguments` in its slots.
 pub(crate) fn write_shape(
     schema: &Schema,
@@ -663,16 +1006,7 @@ pub(crate) fn write_shape(
     arguments: &[Value],
     out: &mut String,
 ) -> Result<(), EncodeError> {
-    if arguments.len() != shape.parameters.len() {
-        return Err(EncodeError {
-            message: format!(
-                "found {} arguments for `{}`; expected {}",
-                arguments.len(),
-                shape.text,
-                shape.parameters.len()
-            ),
-        });
-    }
+    check_count(shape, arguments)?;
     let mut slots = shape.parameters.iter().zip(arguments).peekable();
     for (index, word) in shape.text.split(' ').enumerate() {
         if index > 0 {

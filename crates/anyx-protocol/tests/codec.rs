@@ -193,7 +193,7 @@ fn words_in_slots_go_in_parentheses() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "set (dark) strict (true),
+        "set (dark AS mode) strict (true),
 set (custom hue 0.5) strict (false),
 set ((dark) dimmed) strict (false),
 apply { mode: (light) dimmed },
@@ -475,7 +475,7 @@ fn instants_and_durations_read_back_as_written() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "wait (5 minutes) until \"2026-11-14T06:00:08.000Z\",
+        "wait (5 minutes) until (\"2026-11-14T06:00:08.000Z\" AS: INSTANT),
 set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 seconds },
 "
     );
@@ -498,8 +498,11 @@ set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 second
 #[test]
 fn an_instant_and_a_duration_read_in_other_forms_too() {
     let schema = schema(TIMERS);
-    let calls =
-        decode_request(&schema, "wait (90 seconds) until \"2026-11-14T06:00:08Z\"").unwrap();
+    let calls = decode_request(
+        &schema,
+        "wait (90 seconds) until (\"2026-11-14T06:00:08Z\" AS: INSTANT)",
+    )
+    .unwrap();
     assert_eq!(
         calls[0].arguments,
         [duration(90_000), instant("2026-11-14T06:00:08.000Z")]
@@ -615,7 +618,7 @@ fn maps_read_back_as_written() {
         request,
         "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": wild, \"a \\\"b\\\"\": calm } },
 wait { \"tea\": 5 minutes },
-wait {},
+wait ({} AS: MAP: DURATION),
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);

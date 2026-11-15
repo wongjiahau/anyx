@@ -121,5 +121,20 @@ In TypeScript every type shares one namespace, so a scoped type's name starts
 with its scope: `diagnostic` in `common` is `CommonDiagnostic`, and the errors
 of `files/read _` are `FilesReadError`.
 
+Overloads, methods of one shape with different parameter types, each get a
+name of their own: the shape's words, `with`, then each parameter's type in
+words, joined by `and`. `LIST: T` is `list of T`, `MAP: T` is `map of T`, a
+type of the schema is its words after its scope's, and a generic type has
+its arguments' words in its slots: `tag (paths: LIST: TEXT)` is
+`tag_with_list_of_text` (`tagWithListOfText`, `TagWithListOfTextError`,
+`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: common/file id)` is
+`open_with_common_file_id`, and `scale (factor: FLOAT)` is
+`scale_with_float`. A method without overloads keeps its shape's words, so
+adding an overload renames the methods of its shape. The server runs the
+overload a call resolves to, and the clients write the annotations a
+request needs themselves. TypeScript calls an overload, and keys its
+`EFFECTS`, by its typed name, `"tag (LIST: TEXT)"`, as JSON does.
+
 A schema whose names become the same name in the generated code, such as a
-type `read error` next to the method `read _`, is rejected.
+type `read error` next to the method `read _`, or a method `tag with text`
+next to the overload `tag (TEXT)`, is rejected.

@@ -1,9 +1,11 @@
 //! The code generated from Poentaro's schema, from the schema of scopes in
 //! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx`,
-//! `tests/fixtures/named.anyx` and `tests/fixtures/generic.anyx`, kept in
-//! `tests/generated` so a change to the generator shows up as a diff. `round_trip.rs`, `scoped_round_trip.rs`,
-//! `types_round_trip.rs`, `named_round_trip.rs` and `generic_round_trip.rs`
-//! compile the Rust modules.
+//! `tests/fixtures/named.anyx`, `tests/fixtures/generic.anyx` and
+//! `tests/fixtures/overloaded.anyx`, kept in `tests/generated` so a change
+//! to the generator shows up as a diff. `round_trip.rs`,
+//! `scoped_round_trip.rs`, `types_round_trip.rs`, `named_round_trip.rs`,
+//! `generic_round_trip.rs` and `overloaded_round_trip.rs` compile the Rust
+//! modules.
 
 use anyx_protocol::{Schema, SchemaFile};
 
@@ -224,4 +226,32 @@ fn the_rust_module_of_generic_types_is_up_to_date() {
 fn the_typescript_client_of_generic_types_is_up_to_date() {
     let code = anyx_protocol_generate::typescript(&generic()).unwrap();
     assert_snapshot("tests/generated/generic.ts", &code);
+}
+
+/// Methods of one shape with different parameter types.
+fn overloaded() -> Schema {
+    Schema::parse(&read("tests/fixtures/overloaded.anyx")).unwrap()
+}
+
+#[test]
+fn the_rust_module_of_overloads_is_up_to_date() {
+    let code = anyx_protocol_generate::rust(&overloaded()).unwrap();
+    let code = anyx_protocol_generate::format_rust(&code).expect("rustfmt is installed");
+    assert_snapshot("tests/generated/overloaded.rs", &code);
+}
+
+#[test]
+fn the_typescript_client_of_overloads_is_up_to_date() {
+    let code = anyx_protocol_generate::typescript(&overloaded()).unwrap();
+    assert_snapshot("tests/generated/overloaded.ts", &code);
+}
+
+#[test]
+fn an_overload_whose_name_another_method_has_is_rejected() {
+    assert_eq!(
+        error(
+            "PROTOCOL p VERSION 1, METHOD tag (a: TEXT) RETURNS NOTHING, METHOD tag (a: INTEGER) RETURNS NOTHING, METHOD tag with text RETURNS NOTHING,"
+        ),
+        "found `tag with text`, which becomes the method `tag_with_text`, like `tag (TEXT)`; expected names that stay distinct in the generated code, so rename one"
+    );
 }

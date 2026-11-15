@@ -42,9 +42,21 @@ schema:1:45: found a second parameter named `x`; expected each parameter once; r
 
 == a method twice
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT), METHOD f RETURNS (z: TEXT),
-schema:1:58: found a second method `f`; expected each method shape once in a scope; rename or remove one of them
+schema:1:58: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: TEXT), METHOD f RETURNS (z: TEXT),
                                                            ^
+
+== overloads with the same parameter types
+PROTOCOL a VERSION 1, TYPE id: TEXT, METHOD tag (names: LIST: TEXT) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST: TEXT) RETURNS NOTHING,
+schema:1:137: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, TYPE id: TEXT, METHOD tag (names: LIST: TEXT) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST: TEXT) RETURNS NOTHING,
+                                                                                                                                          ^^^
+
+== overloads that differ only in what they return
+PROTOCOL a VERSION 1, METHOD scale (by: FLOAT) RETURNS (scaled: FLOAT), METHOD scale (by: FLOAT) RETURNS (scaled: INTEGER),
+schema:1:80: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
+  PROTOCOL a VERSION 1, METHOD scale (by: FLOAT) RETURNS (scaled: FLOAT), METHOD scale (by: FLOAT) RETURNS (scaled: INTEGER),
+                                                                                 ^^^^^
 
 == a type holding itself
 PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },
