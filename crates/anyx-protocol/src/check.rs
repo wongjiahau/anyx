@@ -11,7 +11,8 @@ use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
     DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, Method, Parameter, ROOT_FILE,
-    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, scope_file, scoped,
+    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, fill_slots,
+    scope_file, scoped,
 };
 
 /// A type, error or alias, where it is declared.
@@ -61,48 +62,116 @@ struct Path {
     full: bool,
 }
 
-/// What a `RECORD`, `CHOICE` or `ERRORS` group declares, public or not.
+/// What a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` group declares, public or
+/// not.
 struct Declaration<'b, T> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
     public: bool,
-    body: &'b T,
-    /// The type parameters after `GENERIC`, for a generic record or choice.
-    parameters: Option<&'b ast::TypeParameters>,
+    body: T,
 }
 
-fn record(record: &ast::Record) -> Declaration<'_, ast::RecordBody> {
+fn record(record: &ast::Record) -> Declaration<'_, TypeShape<'_, Vec<ast::Field>>> {
+    let parts = record.body.arguments.iter().map(|part| match part {
+        ast::RecordPart::Fields(fields) => Part::Body(fields),
+        ast::RecordPart::TypeParameter(parameter) => Part::Parameter(parameter),
+    });
     Declaration {
         doc: &record.doc,
         public: record.public.is_some(),
-        body: &record.body,
-        parameters: record.parameters.as_ref(),
+        body: type_shape(&record.body.name, parts),
     }
 }
 
-fn choice(choice: &ast::Choice) -> Declaration<'_, ast::ChoiceBody> {
+fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Variant>>> {
+    let parts = choice.body.arguments.iter().map(|part| match part {
+        ast::ChoicePart::Variants(variants) => Part::Body(variants),
+        ast::ChoicePart::TypeParameter(parameter) => Part::Parameter(parameter),
+    });
     Declaration {
         doc: &choice.doc,
         public: choice.public.is_some(),
-        body: &choice.body,
-        parameters: choice.parameters.as_ref(),
+        body: type_shape(&choice.body.name, parts),
     }
 }
 
-fn named_type(named: &ast::NamedType) -> Declaration<'_, ast::NamedTypeBody> {
+fn named_type(named: &ast::NamedType) -> Declaration<'_, &ast::NamedTypeBody> {
     Declaration {
         doc: &named.doc,
         public: named.public.is_some(),
         body: &named.body,
-        parameters: None,
     }
 }
 
-fn errors(errors: &ast::Errors) -> Declaration<'_, ast::ErrorList> {
+fn errors(errors: &ast::Errors) -> Declaration<'_, &ast::ErrorList> {
     Declaration {
         doc: &errors.doc,
         public: errors.public.is_some(),
         body: &errors.body,
-        parameters: None,
+    }
+}
+
+/// A slot of a `RECORD`'s or `CHOICE`'s name, as written: the braces of its
+/// fields or variants, or a type parameter.
+enum Part<'b, T> {
+    Body(&'b ast::Spanned<T>),
+    Parameter(&'b ast::TypeParameter),
+}
+
+/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (item: TYPE)
+/// { … }` is the shape `page of _` with the parameter `item`, and its fields.
+struct TypeShape<'b, T> {
+    /// The shape without the slot of the braces, `page of _`, spanned from
+    /// its first word to its last.
+    name: ast::Spanned<String>,
+    /// Its words alone: `page of`.
+    words: ast::Spanned<String>,
+    parameters: Vec<&'b ast::TypeParameter>,
+    /// What the braces hold, when they come last; `None` when they don't.
+    body: Option<&'b ast::Spanned<T>>,
+    /// Braces anywhere but last, which only a type parameter may fill.
+    misplaced: Vec<Span>,
+}
+
+fn type_shape<'b, T>(
+    name: &ast::CallName,
+    parts: impl Iterator<Item = Part<'b, T>>,
+) -> TypeShape<'b, T> {
+    let mut parts: Vec<Part<'b, T>> = parts.collect();
+    let mut name_parts = name.parts.clone();
+    let body = match (parts.last(), name_parts.last()) {
+        (Some(Part::Body(body)), Some(NamePart::Slot)) => {
+            let body = *body;
+            parts.pop();
+            name_parts.pop();
+            Some(body)
+        }
+        _ => None,
+    };
+    let mut parameters = Vec::new();
+    let mut misplaced = Vec::new();
+    for part in parts {
+        match part {
+            Part::Body(braces) => misplaced.push(braces.span),
+            Part::Parameter(parameter) => parameters.push(parameter),
+        }
+    }
+    let text = name_parts
+        .iter()
+        .map(|part| match part {
+            NamePart::Word { text, .. } => text.as_str(),
+            NamePart::Slot => "_",
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    TypeShape {
+        name: ast::Spanned {
+            value: text,
+            span: name.span,
+        },
+        words: spanned_words(name),
+        parameters,
+        body,
+        misplaced,
     }
 }
 
@@ -240,18 +309,17 @@ impl<'a> Checker<'a> {
                 match definition {
                     ast::Definition::Record(found) => {
                         let found = record(found);
-                        self.declare_type(&found.body.name, found.public);
-                        self.declare_type_parameters(found.parameters);
+                        self.declare_shaped_type(&found.body, found.public, "RECORD", "fields");
                     }
                     ast::Definition::Choice(found) => {
                         let found = choice(found);
-                        self.declare_type(&found.body.name, found.public);
-                        self.declare_type_parameters(found.parameters);
+                        self.declare_shaped_type(&found.body, found.public, "CHOICE", "variants");
                     }
                     ast::Definition::NamedType(found) => {
                         let found = named_type(found);
-                        self.declare_type(&found.body.name, found.public);
-                        self.declare_type_parameters(None);
+                        self.check_words(&found.body.name, "a type");
+                        self.declare_type(&found.body.name, found.public, Vec::new());
+                        self.declare_type_parameters(&[]);
                     }
                     ast::Definition::Errors(found) => {
                         let found = errors(found);
@@ -273,10 +341,13 @@ impl<'a> Checker<'a> {
                         let found = record(found);
                         let index = types.len();
                         let fields = self.generic(index, |checker| {
-                            checker.fields(index, &found.body.fields.value)
+                            let fields = found.body.body.map_or(&[][..], |body| &body.value);
+                            checker.fields(index, fields)
                         });
                         let kind = TypeKind::Record(fields);
-                        self.check_parameters_used(index, &kind);
+                        if found.body.body.is_some() {
+                            self.check_parameters_used(index, &kind);
+                        }
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
@@ -290,10 +361,13 @@ impl<'a> Checker<'a> {
                         let found = choice(found);
                         let index = types.len();
                         let variants = self.generic(index, |checker| {
-                            checker.variants(&found.body.variants.value)
+                            let variants = found.body.body.map_or(&[][..], |body| &body.value);
+                            checker.variants(variants)
                         });
                         let kind = TypeKind::Choice(variants);
-                        self.check_parameters_used(index, &kind);
+                        if found.body.body.is_some() {
+                            self.check_parameters_used(index, &kind);
+                        }
                         types.push(TypeDefinition {
                             scope: file.scope.clone(),
                             public: found.public,
@@ -603,8 +677,60 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool) {
-        self.check_words(name, "a type");
+    /// Declares a `RECORD` or `CHOICE` by its shape, after checking that
+    /// the shape has words and its braces come last.
+    fn declare_shaped_type<T>(
+        &mut self,
+        shape: &TypeShape<'_, T>,
+        public: bool,
+        keyword: &str,
+        what: &str,
+    ) {
+        if shape.words.value.is_empty() {
+            self.error(
+                shape.name.span,
+                format!(
+                    "found a `{keyword}` whose name has no words; expected at least one lowercase word to name it, with any type parameters among the words, as in `{keyword} page of (item: TYPE)`"
+                ),
+            );
+        } else {
+            self.check_words(&shape.words, "a type");
+        }
+        let parameters: Vec<String> = shape
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.value.clone())
+            .collect();
+        if shape.body.is_none() && shape.misplaced.is_empty() {
+            let declared: Vec<String> = parameters
+                .iter()
+                .map(|parameter| format!("{parameter}: TYPE"))
+                .collect();
+            self.error(
+                shape.name.span,
+                format!(
+                    "found the `{keyword}` `{}` without its {what} in braces; expected them last, after its name, as in `{keyword} {} {{ … }}`",
+                    fill_slots(&shape.name.value, &parameters),
+                    fill_slots(&shape.name.value, &declared),
+                ),
+            );
+        }
+        for span in &shape.misplaced {
+            self.error(
+                *span,
+                format!(
+                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(item: TYPE)` in the name's other slots"
+                ),
+            );
+        }
+        self.declare_type(&shape.name, public, parameters);
+        self.declare_type_parameters(&shape.parameters);
+    }
+
+    /// Declares a type by its shape, `page of _`, and reports a second type
+    /// of that shape in the scope. `parameters` are its type parameters,
+    /// which show it in a message.
+    fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool, parameters: Vec<String>) {
         if self
             .types
             .iter()
@@ -614,7 +740,7 @@ impl<'a> Checker<'a> {
                 name.span,
                 format!(
                     "found a second type named `{}`; expected each type to be defined once in a scope; rename or remove one of them",
-                    name.value
+                    fill_slots(&name.value, &parameters)
                 ),
             );
         }
@@ -622,14 +748,15 @@ impl<'a> Checker<'a> {
         self.types.push(declared);
     }
 
-    /// Declares the type parameters after `GENERIC`, each a name once, for
-    /// the type just declared; none for a type that isn't generic.
-    fn declare_type_parameters(&mut self, parameters: Option<&ast::TypeParameters>) {
-        let written: Vec<&ast::TypeParameter> = match parameters {
-            None => Vec::new(),
-            Some(ast::TypeParameters::One(parameter)) => vec![parameter],
-            Some(ast::TypeParameters::Several(parameters)) => parameters.value.iter().collect(),
-        };
+    /// The type at `index` with its parameters in its slots, as a message
+    /// shows it: `page of (item)`.
+    fn type_shown(&self, index: usize) -> String {
+        fill_slots(&self.types[index].name, &self.parameter_names(index))
+    }
+
+    /// Declares the type parameters in the slots of the type just declared,
+    /// each a name once.
+    fn declare_type_parameters(&mut self, written: &[&ast::TypeParameter]) {
         let mut names: Vec<ast::Spanned<String>> = Vec::new();
         for parameter in written {
             self.check_words(&parameter.name, "a type parameter");
@@ -662,7 +789,7 @@ impl<'a> Checker<'a> {
     /// parameters in scope, after checking that no type here has the name
     /// of one of them.
     fn generic<T>(&mut self, index: usize, check: impl FnOnce(&mut Self) -> T) -> T {
-        let type_name = self.types[index].name.clone();
+        let type_name = self.type_shown(index);
         for parameter in self.type_parameters[index].clone() {
             let shadowed: Vec<String> = self
                 .types
@@ -706,7 +833,7 @@ impl<'a> Checker<'a> {
             .iter()
             .flat_map(|r#type| r#type.parameters())
             .collect();
-        let type_name = self.types[index].name.clone();
+        let type_name = self.type_shown(index);
         for parameter in self.type_parameters[index].clone() {
             if !used.contains(&parameter.value.as_str()) {
                 self.error(
@@ -835,16 +962,24 @@ impl<'a> Checker<'a> {
             .collect()
     }
 
-    /// `reference` as a path: a name in the scope being checked, or a full
-    /// path. `None` after reporting it when it is neither.
-    fn path(&mut self, reference: &ast::Reference) -> Option<Path> {
+    /// `reference` as a path, a shape in the scope being checked or a full
+    /// path, with the types written in the shape's slots: `page of (file)`
+    /// is the shape `page of _` with `file`, and `common/page of (file)` the
+    /// same in `common`. `None` after reporting it when it is neither.
+    fn path<'r>(&mut self, reference: &'r ast::Reference) -> Option<(Path, &'r [ast::Type])> {
         let parts = &reference.name.parts;
-        if reference.arguments.is_empty() && !parts.contains(&NamePart::Slot) {
-            return Some(Path {
-                scope: self.scope.clone(),
-                name: spanned_words(&reference.name).value,
-                full: false,
-            });
+        let slashed = parts
+            .iter()
+            .any(|part| matches!(part, NamePart::Word { text, .. } if text == "/"));
+        if !slashed {
+            return Some((
+                Path {
+                    scope: self.scope.clone(),
+                    name: reference.name.text.clone(),
+                    full: false,
+                },
+                &reference.arguments,
+            ));
         }
         let slashes_between_slots = parts.len() >= 3
             && parts.len() % 2 == 1
@@ -852,26 +987,44 @@ impl<'a> Checker<'a> {
                 NamePart::Slot => index % 2 == 0,
                 NamePart::Word { text, .. } => index % 2 == 1 && text == "/",
             });
-        let path = reference.arguments.split_last().filter(|(_, scope)| {
-            scope
-                .iter()
-                .all(|segment| matches!(segment.name.parts.as_slice(), [NamePart::Word { .. }]))
-        });
+        let scope_word = |segment: &ast::Type| match segment {
+            ast::Type::Named(segment)
+                if segment.arguments.is_empty()
+                    && matches!(segment.name.parts.as_slice(), [NamePart::Word { .. }]) =>
+            {
+                Some(segment.name.text.clone())
+            }
+            _ => None,
+        };
+        let path =
+            reference.arguments.split_last().and_then(|(last, scope)| {
+                let scope: Option<Vec<String>> = scope.iter().map(scope_word).collect();
+                match last {
+                    ast::Type::Named(last)
+                        if !last.name.parts.iter().any(
+                            |part| matches!(part, NamePart::Word { text, .. } if text == "/"),
+                        ) =>
+                    {
+                        Some((scope?, last))
+                    }
+                    _ => None,
+                }
+            });
         match path {
-            Some((name, scope)) if slashes_between_slots => Some(Path {
-                scope: scope
-                    .iter()
-                    .map(|segment| segment.name.text.clone())
-                    .collect(),
-                name: spanned_words(&name.name).value,
-                full: true,
-            }),
+            Some((scope, last)) if slashes_between_slots => Some((
+                Path {
+                    scope,
+                    name: last.name.text.clone(),
+                    full: true,
+                },
+                &last.arguments,
+            )),
             _ => {
                 let written = self.written(reference.span).to_string();
                 self.error(
                     reference.span,
                     format!(
-                        "found `{written}`; expected a name, such as `diagnostic`, or the full path of a `PUBLIC` one in another scope, such as `common/diagnostic`"
+                        "found `{written}`; expected a name, such as `diagnostic`, a generic type with a type in each slot, such as `page of (diagnostic)`, or the full path of a `PUBLIC` one in another scope, such as `common/diagnostic`"
                     ),
                 );
                 None
@@ -889,7 +1042,7 @@ impl<'a> Checker<'a> {
             span,
             format!(
                 "found `{}`, which is private to the scope `{}`; expected a `PUBLIC` {what}, or one of {}; write `PUBLIC` before its definition in `{}` to share it",
-                scoped(&path.scope, &path.name),
+                self.written(span),
                 path.scope.join("/"),
                 self.this_scope(),
                 scope_file(&path.scope)
@@ -913,35 +1066,92 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn resolve_type(&mut self, reference: &ast::Reference) -> Option<usize> {
-        let path = self.path(reference)?;
+    /// The type `path` names, as an index into the types. `span` is where
+    /// it is written, and `arguments` how many types its slots hold.
+    fn resolve_type(&mut self, span: Span, path: &Path, arguments: usize) -> Option<usize> {
         let found = self
             .types
             .iter()
             .position(|known| known.scope == path.scope && known.name == path.name);
-        match found {
-            Some(index) => {
-                let public = self.types[index].public;
-                self.check_access(reference.span, &path, public, "type");
-                Some(index)
-            }
-            None => {
-                let message = match path.full {
-                    true => format!(
-                        "found `{}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`",
-                        scoped(&path.scope, &path.name)
-                    ),
-                    false => format!(
-                        "found `{text}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{text}`, or fix the name{hint}",
-                        text = path.name,
-                        scope = self.this_scope(),
-                        hint = self.elsewhere(self.types.iter(), &path.name),
-                    ),
-                };
-                self.error(reference.span, message);
-                None
-            }
+        if let Some(index) = found {
+            let public = self.types[index].public;
+            self.check_access(span, path, public, "type");
+            return Some(index);
         }
+        let written = self.written(span).to_string();
+        let scope = match path.full {
+            true => format!("the scope `{}`", path.scope.join("/")),
+            false => self.this_scope(),
+        };
+        let words = |name: &str| {
+            name.split(' ')
+                .filter(|word| *word != "_")
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let wanted = words(&path.name);
+        let shown = |checker: &Self, indices: &[usize]| {
+            indices
+                .iter()
+                .map(|index| format!("`{}`", checker.type_shown(*index)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let in_scope = |known: &Declared| {
+            known.scope == path.scope && (!path.full || known.public || known.scope == self.scope)
+        };
+        let same_words: Vec<usize> = (0..self.types.len())
+            .filter(|index| {
+                in_scope(&self.types[*index]) && words(&self.types[*index].name) == wanted
+            })
+            .collect();
+        if !same_words.is_empty() {
+            let count = match arguments {
+                0 => "no type in a slot".to_string(),
+                1 => "a type in 1 slot".to_string(),
+                count => format!("types in {count} slots"),
+            };
+            self.error(
+                span,
+                format!(
+                    "found `{written}`, with {count}, but {scope} has no type of that shape; the types with its words are {}; expected one of them, with a type in parentheses in each slot it has",
+                    shown(self, &same_words)
+                ),
+            );
+            return None;
+        }
+        let first_word = wanted.split(' ').next().unwrap_or_default().to_string();
+        let similar: Vec<usize> = (0..self.types.len())
+            .filter(|index| {
+                in_scope(&self.types[*index])
+                    && words(&self.types[*index].name).split(' ').next() == Some(&first_word)
+            })
+            .collect();
+        let similar = match similar.is_empty() {
+            true => String::new(),
+            false => format!(
+                "; the types of {scope} that start with `{first_word}` are {}",
+                shown(self, &similar)
+            ),
+        };
+        let parameter = match !path.full && self.parameters.contains(&first_word) {
+            true => format!(
+                "; `{first_word}` is a type parameter, which stands for a whole type and has no slots"
+            ),
+            false => String::new(),
+        };
+        let similar = similar + &parameter;
+        let message = match path.full {
+            true => format!(
+                "found `{written}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`{similar}"
+            ),
+            false => format!(
+                "found `{written}`, which is not a type of {scope}; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
+                hint = self.elsewhere(self.types.iter(), &path.name),
+            ),
+        };
+        self.error(span, message);
+        None
     }
 
     /// The group `reference` names, as an index into the groups.
@@ -1081,7 +1291,7 @@ impl<'a> Checker<'a> {
                             format!(
                                 "found a `DEFAULT` on the field `{name}`, whose type holds the type parameter `{parameter}`; expected a `DEFAULT` only on a field whose type is the same in every use of `{record}`, since the default can't be checked against each type `{parameter}` stands for",
                                 name = field.name.value,
-                                record = self.types[record].name,
+                                record = self.type_shown(record),
                             ),
                         );
                     } else {
@@ -1446,37 +1656,7 @@ impl<'a> Checker<'a> {
             ast::Type::Duration(_) => Type::Duration,
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
             ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
-            ast::Type::Named(reference) => {
-                if let Some(parameter) = self.parameter_named(reference) {
-                    return Type::Parameter(parameter);
-                }
-                let Some(index) = self.resolve_type(reference) else {
-                    return Type::Text;
-                };
-                let parameters = self.parameter_names(index);
-                if !parameters.is_empty() {
-                    let written = self.written(reference.span).to_string();
-                    self.error(
-                        reference.span,
-                        format!(
-                            "found `{written}`, which is `GENERIC ({})`, without its type arguments; expected `{written} WITH ({})`, with a type for each of its parameters",
-                            parameters.join(", "),
-                            parameters
-                                .iter()
-                                .map(|parameter| format!("{parameter}: …"))
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
-                    );
-                    return Type::Text;
-                }
-                Type::Named(index)
-            }
-            ast::Type::Generic {
-                reference,
-                arguments,
-                span,
-            } => self.generic_use(reference, arguments, *span),
+            ast::Type::Named(reference) => self.type_use(reference),
         }
     }
 
@@ -1489,96 +1669,27 @@ impl<'a> Checker<'a> {
         self.parameters.contains(&name).then_some(name)
     }
 
-    /// A use of a generic type, `page WITH (item: file summary)`: an
-    /// argument for each of its parameters, by name, once each.
-    fn generic_use(
-        &mut self,
-        reference: &ast::Reference,
-        arguments: &ast::TypeArguments,
-        span: Span,
-    ) -> Type {
+    /// A type by its name, or a generic type by its shape with a type in
+    /// each slot, `page of (file summary)`, matched to its parameters by
+    /// position.
+    fn type_use(&mut self, reference: &ast::Reference) -> Type {
         if let Some(parameter) = self.parameter_named(reference) {
-            self.error(
-                span,
-                format!(
-                    "found the type parameter `{parameter}` with `WITH`; expected `{parameter}` alone, since a type parameter stands for a whole type and takes no arguments"
-                ),
-            );
             return Type::Parameter(parameter);
         }
-        let Some(index) = self.resolve_type(reference) else {
+        let Some((path, arguments)) = self.path(reference) else {
             return Type::Text;
         };
-        let written = self.written(reference.span).to_string();
-        let parameters = self.parameter_names(index);
-        if parameters.is_empty() {
-            self.error(
-                span,
-                format!(
-                    "found `WITH` after `{written}`, which is not `GENERIC`; expected `{written}` alone, since only a `GENERIC` record or choice takes type arguments"
-                ),
-            );
-            return Type::Named(index);
-        }
-        let given: Vec<&ast::Parameter> = match arguments {
-            ast::TypeArguments::One(argument) => vec![argument],
-            ast::TypeArguments::Several(arguments) => arguments.value.iter().collect(),
-        };
-        let expected = || {
-            parameters
-                .iter()
-                .map(|parameter| format!("`{parameter}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        let mut found: Vec<Option<Type>> = vec![None; parameters.len()];
-        for argument in given {
-            let name = &argument.name.value;
-            let Some(position) = parameters.iter().position(|parameter| parameter == name) else {
-                self.error(
-                    argument.name.span,
-                    format!(
-                        "found the type argument `{name}`, which is not a parameter of `{written}`; expected an argument for each of its parameters, {}",
-                        expected()
-                    ),
-                );
-                continue;
-            };
-            let r#type = self.r#type(&argument.r#type);
-            if found[position].is_some() {
-                self.error(
-                    argument.name.span,
-                    format!(
-                        "found a second type argument for `{name}`; expected each parameter of `{written}` once"
-                    ),
-                );
-                continue;
-            }
-            found[position] = Some(r#type);
-        }
-        let missing: Vec<String> = parameters
+        let arguments: Vec<Type> = arguments
             .iter()
-            .zip(&found)
-            .filter(|(_, found)| found.is_none())
-            .map(|(parameter, _)| format!("`{parameter}`"))
+            .map(|argument| self.r#type(argument))
             .collect();
-        if !missing.is_empty() {
-            self.error(
-                span,
-                format!(
-                    "found no type argument for {}; expected an argument for each parameter of `{written}`, {}",
-                    missing.join(", "),
-                    expected()
-                ),
-            );
+        let Some(index) = self.resolve_type(reference.span, &path, arguments.len()) else {
+            return Type::Text;
+        };
+        match arguments.is_empty() {
+            true => Type::Named(index),
+            false => Type::Generic(index, arguments),
         }
-        Type::Generic(
-            index,
-            found
-                .into_iter()
-                .map(|found| found.unwrap_or(Type::Text))
-                .collect(),
-        )
     }
 
     /// The type of a field with a `DEFAULT`, and the default as written.
@@ -1605,12 +1716,6 @@ impl<'a> Checker<'a> {
             ast::Defaulted::MapOfNamed { value, default, .. } => {
                 (Type::Map(Box::new(self.r#type(value))), default)
             }
-            ast::Defaulted::Generic {
-                reference,
-                arguments,
-                default,
-                span,
-            } => (self.generic_use(reference, arguments, *span), default),
             ast::Defaulted::Other {
                 r#type, default, ..
             } => (self.r#type(r#type), default),
@@ -1757,8 +1862,9 @@ impl<'a> Checker<'a> {
             if reported.contains(&start) {
                 continue;
             }
+            let name = self.type_shown(start);
             let declared = &self.types[start];
-            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+            let (file, span) = (declared.file, declared.span);
             self.file = file;
             self.error(
                 span,
@@ -1771,9 +1877,9 @@ impl<'a> Checker<'a> {
     }
 
     /// A generic type that uses itself, directly or through other generic
-    /// types, must pass its own parameters as they are: `nest WITH (item:
-    /// item)` within `nest`. With other arguments, such as `nest WITH (item:
-    /// LIST: item)`, each use would need another, without end.
+    /// types, must pass its own parameters as they are: `nest of (item)`
+    /// within `nest of (item: TYPE)`. With other arguments, such as
+    /// `nest of (LIST: item)`, each use would need another, without end.
     fn check_generic_recursion(&mut self, schema: &Schema) {
         /// The generic types `type` uses, anywhere in it, with their
         /// arguments.
@@ -1860,8 +1966,9 @@ impl<'a> Checker<'a> {
             ) else {
                 continue;
             };
+            let name = self.type_shown(start);
             let declared = &self.types[start];
-            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+            let (file, span) = (declared.file, declared.span);
             self.file = file;
             self.error(
                 span,

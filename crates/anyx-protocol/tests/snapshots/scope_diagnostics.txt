@@ -29,7 +29,7 @@ files.anyx:1:50: found the errors `files/missing` and `common/missing` both list
                                                    ^^^^^^^^^^^^^^^^^^^^
 
 == a path of two words
-files.anyx:1:18: found `my common/diagnostic`; expected a name, such as `diagnostic`, or the full path of a `PUBLIC` one in another scope, such as `common/diagnostic`
+files.anyx:1:18: found `my common/diagnostic`; expected a name, such as `diagnostic`, a generic type with a type in each slot, such as `page of (diagnostic)`, or the full path of a `PUBLIC` one in another scope, such as `common/diagnostic`
   RECORD file { a: my common/diagnostic },
                    ^^^^^^^^^^^^^^^^^^^^
 

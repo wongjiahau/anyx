@@ -24,15 +24,21 @@ The schema is one file, or a folder of scopes (see
 - A struct around the type underneath per named `TYPE`, with `From` both
   ways: `TYPE file id: TEXT` is `pub struct FileId(pub String)`, so a
   `FileId` can't be passed where a `ShareId` goes.
-- A `GENERIC` record or choice is a generic struct or enum, with a type
-  parameter per parameter in PascalCase, and its `IntoValue` and
-  `FromValue` bound on them: `GENERIC (item) RECORD page` is
-  `pub struct Page<Item>`, with
-  `impl<Item: IntoValue> IntoValue for Page<Item>`, and
-  `page WITH (item: order)` is `Page<Order>`. A parameter whose name the
+- A generic record or choice is a generic struct or enum. Its name is the
+  PascalCase of its words, leaving out the slots, and it has a type
+  parameter per slot, in PascalCase and in the slots' order, with its
+  `IntoValue` and `FromValue` bound on them: `RECORD page of (item: TYPE)`
+  is `pub struct PageOf<Item>`, with
+  `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
+  is `PageOf<Order>`. `RECORD (item: TYPE) history` is `History<Item>`,
+  `RECORD table from (key: TYPE) to (value: TYPE)` is
+  `TableFromTo<Key, Value>`, and `CHOICE (left: TYPE) or (right: TYPE)` is
+  `Or<Left, Right>`. Two types whose words are the same, such as `page` and
+  `page (item: TYPE)`, would get the same name, so generating either
+  language is an error that names both. A parameter whose name the
   module already uses, such as `value` (the generated code uses `Value`) or
   a type of the scope, gets `Parameter` after it: `ValueParameter`. The
-  same goes in TypeScript, `interface Page<Item>`, against every type there.
+  same goes in TypeScript, `interface PageOf<Item>`, against every type there.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 - A `Server` trait with an `async fn` per method. A method with errors
@@ -106,9 +112,9 @@ brands a value: `TYPE file id: TEXT` is
 
 A generic type's reviver takes the reviver of each parameter and returns
 its own, and a use passes them: a method returning
-`page WITH (item: payment)`, where a payment holds an `INSTANT`, revives with
-`revivePage(revivePayment)`, and one returning `page WITH (item: TEXT)` needs
-no reviving, unless `page` holds an `INSTANT` itself, when it passes
+`page of (payment)`, where a payment holds an `INSTANT`, revives with
+`revivePageOf(revivePayment)`, and one returning `page of (TEXT)` needs
+no reviving, unless `page of (item: TYPE)` holds an `INSTANT` itself, when it passes
 `unchanged`.
 
 In TypeScript every type shares one namespace, so a scoped type's name starts

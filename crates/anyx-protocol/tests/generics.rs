@@ -1,7 +1,8 @@
-//! Generic types: `GENERIC (item) RECORD page { … }` declares a record or a
-//! choice with type parameters, and `page WITH (item: TEXT)` uses it. A
-//! value of a use is written exactly like the record or choice with the
-//! arguments in place of the parameters.
+//! Generic types: `RECORD page of (item: TYPE) { … }` declares a record or a
+//! choice whose name is a shape with a type parameter in each slot, and
+//! `page of (TEXT)` uses it, with a type in each slot. A slot may sit
+//! anywhere among the words. A value of a use is written exactly like the
+//! record or choice with the arguments in place of the parameters.
 
 mod common;
 
@@ -14,14 +15,14 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 const SHOP: &str = "PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-GENERIC (item) RECORD page {
+RECORD page of (item: TYPE) {
     items: LIST: item,
     next: OPTIONAL: TEXT,
     size: OPTIONAL: INTEGER DEFAULT 20,
 },
 
 # What came of an attempt.
-GENERIC (value, problem) CHOICE outcome {
+CHOICE (value: TYPE) or (problem: TYPE) {
     done (value: value),
     failed (problem: problem),
 },
@@ -30,18 +31,18 @@ RECORD order { number: INTEGER, total: INTEGER },
 
 CHOICE decline { insufficient funds, card expired },
 
-TYPE orders: page WITH (item: order),
+TYPE orders: page of (order),
 
-METHOD list orders RETURNS (orders: page WITH (item: order)),
+METHOD list orders RETURNS (orders: page of (order)),
 
-METHOD pay (order: INTEGER) RETURNS (outcome: outcome WITH (value: TEXT, problem: decline))
+METHOD pay (order: INTEGER) RETURNS (outcome: (TEXT) or (decline))
     EXAMPLES [
         pay 7 RETURNS done \"receipt 1\",
         pay 8 RETURNS failed: card expired,
     ],
 
 METHOD pay all (orders: LIST: INTEGER)
-    RETURNS (outcomes: page WITH (item: outcome WITH (problem: decline, value: TEXT))),
+    RETURNS (outcomes: page of ((TEXT) or (decline))),
 
 METHOD history RETURNS (orders: orders),
 ";
@@ -81,6 +82,8 @@ fn returned(schema: &anyx_protocol::Schema, method: usize, response: &str) -> Va
 fn a_generic_type_reads_with_its_parameters_and_each_use_with_its_arguments() {
     let schema = schema(SHOP);
     let page_type = &schema.types[0];
+    assert_eq!(page_type.name, "page of _");
+    assert_eq!(page_type.shape(), "page of (item)");
     assert_eq!(page_type.parameters, ["item"]);
     let TypeKind::Record(fields) = &page_type.kind else {
         panic!("expected a record");
@@ -96,23 +99,20 @@ fn a_generic_type_reads_with_its_parameters_and_each_use_with_its_arguments() {
         }
     );
     assert_eq!(fields[2].default, Some(Value::Integer(20)));
+    assert_eq!(schema.types[1].name, "_ or _");
     assert_eq!(schema.types[1].parameters, ["value", "problem"]);
     assert_eq!(
         schema.types[4].kind,
         TypeKind::Distinct(Type::Generic(0, vec![Type::Named(2)]))
     );
-    // Arguments are kept in the order of the parameters, whatever the order
-    // written.
+    // Arguments are matched to the parameters by their slots.
     let pay_all = schema.method("pay all _").unwrap();
     let returns = &pay_all.returns.as_ref().unwrap().r#type;
     assert_eq!(
         returns,
         &Type::Generic(0, vec![Type::Generic(1, vec![Type::Text, Type::Named(3)])])
     );
-    assert_eq!(
-        schema.type_name(returns),
-        "page WITH (item: outcome WITH (value: TEXT, problem: decline))"
-    );
+    assert_eq!(schema.type_name(returns), "page of ((TEXT) or (decline))");
 }
 
 #[test]
@@ -170,8 +170,8 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
 fn a_value_of_a_generic_type_is_checked_against_its_arguments() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
-GENERIC (item) RECORD page { items: LIST: item },
-METHOD sum (numbers: page WITH (item: INTEGER)) RETURNS (sum: INTEGER),
+RECORD page of (item: TYPE) { items: LIST: item },
+METHOD sum (numbers: page of (INTEGER)) RETURNS (sum: INTEGER),
 ",
     );
     let call = Call {
@@ -233,8 +233,8 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
 fn super_schema() -> anyx_protocol::Schema {
     schema(
         "PROTOCOL shop VERSION 1,
-GENERIC (item) RECORD page { items: LIST: item },
-METHOD sum (numbers: page WITH (item: INTEGER)) RETURNS (sum: INTEGER),
+RECORD page of (item: TYPE) { items: LIST: item },
+METHOD sum (numbers: page of (INTEGER)) RETURNS (sum: INTEGER),
 ",
     )
 }
@@ -243,12 +243,12 @@ METHOD sum (numbers: page WITH (item: INTEGER)) RETURNS (sum: INTEGER),
 fn defaults_and_examples_are_checked_against_each_use() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
-GENERIC (item) RECORD page { items: LIST: item, size: OPTIONAL: INTEGER DEFAULT 20 },
+RECORD page of (item: TYPE) { items: LIST: item, size: OPTIONAL: INTEGER DEFAULT 20 },
 RECORD search {
-    first: OPTIONAL: page WITH (item: TEXT) DEFAULT { items [\"a\"] },
-    pages: OPTIONAL: LIST: page WITH (item: INTEGER) DEFAULT [],
+    first: OPTIONAL: page of (TEXT) DEFAULT { items [\"a\"] },
+    pages: OPTIONAL: LIST page of (INTEGER) DEFAULT [],
 },
-METHOD find (search: search) RETURNS (found: page WITH (item: TEXT))
+METHOD find (search: search) RETURNS (found: page of (TEXT))
     EXAMPLES [find {} RETURNS { items [\"a\"], size 3 }],
 ",
     );
@@ -273,25 +273,25 @@ METHOD find (search: search) RETURNS (found: page WITH (item: TEXT))
     assert_eq!(
         diagnostics(
             "PROTOCOL shop VERSION 1,
-GENERIC (item) RECORD page { items: LIST: item },
-RECORD search { first: OPTIONAL: page WITH (item: TEXT) DEFAULT { items [3] } },
-METHOD find RETURNS (found: page WITH (item: INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
+RECORD page of (item: TYPE) { items: LIST: item },
+RECORD search { first: OPTIONAL: page of (TEXT) DEFAULT { items [3] } },
+METHOD find RETURNS (found: page of (INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
-        "schema:3:74: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
-  RECORD search { first: OPTIONAL: page WITH (item: TEXT) DEFAULT { items [3] } },
-                                                                           ^"
+        "schema:3:66: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
+  RECORD search { first: OPTIONAL: page of (TEXT) DEFAULT { items [3] } },
+                                                                   ^"
     );
     assert_eq!(
         diagnostics(
             "PROTOCOL shop VERSION 1,
-GENERIC (item) RECORD page { items: LIST: item },
-METHOD find RETURNS (found: page WITH (item: INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
+RECORD page of (item: TYPE) { items: LIST: item },
+METHOD find RETURNS (found: page of (INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
-        "schema:3:88: in an example of `find`: in `items`: found a string; expected a whole number, as in `3`
-  METHOD find RETURNS (found: page WITH (item: INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
-                                                                                         ^^^"
+        "schema:3:80: in an example of `find`: in `items`: found a string; expected a whole number, as in `3`
+  METHOD find RETURNS (found: page of (INTEGER)) EXAMPLES [find RETURNS { items [\"a\"] }],
+                                                                                 ^^^"
     );
 }
 
@@ -301,118 +301,389 @@ fn a_public_generic_type_is_shared_by_its_full_path() {
         ("protocol.anyx", "PROTOCOL p VERSION 1,"),
         (
             "common.anyx",
-            "PUBLIC GENERIC (item) RECORD page { items: LIST: item }, GENERIC (item) RECORD secret { items: LIST: item },",
+            "PUBLIC RECORD page of (item: TYPE) { items: LIST: item }, RECORD secret of (item: TYPE) { items: LIST: item },",
         ),
         (
             "files.anyx",
-            "RECORD file { path: TEXT }, METHOD list RETURNS (files: common/page WITH (item: file)),",
+            "RECORD file { path: TEXT }, METHOD list RETURNS (files: common/page of (file)),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
     let list = schema.method("files/list").unwrap();
     assert_eq!(
         schema.type_name(&list.returns.as_ref().unwrap().r#type),
-        "common/page WITH (item: files/file)"
+        "common/page of (files/file)"
     );
     let files = [
         files[0],
         files[1],
         (
             "files.anyx",
-            "GENERIC (page) RECORD box { value: page }, METHOD list RETURNS (files: common/secret WITH (item: TEXT)),",
+            "RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (TEXT)), METHOD all RETURNS (files: common/page (TEXT)),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
+    assert_snapshot(
+        "tests/snapshots/generic_scope_diagnostics.txt",
+        &render(&files, &found),
+    );
+}
+
+/// A slot of a type's shape may sit anywhere: after the words, before them,
+/// between two words, or around them, and a use fills each in place.
+const PLACES: &str = "PROTOCOL places VERSION 1,
+
+RECORD person { name: TEXT },
+RECORD document { title: TEXT },
+
+## The words, then a slot.
+RECORD page of (item: TYPE) { items: LIST: item },
+## A slot, then the words.
+RECORD (item: TYPE) history { versions: LIST: item },
+## A slot, a word, a slot.
+CHOICE (left: TYPE) or (right: TYPE) { first (value: left), second (value: right) },
+## Slots between words.
+RECORD table from (key: TYPE) to (value: TYPE) { keys: LIST: key, rows: LIST: value },
+## A slot first, then words, then a slot.
+RECORD (value: TYPE) signed by (signer: TYPE) { value: value, signer: signer },
+## A slot between words, with words after it.
+RECORD box of (item: TYPE) sealed { item: item },
+## The same words as a type that isn't generic.
+RECORD page { number: INTEGER },
+
+METHOD list RETURNS (people: page of (person)),
+METHOD history RETURNS (history: (document) history),
+METHOD parse (input: TEXT) RETURNS (parsed: (INTEGER) or (TEXT)),
+METHOD table RETURNS (table: table from (TEXT) to (person)),
+METHOD search (query: TEXT) RETURNS (results: page of ((document) signed by (person))),
+METHOD sealed RETURNS (box: box of (LIST: TEXT) sealed),
+METHOD first page RETURNS (page: page),
+METHOD nested RETURNS (pages: LIST page of ((page of (INTEGER)) or (MAP: (TEXT) history))),
+";
+
+#[test]
+fn a_slot_may_sit_anywhere_in_a_generic_type_s_shape() {
+    let schema = schema(PLACES);
+    let declared: Vec<(&str, String, &[String])> = schema
+        .types
+        .iter()
+        .map(|definition| {
+            (
+                definition.name.as_str(),
+                definition.shape(),
+                definition.parameters.as_slice(),
+            )
+        })
+        .collect();
+    let expected: Vec<(&str, &str, Vec<&str>)> = vec![
+        ("person", "person", vec![]),
+        ("document", "document", vec![]),
+        ("page of _", "page of (item)", vec!["item"]),
+        ("_ history", "(item) history", vec!["item"]),
+        ("_ or _", "(left) or (right)", vec!["left", "right"]),
+        (
+            "table from _ to _",
+            "table from (key) to (value)",
+            vec!["key", "value"],
+        ),
+        (
+            "_ signed by _",
+            "(value) signed by (signer)",
+            vec!["value", "signer"],
+        ),
+        ("box of _ sealed", "box of (item) sealed", vec!["item"]),
+        ("page", "page", vec![]),
+    ];
+    assert_eq!(declared.len(), expected.len());
+    for ((name, shape, parameters), (expected_name, expected_shape, expected_parameters)) in
+        declared.iter().zip(&expected)
+    {
+        assert_eq!(name, expected_name);
+        assert_eq!(shape, expected_shape);
+        assert_eq!(parameters, expected_parameters);
+    }
+    let returned: Vec<String> = schema
+        .methods
+        .iter()
+        .map(|method| schema.type_name(&method.returns.as_ref().unwrap().r#type))
+        .collect();
     assert_eq!(
-        render(&files, &found),
-        "files.anyx:1:10: found the type parameter `page` of `box`, which has the name of the type `common/page`; expected a name that no type visible here has, since `page` in `box` would then mean either; rename the parameter
-  GENERIC (page) RECORD box { value: page }, METHOD list RETURNS (files: common/secret WITH (item: TEXT)),
-           ^^^^
-files.anyx:1:72: found `common/secret`, which is private to the scope `common`; expected a `PUBLIC` type, or one of the scope `files`; write `PUBLIC` before its definition in `common.anyx` to share it
-  GENERIC (page) RECORD box { value: page }, METHOD list RETURNS (files: common/secret WITH (item: TEXT)),
-                                                                         ^^^^^^^^^^^^^"
+        returned,
+        [
+            "page of (person)",
+            "(document) history",
+            "(INTEGER) or (TEXT)",
+            "table from (TEXT) to (person)",
+            "page of ((document) signed by (person))",
+            "box of (LIST: TEXT) sealed",
+            "page",
+            "LIST: page of ((page of (INTEGER)) or (MAP: (TEXT) history))",
+        ]
+    );
+    // Each argument goes to the parameter of its slot.
+    let table = &schema
+        .method("table")
+        .unwrap()
+        .returns
+        .as_ref()
+        .unwrap()
+        .r#type;
+    assert_eq!(table, &Type::Generic(5, vec![Type::Text, Type::Named(0)]));
+    let search = &schema
+        .method("search _")
+        .unwrap()
+        .returns
+        .as_ref()
+        .unwrap()
+        .r#type;
+    assert_eq!(
+        search,
+        &Type::Generic(
+            2,
+            vec![Type::Generic(6, vec![Type::Named(1), Type::Named(0)])]
+        )
     );
 }
 
 #[test]
-fn the_guide_explains_generic_and_with() {
+fn a_value_of_each_placement_is_written_like_its_type_with_the_arguments() {
+    let schema = schema(PLACES);
+    let method = |name: &str| {
+        schema
+            .methods
+            .iter()
+            .position(|method| method.full_name() == name)
+            .unwrap()
+    };
+    let person =
+        |name: &str| Value::Record([("name".to_string(), Value::Text(name.to_string()))].into());
+    assert_eq!(
+        returned(
+            &schema,
+            method("list"),
+            "RETURNS { items [{ name \"Ann\" }] }"
+        ),
+        Value::Record([("items".to_string(), Value::List(vec![person("Ann")]))].into())
+    );
+    assert_eq!(
+        returned(
+            &schema,
+            method("history"),
+            "RETURNS { versions [{ title \"a\" }] }"
+        ),
+        Value::Record(
+            [(
+                "versions".to_string(),
+                Value::List(vec![Value::Record(
+                    [("title".to_string(), Value::Text("a".to_string()))].into()
+                )])
+            )]
+            .into()
+        )
+    );
+    assert_eq!(
+        returned(&schema, method("parse _"), "RETURNS second \"x\""),
+        Value::Variant {
+            shape: "second _".to_string(),
+            arguments: vec![Value::Text("x".to_string())],
+        }
+    );
+    assert_eq!(
+        decode_response(&schema, &[method("parse _")], "RETURNS first \"x\"")
+            .unwrap_err()
+            .to_string(),
+        "1:15: in `value` of `first _`: found a string; expected a whole number, as in `3`"
+    );
+    assert_eq!(
+        returned(
+            &schema,
+            method("table"),
+            "RETURNS { keys [\"a\"], rows [{ name \"Ann\" }] }"
+        ),
+        Value::Record(
+            [
+                (
+                    "keys".to_string(),
+                    Value::List(vec![Value::Text("a".to_string())])
+                ),
+                ("rows".to_string(), Value::List(vec![person("Ann")])),
+            ]
+            .into()
+        )
+    );
+    let signed = returned(
+        &schema,
+        method("search _"),
+        "RETURNS { items [{ value { title \"a\" }, signer { name \"Ann\" } }] }",
+    );
+    let Value::Record(fields) = signed else {
+        panic!("expected a record");
+    };
+    let Value::List(items) = &fields["items"] else {
+        panic!("expected a list");
+    };
+    let Value::Record(item) = &items[0] else {
+        panic!("expected a record");
+    };
+    assert_eq!(item["signer"], person("Ann"));
+    assert_eq!(
+        returned(&schema, method("sealed"), "RETURNS { item [\"a\"] }"),
+        Value::Record(
+            [(
+                "item".to_string(),
+                Value::List(vec![Value::Text("a".to_string())])
+            )]
+            .into()
+        )
+    );
+    assert_eq!(
+        returned(&schema, method("first page"), "RETURNS { number 1 }"),
+        Value::Record([("number".to_string(), Value::Integer(1))].into())
+    );
+    assert_eq!(
+        returned(
+            &schema,
+            method("nested"),
+            "RETURNS [{ items [first { items [1] }, second { \"k\" { versions [\"v\"] } }] }]"
+        ),
+        Value::List(vec![Value::Record(
+            [(
+                "items".to_string(),
+                Value::List(vec![
+                    Value::Variant {
+                        shape: "first _".to_string(),
+                        arguments: vec![Value::Record(
+                            [("items".to_string(), Value::List(vec![Value::Integer(1)]))].into()
+                        )],
+                    },
+                    Value::Variant {
+                        shape: "second _".to_string(),
+                        arguments: vec![Value::Map(
+                            [(
+                                "k".to_string(),
+                                Value::Record(
+                                    [(
+                                        "versions".to_string(),
+                                        Value::List(vec![Value::Text("v".to_string())])
+                                    )]
+                                    .into()
+                                )
+                            )]
+                            .into()
+                        )],
+                    },
+                ])
+            )]
+            .into()
+        )])
+    );
+}
+
+#[test]
+fn the_guide_explains_generic_types() {
     let guide = anyx_protocol::guide(&schema(SHOP), "");
     assert!(
         guide.contains(
-            "- A GENERIC RECORD or CHOICE has type parameters, which its fields or
-  variants use as types: `GENERIC (item) RECORD page`. A use gives a type
-  for each, `page WITH (item: TEXT)`, and its value is written with those types
-  in place of the parameters.
+            "- A generic RECORD or CHOICE has a type parameter in each slot of its
+  name, which its fields or variants use as a type: `RECORD page of (item: TYPE)`.
+  A use puts a type in each slot, in parentheses, `page of (TEXT)`, and its value
+  is written with those types in place of the parameters.
 "
         ),
         "{guide}"
     );
     assert!(
-        guide.contains("GENERIC (value, problem) CHOICE outcome {"),
+        guide.contains("CHOICE (value: TYPE) or (problem: TYPE) {"),
         "{guide}"
     );
     assert!(guide.contains("    pay 7\n"), "{guide}");
 }
 
 #[test]
-fn a_generic_declaration_is_formatted_on_one_line_where_it_fits() {
+fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
     let formatted = anyx_protocol::format_schema(SHOP).unwrap();
     assert!(
-        formatted.contains("GENERIC item RECORD page {\n    items: LIST item,\n"),
+        formatted.contains("RECORD page of (item: TYPE) {\n    items: LIST item,\n"),
         "{formatted}"
     );
     assert!(
-        formatted.contains("GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) },"),
+        formatted.contains("CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) },"),
         "{formatted}"
     );
     assert!(
-        formatted.contains("METHOD list orders RETURNS orders: page WITH item: order,"),
+        formatted.contains("METHOD list orders RETURNS orders: page of (order),"),
         "{formatted}"
     );
+    assert!(
+        formatted.contains("RETURNS outcomes: page of ((TEXT) or (decline)),"),
+        "{formatted}"
+    );
+    // Formatting changes nothing a schema means.
+    let formatted = anyx_protocol::format_schema(PLACES).unwrap();
+    let before = schema(PLACES);
+    let after = schema(&formatted);
+    assert_eq!(before.types, after.types);
+    assert_eq!(before.methods, after.methods);
 }
 
 #[test]
 fn mistakes_in_generic_types_are_diagnosed() {
     let cases = [
         (
-            "a named type or an error group can't be generic",
-            "PROTOCOL a VERSION 1, GENERIC (value) TYPE x: LIST: value,",
+            "a named type can't be generic",
+            "PROTOCOL a VERSION 1, TYPE list of (value: TYPE): LIST: value,",
         ),
         (
-            "a keyword before a use of a generic type needs a `:`",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD page { items: LIST: item }, METHOD list RETURNS (files: LIST page WITH (item: TEXT)),",
+            "a slot of a declaration holds a type parameter, not a type",
+            "PROTOCOL a VERSION 1, RECORD page of (item: TEXT) { items: LIST: item },",
+        ),
+        (
+            "an error group can't be generic",
+            "PROTOCOL a VERSION 1, ERRORS failures of (item: TYPE) [missing (item: item)],",
+        ),
+        (
+            "the braces come last, once, and the name has words",
+            "PROTOCOL a VERSION 1, RECORD page of (item: TYPE), RECORD box { value: TEXT } of (item: TYPE) { value: item }, RECORD (left: TYPE) (right: TYPE) { left: left, right: right },",
+        ),
+        (
+            "a shape twice, while the same words without the slot are another type",
+            "PROTOCOL a VERSION 1, RECORD page { number: INTEGER }, RECORD page of (item: TYPE) { items: LIST: item }, CHOICE page of (other: TYPE) { one (value: other) },",
         ),
         (
             "a parameter twice, one with the name of a type, and one unused",
-            "PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, GENERIC (item, item) RECORD page { items: LIST: item }, GENERIC (diagnostic, unused) RECORD other { items: LIST: diagnostic },",
+            "PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, RECORD (item: TYPE) paired with (item: TYPE) { items: LIST: item }, RECORD other of (diagnostic: TYPE) and (unused: TYPE) { items: LIST: diagnostic },",
         ),
         (
             "a default on a field whose type holds a parameter",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },",
+            "PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },",
         ),
         (
-            "a parameter with arguments",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item, other: item WITH (x: TEXT) },",
+            "a parameter with a type in a slot",
+            "PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item, other: item of (TEXT) },",
         ),
         (
-            "a generic type without its arguments, and arguments for a type that isn't generic",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r WITH (item: TEXT)),",
+            "a generic type without its arguments, and an argument for a type that isn't generic",
+            "PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),",
         ),
         (
-            "unknown, missing and repeated arguments",
-            "PROTOCOL a VERSION 1, GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: outcome WITH (value: TEXT, problme: TEXT)), METHOD b RETURNS (x: outcome WITH (value: TEXT, value: INTEGER, problem: TEXT)),",
+            "the wrong number of arguments, or the slots in the wrong places",
+            "PROTOCOL a VERSION 1, CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: (TEXT) or (TEXT) (INTEGER)), METHOD b RETURNS (x: or (TEXT) (INTEGER)), METHOD c RETURNS (x: (TEXT) or),",
+        ),
+        (
+            "a type argument that names no type",
+            "PROTOCOL a VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, METHOD a RETURNS (x: page of (prson)),",
         ),
         (
             "a generic type holding itself through an argument",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD tree { child: box WITH (item: tree) }, GENERIC (item) RECORD chain { value: item, next: OPTIONAL: chain WITH (item: item) },",
+            "PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD tree { child: box of (tree) }, RECORD (item: TYPE) chain { value: item, next: OPTIONAL: (item) chain },",
         ),
         (
             "a generic type using itself with other arguments, directly or through another",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD nest { value: item, next: LIST: nest WITH (item: LIST: item) }, GENERIC (a) RECORD first { x: LIST: second WITH (b: LIST: a) }, GENERIC (b) RECORD second { y: LIST: first WITH (a: b) },",
+            "PROTOCOL a VERSION 1, RECORD nest of (item: TYPE) { value: item, next: LIST: nest of (LIST: item) }, RECORD (a: TYPE) first { x: LIST: second (LIST: a) }, RECORD second (b: TYPE) { y: LIST: (b) first },",
         ),
         (
             "a named type over a use of a generic type that holds it",
-            "PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, TYPE boxed: box WITH (item: boxed),",
+            "PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, TYPE boxed: box of (boxed),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -429,8 +700,10 @@ fn mistakes_in_generic_types_are_diagnosed() {
 fn a_generic_type_may_hold_itself_through_a_list_with_its_own_parameters() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-GENERIC (item) RECORD tree { value: item, children: LIST: tree WITH (item: item) },
-METHOD tree RETURNS (tree: tree WITH (item: TEXT)),
+RECORD tree of (item: TYPE) { value: item, children: LIST: tree of (item) },
+RECORD (item: TYPE) chain { value: item, rest: MAP: (item) chain },
+METHOD tree RETURNS (tree: tree of (TEXT)),
+METHOD chain RETURNS (chain: (INTEGER) chain),
 ",
     );
     let value = returned(
@@ -442,6 +715,15 @@ METHOD tree RETURNS (tree: tree WITH (item: TEXT)),
         panic!("expected a record");
     };
     assert_eq!(fields["value"], Value::Text("a".to_string()));
+    let value = returned(
+        &schema,
+        1,
+        "RETURNS { value 1, rest { \"next\" { value 2, rest {} } } }",
+    );
+    let Value::Record(fields) = value else {
+        panic!("expected a record");
+    };
+    assert_eq!(fields["value"], Value::Integer(1));
 }
 
 #[test]
@@ -449,7 +731,7 @@ fn the_generic_example_in_protocol_md_reads() {
     let document = common::read("PROTOCOL.md");
     let example = document
         .split("```anyx\n")
-        .find(|block| block.contains("GENERIC (item) RECORD page"))
+        .find(|block| block.contains("RECORD page of (item: TYPE)"))
         .and_then(|rest| rest.split("```").next())
         .unwrap();
     let schema = schema(&format!(
@@ -457,12 +739,19 @@ fn the_generic_example_in_protocol_md_reads() {
 RECORD order {{ number: INTEGER, total: INTEGER }},
 TYPE order id: INTEGER,
 RECORD receipt {{ number: INTEGER }},
+RECORD document {{ title: TEXT }},
+RECORD person {{ name: TEXT }},
 CHOICE decline {{ insufficient funds, card expired }},
 {example}"
     ));
     let pay_all = schema.method("pay all _").unwrap();
     assert_eq!(
         schema.type_name(&pay_all.returns.as_ref().unwrap().r#type),
-        "page WITH (item: outcome WITH (value: receipt, problem: decline))"
+        "page of ((receipt) or (decline))"
+    );
+    let search = schema.method("search _").unwrap();
+    assert_eq!(
+        schema.type_name(&search.returns.as_ref().unwrap().r#type),
+        "page of ((document) signed by (person))"
     );
 }

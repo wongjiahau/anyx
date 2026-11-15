@@ -399,7 +399,7 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
                     }
                     _ => Err(mismatch(format!(
                         "the record `{}`, as in `{{ {} }}`",
-                        definition.name,
+                        definition.shape(),
                         example_fields(fields)
                     ))),
                 },
@@ -410,7 +410,7 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
                         schema,
                         &shapes,
                         node,
-                        &format!("a variant of `{}`", definition.name),
+                        &format!("a variant of `{}`", definition.shape()),
                     )
                 }
                 TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),

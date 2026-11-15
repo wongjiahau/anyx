@@ -8,11 +8,12 @@ use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 /// The schema as written, a file per scope.
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
     path: "protocol.anyx",
-    source: r#"## Generic types, for the tests of the generated code.
+    source: r#"## Generic types, for the tests of the generated code: a slot at the end,
+## at the start, at both ends, and between words.
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-GENERIC (item) RECORD page {
+RECORD page of (item: TYPE) {
     items: LIST: item,
     next: OPTIONAL: TEXT,
     # How many there are in all.
@@ -21,32 +22,37 @@ GENERIC (item) RECORD page {
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-GENERIC (value, problem) CHOICE attempt { done (value: value), failed (problem: problem) },
+CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) },
 
 # A value and when it was taken, which holds an `INSTANT` whatever the value.
-GENERIC (item) RECORD dated { item: item, at: INSTANT },
+RECORD (item: TYPE) dated { item: item, at: INSTANT },
 
 # Holds itself through a `LIST`, with its own parameter.
-GENERIC (item) RECORD tree { value: item, children: LIST: tree WITH (item: item) },
+RECORD tree of (item: TYPE) { value: item, children: LIST tree of (item) },
+
+# Keys and their values, in the same order: a slot between words.
+RECORD table from (key: TYPE) to (value: TYPE) { keys: LIST: key, values: LIST: value },
 
 RECORD payment { amount: INTEGER, at: INSTANT },
 
 CHOICE decline { insufficient funds, card expired },
 
-TYPE payments: page WITH (item: payment),
+TYPE payments: page of (payment),
 
-METHOD pay (amount: INTEGER) RETURNS (attempt: attempt WITH (value: payment, problem: decline)),
+METHOD pay (amount: INTEGER) RETURNS (attempt: (payment) or (decline)),
 
 METHOD pay all (amounts: LIST: INTEGER)
-    RETURNS (attempts: page WITH (item: attempt WITH (problem: decline, value: payment))),
+    RETURNS (attempts: page of ((payment) or (decline))),
 
 METHOD payments RETURNS (payments: payments),
 
-METHOD count (payments: page WITH (item: payment)) RETURNS (count: INTEGER),
+METHOD count (payments: page of (payment)) RETURNS (count: INTEGER),
 
-METHOD categories RETURNS (categories: tree WITH (item: TEXT)),
+METHOD categories RETURNS (categories: tree of (TEXT)),
 
-METHOD latest RETURNS (latest: dated WITH (item: TEXT)),
+METHOD latest RETURNS (latest: (TEXT) dated),
+
+METHOD prices RETURNS (prices: table from (TEXT) to (INTEGER)),
 "#,
 }];
 
@@ -62,14 +68,14 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 
 /// A page of a long list, and where the next one starts.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Page<Item> {
+pub struct PageOf<Item> {
     pub items: Vec<Item>,
     pub next: Option<String>,
     /// How many there are in all.
     pub total: i64,
 }
 
-impl<Item: IntoValue> IntoValue for Page<Item> {
+impl<Item: IntoValue> IntoValue for PageOf<Item> {
     fn into_value(self) -> Value {
         Value::Record(
             FieldsBuilder::new()
@@ -81,7 +87,7 @@ impl<Item: IntoValue> IntoValue for Page<Item> {
     }
 }
 
-impl<Item: FromValue> FromValue for Page<Item> {
+impl<Item: FromValue> FromValue for PageOf<Item> {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Record(fields) = value else {
             return None;
@@ -98,19 +104,19 @@ impl<Item: FromValue> FromValue for Page<Item> {
 /// What came of an attempt: `value` is a parameter whose name the generated
 /// Rust code already uses.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Attempt<ValueParameter, Problem> {
+pub enum Or<ValueParameter, Problem> {
     Done { value: ValueParameter },
     Failed { problem: Problem },
 }
 
-impl<ValueParameter: IntoValue, Problem: IntoValue> IntoValue for Attempt<ValueParameter, Problem> {
+impl<ValueParameter: IntoValue, Problem: IntoValue> IntoValue for Or<ValueParameter, Problem> {
     fn into_value(self) -> Value {
         match self {
-            Attempt::Done { value } => Value::Variant {
+            Or::Done { value } => Value::Variant {
                 shape: "done _".to_string(),
                 arguments: vec![value.into_value()],
             },
-            Attempt::Failed { problem } => Value::Variant {
+            Or::Failed { problem } => Value::Variant {
                 shape: "failed _".to_string(),
                 arguments: vec![problem.into_value()],
             },
@@ -118,17 +124,17 @@ impl<ValueParameter: IntoValue, Problem: IntoValue> IntoValue for Attempt<ValueP
     }
 }
 
-impl<ValueParameter: FromValue, Problem: FromValue> FromValue for Attempt<ValueParameter, Problem> {
+impl<ValueParameter: FromValue, Problem: FromValue> FromValue for Or<ValueParameter, Problem> {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Variant { shape, arguments } = value else {
             return None;
         };
         let mut arguments = arguments.into_iter();
         Some(match shape.as_str() {
-            "done _" => Attempt::Done {
+            "done _" => Or::Done {
                 value: FromValue::from_value(arguments.next()?)?,
             },
-            "failed _" => Attempt::Failed {
+            "failed _" => Or::Failed {
                 problem: FromValue::from_value(arguments.next()?)?,
             },
             _ => return None,
@@ -169,12 +175,12 @@ impl<Item: FromValue> FromValue for Dated<Item> {
 
 /// Holds itself through a `LIST`, with its own parameter.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Tree<Item> {
+pub struct TreeOf<Item> {
     pub value: Item,
-    pub children: Vec<Tree<Item>>,
+    pub children: Vec<TreeOf<Item>>,
 }
 
-impl<Item: IntoValue> IntoValue for Tree<Item> {
+impl<Item: IntoValue> IntoValue for TreeOf<Item> {
     fn into_value(self) -> Value {
         Value::Record(
             FieldsBuilder::new()
@@ -185,7 +191,7 @@ impl<Item: IntoValue> IntoValue for Tree<Item> {
     }
 }
 
-impl<Item: FromValue> FromValue for Tree<Item> {
+impl<Item: FromValue> FromValue for TreeOf<Item> {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Record(fields) = value else {
             return None;
@@ -194,6 +200,37 @@ impl<Item: FromValue> FromValue for Tree<Item> {
         Some(Self {
             value: fields.field("value")?,
             children: fields.field("children")?,
+        })
+    }
+}
+
+/// Keys and their values, in the same order: a slot between words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableFromTo<Key, ValueParameter> {
+    pub keys: Vec<Key>,
+    pub values: Vec<ValueParameter>,
+}
+
+impl<Key: IntoValue, ValueParameter: IntoValue> IntoValue for TableFromTo<Key, ValueParameter> {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("keys", self.keys)
+                .field("values", self.values)
+                .build(),
+        )
+    }
+}
+
+impl<Key: FromValue, ValueParameter: FromValue> FromValue for TableFromTo<Key, ValueParameter> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            keys: fields.field("keys")?,
+            values: fields.field("values")?,
         })
     }
 }
@@ -264,15 +301,15 @@ impl FromValue for Decline {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Payments(pub Page<Payment>);
+pub struct Payments(pub PageOf<Payment>);
 
-impl From<Page<Payment>> for Payments {
-    fn from(value: Page<Payment>) -> Self {
+impl From<PageOf<Payment>> for Payments {
+    fn from(value: PageOf<Payment>) -> Self {
         Self(value)
     }
 }
 
-impl From<Payments> for Page<Payment> {
+impl From<Payments> for PageOf<Payment> {
     fn from(value: Payments) -> Self {
         value.0
     }
@@ -300,15 +337,13 @@ pub trait Server {
     /// `pay _`, returning `attempt`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn pay(&self, amount: i64) -> Result<Attempt<Payment, Decline>, Self::Error>;
+    async fn pay(&self, amount: i64) -> Result<Or<Payment, Decline>, Self::Error>;
 
     /// `pay all _`, returning `attempts`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn pay_all(
-        &self,
-        amounts: Vec<i64>,
-    ) -> Result<Page<Attempt<Payment, Decline>>, Self::Error>;
+    async fn pay_all(&self, amounts: Vec<i64>)
+    -> Result<PageOf<Or<Payment, Decline>>, Self::Error>;
 
     /// `payments`, returning `payments`.
     ///
@@ -318,17 +353,22 @@ pub trait Server {
     /// `count _`, returning `count`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn count(&self, payments: Page<Payment>) -> Result<i64, Self::Error>;
+    async fn count(&self, payments: PageOf<Payment>) -> Result<i64, Self::Error>;
 
     /// `categories`, returning `categories`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn categories(&self) -> Result<Tree<String>, Self::Error>;
+    async fn categories(&self) -> Result<TreeOf<String>, Self::Error>;
 
     /// `latest`, returning `latest`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn latest(&self) -> Result<Dated<String>, Self::Error>;
+
+    /// `prices`, returning `prices`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn prices(&self) -> Result<TableFromTo<String, i64>, Self::Error>;
 }
 
 /// Runs `request` against `implementation` and writes the response. Every
@@ -377,7 +417,8 @@ pub async fn handle<S: Server>(
             ),
             4 => anyx_protocol::server::value(<S as Server>::categories(implementation).await),
             5 => anyx_protocol::server::value(<S as Server>::latest(implementation).await),
-            6 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
+            6 => anyx_protocol::server::value(<S as Server>::prices(implementation).await),
+            7 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
             _ => unreachable!("the codec read a method of the schema"),
         };
         outcomes.push(outcome.unwrap_or_else(|error| {
@@ -406,7 +447,7 @@ impl<T: Transport> Client<T> {
     pub async fn pay(
         &self,
         amount: i64,
-    ) -> Result<Attempt<Payment, Decline>, CallError<::std::convert::Infallible, T::Error>> {
+    ) -> Result<Or<Payment, Decline>, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 0, vec![amount.into_value()]).await
     }
 
@@ -416,8 +457,7 @@ impl<T: Transport> Client<T> {
     pub async fn pay_all(
         &self,
         amounts: Vec<i64>,
-    ) -> Result<Page<Attempt<Payment, Decline>>, CallError<::std::convert::Infallible, T::Error>>
-    {
+    ) -> Result<PageOf<Or<Payment, Decline>>, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![amounts.into_value()]).await
     }
 
@@ -435,7 +475,7 @@ impl<T: Transport> Client<T> {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn count(
         &self,
-        payments: Page<Payment>,
+        payments: PageOf<Payment>,
     ) -> Result<i64, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![payments.into_value()]).await
     }
@@ -445,7 +485,7 @@ impl<T: Transport> Client<T> {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn categories(
         &self,
-    ) -> Result<Tree<String>, CallError<::std::convert::Infallible, T::Error>> {
+    ) -> Result<TreeOf<String>, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
     }
 
@@ -458,9 +498,18 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
     }
 
+    /// `prices`, returning `prices`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn prices(
+        &self,
+    ) -> Result<TableFromTo<String, i64>, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
+    }
+
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
     }
 }
 
@@ -501,6 +550,13 @@ pub const CATEGORIES_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::cl
 
 /// What a call of `latest` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
 pub const LATEST_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `prices` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const PRICES_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: false,
     undone_by: None,

@@ -237,7 +237,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
             .map(|definition| {
                 (
                     pascal_case(&definition.name),
-                    format!("the type `{}`", definition.name),
+                    format!("the type `{}`", definition.shape()),
                 )
             });
         let error_enums = methods_in(schema, &scope)
@@ -293,7 +293,10 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
         .map(|definition| {
             (
                 scoped_pascal_case(&definition.scope, &definition.name),
-                format!("the type `{}`", scoped(&definition.scope, &definition.name)),
+                format!(
+                    "the type `{}`",
+                    scoped(&definition.scope, &definition.shape())
+                ),
             )
         })
         .chain(
@@ -311,7 +314,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
     distinct("TypeScript type", reserved_types().chain(typescript_types))?;
     for definition in &schema.types {
         let parameter =
-            |name: &String| format!("the type parameter `{name}` of `{}`", definition.name);
+            |name: &String| format!("the type parameter `{name}` of `{}`", definition.shape());
         distinct(
             "type parameter",
             definition.parameters.iter().map(|name| {

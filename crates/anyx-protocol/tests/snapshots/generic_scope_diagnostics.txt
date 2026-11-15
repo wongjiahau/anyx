@@ -1,0 +1,6 @@
+files.anyx:1:72: found `common/secret of (TEXT)`, which is private to the scope `common`; expected a `PUBLIC` type, or one of the scope `files`; write `PUBLIC` before its definition in `common.anyx` to share it
+  RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (TEXT)), METHOD all RETURNS (files: common/page (TEXT)),
+                                                                         ^^^^^^^^^^^^^^^^^^^^^^^
+files.anyx:1:125: found `common/page (TEXT)`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/diagnostic` for `PUBLIC RECORD diagnostic` in `common.anyx`; the types of the scope `common` that start with `page` are `page of (item)`
+  RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (TEXT)), METHOD all RETURNS (files: common/page (TEXT)),
+                                                                                                                              ^^^^^^^^^^^^^^^^^^

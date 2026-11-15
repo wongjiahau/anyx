@@ -33,28 +33,33 @@ pub enum Definition {
 pub struct Record {
     pub doc: Option<Spanned<StringLiteral>>,
     pub public: Option<Span>,
-    pub parameters: Option<TypeParameters>,
     pub body: RecordBody,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TypeParameters {
-    Several(Spanned<Vec<TypeParameter>>),
-    One(TypeParameter),
+pub struct RecordBody {
+    pub name: CallName,
+    pub arguments: Vec<RecordPart>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RecordPart {
+    Fields(Spanned<Vec<Field>>),
+    TypeParameter(TypeParameter),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeParameter {
     pub name: Spanned<String>,
+    pub marker: TypeMarker,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecordBody {
-    pub name: Spanned<String>,
-    pub fields: Spanned<Vec<Field>>,
-    pub span: Span,
+pub enum TypeMarker {
+    Type(Span),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -126,12 +131,6 @@ pub enum Defaulted {
         default: Node,
         span: Span,
     },
-    Generic {
-        reference: Reference,
-        arguments: TypeArguments,
-        default: Node,
-        span: Span,
-    },
     Other {
         r#type: Type,
         default: Node,
@@ -143,16 +142,21 @@ pub enum Defaulted {
 pub struct Choice {
     pub doc: Option<Spanned<StringLiteral>>,
     pub public: Option<Span>,
-    pub parameters: Option<TypeParameters>,
     pub body: ChoiceBody,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChoiceBody {
-    pub name: Spanned<String>,
-    pub variants: Spanned<Vec<Variant>>,
+    pub name: CallName,
+    pub arguments: Vec<ChoicePart>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ChoicePart {
+    Variants(Spanned<Vec<Variant>>),
+    TypeParameter(TypeParameter),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -251,7 +255,7 @@ pub struct Shape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameter {
     pub name: Spanned<String>,
-    pub r#type: Box<Type>,
+    pub r#type: Type,
     pub span: Span,
 }
 
@@ -264,32 +268,15 @@ pub enum Type {
     Boolean(Span),
     Instant(Span),
     Duration(Span),
-    List {
-        item: Box<Type>,
-        span: Span,
-    },
-    Map {
-        value: Box<Type>,
-        span: Span,
-    },
+    List { item: Box<Type>, span: Span },
+    Map { value: Box<Type>, span: Span },
     Named(Reference),
-    Generic {
-        reference: Reference,
-        arguments: TypeArguments,
-        span: Span,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TypeArguments {
-    Several(Spanned<Vec<Parameter>>),
-    One(Parameter),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reference {
     pub name: CallName,
-    pub arguments: Vec<TypeName>,
+    pub arguments: Vec<Type>,
     pub span: Span,
 }
 
@@ -312,11 +299,19 @@ impl Definition {
     }
 }
 
-impl TypeParameters {
+impl RecordPart {
     pub fn span(&self) -> Span {
         match self {
-            TypeParameters::Several(value) => value.span,
-            TypeParameters::One(value) => value.span,
+            RecordPart::Fields(value) => value.span,
+            RecordPart::TypeParameter(value) => value.span,
+        }
+    }
+}
+
+impl TypeMarker {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeMarker::Type(span) => *span,
         }
     }
 }
@@ -354,8 +349,16 @@ impl Defaulted {
             | Defaulted::ListOfNamed { span, .. }
             | Defaulted::Map { span, .. }
             | Defaulted::MapOfNamed { span, .. }
-            | Defaulted::Generic { span, .. }
             | Defaulted::Other { span, .. } => *span,
+        }
+    }
+}
+
+impl ChoicePart {
+    pub fn span(&self) -> Span {
+        match self {
+            ChoicePart::Variants(value) => value.span,
+            ChoicePart::TypeParameter(value) => value.span,
         }
     }
 }
@@ -408,18 +411,8 @@ impl Type {
             | Type::Instant(span)
             | Type::Duration(span)
             | Type::List { span, .. }
-            | Type::Map { span, .. }
-            | Type::Generic { span, .. } => *span,
+            | Type::Map { span, .. } => *span,
             Type::Named(value) => value.span,
-        }
-    }
-}
-
-impl TypeArguments {
-    pub fn span(&self) -> Span {
-        match self {
-            TypeArguments::Several(value) => value.span,
-            TypeArguments::One(value) => value.span,
         }
     }
 }
@@ -455,16 +448,22 @@ impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
         support::Errors::errors(&self.public, found);
-        support::Errors::errors(&self.parameters, found);
         support::Errors::errors(&self.body, found);
     }
 }
 
-impl support::Errors for TypeParameters {
+impl support::Errors for RecordBody {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for RecordPart {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            TypeParameters::Several(value) => support::Errors::errors(value, found),
-            TypeParameters::One(value) => support::Errors::errors(value, found),
+            RecordPart::Fields(value) => support::Errors::errors(value, found),
+            RecordPart::TypeParameter(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -472,13 +471,15 @@ impl support::Errors for TypeParameters {
 impl support::Errors for TypeParameter {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.marker, found);
     }
 }
 
-impl support::Errors for RecordBody {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.fields, found);
+impl support::Errors for TypeMarker {
+    fn errors<'a>(&'a self, _: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            TypeMarker::Type(_) => {}
+        }
     }
 }
 
@@ -549,16 +550,6 @@ impl support::Errors for Defaulted {
                 support::Errors::errors(value, found);
                 support::Errors::errors(default, found);
             }
-            Defaulted::Generic {
-                reference,
-                arguments,
-                default,
-                ..
-            } => {
-                support::Errors::errors(reference, found);
-                support::Errors::errors(arguments, found);
-                support::Errors::errors(default, found);
-            }
             Defaulted::Other {
                 r#type, default, ..
             } => {
@@ -573,7 +564,6 @@ impl support::Errors for Choice {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
         support::Errors::errors(&self.public, found);
-        support::Errors::errors(&self.parameters, found);
         support::Errors::errors(&self.body, found);
     }
 }
@@ -581,7 +571,16 @@ impl support::Errors for Choice {
 impl support::Errors for ChoiceBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.variants, found);
+        support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for ChoicePart {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            ChoicePart::Variants(value) => support::Errors::errors(value, found),
+            ChoicePart::TypeParameter(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -715,23 +714,6 @@ impl support::Errors for Type {
                 support::Errors::errors(value, found);
             }
             Type::Named(value) => support::Errors::errors(value, found),
-            Type::Generic {
-                reference,
-                arguments,
-                ..
-            } => {
-                support::Errors::errors(reference, found);
-                support::Errors::errors(arguments, found);
-            }
-        }
-    }
-}
-
-impl support::Errors for TypeArguments {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            TypeArguments::Several(value) => support::Errors::errors(value, found),
-            TypeArguments::One(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -798,12 +780,7 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
     let mut parts = support::call_of(
         node,
-        &[
-            "the call `_? PUBLIC GENERIC _ RECORD _`",
-            "the call `_? PUBLIC RECORD _`",
-            "the call `_? GENERIC _ RECORD _`",
-            "the call `_? RECORD _`",
-        ],
+        &["the call `_? PUBLIC RECORD _`", "the call `_? RECORD _`"],
     )?;
     let decoded = Record {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
@@ -812,18 +789,6 @@ pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
             .is_some()
         {
             Some(parts.word_span("PUBLIC")?)
-        } else {
-            None
-        },
-        parameters: if parts
-            .choose(&["GENERIC"], false, true, &["the word `GENERIC`"])?
-            .is_some()
-        {
-            Some(
-                parts
-                    .word("GENERIC")?
-                    .one(decode_type_parameters, "type parameters")?,
-            )
         } else {
             None
         },
@@ -836,15 +801,31 @@ pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
     Ok(decoded)
 }
 
-pub fn decode_type_parameters(node: &Node) -> Result<TypeParameters, DecodeError> {
-    decode_type_parameters_several(node)
-        .map(TypeParameters::Several)
-        .or_else(|error| error.or(decode_type_parameter(node).map(TypeParameters::One)))
+pub fn decode_record_body(node: &Node) -> Result<RecordBody, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = RecordBody {
+        name,
+        arguments: arguments.zero_or_more(decode_record_part),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
 }
 
-fn decode_type_parameters_several(node: &Node) -> Result<Spanned<Vec<TypeParameter>>, DecodeError> {
-    let mut elements = support::parenthesis(node)?;
-    let value = elements.one_or_more(decode_type_parameter, "a type parameter")?;
+pub fn decode_record_part(node: &Node) -> Result<RecordPart, DecodeError> {
+    decode_record_part_fields(node)
+        .map(RecordPart::Fields)
+        .or_else(|error| error.or(decode_type_parameter(node).map(RecordPart::TypeParameter)))
+}
+
+fn decode_record_part_fields(node: &Node) -> Result<Spanned<Vec<Field>>, DecodeError> {
+    let mut elements = support::curly_brace(node)?;
+    let value = elements.zero_or_more(decode_field);
     elements.finish()?;
     Ok(Spanned {
         value,
@@ -853,40 +834,21 @@ fn decode_type_parameters_several(node: &Node) -> Result<Spanned<Vec<TypeParamet
 }
 
 pub fn decode_type_parameter(node: &Node) -> Result<TypeParameter, DecodeError> {
-    let mut parts = support::call(node, "the call `…`")?;
+    let mut parts = support::call(node, "the call `… _`")?;
     let decoded = TypeParameter {
         name: parts.words(
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
         )?,
+        marker: parts.one(decode_type_marker, "a type marker")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
 }
 
-pub fn decode_record_body(node: &Node) -> Result<RecordBody, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = RecordBody {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        fields: parts.one(decode_record_body_fields, "`{...}`")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_record_body_fields(node: &Node) -> Result<Spanned<Vec<Field>>, DecodeError> {
-    let mut elements = support::curly_brace(node)?;
-    let value = elements.zero_or_more(decode_field);
-    elements.finish()?;
-    Ok(Spanned {
-        value,
-        span: node.span,
-    })
+pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
+    support::word(node, "TYPE").map(TypeMarker::Type)
 }
 
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
@@ -940,7 +902,6 @@ pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
         .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
         .or_else(|error| error.or(decode_defaulted_map(node)))
         .or_else(|error| error.or(decode_defaulted_map_of_named(node)))
-        .or_else(|error| error.or(decode_defaulted_generic(node)))
         .or_else(|error| error.or(decode_defaulted_other(node)))
 }
 
@@ -1081,20 +1042,6 @@ fn decode_defaulted_map_of_named(node: &Node) -> Result<Defaulted, DecodeError> 
     Ok(decoded)
 }
 
-fn decode_defaulted_generic(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `_ WITH _ DEFAULT _`")?;
-    let decoded = Defaulted::Generic {
-        reference: parts.one(decode_reference, "a reference")?,
-        arguments: parts
-            .word("WITH")?
-            .one(decode_type_arguments, "type arguments")?,
-        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
 fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
     let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
     let decoded = Defaulted::Other {
@@ -1109,12 +1056,7 @@ fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
 pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
     let mut parts = support::call_of(
         node,
-        &[
-            "the call `_? PUBLIC GENERIC _ CHOICE _`",
-            "the call `_? PUBLIC CHOICE _`",
-            "the call `_? GENERIC _ CHOICE _`",
-            "the call `_? CHOICE _`",
-        ],
+        &["the call `_? PUBLIC CHOICE _`", "the call `_? CHOICE _`"],
     )?;
     let decoded = Choice {
         doc: parts.optional(|node| support::string(node, |_| true, "a string")),
@@ -1123,18 +1065,6 @@ pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
             .is_some()
         {
             Some(parts.word_span("PUBLIC")?)
-        } else {
-            None
-        },
-        parameters: if parts
-            .choose(&["GENERIC"], false, true, &["the word `GENERIC`"])?
-            .is_some()
-        {
-            Some(
-                parts
-                    .word("GENERIC")?
-                    .one(decode_type_parameters, "type parameters")?,
-            )
         } else {
             None
         },
@@ -1148,20 +1078,28 @@ pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
 }
 
 pub fn decode_choice_body(node: &Node) -> Result<ChoiceBody, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
     let decoded = ChoiceBody {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        variants: parts.one(decode_choice_body_variants, "`{...}`")?,
+        name,
+        arguments: arguments.zero_or_more(decode_choice_part),
         span: node.span,
     };
-    parts.finish()?;
+    arguments.finish()?;
     Ok(decoded)
 }
 
-fn decode_choice_body_variants(node: &Node) -> Result<Spanned<Vec<Variant>>, DecodeError> {
+pub fn decode_choice_part(node: &Node) -> Result<ChoicePart, DecodeError> {
+    decode_choice_part_variants(node)
+        .map(ChoicePart::Variants)
+        .or_else(|error| error.or(decode_type_parameter(node).map(ChoicePart::TypeParameter)))
+}
+
+fn decode_choice_part_variants(node: &Node) -> Result<Spanned<Vec<Variant>>, DecodeError> {
     let mut elements = support::curly_brace(node)?;
     let value = elements.one_or_more(decode_variant, "a variant")?;
     elements.finish()?;
@@ -1515,7 +1453,7 @@ pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
         )?,
-        r#type: parts.one(|node| decode_type(node).map(Box::new), "a type")?,
+        r#type: parts.one(decode_type, "a type")?,
         span: node.span,
     };
     parts.finish()?;
@@ -1534,7 +1472,6 @@ pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
         .or_else(|error| error.or(decode_type_list(node)))
         .or_else(|error| error.or(decode_type_map(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
-        .or_else(|error| error.or(decode_type_generic(node)))
 }
 
 fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
@@ -1561,35 +1498,6 @@ fn decode_type_map(node: &Node) -> Result<Type, DecodeError> {
     Ok(decoded)
 }
 
-fn decode_type_generic(node: &Node) -> Result<Type, DecodeError> {
-    let mut parts = support::call(node, "the call `_ WITH _`")?;
-    let decoded = Type::Generic {
-        reference: parts.one(decode_reference, "a reference")?,
-        arguments: parts
-            .word("WITH")?
-            .one(decode_type_arguments, "type arguments")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_type_arguments(node: &Node) -> Result<TypeArguments, DecodeError> {
-    decode_type_arguments_several(node)
-        .map(TypeArguments::Several)
-        .or_else(|error| error.or(decode_parameter(node).map(TypeArguments::One)))
-}
-
-fn decode_type_arguments_several(node: &Node) -> Result<Spanned<Vec<Parameter>>, DecodeError> {
-    let mut elements = support::parenthesis(node)?;
-    let value = elements.one_or_more(decode_parameter, "a parameter")?;
-    elements.finish()?;
-    Ok(Spanned {
-        value,
-        span: node.span,
-    })
-}
-
 pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
@@ -1599,7 +1507,7 @@ pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {
     let mut arguments = support::arguments(node, arguments);
     let decoded = Reference {
         name,
-        arguments: arguments.zero_or_more(decode_type_name),
+        arguments: arguments.zero_or_more(decode_type),
         span: node.span,
     };
     arguments.finish()?;

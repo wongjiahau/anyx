@@ -169,7 +169,7 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
 
 /// The type parameters of a generic record or choice, which its
 /// conversions need to convert too: `<Item>`, and
-/// `impl<Item: IntoValue> IntoValue for Page<Item>`.
+/// `impl<Item: IntoValue> IntoValue for PageOf<Item>`.
 struct Generics {
     names: Vec<String>,
 }
@@ -184,7 +184,7 @@ impl Generics {
         }
     }
 
-    /// `name` with its parameters: `Page<Item>`.
+    /// `name` with its parameters: `PageOf<Item>`.
     fn of(&self, name: &str) -> String {
         match self.names.is_empty() {
             true => name.to_string(),

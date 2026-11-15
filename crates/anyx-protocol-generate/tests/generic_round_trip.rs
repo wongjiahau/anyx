@@ -1,6 +1,7 @@
 //! The Rust module generated from `tests/fixtures/generic.anyx`, compiled: a
 //! client calls a server in the same process with generic records and
-//! choices, nested uses of them and a named type over one.
+//! choices, with a slot at the end, at the start, at both ends and between
+//! words, nested uses of them and a named type over one.
 
 #[path = "generated/generic.rs"]
 mod generic;
@@ -11,7 +12,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyx_protocol::client::Transport;
-use generic::{Attempt, Client, Dated, Decline, Page, Payment, Payments, Server, Tree};
+use generic::{Client, Dated, Decline, Or, PageOf, Payment, Payments, Server, TableFromTo, TreeOf};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -36,12 +37,12 @@ fn payment(amount: i64) -> Payment {
     }
 }
 
-fn attempt(amount: i64) -> Attempt<Payment, Decline> {
+fn attempt(amount: i64) -> Or<Payment, Decline> {
     match amount {
-        amount if amount > 100 => Attempt::Failed {
+        amount if amount > 100 => Or::Failed {
             problem: Decline::InsufficientFunds,
         },
-        amount => Attempt::Done {
+        amount => Or::Done {
             value: payment(amount),
         },
     }
@@ -52,15 +53,15 @@ struct Shop;
 impl Server for Shop {
     type Error = std::convert::Infallible;
 
-    async fn pay(&self, amount: i64) -> Result<Attempt<Payment, Decline>, Self::Error> {
+    async fn pay(&self, amount: i64) -> Result<Or<Payment, Decline>, Self::Error> {
         Ok(attempt(amount))
     }
 
     async fn pay_all(
         &self,
         amounts: Vec<i64>,
-    ) -> Result<Page<Attempt<Payment, Decline>>, Self::Error> {
-        Ok(Page {
+    ) -> Result<PageOf<Or<Payment, Decline>>, Self::Error> {
+        Ok(PageOf {
             total: amounts.len() as i64,
             items: amounts.into_iter().map(attempt).collect(),
             next: None,
@@ -68,21 +69,21 @@ impl Server for Shop {
     }
 
     async fn payments(&self) -> Result<Payments, Self::Error> {
-        Ok(Payments(Page {
+        Ok(Payments(PageOf {
             items: vec![payment(3)],
             next: Some("2".to_string()),
             total: 7,
         }))
     }
 
-    async fn count(&self, payments: Page<Payment>) -> Result<i64, Self::Error> {
+    async fn count(&self, payments: PageOf<Payment>) -> Result<i64, Self::Error> {
         Ok(payments.items.iter().map(|payment| payment.amount).sum())
     }
 
-    async fn categories(&self) -> Result<Tree<String>, Self::Error> {
-        Ok(Tree {
+    async fn categories(&self) -> Result<TreeOf<String>, Self::Error> {
+        Ok(TreeOf {
             value: "food".to_string(),
-            children: vec![Tree {
+            children: vec![TreeOf {
                 value: "fruit".to_string(),
                 children: vec![],
             }],
@@ -93,6 +94,13 @@ impl Server for Shop {
         Ok(Dated {
             item: "tea".to_string(),
             at: at(0),
+        })
+    }
+
+    async fn prices(&self) -> Result<TableFromTo<String, i64>, Self::Error> {
+        Ok(TableFromTo {
+            keys: vec!["tea".to_string()],
+            values: vec![3],
         })
     }
 }
@@ -114,14 +122,14 @@ fn uses_of_generic_types_reach_the_server_and_come_back() {
     assert_eq!(run(client.pay(300)), Ok(attempt(300)));
     assert_eq!(
         run(client.pay_all(vec![3, 300])),
-        Ok(Page {
+        Ok(PageOf {
             items: vec![attempt(3), attempt(300)],
             next: None,
             total: 2,
         })
     );
     assert_eq!(
-        run(client.count(Page {
+        run(client.count(PageOf {
             items: vec![payment(3), payment(4)],
             next: None,
             total: 0,
@@ -130,9 +138,9 @@ fn uses_of_generic_types_reach_the_server_and_come_back() {
     );
     assert_eq!(
         run(client.categories()),
-        Ok(Tree {
+        Ok(TreeOf {
             value: "food".to_string(),
-            children: vec![Tree {
+            children: vec![TreeOf {
                 value: "fruit".to_string(),
                 children: vec![],
             }],
@@ -143,6 +151,13 @@ fn uses_of_generic_types_reach_the_server_and_come_back() {
         Ok(Dated {
             item: "tea".to_string(),
             at: at(0),
+        })
+    );
+    assert_eq!(
+        run(client.prices()),
+        Ok(TableFromTo {
+            keys: vec!["tea".to_string()],
+            values: vec![3],
         })
     );
 }

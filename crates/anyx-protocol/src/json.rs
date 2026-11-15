@@ -422,7 +422,7 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 unreachable!("a named or generic type is a record or a choice underneath")
             };
             let Json::Object(object) = json else {
-                return mismatch(&format!("an object for `{}`", definition.name));
+                return mismatch(&format!("an object for `{}`", definition.shape()));
             };
             match kind.as_ref() {
                 TypeKind::Record(fields) => {

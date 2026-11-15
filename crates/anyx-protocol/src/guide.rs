@@ -2,7 +2,7 @@
 //! such as an AI agent: how to write a request and read a response, then the
 //! schema as written.
 
-use crate::schema::{Method, Schema, Type, TypeKind, scoped};
+use crate::schema::{Method, Schema, Type, TypeKind, fill_slots, scoped};
 
 /// The guide to `schema`. `how_to_send` tells the reader where and how to
 /// send a request, such as the URL and the header to send it with; when it
@@ -158,8 +158,8 @@ words are names; all-caps words belong to the schema language. `ERRORS name
     )
 }
 
-/// The rule for generic types, shown with the schema's first one: "`GENERIC
-/// (item) RECORD page`", then a use of it. Empty for a schema without any.
+/// The rule for generic types, shown with the schema's first one: "`RECORD
+/// page of (item: TYPE)`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
@@ -172,17 +172,16 @@ fn generic_types(schema: &Schema) -> String {
         TypeKind::Choice(_) => "CHOICE",
         TypeKind::Record(_) | TypeKind::Distinct(_) => "RECORD",
     };
-    let name = scoped(&definition.scope, &definition.name);
-    let arguments: Vec<String> = definition
+    let declared: Vec<String> = definition
         .parameters
         .iter()
-        .map(|parameter| format!("{parameter}: TEXT"))
+        .map(|parameter| format!("{parameter}: TYPE"))
         .collect();
+    let arguments = vec!["TEXT".to_string(); definition.parameters.len()];
     format!(
-        "- A GENERIC RECORD or CHOICE has type parameters, which its fields or\n  variants use as types: `GENERIC ({}) {keyword} {}`. A use gives a type\n  for each, `{name} WITH ({})`, and its value is written with those types\n  in place of the parameters.\n",
-        definition.parameters.join(", "),
-        definition.name,
-        arguments.join(", "),
+        "- A generic RECORD or CHOICE has a type parameter in each slot of its\n  name, which its fields or variants use as a type: `{keyword} {}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
+        fill_slots(&definition.name, &declared),
+        scoped(&definition.scope, &fill_slots(&definition.name, &arguments)),
     )
 }
 

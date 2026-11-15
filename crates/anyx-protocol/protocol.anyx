@@ -18,22 +18,23 @@ definition: ONE OF [record, choice, named type, errors, method],
 record: ANYFIX CALL [
   doc: OPTIONAL: STRING,
   public: OPTIONAL: WORD "PUBLIC",
-  parameters: OPTIONAL [WORD "GENERIC", type parameters],
   WORD "RECORD", body: record body,
 ],
 
-## A generic `RECORD` or `CHOICE` names its type parameters after `GENERIC`:
-## `GENERIC (item) RECORD page { items: LIST: item }`. Parentheses around one
-## name only group, so `(item)` is the name itself, and `(value, problem)`
-## holds several.
-type parameters: ONE OF [
-  several: PARENTHESIS [ONE OR MORE: type parameter],
-  one: type parameter,
-],
+## A record's name is a shape, then its fields in braces fill the last slot:
+## `file summary { path: TEXT }`. A generic record has a type parameter in
+## each other slot, anywhere among the words: `page of (item: TYPE) { … }`,
+## `(item: TYPE) history { … }`. The schema checker reads the shape from the
+## call's name, and checks that the braces come last.
+record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record part],
 
-type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD]],
+record part: ONE OF [fields: CURLY BRACE [ZERO OR MORE: field], type parameter],
 
-record body: ANYFIX CALL [name: WORDS [NO KEYWORD], fields: CURLY BRACE [ZERO OR MORE: field]],
+## A type parameter of a generic `RECORD` or `CHOICE`, in a slot of its
+## name: `(item: TYPE)`.
+type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
+
+type marker: ONE OF [WORD "TYPE"],
 
 field: ANYFIX CALL [doc: OPTIONAL: STRING, name: WORDS [NO KEYWORD], type: field type],
 
@@ -66,26 +67,22 @@ defaulted: ONE OF [
   map: ANYFIX CALL [WORD "MAP", value: defaulted],
   ## `MAP file summary DEFAULT {}`
   map of named: ANYFIX CALL [WORD "MAP", value: type, WORD "DEFAULT", default: ANY NODE],
-  ## `page WITH (item: TEXT) DEFAULT { items [] }`
-  generic: ANYFIX CALL [
-    reference, WORD "WITH", arguments: type arguments,
-    WORD "DEFAULT", default: ANY NODE,
-  ],
-  ## `shade DEFAULT dark`, or a type in parentheses, `(LIST: TEXT) DEFAULT []`
+  ## `shade DEFAULT dark`, `page of (TEXT) DEFAULT { items [] }`, or a type
+  ## in parentheses, `(LIST: TEXT) DEFAULT []`
   other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
 ],
 
 choice: ANYFIX CALL [
   doc: OPTIONAL: STRING,
   public: OPTIONAL: WORD "PUBLIC",
-  parameters: OPTIONAL [WORD "GENERIC", type parameters],
   WORD "CHOICE", body: choice body,
 ],
 
-choice body: ANYFIX CALL [
-  name: WORDS [NO KEYWORD],
-  variants: CURLY BRACE [ONE OR MORE: variant],
-],
+## A choice's name is a shape like a record's, with its variants in braces
+## last: `(left: TYPE) or (right: TYPE) { first (value: left), … }`.
+choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice part],
+
+choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
 
 ## A named type gives a type its own name, `TYPE file id: TEXT`, so values
 ## that share a representation but mean different things can't be mixed up.
@@ -190,18 +187,13 @@ type: ONE OF [
   ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
   map: ANYFIX CALL [WORD "MAP", value: type],
   named: reference,
-  ## A generic type with a type for each of its parameters, by name:
-  ## `page WITH (item: file summary)`. `WITH` splits the run, so the
-  ## arguments are one slot: one argument, `item: file summary`, is the call
-  ## `item _`, and several are in parentheses.
-  generic: ANYFIX CALL [reference, WORD "WITH", arguments: type arguments],
 ],
 
-type arguments: ONE OF [several: PARENTHESIS [ONE OR MORE: parameter], one: parameter],
-
-## A type by its name, `diagnostic`, or by its full path from
-## another scope, `common/diagnostic`, which reads as the call `_/_` of
-## `common` and `diagnostic`. The schema checker tells the two apart.
-reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type name],
+## A type by its name, `diagnostic`, or a generic one by its shape with a
+## type in each slot, in parentheses: `page of (file)`, `(INTEGER) or
+## (TEXT)`. Another scope's type goes by its full path, `common/diagnostic`
+## or `common/page of (file)`, which reads as the call `_/_` of `common` and
+## the type. The schema checker tells them apart.
+reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
 
 type name: ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS],

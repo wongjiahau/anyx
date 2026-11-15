@@ -1,83 +1,113 @@
-== a named type or an error group can't be generic
-PROTOCOL a VERSION 1, GENERIC (value) TYPE x: LIST: value,
-schema:1:39: found the word `TYPE`; expected the word `RECORD` or `CHOICE`
-  PROTOCOL a VERSION 1, GENERIC (value) TYPE x: LIST: value,
-                                        ^^^^
+== a named type can't be generic
+PROTOCOL a VERSION 1, TYPE list of (value: TYPE): LIST: value,
+schema:1:44: found the word `TYPE`; expected the word `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST`, `MAP`, a call whose name has no keyword or the end of the call
+  PROTOCOL a VERSION 1, TYPE list of (value: TYPE): LIST: value,
+                                             ^^^^
 
-== a keyword before a use of a generic type needs a `:`
-PROTOCOL a VERSION 1, GENERIC (item) RECORD page { items: LIST: item }, METHOD list RETURNS (files: LIST page WITH (item: TEXT)),
-schema:1:111: found `WITH` in the call of `LIST`; expected a `:` after `LIST`, as in `LIST: page WITH (item: TEXT)`, since the keywords of a run belong to one call
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD page { items: LIST: item }, METHOD list RETURNS (files: LIST page WITH (item: TEXT)),
-                                                                                                                ^^^^
+== a slot of a declaration holds a type parameter, not a type
+PROTOCOL a VERSION 1, RECORD page of (item: TEXT) { items: LIST: item },
+schema:1:45: found the word `TEXT`; expected the word `TYPE`
+  PROTOCOL a VERSION 1, RECORD page of (item: TEXT) { items: LIST: item },
+                                              ^^^^
+
+== an error group can't be generic
+PROTOCOL a VERSION 1, ERRORS failures of (item: TYPE) [missing (item: item)],
+schema:1:49: found the word `TYPE`; expected `[...]`, a call whose name has no keyword or the end of the call
+  PROTOCOL a VERSION 1, ERRORS failures of (item: TYPE) [missing (item: item)],
+                                                  ^^^^
+
+== the braces come last, once, and the name has words
+PROTOCOL a VERSION 1, RECORD page of (item: TYPE), RECORD box { value: TEXT } of (item: TYPE) { value: item }, RECORD (left: TYPE) (right: TYPE) { left: left, right: right },
+schema:1:30: found the `RECORD` `page of (item)` without its fields in braces; expected them last, after its name, as in `RECORD page of (item: TYPE) { … }`
+  PROTOCOL a VERSION 1, RECORD page of (item: TYPE), RECORD box { value: TEXT } of (item: TYPE) { value: item }, RECORD (left: TYPE) (right: TYPE) { left: left, right: right },
+                               ^^^^^^^
+schema:1:63: found braces in the name of a `RECORD`, before its end; expected its fields in one pair of braces, last, and only type parameters such as `(item: TYPE)` in the name's other slots
+  PROTOCOL a VERSION 1, RECORD page of (item: TYPE), RECORD box { value: TEXT } of (item: TYPE) { value: item }, RECORD (left: TYPE) (right: TYPE) { left: left, right: right },
+                                                                ^^^^^^^^^^^^^^^
+schema:1:119: found a `RECORD` whose name has no words; expected at least one lowercase word to name it, with any type parameters among the words, as in `RECORD page of (item: TYPE)`
+  PROTOCOL a VERSION 1, RECORD page of (item: TYPE), RECORD box { value: TEXT } of (item: TYPE) { value: item }, RECORD (left: TYPE) (right: TYPE) { left: left, right: right },
+                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+== a shape twice, while the same words without the slot are another type
+PROTOCOL a VERSION 1, RECORD page { number: INTEGER }, RECORD page of (item: TYPE) { items: LIST: item }, CHOICE page of (other: TYPE) { one (value: other) },
+schema:1:114: found a second type named `page of (other)`; expected each type to be defined once in a scope; rename or remove one of them
+  PROTOCOL a VERSION 1, RECORD page { number: INTEGER }, RECORD page of (item: TYPE) { items: LIST: item }, CHOICE page of (other: TYPE) { one (value: other) },
+                                                                                                                   ^^^^^^^
 
 == a parameter twice, one with the name of a type, and one unused
-PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, GENERIC (item, item) RECORD page { items: LIST: item }, GENERIC (diagnostic, unused) RECORD other { items: LIST: diagnostic },
-schema:1:75: found a second type parameter named `item`; expected each type parameter once; rename one of them
-  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, GENERIC (item, item) RECORD page { items: LIST: item }, GENERIC (diagnostic, unused) RECORD other { items: LIST: diagnostic },
-                                                                            ^^^^
-schema:1:125: found the type parameter `diagnostic` of `other`, which has the name of the type `diagnostic`; expected a name that no type visible here has, since `diagnostic` in `other` would then mean either; rename the parameter
-  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, GENERIC (item, item) RECORD page { items: LIST: item }, GENERIC (diagnostic, unused) RECORD other { items: LIST: diagnostic },
-                                                                                                                              ^^^^^^^^^^
-schema:1:137: found the type parameter `unused` of `other`, which none of its types uses; expected each parameter in the type of a field or a variant's slot, such as `LIST: unused`; use it or remove it
-  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, GENERIC (item, item) RECORD page { items: LIST: item }, GENERIC (diagnostic, unused) RECORD other { items: LIST: diagnostic },
-                                                                                                                                          ^^^^^^
+PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, RECORD (item: TYPE) paired with (item: TYPE) { items: LIST: item }, RECORD other of (diagnostic: TYPE) and (unused: TYPE) { items: LIST: diagnostic },
+schema:1:93: found a second type parameter named `item`; expected each type parameter once; rename one of them
+  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, RECORD (item: TYPE) paired with (item: TYPE) { items: LIST: item }, RECORD other of (diagnostic: TYPE) and (unused: TYPE) { items: LIST: diagnostic },
+                                                                                              ^^^^
+schema:1:145: found the type parameter `diagnostic` of `other of (diagnostic) and (unused)`, which has the name of the type `diagnostic`; expected a name that no type visible here has, since `diagnostic` in `other of (diagnostic) and (unused)` would then mean either; rename the parameter
+  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, RECORD (item: TYPE) paired with (item: TYPE) { items: LIST: item }, RECORD other of (diagnostic: TYPE) and (unused: TYPE) { items: LIST: diagnostic },
+                                                                                                                                                  ^^^^^^^^^^
+schema:1:168: found the type parameter `unused` of `other of (diagnostic) and (unused)`, which none of its types uses; expected each parameter in the type of a field or a variant's slot, such as `LIST: unused`; use it or remove it
+  PROTOCOL a VERSION 1, RECORD diagnostic { line: INTEGER }, RECORD (item: TYPE) paired with (item: TYPE) { items: LIST: item }, RECORD other of (diagnostic: TYPE) and (unused: TYPE) { items: LIST: diagnostic },
+                                                                                                                                                                         ^^^^^^
 
 == a default on a field whose type holds a parameter
-PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },
-schema:1:68: found a `DEFAULT` on the field `value`, whose type holds the type parameter `item`; expected a `DEFAULT` only on a field whose type is the same in every use of `box`, since the default can't be checked against each type `item` stands for
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },
-                                                                     ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },
+schema:1:69: found a `DEFAULT` on the field `value`, whose type holds the type parameter `item`; expected a `DEFAULT` only on a field whose type is the same in every use of `box of (item)`, since the default can't be checked against each type `item` stands for
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: OPTIONAL: item DEFAULT 3, size: OPTIONAL: INTEGER DEFAULT 3 },
+                                                                      ^^^^^^^^^^^^^^
 
-== a parameter with arguments
-PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item, other: item WITH (x: TEXT) },
-schema:1:71: found the type parameter `item` with `WITH`; expected `item` alone, since a type parameter stands for a whole type and takes no arguments
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item, other: item WITH (x: TEXT) },
-                                                                        ^^^^^^^^^^^^^^^^^^^
+== a parameter with a type in a slot
+PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item, other: item of (TEXT) },
+schema:1:72: found `item of (TEXT)`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `item of (TEXT)`, or fix the name; `item` is a type parameter, which stands for a whole type and has no slots
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item, other: item of (TEXT) },
+                                                                         ^^^^^^^^^^^^^^
 
-== a generic type without its arguments, and arguments for a type that isn't generic
-PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r WITH (item: TEXT)),
-schema:1:112: found `box`, which is `GENERIC (item)`, without its type arguments; expected `box WITH (item: …)`, with a type for each of its parameters
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r WITH (item: TEXT)),
-                                                                                                                 ^^^
-schema:1:139: found `WITH` after `r`, which is not `GENERIC`; expected `r` alone, since only a `GENERIC` record or choice takes type arguments
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r WITH (item: TEXT)),
-                                                                                                                                            ^^^^^^^^^^^^^^^^^^^
+== a generic type without its arguments, and an argument for a type that isn't generic
+PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),
+schema:1:113: found `box`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `box`, or fix the name; the types of this schema that start with `box` are `box of (item)`
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),
+                                                                                                                  ^^^
+schema:1:140: found `r (TEXT)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `r`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD r { a: INTEGER }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: r (TEXT)),
+                                                                                                                                             ^^^^^^^^
 
-== unknown, missing and repeated arguments
-PROTOCOL a VERSION 1, GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: outcome WITH (value: TEXT, problme: TEXT)), METHOD b RETURNS (x: outcome WITH (value: TEXT, value: INTEGER, problem: TEXT)),
-schema:1:136: found no type argument for `problem`; expected an argument for each parameter of `outcome`, `value`, `problem`
-  PROTOCOL a VERSION 1, GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: outcome WITH (value: TEXT, problme: TEXT)), METHOD b RETURNS (x: outcome WITH (value: TEXT, value: INTEGER, problem: TEXT)),
-                                                                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:163: found the type argument `problme`, which is not a parameter of `outcome`; expected an argument for each of its parameters, `value`, `problem`
-  PROTOCOL a VERSION 1, GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: outcome WITH (value: TEXT, problme: TEXT)), METHOD b RETURNS (x: outcome WITH (value: TEXT, value: INTEGER, problem: TEXT)),
-                                                                                                                                                                    ^^^^^^^
-schema:1:228: found a second type argument for `value`; expected each parameter of `outcome` once
-  PROTOCOL a VERSION 1, GENERIC (value, problem) CHOICE outcome { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: outcome WITH (value: TEXT, problme: TEXT)), METHOD b RETURNS (x: outcome WITH (value: TEXT, value: INTEGER, problem: TEXT)),
-                                                                                                                                                                                                                                     ^^^^^
+== the wrong number of arguments, or the slots in the wrong places
+PROTOCOL a VERSION 1, CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: (TEXT) or (TEXT) (INTEGER)), METHOD b RETURNS (x: or (TEXT) (INTEGER)), METHOD c RETURNS (x: (TEXT) or),
+schema:1:136: found `(TEXT) or (TEXT) (INTEGER)`, with types in 3 slots, but this schema has no type of that shape; the types with its words are `(value) or (problem)`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: (TEXT) or (TEXT) (INTEGER)), METHOD b RETURNS (x: or (TEXT) (INTEGER)), METHOD c RETURNS (x: (TEXT) or),
+                                                                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+schema:1:186: found `or (TEXT) (INTEGER)`, with types in 2 slots, but this schema has no type of that shape; the types with its words are `(value) or (problem)`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: (TEXT) or (TEXT) (INTEGER)), METHOD b RETURNS (x: or (TEXT) (INTEGER)), METHOD c RETURNS (x: (TEXT) or),
+                                                                                                                                                                                           ^^^^^^^^^^^^^^^^^^^
+schema:1:229: found `(TEXT) or`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `(value) or (problem)`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) }, METHOD a RETURNS (x: (TEXT) or (TEXT) (INTEGER)), METHOD b RETURNS (x: or (TEXT) (INTEGER)), METHOD c RETURNS (x: (TEXT) or),
+                                                                                                                                                                                                                                      ^^^^^^^^^
+
+== a type argument that names no type
+PROTOCOL a VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, METHOD a RETURNS (x: page of (prson)),
+schema:1:104: found `prson`, which is not a type of this schema; expected `TEXT`, `BYTES`, `INTEGER`, `NUMBER`, `BOOLEAN`, `INSTANT`, `DURATION`, `LIST: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `prson`, or fix the name
+  PROTOCOL a VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, METHOD a RETURNS (x: page of (prson)),
+                                                                                                         ^^^^^
 
 == a generic type holding itself through an argument
-PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD tree { child: box WITH (item: tree) }, GENERIC (item) RECORD chain { value: item, next: OPTIONAL: chain WITH (item: item) },
-schema:1:73: found the type `tree` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD tree { child: box WITH (item: tree) }, GENERIC (item) RECORD chain { value: item, next: OPTIONAL: chain WITH (item: item) },
-                                                                          ^^^^
-schema:1:134: found the type `chain` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, RECORD tree { child: box WITH (item: tree) }, GENERIC (item) RECORD chain { value: item, next: OPTIONAL: chain WITH (item: item) },
-                                                                                                                                       ^^^^^
+PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD tree { child: box of (tree) }, RECORD (item: TYPE) chain { value: item, next: OPTIONAL: (item) chain },
+schema:1:74: found the type `tree` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD tree { child: box of (tree) }, RECORD (item: TYPE) chain { value: item, next: OPTIONAL: (item) chain },
+                                                                           ^^^^
+schema:1:125: found the type `(item) chain` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, RECORD tree { child: box of (tree) }, RECORD (item: TYPE) chain { value: item, next: OPTIONAL: (item) chain },
+                                                                                                                              ^^^^^
 
 == a generic type using itself with other arguments, directly or through another
-PROTOCOL a VERSION 1, GENERIC (item) RECORD nest { value: item, next: LIST: nest WITH (item: LIST: item) }, GENERIC (a) RECORD first { x: LIST: second WITH (b: LIST: a) }, GENERIC (b) RECORD second { y: LIST: first WITH (a: b) },
-schema:1:45: found the generic type `nest` using itself as `nest WITH (item: LIST: item)`; expected each use of `nest` within it to pass its own parameters as they are, `nest WITH (item: item)`, so that every use of `nest` holds the same types all the way down
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD nest { value: item, next: LIST: nest WITH (item: LIST: item) }, GENERIC (a) RECORD first { x: LIST: second WITH (b: LIST: a) }, GENERIC (b) RECORD second { y: LIST: first WITH (a: b) },
-                                              ^^^^
-schema:1:128: found the generic type `first` using itself as `first WITH (a: LIST: a)`; expected each use of `first` within it to pass its own parameters as they are, `first WITH (a: a)`, so that every use of `first` holds the same types all the way down
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD nest { value: item, next: LIST: nest WITH (item: LIST: item) }, GENERIC (a) RECORD first { x: LIST: second WITH (b: LIST: a) }, GENERIC (b) RECORD second { y: LIST: first WITH (a: b) },
-                                                                                                                                 ^^^^^
-schema:1:192: found the generic type `second` using itself as `second WITH (b: LIST: b)`; expected each use of `second` within it to pass its own parameters as they are, `second WITH (b: b)`, so that every use of `second` holds the same types all the way down
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD nest { value: item, next: LIST: nest WITH (item: LIST: item) }, GENERIC (a) RECORD first { x: LIST: second WITH (b: LIST: a) }, GENERIC (b) RECORD second { y: LIST: first WITH (a: b) },
-                                                                                                                                                                                                 ^^^^^^
+PROTOCOL a VERSION 1, RECORD nest of (item: TYPE) { value: item, next: LIST: nest of (LIST: item) }, RECORD (a: TYPE) first { x: LIST: second (LIST: a) }, RECORD second (b: TYPE) { y: LIST: (b) first },
+schema:1:30: found the generic type `nest of (item)` using itself as `nest of (LIST: item)`; expected each use of `nest of (item)` within it to pass its own parameters as they are, `nest of (item)`, so that every use of `nest of (item)` holds the same types all the way down
+  PROTOCOL a VERSION 1, RECORD nest of (item: TYPE) { value: item, next: LIST: nest of (LIST: item) }, RECORD (a: TYPE) first { x: LIST: second (LIST: a) }, RECORD second (b: TYPE) { y: LIST: (b) first },
+                               ^^^^^^^
+schema:1:119: found the generic type `(a) first` using itself as `(LIST: a) first`; expected each use of `(a) first` within it to pass its own parameters as they are, `(a) first`, so that every use of `(a) first` holds the same types all the way down
+  PROTOCOL a VERSION 1, RECORD nest of (item: TYPE) { value: item, next: LIST: nest of (LIST: item) }, RECORD (a: TYPE) first { x: LIST: second (LIST: a) }, RECORD second (b: TYPE) { y: LIST: (b) first },
+                                                                                                                        ^^^^^
+schema:1:163: found the generic type `second (b)` using itself as `second (LIST: b)`; expected each use of `second (b)` within it to pass its own parameters as they are, `second (b)`, so that every use of `second (b)` holds the same types all the way down
+  PROTOCOL a VERSION 1, RECORD nest of (item: TYPE) { value: item, next: LIST: nest of (LIST: item) }, RECORD (a: TYPE) first { x: LIST: second (LIST: a) }, RECORD second (b: TYPE) { y: LIST: (b) first },
+                                                                                                                                                                    ^^^^^^
 
 == a named type over a use of a generic type that holds it
-PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, TYPE boxed: box WITH (item: boxed),
-schema:1:71: found the named type `boxed` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE boxed: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, GENERIC (item) RECORD box { value: item }, TYPE boxed: box WITH (item: boxed),
-                                                                        ^^^^^
+PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, TYPE boxed: box of (boxed),
+schema:1:72: found the named type `boxed` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE boxed: TEXT`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, RECORD box of (item: TYPE) { value: item }, TYPE boxed: box of (boxed),
+                                                                         ^^^^^

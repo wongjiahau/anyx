@@ -6,7 +6,7 @@
 //! for each type that holds one, a `revive` function turns its JSON into
 //! its value. A generic type's `revive` function takes the reviver of each
 //! of its parameters, and returns the reviver of the type with them:
-//! `revivePage(reviveInstant)` revives a `Page<Date>`.
+//! `revivePageOf(reviveInstant)` revives a `PageOf<Date>`.
 
 use std::fmt::Write;
 
@@ -374,7 +374,7 @@ fn parameter_name(schema: &Schema, name: &str) -> String {
     type_parameter_name(name, |taken| typescript_type_taken(schema, taken))
 }
 
-/// `name` with the type parameters `parameters`: `Page<Item>`.
+/// `name` with the type parameters `parameters`: `PageOf<Item>`.
 fn generic_name(schema: &Schema, name: &str, parameters: &[String]) -> String {
     match parameters.is_empty() {
         true => name.to_string(),

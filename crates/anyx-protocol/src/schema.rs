@@ -61,12 +61,41 @@ pub struct TypeDefinition {
     /// `PUBLIC`: other scopes may use it.
     pub public: bool,
     pub doc: Option<String>,
-    /// Lowercase words, such as `file summary`.
+    /// Its shape: lowercase words, such as `file summary`, with `_` for
+    /// each slot of a generic record or choice, such as `page of _` for
+    /// `RECORD page of (item: TYPE)`. A type is known by its words and
+    /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
-    /// The type parameters of a `GENERIC` record or choice, in the order
-    /// written, `GENERIC (value, problem)`; empty for any other type.
+    /// The type parameters of a generic record or choice, one per slot of
+    /// its shape, in order: `(value: TYPE) or (problem: TYPE)` has `value`
+    /// and `problem`. Empty for any other type.
     pub parameters: Vec<String>,
     pub kind: TypeKind,
+}
+
+impl TypeDefinition {
+    /// Its shape with each parameter in its slot, as a use of it is
+    /// written: `page of (item)`, or `file summary` for a type that isn't
+    /// generic.
+    pub fn shape(&self) -> String {
+        fill_slots(&self.name, &self.parameters)
+    }
+}
+
+/// `text`, a shape with `_` for each slot, with each slot filled by the next
+/// of `arguments` in parentheses: `page of _` with `TEXT` is
+/// `page of (TEXT)`. A slot left over stays `_`.
+pub fn fill_slots(text: &str, arguments: &[String]) -> String {
+    let mut arguments = arguments.iter();
+    text.split(' ')
+        .map(|word| match (word, word == "_") {
+            (_, true) => arguments
+                .next()
+                .map_or_else(|| "_".to_string(), |argument| format!("({argument})")),
+            (word, false) => word.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -246,9 +275,9 @@ pub enum Type {
     Map(Box<Type>),
     /// The index of a type in [`Schema::types`], one that isn't generic.
     Named(usize),
-    /// A generic record or choice with its arguments, `page WITH (item:
-    /// TEXT)`: the index of the type in [`Schema::types`], and a type for
-    /// each of its parameters, in the order of its parameters.
+    /// A generic record or choice with a type in each slot, `page of
+    /// (TEXT)`: the index of the type in [`Schema::types`], and a type for
+    /// each of its parameters, in the order of its slots.
     Generic(usize, Vec<Type>),
     /// A type parameter, by its name, within the generic record or choice
     /// that declares it. A use of that type puts its argument in its place,
@@ -496,19 +525,11 @@ impl Schema {
             }
             Type::Generic(index, arguments) => {
                 let definition = &self.types[*index];
-                let arguments: Vec<String> = definition
-                    .parameters
+                let arguments: Vec<String> = arguments
                     .iter()
-                    .zip(arguments)
-                    .map(|(parameter, argument)| {
-                        format!("{parameter}: {}", self.type_name(argument))
-                    })
+                    .map(|argument| self.type_name(argument))
                     .collect();
-                format!(
-                    "{} WITH ({})",
-                    scoped(&definition.scope, &definition.name),
-                    arguments.join(", ")
-                )
+                scoped(&definition.scope, &fill_slots(&definition.name, &arguments))
             }
             Type::Parameter(name) => name.clone(),
         }
@@ -517,7 +538,7 @@ impl Schema {
     /// The record or choice that `type` names, after reading past named
     /// types, and its fields or variants: for a generic type, with its
     /// arguments in place of its parameters, so that a value of
-    /// `page WITH (item: TEXT)` reads like a record whose `items` are
+    /// `page of (TEXT)` reads like a record whose `items` are
     /// `LIST: TEXT`. `None` for any other type.
     pub fn instance<'s>(
         &'s self,
@@ -687,14 +708,6 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
                 ),
             )];
         }
-        if let Some(keyword) = keyword_before_with(&nodes, error.span) {
-            return vec![found(
-                error.span,
-                format!(
-                    "found `WITH` in the call of `{keyword}`; expected a `:` after `{keyword}`, as in `{keyword}: page WITH (item: TEXT)`, since the keywords of a run belong to one call"
-                ),
-            )];
-        }
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
@@ -767,35 +780,6 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
         .iter()
         .filter(|node| !has_word(node, "RECORD"))
         .find_map(|node| within(node, span))
-}
-
-/// The keyword before a `WITH` at `span` in the same call, as in
-/// `LIST page WITH (item: TEXT)`, which needs a `:` after `LIST`.
-fn keyword_before_with(nodes: &[Node], span: Span) -> Option<&'static str> {
-    nodes.iter().find_map(|node| {
-        if !(node.span.start <= span.start && span.end <= node.span.end) {
-            return None;
-        }
-        let children: &[Node] = match &node.kind {
-            NodeKind::Call(call) => {
-                let at_with = call.name.iter().any(|part| {
-                    matches!(part, NamePart::Word { text, span: at } if text == "WITH" && *at == span)
-                });
-                let keyword = ["LIST", "MAP", "OPTIONAL"].into_iter().find(|keyword| {
-                    call.name
-                        .iter()
-                        .any(|part| matches!(part, NamePart::Word { text, .. } if text == keyword))
-                });
-                if let (true, Some(keyword)) = (at_with, keyword) {
-                    return Some(keyword);
-                }
-                &call.arguments
-            }
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
-            _ => &[],
-        };
-        keyword_before_with(children, span)
-    })
 }
 
 /// Whether `span` is in a top-level `ERROR`, which a schema no longer has:

@@ -151,6 +151,22 @@ fn names_that_become_the_same_name_are_rejected() {
 }
 
 #[test]
+fn generic_types_whose_words_are_the_same_are_rejected() {
+    assert_eq!(
+        error(
+            "PROTOCOL p VERSION 1, RECORD page of (item: TYPE) { items: LIST: item }, RECORD page (item: TYPE) of { item: item }"
+        ),
+        "found the type `page (item) of`, which becomes the type `PageOf`, like the type `page of (item)`; expected names that stay distinct in the generated code, so rename one"
+    );
+    assert_eq!(
+        error(
+            "PROTOCOL p VERSION 1, RECORD page { a: TEXT }, RECORD page (item: TYPE) { item: item }"
+        ),
+        "found the type `page (item)`, which becomes the type `Page`, like the type `page`; expected names that stay distinct in the generated code, so rename one"
+    );
+}
+
+#[test]
 fn a_keyword_becomes_a_raw_identifier() {
     let schema =
         Schema::parse("PROTOCOL p VERSION 1, RECORD box { type: TEXT, loop: INTEGER }").unwrap();
