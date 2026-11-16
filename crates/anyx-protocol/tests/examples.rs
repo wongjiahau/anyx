@@ -92,14 +92,17 @@ METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
 }
 
 #[test]
-fn a_scoped_example_calls_the_method_by_its_full_name() {
+fn an_imported_method_example_uses_its_flat_name() {
     let files = [
-        ("protocol.anyx", "PROTOCOL notes VERSION 1,"),
+        (
+            "protocol.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./files.anyx\",",
+        ),
         (
             "files.anyx",
             "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [
     # Reading a file.
-    files/read \"a\" RETURNS \"x\",
+    read \"a\" RETURNS \"x\",
 ],",
         ),
     ];
@@ -107,12 +110,15 @@ fn a_scoped_example_calls_the_method_by_its_full_name() {
         .unwrap_or_else(|diagnostics| panic!("{}", render(&files, &diagnostics)));
     let example = &schema.methods[0].examples[0];
     assert_eq!(example.doc.as_deref(), Some("Reading a file."));
-    assert_eq!(example.call, "files/read \"a\"");
+    assert_eq!(example.call, "read \"a\"");
     let files = [
-        ("protocol.anyx", "PROTOCOL notes VERSION 1,"),
+        (
+            "protocol.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./files.anyx\",",
+        ),
         (
             "files.anyx",
-            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [read \"a\" RETURNS \"x\"],",
+            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [files/read \"a\" RETURNS \"x\"],",
         ),
     ];
     let diagnostics = parse_files(&files).unwrap_err();

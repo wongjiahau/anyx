@@ -1,6 +1,6 @@
-files.anyx:1:72: found `common/secret of (Text)`, which is private to the scope `common`; expected a `PUBLIC` type, or one of the scope `files`; write `PUBLIC` before its definition in `common.anyx` to share it
-  RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (Text)), METHOD all RETURNS (files: common/page (Text)),
-                                                                         ^^^^^^^^^^^^^^^^^^^^^^^
-files.anyx:1:125: found `common/page (Text)`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/Diagnostic` for `PUBLIC RECORD Diagnostic` in `common.anyx`; the types of the scope `common` that start with `page` are `page of (item)`
-  RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (Text)), METHOD all RETURNS (files: common/page (Text)),
-                                                                                                                              ^^^^^^^^^^^^^^^^^^
+files.anyx:1:93: `secret of _` is declared in `common.anyx` but is not visible in `files.anyx`; mark it `PUBLIC` and add a direct `USE` of that file
+  USE "./common.anyx", RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: secret of (Text)), METHOD all RETURNS (files: page (Text)),
+                                                                                              ^^^^^^^^^^^^^^^^
+files.anyx:1:139: found `page (Text)`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `page (Text)`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `page` are `page of (item)`
+  USE "./common.anyx", RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: secret of (Text)), METHOD all RETURNS (files: page (Text)),
+                                                                                                                                            ^^^^^^^^^^^

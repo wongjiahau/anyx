@@ -29,8 +29,10 @@ name = "anyx-lsp"
 version = "0.1.0"
 dependencies = [
  "anyx",
+ "anyx-protocol",
  "lsp-server",
  "lsp-types",
+ "percent-encoding",
  "serde",
  "serde_json",
  "wasm-bindgen",

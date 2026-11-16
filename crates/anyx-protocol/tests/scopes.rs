@@ -1,15 +1,23 @@
-//! A schema of a folder: a scope per file, methods called by their full
-//! names, and types and errors private to their scope unless `PUBLIC`.
-
+//! Explicit imports, visibility and a flat wire namespace.
 mod common;
 
-use anyx_protocol::{Call, Value, decode_request, encode_request};
-use common::{assert_snapshot, parse_files, render, scoped};
+use anyx_protocol::Schema;
+use common::{assert_snapshot, scoped};
+
+fn load(entry: &str, files: &[(&str, &str)]) -> Result<Schema, Vec<anyx_protocol::Diagnostic>> {
+    Schema::load(entry, |path| {
+        files
+            .iter()
+            .find(|(file, _)| *file == path)
+            .map(|(_, source)| source.to_string())
+            .ok_or("file not found")
+    })
+}
 
 #[test]
-fn methods_are_named_by_their_scope() {
+fn methods_and_types_have_flat_names() {
     let schema = scoped();
-    let names: Vec<String> = schema
+    let names: Vec<_> = schema
         .methods
         .iter()
         .map(|method| method.full_name())
@@ -17,231 +25,346 @@ fn methods_are_named_by_their_scope() {
     assert_eq!(
         names,
         [
-            "files/list",
-            "files/read _",
-            "files/write _ at revision _ content _",
-            "files/trash _",
-            "files/empty trash",
-            "files/export/html _",
-            "files/export/pdf _",
+            "list",
+            "read _",
+            "write _ at revision _ content _",
+            "trash _",
+            "empty trash",
+            "html _",
+            "pdf _"
         ]
     );
-    let scopes: Vec<String> = schema
-        .scopes()
-        .iter()
-        .map(|scope| scope.join("/"))
-        .collect();
-    assert_eq!(scopes, ["", "common", "files", "files/export"]);
-    let write = schema
-        .method("files/write _ at revision _ content _")
-        .unwrap();
+    let write = schema.method("write _ at revision _ content _").unwrap();
     assert_eq!(
         schema.type_name(&write.returns.as_ref().unwrap().r#type),
-        "LIST common/Diagnostic"
+        "LIST Diagnostic"
     );
-    let errors: Vec<&str> = schema
-        .errors_of(schema.method("files/export/pdf _").unwrap())
+    let errors: Vec<_> = schema
+        .errors_of(schema.method("pdf _").unwrap())
         .iter()
         .map(|error| error.shape.text.as_str())
         .collect();
     assert_eq!(errors, ["unreadable _", "trashed", "missing"]);
-    assert_eq!(schema.name, "notes");
-    assert_eq!(schema.files[0].path, "protocol.anyx");
-}
-
-#[test]
-fn a_call_in_a_scope_reads_back_as_it_was_written() {
-    let schema = scoped();
-    let pdf = schema
-        .methods
-        .iter()
-        .position(|method| method.full_name() == "files/export/pdf _")
-        .unwrap();
-    let list = schema
-        .methods
-        .iter()
-        .position(|method| method.full_name() == "files/list")
-        .unwrap();
-    let calls = vec![
-        Call {
-            method: pdf,
-            arguments: vec![Value::Text("a.note".to_string())],
-        },
-        Call {
-            method: list,
-            arguments: vec![],
-        },
-    ];
-    let request = encode_request(&schema, &calls).unwrap();
-    assert_eq!(request, "files/export/pdf \"a.note\",\nfiles/list,\n");
-    assert_eq!(decode_request(&schema, &request).unwrap(), calls);
+    let calls = anyx_protocol::decode_request(&schema, "pdf \"a.note\", list").unwrap();
     assert_eq!(
-        decode_request(&schema, "files / export / pdf \"a.note\", files/list").unwrap(),
-        calls
+        anyx_protocol::encode_request(&schema, &calls).unwrap(),
+        "pdf \"a.note\",\nlist,\n"
     );
-}
-
-fn request_error(request: &str) -> String {
-    decode_request(&scoped(), request).unwrap_err().to_string()
-}
-
-#[test]
-fn a_call_outside_its_scope_is_pointed_to_its_full_name() {
-    assert_eq!(
-        request_error("read \"a\""),
-        "1:1: found the call `read _`; expected one of the methods `files/list`, `files/read _`, `files/write _ at revision _ content _`, `files/trash _`, `files/empty trash`, `files/export/html _`, `files/export/pdf _`; a word in a slot, such as a choice's variant or `true`, goes in parentheses; a method of that shape is in a scope, so write its full name: `files/read _`"
-    );
-    assert_eq!(
-        request_error("files/pdf \"a\""),
-        "1:1: found the call `files/pdf _`; expected one of the methods `files/list`, `files/read _`, `files/write _ at revision _ content _`, `files/trash _`, `files/empty trash`, `files/export/html _`, `files/export/pdf _`; a word in a slot, such as a choice's variant or `true`, goes in parentheses; a method of that shape is in a scope, so write its full name: `files/export/pdf _`"
-    );
-    assert_eq!(
-        request_error("common/read \"a\""),
-        "1:1: found the scope `common`, which has no methods; expected one of the methods `files/list`, `files/read _`, `files/write _ at revision _ content _`, `files/trash _`, `files/empty trash`, `files/export/html _`, `files/export/pdf _`"
-    );
+    assert!(anyx_protocol::decode_request(&schema, "files/export/pdf \"a.note\"").is_err());
 }
 
 #[cfg(feature = "json")]
 #[test]
-fn the_json_client_calls_a_method_by_its_full_name() {
+fn json_uses_flat_names() {
     let schema = scoped();
     assert_eq!(
-        anyx_protocol::json::encode_request_json(&schema, "files/export/pdf _", "[\"a\"]").unwrap(),
-        "files/export/pdf \"a\"\n"
+        anyx_protocol::json::encode_request_json(&schema, "pdf _", "[\"a\"]").unwrap(),
+        "pdf \"a\"\n"
     );
     assert_eq!(
-        anyx_protocol::json::decode_response_json(&schema, "files/export/pdf _", "ERROR missing",)
-            .unwrap(),
+        anyx_protocol::json::decode_response_json(&schema, "pdf _", "ERROR missing").unwrap(),
         r#"{"error":{"kind":"missing"},"kind":"error"}"#
     );
 }
 
 #[test]
-fn the_guide_shows_each_scope_under_its_full_name() {
-    let guide = anyx_protocol::guide(&scoped(), "Send a request as the body of `POST /notes`.");
-    assert_snapshot("tests/snapshots/scoped_guide.md", &guide);
+fn guide_explains_imports_and_flat_names() {
+    assert_snapshot(
+        "tests/snapshots/scoped_guide.md",
+        &anyx_protocol::guide(&scoped(), "Send a request as the body of `POST /notes`."),
+    );
 }
 
-const ROOT: (&str, &str) = ("protocol.anyx", "PROTOCOL notes VERSION 1,");
-
-const COMMON: (&str, &str) = (
-    "common.anyx",
-    "PUBLIC RECORD diagnostic { line: Integer }, RECORD secret { a: Text }, ERRORS gone errors [gone], PUBLIC ERRORS common errors [missing],",
-);
-
-/// Each case: a title and the schema's files.
-const CASES: &[(&str, &[(&str, &str)])] = &[
-    (
-        "a private type from another scope",
-        &[
-            ROOT,
-            COMMON,
-            ("files.anyx", "RECORD file { a: common/secret },"),
-        ],
-    ),
-    (
-        "a full path that names nothing",
-        &[
-            ROOT,
-            COMMON,
-            ("files.anyx", "RECORD file { a: common/nothing },"),
-        ],
-    ),
-    (
-        "a public type written without its path",
-        &[
-            ROOT,
-            COMMON,
-            ("files.anyx", "RECORD file { a: diagnostic },"),
-        ],
-    ),
-    (
-        "a private error group from another scope",
-        &[
-            ROOT,
-            COMMON,
-            (
-                "files.anyx",
-                "METHOD read RETURNS (a: Text) ERRORS common/gone errors,",
-            ),
-        ],
-    ),
-    (
-        "a public error group written without its path",
-        &[
-            ROOT,
-            COMMON,
-            (
-                "files.anyx",
-                "METHOD read RETURNS (a: Text) ERRORS common errors,",
-            ),
-        ],
-    ),
-    (
-        "errors of the same words from two scopes",
-        &[
-            ROOT,
-            COMMON,
-            (
-                "files.anyx",
-                "METHOD read RETURNS (a: Text) ERRORS [missing] + common/common errors,",
-            ),
-        ],
-    ),
-    (
-        "a path of two words",
-        &[
-            ROOT,
-            COMMON,
-            ("files.anyx", "RECORD file { a: my common/diagnostic },"),
-        ],
-    ),
-    (
-        "a definition next to the header",
-        &[
-            (
-                "protocol.anyx",
-                "PROTOCOL notes VERSION 1, RECORD x { a: Text },",
-            ),
-            COMMON,
-        ],
-    ),
-    (
-        "a header in a scope",
-        &[ROOT, ("files.anyx", "PROTOCOL files VERSION 1,")],
-    ),
-    ("no root file", &[("files.anyx", "RECORD x { a: Text },")]),
-    (
-        "a file name that is no scope",
-        &[ROOT, ("Files.anyx", "RECORD x { a: Text },")],
-    ),
-    (
-        "a file that is not anyx",
-        &[ROOT, ("files.txt", "RECORD x { a: Text },")],
-    ),
-    (
-        "a `/` in a method's name",
-        &[
-            ROOT,
-            (
-                "files.anyx",
-                "METHOD files/read (path: Text) RETURNS (a: Text),",
-            ),
-        ],
-    ),
-];
+#[test]
+fn relative_paths_diamonds_and_unused_files() {
+    let files = [
+        (
+            "notes/Entry File.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./a.anyx\", USE \"./sub/b.anyx\", METHOD root RETURNS (x: Text),",
+        ),
+        (
+            "notes/a.anyx",
+            "USE \"../shared.anyx\", RECORD First { item: Shared },",
+        ),
+        (
+            "notes/sub/b.anyx",
+            "USE \"../../shared.anyx\", RECORD Second { item: Shared },",
+        ),
+        ("shared.anyx", "PUBLIC RECORD Shared { value: Text },"),
+        ("notes/draft.anyx", "this is not a valid schema"),
+    ];
+    let mut reads = std::collections::BTreeMap::new();
+    let schema = Schema::load("notes/./Entry File.anyx", |path| {
+        *reads.entry(path.to_string()).or_insert(0) += 1;
+        files
+            .iter()
+            .find(|(file, _)| *file == path)
+            .map(|(_, source)| source.to_string())
+            .ok_or("missing")
+    })
+    .unwrap();
+    assert_eq!(schema.files.len(), 4);
+    assert_eq!(reads["shared.anyx"], 1);
+    assert!(!reads.contains_key("notes/draft.anyx"));
+    assert_eq!(schema.methods[0].full_name(), "root");
+}
 
 #[test]
-fn mistakes_in_scopes_are_diagnosed() {
-    let rendered: String = CASES
+fn shared_library_can_be_checked_or_used_by_several_protocols() {
+    let files = [
+        (
+            "notes.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./shared.anyx\",",
+        ),
+        (
+            "billing.anyx",
+            "PROTOCOL billing VERSION 1, USE \"./shared.anyx\",",
+        ),
+        (
+            "shared.anyx",
+            "PUBLIC RECORD Session { user: Text }, METHOD current RETURNS (session: Session),",
+        ),
+    ];
+    for entry in ["notes.anyx", "billing.anyx", "shared.anyx"] {
+        let schema = load(entry, &files).unwrap();
+        assert_eq!(schema.types.len(), 1);
+        assert_eq!(schema.methods[0].full_name(), "current");
+        assert_eq!(schema.is_protocol(), entry != "shared.anyx");
+    }
+}
+
+#[test]
+fn own_declarations_and_direct_public_imports_are_visible() {
+    let schema = load("entry.anyx", &[
+        ("entry.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
+        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [gone],"),
+    ]).unwrap();
+    assert_eq!(schema.types.len(), 2);
+    assert_eq!(schema.errors.len(), 1);
+}
+
+#[test]
+fn imports_do_not_reexport_and_private_names_stay_private() {
+    for declaration in [
+        "PUBLIC RECORD Item { value: Text },",
+        "RECORD Item { value: Text },",
+    ] {
+        let diagnostics = load(
+            "entry.anyx",
+            &[
+                (
+                    "entry.anyx",
+                    "PROTOCOL p VERSION 1, USE \"./middle.anyx\", RECORD Local { value: Item },",
+                ),
+                ("middle.anyx", "USE \"./lib.anyx\","),
+                ("lib.anyx", declaration),
+            ],
+        )
+        .unwrap_err();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|error| error.message.contains("not visible"))
+        );
+    }
+    let errors = load(
+        "entry.anyx",
+        &[
+            (
+                "entry.anyx",
+                "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS failures,",
+            ),
+            ("lib.anyx", "ERRORS failures [gone],"),
+        ],
+    )
+    .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message.contains("not visible"))
+    );
+}
+
+#[test]
+fn duplicate_names_include_both_files_even_when_private() {
+    for second in ["RECORD Item { value: Text },", "ERRORS Item [gone],"] {
+        let diagnostics = load(
+            "entry.anyx",
+            &[
+                ("entry.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
+                ("a.anyx", "RECORD Item { value: Text },"),
+                ("b.anyx", second),
+            ],
+        )
+        .unwrap_err();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|error| error.message.contains("a.anyx") && error.message.contains("b.anyx")),
+            "{diagnostics:?}"
+        );
+    }
+}
+
+#[test]
+fn duplicate_methods_across_files_are_rejected() {
+    assert!(
+        load(
+            "entry.anyx",
+            &[
+                ("entry.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
+                ("a.anyx", "METHOD f RETURNS (x: Text),"),
+                ("b.anyx", "METHOD f RETURNS (x: Text),"),
+            ]
+        )
+        .unwrap_err()
         .iter()
-        .map(|(title, files)| {
-            let diagnostics = match parse_files(files) {
-                Ok(_) => panic!("expected diagnostics for {title}"),
-                Err(diagnostics) => diagnostics,
-            };
-            format!("== {title}\n{}\n\n", render(files, &diagnostics))
-        })
-        .collect();
-    assert_snapshot("tests/snapshots/scope_diagnostics.txt", &rendered);
+        .any(|error| error.message.contains("second method"))
+    );
+}
+
+#[test]
+fn cycles_point_at_the_closing_use_and_show_the_cycle() {
+    let errors = load(
+        "a.anyx",
+        &[
+            ("a.anyx", "USE \"./sub/b.anyx\","),
+            ("sub/b.anyx", "USE \"../c.anyx\","),
+            ("c.anyx", "USE \"./a.anyx\","),
+        ],
+    )
+    .unwrap_err();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].path, "c.anyx");
+    assert_eq!(errors[0].span.start, 0);
+    assert!(
+        errors[0]
+            .message
+            .contains("a.anyx → sub/b.anyx → c.anyx → a.anyx")
+    );
+    assert!(
+        load("a.anyx", &[("a.anyx", "USE \"./a.anyx\",")]).unwrap_err()[0]
+            .message
+            .contains("a.anyx → a.anyx")
+    );
+}
+
+#[test]
+fn invalid_imports_are_reported_at_the_use() {
+    for path in [
+        "/common.anyx",
+        "",
+        "accounts:session.anyx",
+        "./missing.anyx",
+    ] {
+        let source = format!("PROTOCOL p VERSION 1, USE {path:?},");
+        let errors = load("entry.anyx", &[("entry.anyx", &source)]).unwrap_err();
+        assert_eq!(errors[0].path, "entry.anyx");
+        assert_eq!(errors[0].span.start, 22);
+    }
+    let errors = load(
+        "entry.anyx",
+        &[
+            ("entry.anyx", "USE \"./other.anyx\","),
+            ("other.anyx", "PROTOCOL other VERSION 1,"),
+        ],
+    )
+    .unwrap_err();
+    assert!(errors[0].message.contains("`PROTOCOL` header"));
+    assert_eq!(errors[0].path, "entry.anyx");
+}
+
+#[test]
+fn recursive_types_remain_valid_inside_a_library() {
+    Schema::parse("RECORD Folder { entries: LIST Entry }, RECORD Entry { parent: Folder },")
+        .unwrap();
+}
+
+#[test]
+fn overloads_across_files_use_plain_annotations_and_json_names() {
+    let schema = load(
+        "notes.anyx",
+        &[
+            (
+                "notes.anyx",
+                "PROTOCOL notes VERSION 1, USE \"./files.anyx\", USE \"./shares.anyx\",",
+            ),
+            (
+                "files.anyx",
+                "TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),",
+            ),
+            (
+                "shares.anyx",
+                "TYPE Share Id: Text, METHOD open (id: Share Id) RETURNS (text: Text),",
+            ),
+        ],
+    )
+    .unwrap();
+    let file = anyx_protocol::decode_request(&schema, "open (\"abc\" AS File Id)").unwrap();
+    let share = anyx_protocol::decode_request(&schema, "open (\"abc\" AS Share Id)").unwrap();
+    assert_ne!(file[0].method, share[0].method);
+    assert_eq!(
+        schema.call_name(schema.method_at(file[0].method)),
+        "open (File Id)"
+    );
+    assert_eq!(
+        anyx_protocol::encode_request(&schema, &file).unwrap(),
+        "open (\"abc\" AS File Id)\n"
+    );
+    assert!(anyx_protocol::decode_request(&schema, "open (\"abc\" AS files/File Id)").is_err());
+    #[cfg(feature = "json")]
+    assert_eq!(
+        anyx_protocol::json::encode_request_json(&schema, "open (File Id)", "[\"abc\"]").unwrap(),
+        "open (\"abc\" AS File Id)\n"
+    );
+}
+
+#[test]
+fn moving_an_imported_file_does_not_change_wire_names() {
+    let declaration = "PUBLIC TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),";
+    let before = load(
+        "entry.anyx",
+        &[
+            ("entry.anyx", "PROTOCOL p VERSION 1, USE \"./files.anyx\","),
+            ("files.anyx", declaration),
+        ],
+    )
+    .unwrap();
+    let after = load(
+        "entry.anyx",
+        &[
+            (
+                "entry.anyx",
+                "PROTOCOL p VERSION 1, USE \"./Draft Folder/renamed.anyx\",",
+            ),
+            ("Draft Folder/renamed.anyx", declaration),
+        ],
+    )
+    .unwrap();
+    let request = "open (\"abc\" AS File Id)";
+    assert_eq!(
+        anyx_protocol::decode_request(&before, request).unwrap(),
+        anyx_protocol::decode_request(&after, request).unwrap()
+    );
+    assert_eq!(
+        before.call_name(&before.methods[0]),
+        after.call_name(&after.methods[0])
+    );
+}
+
+#[test]
+fn absolute_entry_at_filesystem_root_keeps_relative_imports_absolute() {
+    let schema = load(
+        "/entry.anyx",
+        &[
+            (
+                "/entry.anyx",
+                "USE \"./shared.anyx\", USE \"./sub/../shared.anyx\",",
+            ),
+            ("/shared.anyx", "RECORD Shared { value: Text },"),
+        ],
+    )
+    .unwrap();
+    assert_eq!(schema.files.len(), 2);
+    assert_eq!(schema.files[1].path, "/shared.anyx");
 }

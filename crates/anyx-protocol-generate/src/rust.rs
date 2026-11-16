@@ -1,16 +1,12 @@
 //! The Rust module of a schema: its types, a `Server` trait with `handle`,
-//! and a `Client`. Each scope is a module of its own, with its types, the
-//! errors of its methods, a `Server` trait of its methods and a `Client`.
+//! and a `Client`, all in one flat module.
 
 use std::fmt::Write;
 
 use anyx_protocol::schema::{Field, Method, Parameter, Schema, Shape, Shaped, Type, TypeKind};
 
 use crate::names::{doc_comment, pascal_case, raw_string, snake_case};
-use crate::{
-    Error, children, error_enum_name, has_methods, method_words, methods_in, rust_type_taken,
-    type_parameter_name,
-};
+use crate::{Error, error_enum_name, method_words, rust_type_taken, type_parameter_name};
 
 const IMPORTS: &str = "use anyx_protocol::client::{CallError, Transport};\nuse anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};\n\n";
 
@@ -29,14 +25,14 @@ pub fn rust(schema: &Schema) -> Result<String, Error> {
     out.push_str(IMPORTS);
     writeln!(
         out,
-        "/// The schema as written, a file per scope.\npub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[\n{}];\n",
+        "/// The schema as written, with explicit imports.\npub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[\n{}];\n",
         schema_files(schema)
     )
     .unwrap();
     out.push_str(
-        "/// The schema, read once.\npub fn schema() -> &'static anyx_protocol::Schema {\n    static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =\n        ::std::sync::LazyLock::new(|| anyx_protocol::Schema::parse_files(SCHEMA_FILES).expect(\"the generator checked the schema\"));\n    &SCHEMA_READ\n}\n\n",
+        "/// The schema, read once.\npub fn schema() -> &'static anyx_protocol::Schema {\n    static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =\n        ::std::sync::LazyLock::new(|| anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| SCHEMA_FILES.iter().find(|file| file.path == path).map(|file| file.source.to_string()).ok_or_else(|| format!(\"missing embedded file: {path}\"))).expect(\"the generator checked the schema\"));\n    &SCHEMA_READ\n}\n\n",
     );
-    scope_body(&mut out, schema, &[]);
+    body(&mut out, schema);
     Ok(out)
 }
 
@@ -55,49 +51,27 @@ pub fn schema_files(schema: &Schema) -> String {
         .collect()
 }
 
-/// The module path from `from` to the module of `to`: empty when they are
-/// the same scope.
-fn path_to(from: &[String], to: &[String]) -> String {
-    match from == to {
-        true => String::new(),
-        false => {
-            "super::".repeat(from.len())
-                + &to
-                    .iter()
-                    .map(|segment| snake_case(segment) + "::")
-                    .collect::<String>()
-        }
-    }
-}
-
-/// What the module of `scope` holds, and the modules of the scopes in it.
-fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
-    for definition in schema
-        .types
-        .iter()
-        .filter(|definition| definition.scope == scope)
-    {
+/// Every declaration in the generated module.
+fn body(out: &mut String, schema: &Schema) {
+    for definition in schema.types.iter() {
         let name = pascal_case(&definition.name);
         let doc = doc_comment(&definition.doc, "///");
-        let generics = Generics::new(schema, scope, &definition.parameters);
+        let generics = Generics::new(schema, &definition.parameters);
         match &definition.kind {
-            TypeKind::Record(fields) => record(out, schema, scope, &doc, &name, &generics, fields),
-            TypeKind::Choice(variants) => {
-                choice(out, schema, scope, &doc, &name, &generics, variants)
-            }
-            TypeKind::Distinct(underlying) => newtype(out, schema, scope, &doc, &name, underlying),
+            TypeKind::Record(fields) => record(out, schema, &doc, &name, &generics, fields),
+            TypeKind::Choice(variants) => choice(out, schema, &doc, &name, &generics, variants),
+            TypeKind::Distinct(underlying) => newtype(out, schema, &doc, &name, underlying),
         }
     }
-    let methods = methods_in(schema, scope);
+    let methods: Vec<_> = schema.methods.iter().enumerate().collect();
     for (_, method) in &methods {
         if !method.errors.is_empty() {
             let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
             let doc = format!("/// The errors of `{}`.\n", schema.call_name(method));
-            let generics = Generics::new(schema, scope, &[]);
+            let generics = Generics::new(schema, &[]);
             choice(
                 out,
                 schema,
-                scope,
                 &doc,
                 &error_enum_name(schema, method),
                 &generics,
@@ -105,33 +79,14 @@ fn scope_body(out: &mut String, schema: &Schema, scope: &[String]) {
             );
         }
     }
-    match scope.is_empty() {
-        true => {
-            root_server(out, schema);
-            handle(out, schema);
-        }
-        false if !methods.is_empty() => scope_server(out, schema, scope),
-        false => {}
-    }
-    if scope.is_empty() || has_methods(schema, scope) {
-        client(out, schema, scope);
-    }
+    root_server(out, schema);
+    handle(out, schema);
+    client(out, schema);
     effects(out, schema, &methods);
-    for child in children(schema, scope) {
-        writeln!(
-            out,
-            "/// The scope `{}`.\npub mod {} {{\n{IMPORTS}",
-            child.join("/"),
-            snake_case(child.last().expect("a child scope has a name"))
-        )
-        .unwrap();
-        scope_body(out, schema, &child);
-        out.push_str("}\n\n");
-    }
 }
 
-/// `r#type` as written in the module of `scope`.
-pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
+/// `r#type` as written in the generated module.
+pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
     match r#type {
         Type::Text => "String".to_string(),
         Type::Bytes => "Vec<u8>".to_string(),
@@ -140,31 +95,28 @@ pub fn rust_type(schema: &Schema, scope: &[String], r#type: &Type) -> String {
         Type::Boolean => "bool".to_string(),
         Type::Instant => "::std::time::SystemTime".to_string(),
         Type::Duration => "::std::time::Duration".to_string(),
-        Type::List(item) => format!("Vec<{}>", rust_type(schema, scope, item)),
+        Type::List(item) => format!("Vec<{}>", rust_type(schema, item)),
         Type::Map(value) => format!(
             "::std::collections::BTreeMap<String, {}>",
-            rust_type(schema, scope, value)
+            rust_type(schema, value)
         ),
         Type::Named(index) => {
             let definition = &schema.types[*index];
-            path_to(scope, &definition.scope) + &pascal_case(&definition.name)
+            pascal_case(&definition.name)
         }
         Type::Generic(index, arguments) => {
             let definition = &schema.types[*index];
             let arguments: Vec<String> = arguments
                 .iter()
-                .map(|argument| rust_type(schema, scope, argument))
+                .map(|argument| rust_type(schema, argument))
                 .collect();
             format!(
-                "{}{}<{}>",
-                path_to(scope, &definition.scope),
+                "{}<{}>",
                 pascal_case(&definition.name),
                 arguments.join(", ")
             )
         }
-        Type::Parameter(name) => {
-            type_parameter_name(name, |taken| rust_type_taken(schema, scope, taken))
-        }
+        Type::Parameter(name) => type_parameter_name(name, |taken| rust_type_taken(schema, taken)),
     }
 }
 
@@ -176,11 +128,11 @@ struct Generics {
 }
 
 impl Generics {
-    fn new(schema: &Schema, scope: &[String], parameters: &[String]) -> Self {
+    fn new(schema: &Schema, parameters: &[String]) -> Self {
         Generics {
             names: parameters
                 .iter()
-                .map(|parameter| rust_type(schema, scope, &Type::Parameter(parameter.clone())))
+                .map(|parameter| rust_type(schema, &Type::Parameter(parameter.clone())))
                 .collect(),
         }
     }
@@ -215,17 +167,16 @@ pub fn may_be_missing(field: &Field) -> bool {
     field.optional && field.default.is_none()
 }
 
-fn field_type(schema: &Schema, scope: &[String], field: &Field) -> String {
+fn field_type(schema: &Schema, field: &Field) -> String {
     match may_be_missing(field) {
-        true => format!("Option<{}>", rust_type(schema, scope, &field.r#type)),
-        false => rust_type(schema, scope, &field.r#type),
+        true => format!("Option<{}>", rust_type(schema, &field.r#type)),
+        false => rust_type(schema, &field.r#type),
     }
 }
 
 fn record(
     out: &mut String,
     schema: &Schema,
-    scope: &[String],
     doc: &str,
     name: &str,
     generics: &Generics,
@@ -238,7 +189,7 @@ fn record(
                 "{}    pub {}: {},\n",
                 doc_comment(&field.doc, "    ///"),
                 snake_case(&field.name),
-                field_type(schema, scope, field)
+                field_type(schema, field)
             )
         })
         .collect();
@@ -286,15 +237,8 @@ fn record(
 
 /// A named type: a struct around the type underneath, which converts to and
 /// from it, and is written on the wire exactly like it.
-fn newtype(
-    out: &mut String,
-    schema: &Schema,
-    scope: &[String],
-    doc: &str,
-    name: &str,
-    underlying: &Type,
-) {
-    let underlying = rust_type(schema, scope, underlying);
+fn newtype(out: &mut String, schema: &Schema, doc: &str, name: &str, underlying: &Type) {
+    let underlying = rust_type(schema, underlying);
     write!(
         out,
         "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name}(pub {underlying});\n\n\
@@ -310,7 +254,6 @@ fn newtype(
 fn choice(
     out: &mut String,
     schema: &Schema,
-    scope: &[String],
     doc: &str,
     name: &str,
     generics: &Generics,
@@ -332,7 +275,7 @@ fn choice(
                         .map(|parameter| format!(
                             "{}: {}",
                             snake_case(&parameter.name),
-                            rust_type(schema, scope, &parameter.r#type)
+                            rust_type(schema, &parameter.r#type)
                         ))
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -412,29 +355,29 @@ fn bindings(shape: &Shape) -> String {
     }
 }
 
-fn parameters(schema: &Schema, scope: &[String], parameters: &[Parameter]) -> String {
+fn parameters(schema: &Schema, parameters: &[Parameter]) -> String {
     parameters
         .iter()
         .map(|parameter| {
             format!(
                 ", {}: {}",
                 snake_case(&parameter.name),
-                rust_type(schema, scope, &parameter.r#type)
+                rust_type(schema, &parameter.r#type)
             )
         })
         .collect()
 }
 
 /// The Rust type of what `method` returns: `()` for `RETURNS NOTHING`.
-fn returned_value(schema: &Schema, scope: &[String], method: &Method) -> String {
+fn returned_value(schema: &Schema, method: &Method) -> String {
     method.returns.as_ref().map_or_else(
         || "()".to_string(),
-        |returns| rust_type(schema, scope, &returns.r#type),
+        |returns| rust_type(schema, &returns.r#type),
     )
 }
 
 fn returned(schema: &Schema, method: &Method) -> String {
-    let value = returned_value(schema, &method.scope, method);
+    let value = returned_value(schema, method);
     match method.errors.is_empty() {
         true => value,
         false => format!("Result<{value}, {}>", error_enum_name(schema, method)),
@@ -469,16 +412,17 @@ fn method_doc(schema: &Schema, method: &Method) -> String {
     doc
 }
 
-/// The trait methods of `scope`'s own methods.
-fn trait_methods(schema: &Schema, scope: &[String]) -> String {
-    let methods: String = methods_in(schema, scope)
-        .into_iter()
-        .map(|(_, method)| {
+/// The protocol methods in the server trait.
+fn trait_methods(schema: &Schema) -> String {
+    let methods: String = schema
+        .methods
+        .iter()
+        .map(|method| {
             format!(
                 "{}    async fn {}(&self{}) -> Result<{}, Self::Error>;\n\n",
                 method_doc(schema, method),
                 snake_case(&method_words(schema, method)),
-                parameters(schema, scope, &method.shape.parameters),
+                parameters(schema, &method.shape.parameters),
                 returned(schema, method)
             )
         })
@@ -489,34 +433,10 @@ fn trait_methods(schema: &Schema, scope: &[String]) -> String {
 fn root_server(out: &mut String, schema: &Schema) {
     write!(
         out,
-        "/// The methods of the schema's root, for a server to implement, with the\n/// `Server` trait of each scope. An `Err` is the server's own failure: the\n/// caller gets `INTERNAL ERROR`, and the calls after it don't run.\n#[allow(async_fn_in_trait)]\npub trait Server {{\n    type Error;\n\n{}}}\n\n",
-        trait_methods(schema, &[])
+        "/// The protocol methods, for a server to implement. An `Err` is the server's own failure: the\n/// caller gets `INTERNAL ERROR`, and the calls after it don't run.\n#[allow(async_fn_in_trait)]\npub trait Server {{\n    type Error;\n\n{}}}\n\n",
+        trait_methods(schema)
     )
     .unwrap();
-}
-
-fn scope_server(out: &mut String, schema: &Schema, scope: &[String]) {
-    write!(
-        out,
-        "/// The methods of the scope `{}`, for a server to implement. Its\n/// `Error` is the root `Server`'s.\n#[allow(async_fn_in_trait)]\npub trait Server: {}Server {{\n{}}}\n\n",
-        scope.join("/"),
-        "super::".repeat(scope.len()),
-        trait_methods(schema, scope)
-    )
-    .unwrap();
-}
-
-/// The `Server` traits `handle` needs: the root's, and each scope's with
-/// methods.
-fn server_traits(schema: &Schema) -> Vec<String> {
-    let scoped = schema
-        .scopes()
-        .into_iter()
-        .filter(|scope| !scope.is_empty() && !methods_in(schema, scope).is_empty())
-        .map(|scope| path_to(&[], &scope) + "Server");
-    std::iter::once("Server".to_string())
-        .chain(scoped)
-        .collect()
 }
 
 fn handle(out: &mut String, schema: &Schema) {
@@ -537,8 +457,7 @@ fn handle(out: &mut String, schema: &Schema) {
                 "result"
             };
             format!(
-                "            {index} => anyx_protocol::server::{wrap}(<S as {}Server>::{}(implementation{arguments}).await),\n",
-                path_to(&[], &method.scope),
+                "            {index} => anyx_protocol::server::{wrap}(<S as Server>::{}(implementation{arguments}).await),\n",
                 snake_case(&method_words(schema, method))
             )
         })
@@ -546,7 +465,7 @@ fn handle(out: &mut String, schema: &Schema) {
     write!(
         out,
         "/// Runs `request` against `implementation` and writes the response. Every\n/// call runs, in order, until one fails with an internal error, which\n/// `on_internal_error` hears; the calls after it don't run.\n\
-         pub async fn handle<S: {}>(implementation: &S, request: &str, mut on_internal_error: impl FnMut(<S as Server>::Error)) -> String {{\n\
+         pub async fn handle<S: Server>(implementation: &S, request: &str, mut on_internal_error: impl FnMut(<S as Server>::Error)) -> String {{\n\
          \x20   let schema = schema();\n\
          \x20   let calls = match anyx_protocol::server::read_request(schema, request) {{\n        Ok(calls) => calls,\n        Err(response) => return response,\n    }};\n\
          \x20   let mut outcomes = Vec::new();\n\
@@ -557,7 +476,6 @@ fn handle(out: &mut String, schema: &Schema) {
          \x20       let outcome = match call.method {{\n{arms}            {introspection} => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),\n            _ => unreachable!(\"the codec read a method of the schema\"),\n        }};\n\
          \x20       outcomes.push(outcome.unwrap_or_else(|error| {{\n            on_internal_error(error);\n            stopped = true;\n            anyx_protocol::Outcome::InternalError\n        }}));\n    }}\n\
          \x20   anyx_protocol::server::respond(schema, &calls, outcomes)\n}}\n\n",
-        server_traits(schema).join(" + "),
         introspection = schema.introspection(),
     )
     .unwrap();
@@ -584,18 +502,9 @@ fn effects(out: &mut String, schema: &Schema, methods: &[(usize, &Method)]) {
     }
 }
 
-/// The client of `scope`: the root's owns its transport, and a scope's
-/// borrows it from the client it came from.
-fn client(out: &mut String, schema: &Schema, scope: &[String]) {
-    let root = scope.is_empty();
-    let transport = if root {
-        "&self.transport"
-    } else {
-        "self.transport"
-    };
-    let to_root = "super::".repeat(scope.len());
-    let methods: String = methods_in(schema, scope)
-        .into_iter()
+/// The client owns its transport.
+fn client(out: &mut String, schema: &Schema) {
+    let methods: String = schema.methods.iter().enumerate()
         .map(|(index, method)| {
             let errors = match method.errors.is_empty() {
                 true => "::std::convert::Infallible".to_string(),
@@ -609,49 +518,26 @@ fn client(out: &mut String, schema: &Schema, scope: &[String]) {
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(
-                "{}    pub async fn {}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        anyx_protocol::client::call({transport}, {to_root}schema(), {index}, vec![{arguments}]).await\n    }}\n\n",
+                "{}    pub async fn {}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {index}, vec![{arguments}]).await\n    }}\n\n",
                 method_doc(schema, method),
                 snake_case(&method_words(schema, method)),
-                parameters(schema, scope, &method.shape.parameters),
-                returned_value(schema, scope, method),
+                parameters(schema, &method.shape.parameters),
+                returned_value(schema, method),
             )
         })
         .collect();
-    let lifetime = if root { "'_" } else { "'a" };
-    let scopes: String = children(schema, scope)
-        .into_iter()
-        .filter(|child| has_methods(schema, child))
-        .map(|child| {
-            let name = snake_case(child.last().expect("a child scope has a name"));
-            format!(
-                "    /// The methods of the scope `{}`.\n    pub fn {name}(&self) -> {name}::Client<{lifetime}, T> {{\n        {name}::Client {{ transport: {transport} }}\n    }}\n\n",
-                child.join("/")
-            )
-        })
-        .collect();
-    let introspection = match root {
-        true => format!(
-            "    /// `SCHEMA`, returning the guide to the schema.\n    pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {}, vec![]).await\n    }}\n\n",
-            schema.introspection()
-        ),
-        false => String::new(),
-    };
-    let members = (methods + &introspection + &scopes)
+    let introspection = format!(
+        "    /// `SCHEMA`, returning the guide to the schema.\n    pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {}, vec![]).await\n    }}\n\n",
+        schema.introspection()
+    );
+    let members = (methods + &introspection)
         .trim_end_matches('\n')
         .to_string()
         + "\n";
-    match root {
-        true => write!(
+    write!(
             out,
             "/// Calls the methods of the schema through a [`Transport`], one call per\n/// request.\npub struct Client<T> {{\n    pub transport: T,\n}}\n\n\
              impl<T: Transport> Client<T> {{\n    pub fn new(transport: T) -> Self {{\n        Self {{ transport }}\n    }}\n\n{members}}}\n\n"
-        ),
-        false => write!(
-            out,
-            "/// Calls the methods of the scope `{}` through the transport of the root\n/// `Client`.\npub struct Client<'a, T> {{\n    pub transport: &'a T,\n}}\n\n\
-             impl<'a, T: Transport> Client<'a, T> {{\n{members}}}\n\n",
-            scope.join("/")
-        ),
-    }
+        )
     .unwrap();
 }

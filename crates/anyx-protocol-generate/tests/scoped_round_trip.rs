@@ -1,6 +1,4 @@
-//! The Rust module generated from a schema of scopes, compiled: a server
-//! implements a `Server` trait per scope, and a client reaches each scope's
-//! methods through `client.files().export()`.
+//! The flat client and server generated from a protocol split across files.
 
 #[path = "generated/scoped.rs"]
 mod notes;
@@ -12,10 +10,10 @@ use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
 use anyx_protocol::client::{CallError, Transport};
-use notes::common::Diagnostic;
-use notes::files::export::{HtmlError, Page, PdfError};
-use notes::files::{File, ReadError, TrashError, WriteAtRevisionContentError};
-use notes::{Client, files};
+use notes::Client;
+use notes::Diagnostic;
+use notes::{File, ReadError, TrashError, WriteAtRevisionContentError};
+use notes::{HtmlError, Page, PdfError};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -36,9 +34,6 @@ struct Notes {
 
 impl notes::Server for Notes {
     type Error = std::convert::Infallible;
-}
-
-impl files::Server for Notes {
     async fn list(&self) -> Result<Vec<String>, Self::Error> {
         Ok(self.notes.borrow().keys().cloned().collect())
     }
@@ -87,9 +82,7 @@ impl files::Server for Notes {
     async fn empty_trash(&self) -> Result<(), Self::Error> {
         Ok(())
     }
-}
 
-impl files::export::Server for Notes {
     async fn html(&self, path: String) -> Result<Result<Vec<Page>, HtmlError>, Self::Error> {
         Ok(match self.notes.borrow().get(&path) {
             Some((_, content)) => Ok(vec![Page {
@@ -131,17 +124,15 @@ fn client() -> Client<InProcess> {
 }
 
 #[test]
-fn a_client_calls_the_methods_of_each_scope() {
+fn a_client_calls_methods_from_each_file() {
     let client = client();
     assert_eq!(
-        run(client
-            .files()
-            .write_at_revision_content("a".into(), 0, "hi".into())),
+        run(client.write_at_revision_content("a".into(), 0, "hi".into())),
         Ok(vec![])
     );
-    assert_eq!(run(client.files().list()), Ok(vec!["a".to_string()]));
+    assert_eq!(run(client.list()), Ok(vec!["a".to_string()]));
     assert_eq!(
-        run(client.files().read("a".into())),
+        run(client.read("a".into())),
         Ok(File {
             path: "a".into(),
             revision: 1,
@@ -149,33 +140,28 @@ fn a_client_calls_the_methods_of_each_scope() {
         })
     );
     assert_eq!(
-        run(client.files().export().html("a".into())),
+        run(client.html("a".into())),
         Ok(vec![Page {
             html: "<p>hi</p>".into(),
             problem: None
         }])
     );
-    assert_eq!(
-        run(client.files().export().pdf("a".into())),
-        Ok(b"hi".to_vec())
-    );
+    assert_eq!(run(client.pdf("a".into())), Ok(b"hi".to_vec()));
 }
 
 #[test]
-fn errors_from_other_scopes_reach_the_client() {
+fn imported_errors_reach_the_client() {
     let client = client();
     assert_eq!(
-        run(client.files().read("old".into())),
+        run(client.read("old".into())),
         Err(CallError::Method(ReadError::Trashed))
     );
     assert_eq!(
-        run(client.files().export().html("b".into())),
+        run(client.html("b".into())),
         Err(CallError::Method(HtmlError::Missing))
     );
     assert_eq!(
-        run(client
-            .files()
-            .write_at_revision_content("a".into(), 0, String::new())),
+        run(client.write_at_revision_content("a".into(), 0, String::new())),
         Err(CallError::Method(WriteAtRevisionContentError::Rejected {
             diagnostics: vec![Diagnostic {
                 line: 1,
@@ -192,7 +178,7 @@ fn a_request_calls_each_method_by_its_full_name() {
     };
     let response = run(notes::handle(
         &server,
-        "files/list, files/export/pdf \"a\"",
+        "list, pdf \"a\"",
         |error| match error {},
     ));
     assert_eq!(response, "RETURNS [\"a\"],\nRETURNS \"aGk=\",\n");
@@ -205,7 +191,7 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
     };
     let response = run(notes::handle(
         &server,
-        "files/trash \"a\", files/trash \"a\", files/empty trash",
+        "trash \"a\", trash \"a\", empty trash",
         |error| match error {},
     ));
     assert_eq!(
@@ -217,21 +203,18 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
 #[test]
 fn a_client_gets_unit_from_a_method_that_returns_nothing() {
     let client = client();
-    run(client
-        .files()
-        .write_at_revision_content("a".into(), 0, "hi".into()))
-    .unwrap();
-    assert_eq!(run(client.files().trash("a".into())), Ok(()));
+    run(client.write_at_revision_content("a".into(), 0, "hi".into())).unwrap();
+    assert_eq!(run(client.trash("a".into())), Ok(()));
     assert_eq!(
-        run(client.files().trash("a".into())),
+        run(client.trash("a".into())),
         Err(CallError::Method(TrashError::Missing))
     );
-    assert_eq!(run(client.files().empty_trash()), Ok(()));
+    assert_eq!(run(client.empty_trash()), Ok(()));
 }
 
 #[test]
 fn the_client_reads_the_guide_through_schema() {
     let guide = run(client().schema()).unwrap();
     assert_eq!(guide, anyx_protocol::guide(notes::schema(), ""));
-    assert!(guide.contains("files/export/pdf"), "{guide}");
+    assert!(guide.contains("pdf"), "{guide}");
 }

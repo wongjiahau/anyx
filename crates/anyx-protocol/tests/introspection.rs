@@ -15,7 +15,7 @@ fn schema_is_a_call_of_every_schema() {
     let introspection = schema.introspection();
     assert_eq!(introspection, schema.methods.len());
     assert_eq!(schema.method_at(introspection).full_name(), "SCHEMA");
-    let calls = decode_request(&schema, "SCHEMA, files/list").unwrap();
+    let calls = decode_request(&schema, "SCHEMA, list").unwrap();
     assert_eq!(
         calls,
         [
@@ -29,10 +29,7 @@ fn schema_is_a_call_of_every_schema() {
             },
         ]
     );
-    assert_eq!(
-        encode_request(&schema, &calls).unwrap(),
-        "SCHEMA,\nfiles/list,\n"
-    );
+    assert_eq!(encode_request(&schema, &calls).unwrap(), "SCHEMA,\nlist,\n");
 }
 
 #[test]

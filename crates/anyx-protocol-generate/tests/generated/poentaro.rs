@@ -5,9 +5,9 @@
 use anyx_protocol::client::{CallError, Transport};
 use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 
-/// The schema as written, a file per scope.
+/// The schema as written, with explicit imports.
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
-    path: "protocol.anyx",
+    path: "schema.anyx",
     source: r#"# Poentaro turns `.poentaro` text into numbered musical notation (jianpu) and
 # keeps the account owner's scores in the cloud. When you save, anyone who
 # has the score open sees the change.
@@ -92,8 +92,14 @@ READ ONLY METHOD export midi (path: Text)
 pub fn schema() -> &'static anyx_protocol::Schema {
     static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =
         ::std::sync::LazyLock::new(|| {
-            anyx_protocol::Schema::parse_files(SCHEMA_FILES)
-                .expect("the generator checked the schema")
+            anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| {
+                SCHEMA_FILES
+                    .iter()
+                    .find(|file| file.path == path)
+                    .map(|file| file.source.to_string())
+                    .ok_or_else(|| format!("missing embedded file: {path}"))
+            })
+            .expect("the generator checked the schema")
         });
     &SCHEMA_READ
 }
@@ -394,8 +400,7 @@ impl FromValue for ExportMidiError {
     }
 }
 
-/// The methods of the schema's root, for a server to implement, with the
-/// `Server` trait of each scope. An `Err` is the server's own failure: the
+/// The protocol methods, for a server to implement. An `Err` is the server's own failure: the
 /// caller gets `INTERNAL ERROR`, and the calls after it don't run.
 #[allow(async_fn_in_trait)]
 pub trait Server {

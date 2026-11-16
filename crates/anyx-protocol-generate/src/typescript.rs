@@ -1,6 +1,5 @@
 //! The TypeScript client of a schema: its types as JSON, and a `Client` that
-//! encodes and decodes through the wasm functions of [`crate::wasm`]. A
-//! scope's methods are an object on the client, named after the scope.
+//! encodes and decodes through the wasm functions of [`crate::wasm`].
 //!
 //! JSON carries an `Instant` as text, and the client gives it as a `Date`:
 //! for each type that holds one, a `revive` function turns its JSON into
@@ -11,12 +10,12 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind, scoped};
+use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind};
 
 use crate::names::camel_case;
 use crate::{
-    Error, children, has_methods, method_words, methods_in, scoped_pascal_case,
-    type_parameter_name, typescript_error_name, typescript_type_taken,
+    Error, method_words, pascal_case, type_parameter_name, typescript_error_name,
+    typescript_type_taken,
 };
 
 pub fn typescript(schema: &Schema) -> Result<String, Error> {
@@ -30,7 +29,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
     .unwrap();
     for definition in &schema.types {
         out.push_str(&doc(&definition.doc, ""));
-        let name = scoped_pascal_case(&definition.scope, &definition.name);
+        let name = pascal_case(&definition.name);
         let generic = generic_name(schema, &name, &definition.parameters);
         match &definition.kind {
             TypeKind::Record(fields) => record(&mut out, schema, &generic, fields),
@@ -39,7 +38,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 &mut out,
                 schema,
                 &name,
-                &scoped(&definition.scope, &definition.name),
+                &definition.name.clone(),
                 underlying,
             ),
         }
@@ -61,7 +60,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         // A generic type's reviver is there for any use whose arguments
         // need reviving.
         if revivers.holds[index] || !definition.parameters.is_empty() {
-            let name = scoped_pascal_case(&definition.scope, &definition.name);
+            let name = pascal_case(&definition.name);
             let parameters = &definition.parameters;
             match &definition.kind {
                 TypeKind::Record(fields) => {
@@ -96,9 +95,10 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         out.push_str(UNCHANGED);
     }
     out.push_str(PRELUDE);
-    let root_methods: Vec<String> = methods_in(schema, &[])
-        .into_iter()
-        .map(|(_, method)| {
+    let root_methods: Vec<String> = schema
+        .methods
+        .iter()
+        .map(|method| {
             let signature = signature(schema, &revivers, method);
             format!(
                 "{}  {}({}): {} {{\n    return this.call({:?}, [{}]{});\n  }}\n",
@@ -112,23 +112,11 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             )
         })
         .collect();
-    let scopes: Vec<String> = children(schema, &[])
-        .into_iter()
-        .filter(|child| has_methods(schema, child))
-        .map(|child| {
-            format!(
-                "  readonly {} = {};\n",
-                camel_case(child.last().expect("a child scope has a name")),
-                scope_object(schema, &revivers, &child, "  ")
-            )
-        })
-        .collect();
     let introspection = "  /** `SCHEMA`, returning the guide to the schema. */\n  schema(): Promise<Outcome<string, never>> {\n    return this.call(\"SCHEMA\", []);\n  }\n".to_string();
     out.push_str(
         &root_methods
             .into_iter()
             .chain([introspection])
-            .chain(scopes)
             .collect::<Vec<_>>()
             .join("\n"),
     );
@@ -194,39 +182,6 @@ fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature
         ),
         revivers: revive,
     }
-}
-
-/// The object of a scope's methods, and the objects of the scopes in it, on
-/// the client: `client.files.export.pdf(path)`.
-fn scope_object(schema: &Schema, revivers: &Revivers, scope: &[String], indent: &str) -> String {
-    let inner = format!("{indent}  ");
-    let methods = methods_in(schema, scope).into_iter().map(|(_, method)| {
-        let signature = signature(schema, revivers, method);
-        format!(
-            "{}{inner}{}: ({}): {} =>\n{inner}  this.call({:?}, [{}]{}),\n",
-            doc(&method_doc(method), &inner),
-            camel_case(&method_words(schema, method)),
-            signature.parameters,
-            signature.returned,
-            schema.call_name(method),
-            signature.arguments,
-            signature.revivers,
-        )
-    });
-    let scopes = children(schema, scope)
-        .into_iter()
-        .filter(|child| has_methods(schema, child))
-        .map(|child| {
-            format!(
-                "{inner}{}: {},\n",
-                camel_case(child.last().expect("a child scope has a name")),
-                scope_object(schema, revivers, &child, &inner)
-            )
-        });
-    format!(
-        "{{\n{}{indent}}}",
-        methods.chain(scopes).collect::<String>()
-    )
 }
 
 const PRELUDE: &str = r#"/** What came of one call. */
@@ -303,7 +258,7 @@ export class Client {
     return Promise.all(outcomes);
   }
 
-  /** Calls a method by its full name, such as `files/read _`. `value` and
+  /** Calls a method by its full name, such as `read _`. `value` and
    * `error` revive what it returns and its error. */
   private call<T, E>(
     method: string,
@@ -356,7 +311,7 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         Type::Map(value) => format!("Record<string, {}>", ts_type(schema, value)),
         Type::Named(index) => {
             let definition = &schema.types[*index];
-            scoped_pascal_case(&definition.scope, &definition.name)
+            pascal_case(&definition.name)
         }
         Type::Generic(index, arguments) => {
             let definition = &schema.types[*index];
@@ -366,7 +321,7 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
                 .collect();
             format!(
                 "{}<{}>",
-                scoped_pascal_case(&definition.scope, &definition.name),
+                pascal_case(&definition.name),
                 arguments.join(", ")
             )
         }
@@ -440,7 +395,7 @@ export interface Effects {
    * error saying it is already done. */
   readonly idempotent: boolean;
   /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
-   * method's scope, with the method's own arguments in its slots. */
+   * protocol's namespace, with the method's own arguments in its slots. */
   readonly undoneBy: string | null;
 }
 
@@ -622,7 +577,7 @@ impl Revivers {
                 }
                 Some(format!(
                     "revive{}",
-                    scoped_pascal_case(&definition.scope, &definition.name)
+                    pascal_case(&definition.name)
                 ))
             }
             Type::Generic(index, arguments) if self.type_holds(r#type, parameters) => {
@@ -636,7 +591,7 @@ impl Revivers {
                     .collect();
                 Some(format!(
                     "revive{}({})",
-                    scoped_pascal_case(&definition.scope, &definition.name),
+                    pascal_case(&definition.name),
                     arguments.join(", ")
                 ))
             }

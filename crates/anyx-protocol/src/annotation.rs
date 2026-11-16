@@ -136,83 +136,43 @@ pub(crate) fn annotation(node: &Node) -> Option<(&Node, &Node)> {
     }
 }
 
-/// The type written after `AS` in a call in `scope`, as a parameter's type
-/// is written there: a built-in type, `LIST: type`, `MAP: type`, a type of
-/// the scope, or the full path of a `PUBLIC` one in another scope. `None`
-/// when it names no type.
-pub(crate) fn annotated_type(schema: &Schema, scope: &[String], node: &Node) -> Option<Type> {
-    resolve(schema, scope, &ast::decode_type(node).ok()?)
+/// A type written after `AS`, resolved in the protocol's flat namespace.
+pub(crate) fn annotated_type(schema: &Schema, node: &Node) -> Option<Type> {
+    resolve(schema, &ast::decode_type(node).ok()?)
 }
 
-fn resolve(schema: &Schema, scope: &[String], written: &ast::Type) -> Option<Type> {
+fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
     Some(match written {
-        ast::Type::List { item, .. } => Type::List(Box::new(resolve(schema, scope, item)?)),
-        ast::Type::Map { value, .. } => Type::Map(Box::new(resolve(schema, scope, value)?)),
+        ast::Type::List { item, .. } => Type::List(Box::new(resolve(schema, item)?)),
+        ast::Type::Map { value, .. } => Type::Map(Box::new(resolve(schema, value)?)),
         ast::Type::Named(reference) => {
             if let Some(built_in) = crate::prelude::reference(reference) {
                 return Some(built_in);
             }
-            let (path, name, arguments) = path(scope, reference)?;
-            let index = schema.types.iter().position(|definition| {
-                definition.scope == path
-                    && definition.name == name
-                    && (definition.public || definition.scope == scope)
-            })?;
-            let arguments = arguments
+            if reference
+                .name
+                .parts
                 .iter()
-                .map(|argument| resolve(schema, scope, argument))
+                .any(|part| matches!(part, NamePart::Word { text, .. } if text == "/"))
+            {
+                return None;
+            }
+            let index = schema
+                .types
+                .iter()
+                .position(|definition| definition.name == reference.name.text)?;
+            let arguments = reference
+                .arguments
+                .iter()
+                .map(|argument| resolve(schema, argument))
                 .collect::<Option<Vec<_>>>()?;
-            match arguments.is_empty() {
-                true => Type::Named(index),
-                false => Type::Generic(index, arguments),
+            if arguments.is_empty() {
+                Type::Named(index)
+            } else {
+                Type::Generic(index, arguments)
             }
         }
     })
-}
-
-/// A type's scope, its shape, and the types in its slots: `file id` in
-/// `scope`, or `common/Page of (Text)` by its full path.
-fn path<'r>(
-    scope: &[String],
-    reference: &'r ast::Reference,
-) -> Option<(Vec<String>, String, &'r [ast::Type])> {
-    let parts = &reference.name.parts;
-    let slash = |part: &NamePart| matches!(part, NamePart::Word { text, .. } if text == "/");
-    if !parts.iter().any(slash) {
-        return Some((
-            scope.to_vec(),
-            reference.name.text.clone(),
-            &reference.arguments,
-        ));
-    }
-    let slashes_between_slots = parts.len() >= 3
-        && parts.len() % 2 == 1
-        && parts.iter().enumerate().all(|(index, part)| match part {
-            NamePart::Slot => index % 2 == 0,
-            NamePart::Word { .. } => index % 2 == 1 && slash(part),
-        });
-    if !slashes_between_slots {
-        return None;
-    }
-    let (last, segments) = reference.arguments.split_last()?;
-    let segments = segments
-        .iter()
-        .map(|segment| match segment {
-            ast::Type::Named(word)
-                if word.arguments.is_empty()
-                    && matches!(word.name.parts.as_slice(), [NamePart::Word { .. }]) =>
-            {
-                Some(word.name.text.clone())
-            }
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
-    match last {
-        ast::Type::Named(last) if !last.name.parts.iter().any(slash) => {
-            Some((segments, last.name.text.clone(), &last.arguments))
-        }
-        _ => None,
-    }
 }
 
 /// Whether no annotation could tell a value of `a` from one of `b`: the

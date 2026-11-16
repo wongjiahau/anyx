@@ -77,11 +77,13 @@ pub fn schema_files(folder: &str) -> Vec<(String, String)> {
 
 /// Reads the schema of `files`, each a path and its source.
 pub fn parse_files(files: &[(&str, &str)]) -> Result<Schema, Vec<anyx_protocol::Diagnostic>> {
-    let files: Vec<anyx_protocol::SchemaFile> = files
-        .iter()
-        .map(|(path, source)| anyx_protocol::SchemaFile { path, source })
-        .collect();
-    Schema::parse_files(&files)
+    Schema::load("protocol.anyx", |path| {
+        files
+            .iter()
+            .find(|(file, _)| *file == path)
+            .map(|(_, source)| source.to_string())
+            .ok_or("file not found")
+    })
 }
 
 /// The scoped schema in `tests/fixtures/scoped`.

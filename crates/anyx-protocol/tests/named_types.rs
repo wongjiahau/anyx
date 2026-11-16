@@ -120,40 +120,43 @@ fn the_guide_names_each_named_type_and_the_type_underneath() {
 }
 
 #[test]
-fn a_public_named_type_is_shared_by_its_full_path() {
+fn a_public_named_type_is_shared_by_a_direct_import() {
     let files = [
-        ("protocol.anyx", "PROTOCOL p VERSION 1,"),
+        (
+            "protocol.anyx",
+            "PROTOCOL p VERSION 1, USE \"./files.anyx\",",
+        ),
         (
             "common.anyx",
             "PUBLIC TYPE file id: Text, TYPE secret: Text,",
         ),
         (
             "files.anyx",
-            "METHOD read (id: common/file id) RETURNS (text: Text),",
+            "USE \"./common.anyx\", METHOD read (id: file id) RETURNS (text: Text),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
-    let read = schema.method("files/read _").unwrap();
+    let read = schema.method("read _").unwrap();
     assert_eq!(
         schema.type_name(&read.shape.parameters[0].r#type),
-        "common/file id"
+        "file id"
     );
     let guide = anyx_protocol::guide(&schema, "");
-    assert!(guide.contains("  - `common/file id`: `Text`.\n"), "{guide}");
+    assert!(guide.contains("  - `file id`: `Text`.\n"), "{guide}");
     let files = [
         files[0],
         files[1],
         (
             "files.anyx",
-            "METHOD read (id: common/secret) RETURNS (text: Text),",
+            "USE \"./common.anyx\", METHOD read (id: secret) RETURNS (text: Text),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
-    assert_eq!(
-        render(&files, &found),
-        "files.anyx:1:18: found `common/secret`, which is private to the scope `common`; expected a `PUBLIC` type, or one of the scope `files`; write `PUBLIC` before its definition in `common.anyx` to share it
-  METHOD read (id: common/secret) RETURNS (text: Text),
-                   ^^^^^^^^^^^^^"
+    assert!(
+        found
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("not visible")
+                && diagnostic.message.contains("common.anyx"))
     );
 }
 

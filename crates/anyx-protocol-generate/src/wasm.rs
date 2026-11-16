@@ -23,12 +23,12 @@ const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[
 
 fn schema() -> &'static anyx_protocol::Schema {{
     static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =
-        ::std::sync::LazyLock::new(|| anyx_protocol::Schema::parse_files(SCHEMA_FILES).expect("the generator checked the schema"));
+        ::std::sync::LazyLock::new(|| anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| SCHEMA_FILES.iter().find(|file| file.path == path).map(|file| file.source.to_string()).ok_or_else(|| format!("missing embedded file: {{path}}"))).expect("the generator checked the schema"));
     &SCHEMA_READ
 }}
 
 /// Writes a request from a JSON array of calls, each `{{ "method": …,
-/// "arguments": […] }}` with the method's full name, such as `files/read _`.
+/// "arguments": […] }}` with the method's full name, such as `read _`.
 #[wasm_bindgen(js_name = encode{pascal}Request)]
 pub fn encode_{name}_request(calls: &str) -> Result<String, String> {{
     anyx_protocol::json::encode_requests_json(schema(), calls)

@@ -1,6 +1,4 @@
-//! Checks a decoded schema: resolves every name in the scope it is written
-//! in, keeps private types and errors to their scope, and reports what is
-//! defined twice.
+//! Checks flat names, direct import visibility, types and method shapes.
 
 use anyx::{NamePart, Node, NodeKind, Span, StringKind, StringLiteral};
 
@@ -10,14 +8,12 @@ use crate::response::{self, WrittenOutcome};
 use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
-    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, Method, Parameter, ROOT_FILE,
-    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, fill_slots,
-    scope_file, scoped,
+    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, Method, Parameter, Schema,
+    Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
 struct Declared {
-    scope: Vec<String>,
     name: String,
     span: Span,
     /// The index of its file.
@@ -45,7 +41,6 @@ struct PendingDefault {
     field: usize,
     node: anyx::Node,
     file: usize,
-    scope: Vec<String>,
 }
 
 /// An error of a method, and where its list names it.
@@ -54,12 +49,9 @@ struct Listed {
     span: Span,
 }
 
-/// A reference read as a path.
+/// A type reference read as its plain shape.
 struct Path {
-    scope: Vec<String>,
     name: String,
-    /// Written as a full path, `common/Diagnostic`, rather than a name.
-    full: bool,
 }
 
 /// What a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` group declares, public or
@@ -219,7 +211,6 @@ struct PendingUndo<'a> {
     /// The method's index in the schema.
     method: usize,
     file: usize,
-    scope: Vec<String>,
     undo: &'a ast::Undo,
 }
 
@@ -229,7 +220,6 @@ struct PendingExamples<'a> {
     /// The method's index in the schema.
     method: usize,
     file: usize,
-    scope: Vec<String>,
     examples: &'a ast::Examples,
 }
 
@@ -247,11 +237,10 @@ fn spanned_words(name: &ast::CallName) -> ast::Spanned<String> {
 #[derive(Default)]
 pub(crate) struct Checker<'a> {
     paths: Vec<String>,
+    imports: Vec<Vec<usize>>,
     sources: Vec<String>,
     /// The file being checked, which diagnostics are in.
     file: usize,
-    /// Its scope, which names are resolved in.
-    scope: Vec<String>,
     /// Each type, in order.
     types: Vec<Declared>,
     /// The type parameters of each type, in the order of `types`: empty for
@@ -278,18 +267,11 @@ impl<'a> Checker<'a> {
         });
     }
 
-    /// Checks within `file` and its `scope`, then goes back.
-    fn within<T>(
-        &mut self,
-        file: usize,
-        scope: &[String],
-        check: impl FnOnce(&mut Self) -> T,
-    ) -> T {
+    /// Checks within `file` and its declarations, then goes back.
+    fn within<T>(&mut self, file: usize, check: impl FnOnce(&mut Self) -> T) -> T {
         let file = std::mem::replace(&mut self.file, file);
-        let scope = std::mem::replace(&mut self.scope, scope.to_vec());
         let checked = check(self);
         self.file = file;
-        self.scope = scope;
         checked
     }
 
@@ -298,26 +280,16 @@ impl<'a> Checker<'a> {
         &self.sources[self.file][span.start..span.end]
     }
 
-    /// The scope being checked, in a message: `this schema` for one of a
-    /// single file, else `the scope `files``.
-    fn this_scope(&self) -> String {
-        match self.scope.is_empty() {
-            true => "this schema".to_string(),
-            false => format!("the scope `{}`", self.scope.join("/")),
-        }
+    fn this_schema(&self) -> String {
+        "this schema".to_string()
     }
 
     pub(crate) fn schema(&mut self, files: Vec<SourceFile>, decoded: &'a [DecodedFile]) -> Schema {
         self.paths = files.iter().map(|file| file.path.clone()).collect();
         self.sources = files.iter().map(|file| file.source.clone()).collect();
-        for (index, file) in decoded.iter().enumerate() {
-            self.within(index, &file.scope, |checker| {
-                checker.header(file, decoded.len() > 1)
-            });
-        }
+        self.imports = decoded.iter().map(|file| file.imports.clone()).collect();
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
-            self.scope = file.scope.clone();
             for definition in &file.document.definition {
                 match definition {
                     ast::Definition::Record(found) => {
@@ -344,7 +316,7 @@ impl<'a> Checker<'a> {
                             );
                         }
                         self.check_type_words(name);
-                        self.declare_type(name, found.public, Vec::new());
+                        self.declare_type(name, found.public);
                         self.declare_type_parameters(&[]);
                     }
                     ast::Definition::Errors(found) => {
@@ -352,7 +324,7 @@ impl<'a> Checker<'a> {
                         self.check_intrinsic(found.intrinsic);
                         self.declare_group(found.body, found.public);
                     }
-                    ast::Definition::Method(_) => {}
+                    ast::Definition::Method(_) | ast::Definition::Import(_) => {}
                 }
             }
         }
@@ -361,7 +333,6 @@ impl<'a> Checker<'a> {
         let mut methods: Vec<Method> = Vec::new();
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
-            self.scope = file.scope.clone();
             for definition in &file.document.definition {
                 match definition {
                     ast::Definition::Record(found) => {
@@ -376,7 +347,6 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
-                            scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
@@ -396,7 +366,6 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
-                            scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
@@ -412,7 +381,6 @@ impl<'a> Checker<'a> {
                             ast::NamedTypeBody::Bare { .. } => Type::Text,
                         };
                         types.push(TypeDefinition {
-                            scope: file.scope.clone(),
                             public: found.public,
                             doc: doc(found.doc),
                             name: named_type_name(found.body).value.clone(),
@@ -420,15 +388,17 @@ impl<'a> Checker<'a> {
                             kind: TypeKind::Distinct(underlying),
                         });
                     }
-                    ast::Definition::Errors(_) | ast::Definition::Method(_) => {}
+                    ast::Definition::Errors(_)
+                    | ast::Definition::Method(_)
+                    | ast::Definition::Import(_) => {}
                 }
             }
         }
         for index in 0..self.groups.len() {
             let declared = &self.groups[index].declared;
-            let (file, scope, public) = (declared.file, declared.scope.clone(), declared.public);
+            let (file, public) = (declared.file, declared.public);
             let own = self.groups[index].own;
-            let own_errors = self.within(file, &scope, |checker| {
+            let own_errors = self.within(file, |checker| {
                 checker.declare_errors(own, public, &mut errors_found)
             });
             self.groups[index].own_errors = own_errors;
@@ -439,7 +409,6 @@ impl<'a> Checker<'a> {
         }
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
-            self.scope = file.scope.clone();
             for definition in &file.document.definition {
                 if let ast::Definition::Method(found) = definition {
                     let method = self.method(found, &mut errors_found);
@@ -448,7 +417,6 @@ impl<'a> Checker<'a> {
                         self.undos.push(PendingUndo {
                             method: methods.len(),
                             file: index,
-                            scope: file.scope.clone(),
                             undo,
                         });
                     }
@@ -456,13 +424,11 @@ impl<'a> Checker<'a> {
                         self.examples.push(PendingExamples {
                             method: methods.len(),
                             file: index,
-                            scope: file.scope.clone(),
                             examples,
                         });
                     }
                     let overlapping = methods.iter().find(|other: &&Method| {
-                        other.scope == method.scope
-                            && other.shape.text == method.shape.text
+                        other.shape.text == method.shape.text
                             && other
                                 .shape
                                 .parameters
@@ -483,7 +449,7 @@ impl<'a> Checker<'a> {
                             false => "",
                         };
                         let message = format!(
-                            "found a second method `{}` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type{only_returns}",
+                            "found a second method `{}` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type{only_returns}",
                             method.shape.text
                         );
                         self.error(parts.shape.name.span, message);
@@ -494,10 +460,9 @@ impl<'a> Checker<'a> {
         }
         let header = decoded
             .first()
-            .and_then(|root| root.document.header.as_ref())
-            .filter(|_| decoded[0].scope.is_empty());
+            .and_then(|root| root.document.header.as_ref());
         let name = header.map(|header| {
-            self.within(0, &[], |checker| {
+            self.within(0, |checker| {
                 let name = spanned_words(&header.name.name);
                 checker.check_words(&name, "a protocol");
                 name.value
@@ -513,7 +478,7 @@ impl<'a> Checker<'a> {
             methods,
         };
         for pending in std::mem::take(&mut self.undos) {
-            let undo = self.within(pending.file, &pending.scope, |checker| {
+            let undo = self.within(pending.file, |checker| {
                 checker.undo(&schema, &schema.methods[pending.method], pending.undo)
             });
             schema.methods[pending.method].undone_by = undo;
@@ -527,7 +492,7 @@ impl<'a> Checker<'a> {
         // in them.
         if self.diagnostics.is_empty() {
             for pending in std::mem::take(&mut self.examples) {
-                let examples = self.within(pending.file, &pending.scope, |checker| {
+                let examples = self.within(pending.file, |checker| {
                     checker.examples(&schema, &schema.methods[pending.method], pending.examples)
                 });
                 schema.methods[pending.method].examples = examples;
@@ -563,7 +528,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     Err(mismatch) => {
-                        self.within(default.file, &default.scope, |checker| {
+                        self.within(default.file, |checker| {
                             checker.error(
                                 mismatch.span,
                                 format!("in the `DEFAULT` of `{name}`: {}", mismatch.message),
@@ -695,37 +660,6 @@ impl<'a> Checker<'a> {
         )
     }
 
-    /// The root has the `PROTOCOL` header, alone when there are scope files;
-    /// a scope file has none.
-    fn header(&mut self, file: &DecodedFile, several: bool) {
-        let path = self.paths[self.file].clone();
-        match (&file.document.header, file.scope.is_empty()) {
-            (Some(_), true) | (None, false) => {}
-            (None, true) => self.error(
-                Span::empty(0),
-                "found no `PROTOCOL` header; expected the schema to start with one, such as `PROTOCOL notes VERSION 1`",
-            ),
-            (Some(header), false) => self.error(
-                header.span,
-                format!(
-                    "found a `PROTOCOL` header in `{path}`; expected it only in `{ROOT_FILE}`, since this file is the scope `{}`; remove it",
-                    file.scope.join("/")
-                ),
-            ),
-        }
-        if let Some(first) = file.document.definition.first()
-            && several
-            && file.scope.is_empty()
-        {
-            self.error(
-                first.span(),
-                format!(
-                    "found a definition in `{ROOT_FILE}`; expected only the `PROTOCOL` header there, since the schema has a file per scope; move it into a scope's file, such as `common.anyx`"
-                ),
-            );
-        }
-    }
-
     /// Declares a `RECORD` or `CHOICE` by its shape, after checking that
     /// the shape has words and its braces come last.
     fn declare_shaped_type<T>(
@@ -772,35 +706,23 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        self.declare_type(&shape.name, public, parameters);
+        self.declare_type(&shape.name, public);
         self.declare_type_parameters(&shape.parameters);
     }
 
     /// Declares a type by its shape, `page of _`, and reports a second type
-    /// of that shape in the scope. `parameters` are its type parameters,
-    /// which show it in a message.
-    fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool, parameters: Vec<String>) {
+    /// of that shape in the protocol.
+    fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool) {
         if crate::prelude::find(&name.value).is_some() {
             self.error(
                 name.span,
                 format!(
-                    "found a type named `{}`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every scope; rename it",
+                    "found a type named `{}`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it",
                     name.value
                 ),
             );
-        } else if self
-            .types
-            .iter()
-            .any(|known| known.scope == self.scope && known.name == name.value)
-        {
-            self.error(
-                name.span,
-                format!(
-                    "found a second type named `{}`; expected each type to be defined once in a scope; rename or remove one of them",
-                    fill_slots(&name.value, &parameters)
-                ),
-            );
         }
+        self.check_duplicate_name(name);
         let declared = self.declared(name, public);
         self.types.push(declared);
     }
@@ -851,10 +773,8 @@ impl<'a> Checker<'a> {
             let shadowed: Vec<String> = self
                 .types
                 .iter()
-                .filter(|known| {
-                    known.name == parameter.value && (known.scope == self.scope || known.public)
-                })
-                .map(|known| format!("`{}`", scoped(&known.scope, &known.name)))
+                .filter(|known| known.name == parameter.value && self.accessible(known))
+                .map(|known| format!("`{}`", known.name.clone()))
                 .collect();
             if !shadowed.is_empty() {
                 self.error(
@@ -906,7 +826,6 @@ impl<'a> Checker<'a> {
 
     fn declared(&self, name: &ast::Spanned<String>, public: bool) -> Declared {
         Declared {
-            scope: self.scope.clone(),
             name: name.value.clone(),
             span: name.span,
             file: self.file,
@@ -928,19 +847,7 @@ impl<'a> Checker<'a> {
             return;
         };
         self.check_words(&name, "an error group");
-        if self
-            .groups
-            .iter()
-            .any(|known| known.declared.scope == self.scope && known.declared.name == name.value)
-        {
-            self.error(
-                name.span,
-                format!(
-                    "found a second error group named `{}`; expected each group once in a scope; rename one of them",
-                    name.value
-                ),
-            );
-        }
+        self.check_duplicate_name(&name);
         let declared = self.declared(&name, public);
         self.groups.push(Group {
             declared,
@@ -976,7 +883,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Reads the errors defined in brackets, as indices into `found`, each
-    /// once in a scope.
+    /// once in the protocol.
     fn declare_errors(
         &mut self,
         own: &[ast::Error],
@@ -990,14 +897,14 @@ impl<'a> Checker<'a> {
                 if let Some(other) = self
                     .errors
                     .iter()
-                    .find(|known| known.scope == self.scope && known.name == words)
+                    .find(|known| known.name == words)
                 {
                     let line = anyx::line_column(&self.sources[other.file], other.span.start).line;
                     self.error(
                         error.name.span,
                         format!(
-                            "found a second error `{words}` in {}, after the one on line {line}; expected each error once in a scope; to share one, put it in an `ERRORS` group and join the group with `+`",
-                            self.this_scope()
+                            "found a second error `{words}` in {}, after the one on line {line}; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`",
+                            self.this_schema()
                         ),
                     );
                 }
@@ -1010,7 +917,7 @@ impl<'a> Checker<'a> {
                 );
                 self.errors.push(declared);
                 found.push(ErrorDefinition {
-                    scope: self.scope.clone(),
+
                     public,
                     error: shaped,
                 });
@@ -1019,10 +926,7 @@ impl<'a> Checker<'a> {
             .collect()
     }
 
-    /// `reference` as a path, a shape in the scope being checked or a full
-    /// path, with the types written in the shape's slots: `page of (file)`
-    /// is the shape `page of _` with `file`, and `common/page of (file)` the
-    /// same in `common`. `None` after reporting it when it is neither.
+    /// A plain type shape, with its type arguments. Rejects legacy file paths.
     fn path<'r>(&mut self, reference: &'r ast::Reference) -> Option<(Path, &'r [ast::Type])> {
         let parts = &reference.name.parts;
         let slashed = parts
@@ -1031,115 +935,59 @@ impl<'a> Checker<'a> {
         if !slashed {
             return Some((
                 Path {
-                    scope: self.scope.clone(),
                     name: reference.name.text.clone(),
-                    full: false,
                 },
                 &reference.arguments,
             ));
         }
-        let slashes_between_slots = parts.len() >= 3
-            && parts.len() % 2 == 1
-            && parts.iter().enumerate().all(|(index, part)| match part {
-                NamePart::Slot => index % 2 == 0,
-                NamePart::Word { text, .. } => index % 2 == 1 && text == "/",
-            });
-        let scope_word = |segment: &ast::Type| match segment {
-            ast::Type::Named(segment)
-                if segment.arguments.is_empty()
-                    && matches!(segment.name.parts.as_slice(), [NamePart::Word { .. }]) =>
-            {
-                Some(segment.name.text.clone())
-            }
-            _ => None,
-        };
-        let path =
-            reference.arguments.split_last().and_then(|(last, scope)| {
-                let scope: Option<Vec<String>> = scope.iter().map(scope_word).collect();
-                match last {
-                    ast::Type::Named(last)
-                        if !last.name.parts.iter().any(
-                            |part| matches!(part, NamePart::Word { text, .. } if text == "/"),
-                        ) =>
-                    {
-                        Some((scope?, last))
-                    }
-                    _ => None,
-                }
-            });
-        match path {
-            Some((scope, last)) if slashes_between_slots => Some((
-                Path {
-                    scope,
-                    name: last.name.text.clone(),
-                    full: true,
-                },
-                &last.arguments,
-            )),
-            _ => {
-                let written = self.written(reference.span).to_string();
-                self.error(
-                    reference.span,
-                    format!(
-                        "found `{written}`; expected a name, such as `Diagnostic`, a generic type with a type in each slot, such as `Page of (Diagnostic)`, or the full path of a `PUBLIC` one in another scope, such as `common/Diagnostic`"
-                    ),
-                );
-                None
-            }
+        self.error(reference.span, "expected a plain type name or generic shape; import its file with `USE` instead of writing a path");
+        None
+    }
+
+    fn check_duplicate_name(&mut self, name: &ast::Spanned<String>) {
+        if let Some(known) = self
+            .types
+            .iter()
+            .chain(self.groups.iter().map(|group| &group.declared))
+            .find(|known| known.name == name.value)
+        {
+            self.error(name.span, format!("duplicate declaration `{}` in `{}` and `{}`; every type and error group must have a unique name in the protocol", name.value, self.paths[known.file], self.paths[self.file]));
         }
     }
 
-    /// Reports `found` when `path` reaches it from another scope and it is
-    /// private.
-    fn check_access(&mut self, span: Span, path: &Path, public: bool, what: &str) {
-        if public || path.scope == self.scope {
-            return;
-        }
+    fn accessible(&self, declared: &Declared) -> bool {
+        declared.file == self.file
+            || (declared.public && self.imports[self.file].contains(&declared.file))
+    }
+
+    fn unavailable(&mut self, span: Span, name: &str, file: usize, public: bool) {
+        let reason = if public {
+            "add a direct `USE` of that file; imports are not re-exported"
+        } else {
+            "mark it `PUBLIC` and add a direct `USE` of that file"
+        };
         self.error(
             span,
             format!(
-                "found `{}`, which is private to the scope `{}`; expected a `PUBLIC` {what}, or one of {}; write `PUBLIC` before its definition in `{}` to share it",
-                self.written(span),
-                path.scope.join("/"),
-                self.this_scope(),
-                scope_file(&path.scope)
+                "`{name}` is declared in `{}` but is not visible in `{}`; {reason}",
+                self.paths[file], self.paths[self.file]
             ),
         );
-    }
-
-    /// The full paths of the public declarations named `name` in other
-    /// scopes, as a hint after a name that isn't in this scope.
-    fn elsewhere<'d>(&self, declared: impl Iterator<Item = &'d Declared>, name: &str) -> String {
-        let paths: Vec<String> = declared
-            .filter(|known| known.public && known.name == name && known.scope != self.scope)
-            .map(|known| format!("`{}`", scoped(&known.scope, &known.name)))
-            .collect();
-        match paths.is_empty() {
-            true => String::new(),
-            false => format!(
-                "; another scope has {}, so write its full path",
-                paths.join(", ")
-            ),
-        }
     }
 
     /// The type `path` names, as an index into the types. `span` is where
     /// it is written, and `arguments` how many types its slots hold.
     fn resolve_type(&mut self, span: Span, path: &Path, arguments: usize) -> Option<usize> {
-        let found = self
-            .types
-            .iter()
-            .position(|known| known.scope == path.scope && known.name == path.name);
+        let found = self.types.iter().position(|known| known.name == path.name);
         if let Some(index) = found {
-            let public = self.types[index].public;
-            self.check_access(span, path, public, "type");
+            let known = &self.types[index];
+            if !self.accessible(known) {
+                self.unavailable(span, &path.name, known.file, known.public);
+            }
             return Some(index);
         }
         let written = self.written(span).to_string();
-        let scope = match path.full {
-            true => format!("the scope `{}`", path.scope.join("/")),
-            false => self.this_scope(),
-        };
+        let scope = self.this_schema();
         let words = |name: &str| {
             name.split(' ')
                 .filter(|word| *word != "_")
@@ -1154,9 +1002,7 @@ impl<'a> Checker<'a> {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        let in_scope = |known: &Declared| {
-            known.scope == path.scope && (!path.full || known.public || known.scope == self.scope)
-        };
+        let in_scope = |known: &Declared| self.accessible(known);
         let same_words: Vec<usize> = (0..self.types.len())
             .filter(|index| {
                 in_scope(&self.types[*index]) && words(&self.types[*index].name) == wanted
@@ -1191,73 +1037,40 @@ impl<'a> Checker<'a> {
                 shown(self, &similar)
             ),
         };
-        let parameter = match !path.full && self.parameters.contains(&first_word) {
+        let parameter = match self.parameters.contains(&first_word) {
             true => format!(
                 "; `{first_word}` is a type parameter, which stands for a whole type and has no slots"
             ),
             false => String::new(),
         };
         let similar = similar + &parameter;
-        let message = match path.full {
-            true => format!(
-                "found `{written}`, which names no type; expected the full path of a `PUBLIC` `RECORD`, `CHOICE` or `TYPE`, such as `common/Diagnostic` for `PUBLIC RECORD Diagnostic` in `common.anyx`{similar}"
-            ),
-            false => format!(
-                "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name{hint}{similar}",
-                built_in = crate::prelude::intrinsics()
-                    .iter()
-                    .map(|intrinsic| format!("`{}`", intrinsic.name))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                hint = self.elsewhere(self.types.iter(), &path.name),
-            ),
-        };
+        let message = format!(
+            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
+            built_in = crate::prelude::intrinsics()
+                .iter()
+                .map(|intrinsic| format!("`{}`", intrinsic.name))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
         self.error(span, message);
         None
     }
 
-    /// The group `reference` names, as an index into the groups.
     fn resolve_group(&mut self, reference: &GroupReference) -> Option<usize> {
-        let full = !reference.scope.is_empty();
-        let path = Path {
-            scope: match full {
-                true => reference.scope.clone(),
-                false => self.scope.clone(),
-            },
-            name: reference.name.clone(),
-            full,
-        };
-        let found = self.groups.iter().position(|known| {
-            known.declared.scope == path.scope && known.declared.name == path.name
-        });
-        match found {
+        match self
+            .groups
+            .iter()
+            .position(|group| group.declared.name == reference.name)
+        {
             Some(index) => {
-                let public = self.groups[index].declared.public;
-                self.check_access(reference.span, &path, public, "error group");
+                let known = &self.groups[index].declared;
+                if !self.accessible(known) {
+                    self.unavailable(reference.span, &reference.name, known.file, known.public);
+                }
                 Some(index)
             }
             None => {
-                let an_error = self
-                    .errors
-                    .iter()
-                    .any(|known| known.scope == path.scope && known.name == path.name);
-                let message = match (path.full, an_error) {
-                    (_, true) => format!(
-                        "found `{}`, which is an error, not a group; expected a group after a `+`; put the error in an `ERRORS` group and join that group, since an error is defined once, in the brackets of the group or method that has it",
-                        scoped(&path.scope, &path.name)
-                    ),
-                    (true, false) => format!(
-                        "found `{}`, which names no error group; expected the full path of a `PUBLIC` `ERRORS` group, such as `files/file errors` for `PUBLIC ERRORS file errors [trashed, missing]` in `files.anyx`",
-                        scoped(&path.scope, &path.name)
-                    ),
-                    (false, false) => format!(
-                        "found `{}`, which is not an error group of {}; expected the name of an `ERRORS` group, such as `file errors` for `ERRORS file errors [trashed, missing]`{}",
-                        path.name,
-                        self.this_scope(),
-                        self.elsewhere(self.groups.iter().map(|group| &group.declared), &path.name),
-                    ),
-                };
-                self.error(reference.span, message);
+                self.error(reference.span, format!("found `{}`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`", reference.name));
                 None
             }
         }
@@ -1272,15 +1085,14 @@ impl<'a> Checker<'a> {
             return expanded.clone();
         }
         let group = &self.groups[index];
-        let (file, scope, span, name) = (
+        let (file, span, name) = (
             group.declared.file,
-            group.declared.scope.clone(),
             group.declared.span,
             group.declared.name.clone(),
         );
         let (own, joined) = (group.own_errors.clone(), group.joined.clone());
         if visiting.contains(&index) {
-            self.within(file, &scope, |checker| {
+            self.within(file, |checker| {
                 checker.error(
                     span,
                     format!(
@@ -1291,7 +1103,7 @@ impl<'a> Checker<'a> {
             return None;
         }
         visiting.push(index);
-        let expanded = self.within(file, &scope, |checker| {
+        let expanded = self.within(file, |checker| {
             joined.iter().try_fold(own, |mut expanded, reference| {
                 if let Some(found) = checker.resolve_group(reference) {
                     expanded.extend(checker.expand(found, visiting)?);
@@ -1393,7 +1205,6 @@ impl<'a> Checker<'a> {
                             field: checked.len(),
                             node: node.clone(),
                             file: self.file,
-                            scope: self.scope.clone(),
                         });
                     }
                     (r#type, true)
@@ -1581,12 +1392,12 @@ impl<'a> Checker<'a> {
         let mut errors: Vec<usize> = Vec::new();
         for Listed { index, span } in listed {
             let declared = &self.errors[index];
-            let this = scoped(&declared.scope, &declared.name);
+            let this = declared.name.clone();
             let same_words = errors
                 .iter()
                 .map(|known| &self.errors[*known])
                 .find(|other| other.name == declared.name)
-                .map(|other| scoped(&other.scope, &other.name));
+                .map(|other| other.name.clone());
             if errors.contains(&index) {
                 let words = declared.name.clone();
                 self.error(
@@ -1599,7 +1410,7 @@ impl<'a> Checker<'a> {
                 self.error(
                     span,
                     format!(
-                        "found the errors `{other}` and `{this}` both listed for this method; expected errors of distinct words, since a response writes an error by its shape alone, without its scope; rename one of them"
+                        "found the errors `{other}` and `{this}` both listed for this method; expected errors of distinct words, since a response writes an error by its shape alone, without a file path; rename one of them"
                     ),
                 );
             } else {
@@ -1607,7 +1418,6 @@ impl<'a> Checker<'a> {
             }
         }
         Method {
-            scope: self.scope.clone(),
             doc: doc(doc_string),
             shape: checked_shape,
             returns: returns.map(|returns| self.parameter(returns)),
@@ -1620,7 +1430,7 @@ impl<'a> Checker<'a> {
 
     /// Reads `UNDONE BY move (new path: Text) to (path: Text)` of `method`:
     /// each slot one of the method's parameters, with its type, and the
-    /// call one method of the scope, by its words and the type in each
+    /// call one method of the protocol, by its words and the type in each
     /// slot.
     fn undo(&mut self, schema: &Schema, method: &Method, undo: &ast::Undo) -> Option<Undo> {
         let written = self
@@ -1685,7 +1495,7 @@ impl<'a> Checker<'a> {
             .methods
             .iter()
             .enumerate()
-            .filter(|(_, other)| other.scope == self.scope && other.shape.text == undo.name.text)
+            .filter(|(_, other)| other.shape.text == undo.name.text)
             .collect();
         let matching: Vec<usize> = same_words
             .iter()
@@ -1710,9 +1520,9 @@ impl<'a> Checker<'a> {
                     undo.name.span,
                     format!(
                         "found `UNDONE BY {written}`, but {} has no method `{}`; expected the call of a method of {}, with this method's parameters in its slots",
-                        self.this_scope(),
+                        self.this_schema(),
                         undo.name.text,
-                        self.this_scope(),
+                        self.this_schema(),
                     ),
                 );
                 None

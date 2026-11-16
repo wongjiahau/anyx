@@ -117,7 +117,7 @@ export class Client {
     return Promise.all(outcomes);
   }
 
-  /** Calls a method by its full name, such as `files/read _`. `value` and
+  /** Calls a method by its full name, such as `read _`. `value` and
    * `error` revive what it returns and its error. */
   private call<T, E>(
     method: string,
@@ -183,7 +183,7 @@ export interface Effects {
    * error saying it is already done. */
   readonly idempotent: boolean;
   /** `UNDONE BY`: the call that undoes it, as written in the schema, in the
-   * method's scope, with the method's own arguments in its slots. */
+   * protocol's namespace, with the method's own arguments in its slots. */
   readonly undoneBy: string | null;
 }
 

@@ -5,12 +5,45 @@
 use anyx_protocol::client::{CallError, Transport};
 use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 
-/// The schema as written, a file per scope.
+/// The schema as written, with explicit imports.
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[
     anyx_protocol::SchemaFile {
         path: "protocol.anyx",
         source: r#"# Notes keeps a person's notes, a file each.
 PROTOCOL notes VERSION 1,
+
+USE "./files.anyx",
+USE "./files/export.anyx",
+"#,
+    },
+    anyx_protocol::SchemaFile {
+        path: "files.anyx",
+        source: r#"USE "./common.anyx",
+
+RECORD File { path: Text, revision: Integer, content: Text },
+
+PUBLIC ERRORS file errors [
+    # The note is in the trash.
+    trashed,
+] + common errors,
+
+READ ONLY METHOD list RETURNS (paths: LIST Text),
+
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+
+# Saves the note, if it is still at `revision`.
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (warnings: LIST Diagnostic)
+    ERRORS [
+        # The note has errors, so nothing was saved.
+        rejected (diagnostics: LIST Diagnostic),
+    ] + file errors,
+
+# Moves the note to the trash.
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
+
+# Forgets every note in the trash.
+METHOD empty trash RETURNS NOTHING,
 "#,
     },
     anyx_protocol::SchemaFile {
@@ -25,45 +58,20 @@ PUBLIC ERRORS common errors [
 "#,
     },
     anyx_protocol::SchemaFile {
-        path: "files.anyx",
-        source: r#"RECORD File { path: Text, revision: Integer, content: Text },
-
-PUBLIC ERRORS file errors [
-    # The note is in the trash.
-    trashed,
-] + common/common errors,
-
-READ ONLY METHOD list RETURNS (paths: LIST Text),
-
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
-
-# Saves the note, if it is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (warnings: LIST common/Diagnostic)
-    ERRORS [
-        # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/Diagnostic),
-    ] + file errors,
-
-# Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
-
-# Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING,
-"#,
-    },
-    anyx_protocol::SchemaFile {
         path: "files/export.anyx",
-        source: r#"# A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
+        source: r#"USE "../common.anyx",
+USE "../files.anyx",
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
+# A page of a note, with what is wrong on it.
+RECORD Page { html: Text, problem: OPTIONAL Diagnostic },
+
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/Diagnostic),
-    ] + files/file errors,
+        unreadable (diagnostics: LIST Diagnostic),
+    ] + file errors,
 "#,
     },
 ];
@@ -72,24 +80,378 @@ METHOD pdf (path: Text) RETURNS (pdf: Bytes)
 pub fn schema() -> &'static anyx_protocol::Schema {
     static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =
         ::std::sync::LazyLock::new(|| {
-            anyx_protocol::Schema::parse_files(SCHEMA_FILES)
-                .expect("the generator checked the schema")
+            anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| {
+                SCHEMA_FILES
+                    .iter()
+                    .find(|file| file.path == path)
+                    .map(|file| file.source.to_string())
+                    .ok_or_else(|| format!("missing embedded file: {path}"))
+            })
+            .expect("the generator checked the schema")
         });
     &SCHEMA_READ
 }
 
-/// The methods of the schema's root, for a server to implement, with the
-/// `Server` trait of each scope. An `Err` is the server's own failure: the
+#[derive(Clone, Debug, PartialEq)]
+pub struct File {
+    pub path: String,
+    pub revision: i64,
+    pub content: String,
+}
+
+impl IntoValue for File {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("path", self.path)
+                .field("revision", self.revision)
+                .field("content", self.content)
+                .build(),
+        )
+    }
+}
+
+impl FromValue for File {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            path: fields.field("path")?,
+            revision: fields.field("revision")?,
+            content: fields.field("content")?,
+        })
+    }
+}
+
+/// One problem in a note.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Diagnostic {
+    pub line: i64,
+    pub message: String,
+}
+
+impl IntoValue for Diagnostic {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("line", self.line)
+                .field("message", self.message)
+                .build(),
+        )
+    }
+}
+
+impl FromValue for Diagnostic {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            line: fields.field("line")?,
+            message: fields.field("message")?,
+        })
+    }
+}
+
+/// A page of a note, with what is wrong on it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Page {
+    pub html: String,
+    pub problem: Option<Diagnostic>,
+}
+
+impl IntoValue for Page {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("html", self.html)
+                .optional("problem", self.problem)
+                .build(),
+        )
+    }
+}
+
+impl FromValue for Page {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            html: fields.field("html")?,
+            problem: fields.optional("problem")?,
+        })
+    }
+}
+
+/// The errors of `read _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ReadError {
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for ReadError {
+    fn into_value(self) -> Value {
+        match self {
+            ReadError::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            ReadError::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for ReadError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "trashed" => ReadError::Trashed,
+            "missing" => ReadError::Missing,
+            _ => return None,
+        })
+    }
+}
+
+/// The errors of `write _ at revision _ content _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum WriteAtRevisionContentError {
+    /// The note has errors, so nothing was saved.
+    Rejected { diagnostics: Vec<Diagnostic> },
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for WriteAtRevisionContentError {
+    fn into_value(self) -> Value {
+        match self {
+            WriteAtRevisionContentError::Rejected { diagnostics } => Value::Variant {
+                shape: "rejected _".to_string(),
+                arguments: vec![diagnostics.into_value()],
+            },
+            WriteAtRevisionContentError::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            WriteAtRevisionContentError::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for WriteAtRevisionContentError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "rejected _" => WriteAtRevisionContentError::Rejected {
+                diagnostics: FromValue::from_value(arguments.next()?)?,
+            },
+            "trashed" => WriteAtRevisionContentError::Trashed,
+            "missing" => WriteAtRevisionContentError::Missing,
+            _ => return None,
+        })
+    }
+}
+
+/// The errors of `trash _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TrashError {
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for TrashError {
+    fn into_value(self) -> Value {
+        match self {
+            TrashError::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            TrashError::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for TrashError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "trashed" => TrashError::Trashed,
+            "missing" => TrashError::Missing,
+            _ => return None,
+        })
+    }
+}
+
+/// The errors of `html _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HtmlError {
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for HtmlError {
+    fn into_value(self) -> Value {
+        match self {
+            HtmlError::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            HtmlError::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for HtmlError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "trashed" => HtmlError::Trashed,
+            "missing" => HtmlError::Missing,
+            _ => return None,
+        })
+    }
+}
+
+/// The errors of `pdf _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PdfError {
+    /// The note has errors, so it can't be exported.
+    Unreadable { diagnostics: Vec<Diagnostic> },
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for PdfError {
+    fn into_value(self) -> Value {
+        match self {
+            PdfError::Unreadable { diagnostics } => Value::Variant {
+                shape: "unreadable _".to_string(),
+                arguments: vec![diagnostics.into_value()],
+            },
+            PdfError::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            PdfError::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for PdfError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "unreadable _" => PdfError::Unreadable {
+                diagnostics: FromValue::from_value(arguments.next()?)?,
+            },
+            "trashed" => PdfError::Trashed,
+            "missing" => PdfError::Missing,
+            _ => return None,
+        })
+    }
+}
+
+/// The protocol methods, for a server to implement. An `Err` is the server's own failure: the
 /// caller gets `INTERNAL ERROR`, and the calls after it don't run.
 #[allow(async_fn_in_trait)]
 pub trait Server {
     type Error;
+
+    /// `list`, returning `paths`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
+    async fn list(&self) -> Result<Vec<String>, Self::Error>;
+
+    /// `read _`, returning `file`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
+    async fn read(&self, path: String) -> Result<Result<File, ReadError>, Self::Error>;
+
+    /// Saves the note, if it is still at `revision`.
+    ///
+    /// `write _ at revision _ content _`, returning `warnings`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn write_at_revision_content(
+        &self,
+        path: String,
+        revision: i64,
+        content: String,
+    ) -> Result<Result<Vec<Diagnostic>, WriteAtRevisionContentError>, Self::Error>;
+
+    /// Moves the note to the trash.
+    ///
+    /// `trash _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+    async fn trash(&self, path: String) -> Result<Result<(), TrashError>, Self::Error>;
+
+    /// Forgets every note in the trash.
+    ///
+    /// `empty trash`, returning nothing.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn empty_trash(&self) -> Result<(), Self::Error>;
+
+    /// `html _`, returning `pages`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn html(&self, path: String) -> Result<Result<Vec<Page>, HtmlError>, Self::Error>;
+
+    /// `pdf _`, returning `pdf`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn pdf(&self, path: String) -> Result<Result<Vec<u8>, PdfError>, Self::Error>;
 }
 
 /// Runs `request` against `implementation` and writes the response. Every
 /// call runs, in order, until one fails with an internal error, which
 /// `on_internal_error` hears; the calls after it don't run.
-pub async fn handle<S: Server + files::Server + files::export::Server>(
+pub async fn handle<S: Server>(
     implementation: &S,
     request: &str,
     mut on_internal_error: impl FnMut(<S as Server>::Error),
@@ -108,16 +470,16 @@ pub async fn handle<S: Server + files::Server + files::export::Server>(
         }
         let mut arguments = call.arguments.clone().into_iter();
         let outcome = match call.method {
-            0 => anyx_protocol::server::value(<S as files::Server>::list(implementation).await),
+            0 => anyx_protocol::server::value(<S as Server>::list(implementation).await),
             1 => anyx_protocol::server::result(
-                <S as files::Server>::read(
+                <S as Server>::read(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
                 .await,
             ),
             2 => anyx_protocol::server::result(
-                <S as files::Server>::write_at_revision_content(
+                <S as Server>::write_at_revision_content(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                     anyx_protocol::server::argument(&mut arguments),
@@ -126,24 +488,22 @@ pub async fn handle<S: Server + files::Server + files::export::Server>(
                 .await,
             ),
             3 => anyx_protocol::server::result(
-                <S as files::Server>::trash(
+                <S as Server>::trash(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
                 .await,
             ),
-            4 => anyx_protocol::server::value(
-                <S as files::Server>::empty_trash(implementation).await,
-            ),
+            4 => anyx_protocol::server::value(<S as Server>::empty_trash(implementation).await),
             5 => anyx_protocol::server::result(
-                <S as files::export::Server>::html(
+                <S as Server>::html(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
                 .await,
             ),
             6 => anyx_protocol::server::result(
-                <S as files::export::Server>::pdf(
+                <S as Server>::pdf(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
@@ -172,566 +532,130 @@ impl<T: Transport> Client<T> {
         Self { transport }
     }
 
+    /// `list`, returning `paths`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
+    pub async fn list(
+        &self,
+    ) -> Result<Vec<String>, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 0, vec![]).await
+    }
+
+    /// `read _`, returning `file`.
+    ///
+    /// Read only: it changes nothing, so it is safe to call freely.
+    pub async fn read(&self, path: String) -> Result<File, CallError<ReadError, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 1, vec![path.into_value()]).await
+    }
+
+    /// Saves the note, if it is still at `revision`.
+    ///
+    /// `write _ at revision _ content _`, returning `warnings`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn write_at_revision_content(
+        &self,
+        path: String,
+        revision: i64,
+        content: String,
+    ) -> Result<Vec<Diagnostic>, CallError<WriteAtRevisionContentError, T::Error>> {
+        anyx_protocol::client::call(
+            &self.transport,
+            schema(),
+            2,
+            vec![
+                path.into_value(),
+                revision.into_value(),
+                content.into_value(),
+            ],
+        )
+        .await
+    }
+
+    /// Moves the note to the trash.
+    ///
+    /// `trash _`, returning nothing.
+    ///
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+    pub async fn trash(&self, path: String) -> Result<(), CallError<TrashError, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 3, vec![path.into_value()]).await
+    }
+
+    /// Forgets every note in the trash.
+    ///
+    /// `empty trash`, returning nothing.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn empty_trash(&self) -> Result<(), CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
+    }
+
+    /// `html _`, returning `pages`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn html(&self, path: String) -> Result<Vec<Page>, CallError<HtmlError, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 5, vec![path.into_value()]).await
+    }
+
+    /// `pdf _`, returning `pdf`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn pdf(&self, path: String) -> Result<Vec<u8>, CallError<PdfError, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 6, vec![path.into_value()]).await
+    }
+
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
     }
-
-    /// The methods of the scope `files`.
-    pub fn files(&self) -> files::Client<'_, T> {
-        files::Client {
-            transport: &self.transport,
-        }
-    }
 }
 
-/// The scope `common`.
-pub mod common {
-    use anyx_protocol::client::{CallError, Transport};
-    use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
+/// What a call of `list` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const LIST_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};
 
-    /// One problem in a note.
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Diagnostic {
-        pub line: i64,
-        pub message: String,
-    }
+/// What a call of `read _` may do. Read only: it changes nothing, so it is safe to call freely.
+pub const READ_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: true,
+    idempotent: true,
+    undone_by: None,
+};
 
-    impl IntoValue for Diagnostic {
-        fn into_value(self) -> Value {
-            Value::Record(
-                FieldsBuilder::new()
-                    .field("line", self.line)
-                    .field("message", self.message)
-                    .build(),
-            )
-        }
-    }
-
-    impl FromValue for Diagnostic {
-        fn from_value(value: Value) -> Option<Self> {
-            let Value::Record(fields) = value else {
-                return None;
-            };
-            let mut fields = FieldsReader::new(fields);
-            Some(Self {
-                line: fields.field("line")?,
-                message: fields.field("message")?,
-            })
-        }
-    }
-}
-
-/// The scope `files`.
-pub mod files {
-    use anyx_protocol::client::{CallError, Transport};
-    use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
-
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct File {
-        pub path: String,
-        pub revision: i64,
-        pub content: String,
-    }
-
-    impl IntoValue for File {
-        fn into_value(self) -> Value {
-            Value::Record(
-                FieldsBuilder::new()
-                    .field("path", self.path)
-                    .field("revision", self.revision)
-                    .field("content", self.content)
-                    .build(),
-            )
-        }
-    }
-
-    impl FromValue for File {
-        fn from_value(value: Value) -> Option<Self> {
-            let Value::Record(fields) = value else {
-                return None;
-            };
-            let mut fields = FieldsReader::new(fields);
-            Some(Self {
-                path: fields.field("path")?,
-                revision: fields.field("revision")?,
-                content: fields.field("content")?,
-            })
-        }
-    }
-
-    /// The errors of `files/read _`.
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum ReadError {
-        /// The note is in the trash.
-        Trashed,
-        /// No note has this path.
-        Missing,
-    }
-
-    impl IntoValue for ReadError {
-        fn into_value(self) -> Value {
-            match self {
-                ReadError::Trashed => Value::Variant {
-                    shape: "trashed".to_string(),
-                    arguments: vec![],
-                },
-                ReadError::Missing => Value::Variant {
-                    shape: "missing".to_string(),
-                    arguments: vec![],
-                },
-            }
-        }
-    }
-
-    impl FromValue for ReadError {
-        fn from_value(value: Value) -> Option<Self> {
-            let Value::Variant { shape, arguments } = value else {
-                return None;
-            };
-            let mut arguments = arguments.into_iter();
-            Some(match shape.as_str() {
-                "trashed" => ReadError::Trashed,
-                "missing" => ReadError::Missing,
-                _ => return None,
-            })
-        }
-    }
-
-    /// The errors of `files/write _ at revision _ content _`.
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum WriteAtRevisionContentError {
-        /// The note has errors, so nothing was saved.
-        Rejected {
-            diagnostics: Vec<super::common::Diagnostic>,
-        },
-        /// The note is in the trash.
-        Trashed,
-        /// No note has this path.
-        Missing,
-    }
-
-    impl IntoValue for WriteAtRevisionContentError {
-        fn into_value(self) -> Value {
-            match self {
-                WriteAtRevisionContentError::Rejected { diagnostics } => Value::Variant {
-                    shape: "rejected _".to_string(),
-                    arguments: vec![diagnostics.into_value()],
-                },
-                WriteAtRevisionContentError::Trashed => Value::Variant {
-                    shape: "trashed".to_string(),
-                    arguments: vec![],
-                },
-                WriteAtRevisionContentError::Missing => Value::Variant {
-                    shape: "missing".to_string(),
-                    arguments: vec![],
-                },
-            }
-        }
-    }
-
-    impl FromValue for WriteAtRevisionContentError {
-        fn from_value(value: Value) -> Option<Self> {
-            let Value::Variant { shape, arguments } = value else {
-                return None;
-            };
-            let mut arguments = arguments.into_iter();
-            Some(match shape.as_str() {
-                "rejected _" => WriteAtRevisionContentError::Rejected {
-                    diagnostics: FromValue::from_value(arguments.next()?)?,
-                },
-                "trashed" => WriteAtRevisionContentError::Trashed,
-                "missing" => WriteAtRevisionContentError::Missing,
-                _ => return None,
-            })
-        }
-    }
-
-    /// The errors of `files/trash _`.
-    #[derive(Clone, Debug, PartialEq)]
-    pub enum TrashError {
-        /// The note is in the trash.
-        Trashed,
-        /// No note has this path.
-        Missing,
-    }
-
-    impl IntoValue for TrashError {
-        fn into_value(self) -> Value {
-            match self {
-                TrashError::Trashed => Value::Variant {
-                    shape: "trashed".to_string(),
-                    arguments: vec![],
-                },
-                TrashError::Missing => Value::Variant {
-                    shape: "missing".to_string(),
-                    arguments: vec![],
-                },
-            }
-        }
-    }
-
-    impl FromValue for TrashError {
-        fn from_value(value: Value) -> Option<Self> {
-            let Value::Variant { shape, arguments } = value else {
-                return None;
-            };
-            let mut arguments = arguments.into_iter();
-            Some(match shape.as_str() {
-                "trashed" => TrashError::Trashed,
-                "missing" => TrashError::Missing,
-                _ => return None,
-            })
-        }
-    }
-
-    /// The methods of the scope `files`, for a server to implement. Its
-    /// `Error` is the root `Server`'s.
-    #[allow(async_fn_in_trait)]
-    pub trait Server: super::Server {
-        /// `files/list`, returning `paths`.
-        ///
-        /// Read only: it changes nothing, so it is safe to call freely.
-        async fn list(&self) -> Result<Vec<String>, Self::Error>;
-
-        /// `files/read _`, returning `file`.
-        ///
-        /// Read only: it changes nothing, so it is safe to call freely.
-        async fn read(&self, path: String) -> Result<Result<File, ReadError>, Self::Error>;
-
-        /// Saves the note, if it is still at `revision`.
-        ///
-        /// `files/write _ at revision _ content _`, returning `warnings`.
-        ///
-        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-        async fn write_at_revision_content(
-            &self,
-            path: String,
-            revision: i64,
-            content: String,
-        ) -> Result<Result<Vec<super::common::Diagnostic>, WriteAtRevisionContentError>, Self::Error>;
-
-        /// Moves the note to the trash.
-        ///
-        /// `files/trash _`, returning nothing.
-        ///
-        /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
-        async fn trash(&self, path: String) -> Result<Result<(), TrashError>, Self::Error>;
-
-        /// Forgets every note in the trash.
-        ///
-        /// `files/empty trash`, returning nothing.
-        ///
-        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-        async fn empty_trash(&self) -> Result<(), Self::Error>;
-    }
-
-    /// Calls the methods of the scope `files` through the transport of the root
-    /// `Client`.
-    pub struct Client<'a, T> {
-        pub transport: &'a T,
-    }
-
-    impl<'a, T: Transport> Client<'a, T> {
-        /// `files/list`, returning `paths`.
-        ///
-        /// Read only: it changes nothing, so it is safe to call freely.
-        pub async fn list(
-            &self,
-        ) -> Result<Vec<String>, CallError<::std::convert::Infallible, T::Error>> {
-            anyx_protocol::client::call(self.transport, super::schema(), 0, vec![]).await
-        }
-
-        /// `files/read _`, returning `file`.
-        ///
-        /// Read only: it changes nothing, so it is safe to call freely.
-        pub async fn read(&self, path: String) -> Result<File, CallError<ReadError, T::Error>> {
-            anyx_protocol::client::call(self.transport, super::schema(), 1, vec![path.into_value()])
-                .await
-        }
-
-        /// Saves the note, if it is still at `revision`.
-        ///
-        /// `files/write _ at revision _ content _`, returning `warnings`.
-        ///
-        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-        pub async fn write_at_revision_content(
-            &self,
-            path: String,
-            revision: i64,
-            content: String,
-        ) -> Result<Vec<super::common::Diagnostic>, CallError<WriteAtRevisionContentError, T::Error>>
-        {
-            anyx_protocol::client::call(
-                self.transport,
-                super::schema(),
-                2,
-                vec![
-                    path.into_value(),
-                    revision.into_value(),
-                    content.into_value(),
-                ],
-            )
-            .await
-        }
-
-        /// Moves the note to the trash.
-        ///
-        /// `files/trash _`, returning nothing.
-        ///
-        /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
-        pub async fn trash(&self, path: String) -> Result<(), CallError<TrashError, T::Error>> {
-            anyx_protocol::client::call(self.transport, super::schema(), 3, vec![path.into_value()])
-                .await
-        }
-
-        /// Forgets every note in the trash.
-        ///
-        /// `files/empty trash`, returning nothing.
-        ///
-        /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-        pub async fn empty_trash(
-            &self,
-        ) -> Result<(), CallError<::std::convert::Infallible, T::Error>> {
-            anyx_protocol::client::call(self.transport, super::schema(), 4, vec![]).await
-        }
-
-        /// The methods of the scope `files/export`.
-        pub fn export(&self) -> export::Client<'a, T> {
-            export::Client {
-                transport: self.transport,
-            }
-        }
-    }
-
-    /// What a call of `files/list` may do. Read only: it changes nothing, so it is safe to call freely.
-    pub const LIST_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
-        read_only: true,
-        idempotent: true,
-        undone_by: None,
-    };
-
-    /// What a call of `files/read _` may do. Read only: it changes nothing, so it is safe to call freely.
-    pub const READ_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
-        read_only: true,
-        idempotent: true,
-        undone_by: None,
-    };
-
-    /// What a call of `files/write _ at revision _ content _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-    pub const WRITE_AT_REVISION_CONTENT_EFFECTS: anyx_protocol::client::Effects =
-        anyx_protocol::client::Effects {
-            read_only: false,
-            idempotent: false,
-            undone_by: None,
-        };
-
-    /// What a call of `files/trash _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
-    pub const TRASH_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+/// What a call of `write _ at revision _ content _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const WRITE_AT_REVISION_CONTENT_EFFECTS: anyx_protocol::client::Effects =
+    anyx_protocol::client::Effects {
         read_only: false,
-        idempotent: true,
+        idempotent: false,
         undone_by: None,
     };
 
-    /// What a call of `files/empty trash` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-    pub const EMPTY_TRASH_EFFECTS: anyx_protocol::client::Effects =
-        anyx_protocol::client::Effects {
-            read_only: false,
-            idempotent: false,
-            undone_by: None,
-        };
+/// What a call of `trash _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.
+pub const TRASH_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: true,
+    undone_by: None,
+};
 
-    /// The scope `files/export`.
-    pub mod export {
-        use anyx_protocol::client::{CallError, Transport};
-        use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
+/// What a call of `empty trash` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const EMPTY_TRASH_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
 
-        /// A page of a note, with what is wrong on it.
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct Page {
-            pub html: String,
-            pub problem: Option<super::super::common::Diagnostic>,
-        }
+/// What a call of `html _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const HTML_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
 
-        impl IntoValue for Page {
-            fn into_value(self) -> Value {
-                Value::Record(
-                    FieldsBuilder::new()
-                        .field("html", self.html)
-                        .optional("problem", self.problem)
-                        .build(),
-                )
-            }
-        }
-
-        impl FromValue for Page {
-            fn from_value(value: Value) -> Option<Self> {
-                let Value::Record(fields) = value else {
-                    return None;
-                };
-                let mut fields = FieldsReader::new(fields);
-                Some(Self {
-                    html: fields.field("html")?,
-                    problem: fields.optional("problem")?,
-                })
-            }
-        }
-
-        /// The errors of `files/export/html _`.
-        #[derive(Clone, Debug, PartialEq)]
-        pub enum HtmlError {
-            /// The note is in the trash.
-            Trashed,
-            /// No note has this path.
-            Missing,
-        }
-
-        impl IntoValue for HtmlError {
-            fn into_value(self) -> Value {
-                match self {
-                    HtmlError::Trashed => Value::Variant {
-                        shape: "trashed".to_string(),
-                        arguments: vec![],
-                    },
-                    HtmlError::Missing => Value::Variant {
-                        shape: "missing".to_string(),
-                        arguments: vec![],
-                    },
-                }
-            }
-        }
-
-        impl FromValue for HtmlError {
-            fn from_value(value: Value) -> Option<Self> {
-                let Value::Variant { shape, arguments } = value else {
-                    return None;
-                };
-                let mut arguments = arguments.into_iter();
-                Some(match shape.as_str() {
-                    "trashed" => HtmlError::Trashed,
-                    "missing" => HtmlError::Missing,
-                    _ => return None,
-                })
-            }
-        }
-
-        /// The errors of `files/export/pdf _`.
-        #[derive(Clone, Debug, PartialEq)]
-        pub enum PdfError {
-            /// The note has errors, so it can't be exported.
-            Unreadable {
-                diagnostics: Vec<super::super::common::Diagnostic>,
-            },
-            /// The note is in the trash.
-            Trashed,
-            /// No note has this path.
-            Missing,
-        }
-
-        impl IntoValue for PdfError {
-            fn into_value(self) -> Value {
-                match self {
-                    PdfError::Unreadable { diagnostics } => Value::Variant {
-                        shape: "unreadable _".to_string(),
-                        arguments: vec![diagnostics.into_value()],
-                    },
-                    PdfError::Trashed => Value::Variant {
-                        shape: "trashed".to_string(),
-                        arguments: vec![],
-                    },
-                    PdfError::Missing => Value::Variant {
-                        shape: "missing".to_string(),
-                        arguments: vec![],
-                    },
-                }
-            }
-        }
-
-        impl FromValue for PdfError {
-            fn from_value(value: Value) -> Option<Self> {
-                let Value::Variant { shape, arguments } = value else {
-                    return None;
-                };
-                let mut arguments = arguments.into_iter();
-                Some(match shape.as_str() {
-                    "unreadable _" => PdfError::Unreadable {
-                        diagnostics: FromValue::from_value(arguments.next()?)?,
-                    },
-                    "trashed" => PdfError::Trashed,
-                    "missing" => PdfError::Missing,
-                    _ => return None,
-                })
-            }
-        }
-
-        /// The methods of the scope `files/export`, for a server to implement. Its
-        /// `Error` is the root `Server`'s.
-        #[allow(async_fn_in_trait)]
-        pub trait Server: super::super::Server {
-            /// `files/export/html _`, returning `pages`.
-            ///
-            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-            async fn html(&self, path: String)
-            -> Result<Result<Vec<Page>, HtmlError>, Self::Error>;
-
-            /// `files/export/pdf _`, returning `pdf`.
-            ///
-            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-            async fn pdf(&self, path: String) -> Result<Result<Vec<u8>, PdfError>, Self::Error>;
-        }
-
-        /// Calls the methods of the scope `files/export` through the transport of the root
-        /// `Client`.
-        pub struct Client<'a, T> {
-            pub transport: &'a T,
-        }
-
-        impl<'a, T: Transport> Client<'a, T> {
-            /// `files/export/html _`, returning `pages`.
-            ///
-            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-            pub async fn html(
-                &self,
-                path: String,
-            ) -> Result<Vec<Page>, CallError<HtmlError, T::Error>> {
-                anyx_protocol::client::call(
-                    self.transport,
-                    super::super::schema(),
-                    5,
-                    vec![path.into_value()],
-                )
-                .await
-            }
-
-            /// `files/export/pdf _`, returning `pdf`.
-            ///
-            /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-            pub async fn pdf(
-                &self,
-                path: String,
-            ) -> Result<Vec<u8>, CallError<PdfError, T::Error>> {
-                anyx_protocol::client::call(
-                    self.transport,
-                    super::super::schema(),
-                    6,
-                    vec![path.into_value()],
-                )
-                .await
-            }
-        }
-
-        /// What a call of `files/export/html _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-        pub const HTML_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
-            read_only: false,
-            idempotent: false,
-            undone_by: None,
-        };
-
-        /// What a call of `files/export/pdf _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-        pub const PDF_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
-            read_only: false,
-            idempotent: false,
-            undone_by: None,
-        };
-    }
-}
+/// What a call of `pdf _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const PDF_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};

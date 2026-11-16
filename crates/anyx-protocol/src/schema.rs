@@ -1,13 +1,4 @@
-//! A checked schema: every name resolved, and every type, field, variant,
-//! error and method defined once in its scope.
-//!
-//! A schema is one file, or a folder of them. In a folder, `protocol.anyx`
-//! holds the `PROTOCOL` header alone, and every other file is a scope named
-//! by its path: `files.anyx` is the scope `files`, and `files/export.anyx`
-//! the scope `files/export`. A method in a scope is called by its full name,
-//! `files/export/midi _`. A type or an error is private to its scope unless
-//! it is `PUBLIC`, and another scope refers to it by its full path,
-//! `common/Diagnostic`.
+//! A protocol has one flat namespace, split across explicitly imported files.
 
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
@@ -16,17 +7,9 @@ use crate::codec::Outcome;
 use crate::grammar as ast;
 use crate::value::Value;
 
-/// The file of a schema's folder that holds its `PROTOCOL` header, and the
-/// name a schema of one file is read under.
-pub const ROOT_FILE: &str = "protocol.anyx";
-
-const EXTENSION: &str = ".anyx";
-
-/// One file of a schema, as given to [`Schema::parse_files`].
+/// A source file, useful for embedding a protocol in generated code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SchemaFile<'a> {
-    /// Relative to the schema's folder, with `/` between folders:
-    /// `files/export.anyx`.
     pub path: &'a str,
     pub source: &'a str,
 }
@@ -35,7 +18,7 @@ pub struct SchemaFile<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     /// The files as written, which the guide shows as they are: the root
-    /// first, then each scope in order of its path.
+    /// first, then each file in import traversal order.
     pub files: Vec<SourceFile>,
     pub doc: Option<String>,
     pub name: String,
@@ -49,16 +32,12 @@ pub struct Schema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceFile {
     pub path: String,
-    /// The scope it declares: empty for the root.
-    pub scope: Vec<String>,
     pub source: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeDefinition {
-    /// The scope it is declared in: empty for the root.
-    pub scope: Vec<String>,
-    /// `PUBLIC`: other scopes may use it.
+    /// `PUBLIC`: direct importers may use it.
     pub public: bool,
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
@@ -151,18 +130,15 @@ pub struct Shaped {
 }
 
 /// An error, defined in the brackets of a method's or a group's `ERRORS`.
-/// On the wire it is written in its shape alone, without its scope.
+/// On the wire it is written in its shape alone, without a file path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ErrorDefinition {
-    pub scope: Vec<String>,
     pub public: bool,
     pub error: Shaped,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Method {
-    /// The scope it is declared in, which its full name starts with.
-    pub scope: Vec<String>,
     pub doc: Option<String>,
     pub shape: Shape,
     /// What a call returns when it succeeds, named, or `None` for a
@@ -242,10 +218,9 @@ pub struct Example {
 }
 
 impl Method {
-    /// What a request calls it by: its scope's path and its shape,
-    /// `files/export/midi _`, or its shape alone in the root.
+    /// The method shape, without any file path.
     pub fn full_name(&self) -> String {
-        scoped(&self.scope, &self.shape.text)
+        self.shape.text.clone()
     }
 }
 
@@ -379,7 +354,6 @@ pub const INTROSPECTION: &str = "SCHEMA";
 /// `Text`, with no errors.
 pub fn introspection() -> &'static Method {
     static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| Method {
-        scope: Vec::new(),
         doc: Some("The guide to this protocol and its schema.".to_string()),
         shape: Shape {
             text: INTROSPECTION.to_string(),
@@ -407,93 +381,70 @@ fn keyword_before(keyword: &str, name: String) -> String {
     }
 }
 
-/// `name` behind the path of `scope`: `common/Diagnostic`, or `name` alone
-/// in the root.
-pub fn scoped(scope: &[String], name: &str) -> String {
-    scope
-        .iter()
-        .map(String::as_str)
-        .chain([name])
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// The file that declares `scope`: `files/export.anyx`.
-pub fn scope_file(scope: &[String]) -> String {
-    match scope.is_empty() {
-        true => ROOT_FILE.to_string(),
-        false => format!("{}{EXTENSION}", scope.join("/")),
-    }
-}
-
-/// A file with the scope its path declares.
-struct ScopedFile<'a> {
-    scope: Vec<String>,
-    file: SchemaFile<'a>,
-}
-
-/// A file read and decoded, for the checker.
+/// A decoded file and the indices of its direct imports.
 pub(crate) struct DecodedFile {
-    pub scope: Vec<String>,
+    pub imports: Vec<usize>,
     pub document: ast::Document,
 }
 
 impl Schema {
-    /// Reads and checks a schema of one file.
+    /// Checks a single source, including a headerless library. Imports require
+    /// [`Schema::load`], which supplies the file reader.
     pub fn parse(source: &str) -> Result<Schema, Vec<Diagnostic>> {
-        Schema::parse_files(&[SchemaFile {
-            path: ROOT_FILE,
-            source,
-        }])
+        Self::load("schema.anyx", |path| {
+            if path == "schema.anyx" {
+                Ok(source.to_string())
+            } else {
+                Err(format!("no reader supplied for `{path}`; use Schema::load"))
+            }
+        })
     }
 
-    /// Reads and checks a schema of a folder of files: `protocol.anyx` and
-    /// a file per scope.
-    pub fn parse_files(files: &[SchemaFile]) -> Result<Schema, Vec<Diagnostic>> {
-        let mut scoped_files = files
-            .iter()
-            .map(|file| file_scope(files, file).map(|scope| ScopedFile { scope, file: *file }))
-            .collect::<Result<Vec<_>, _>>()?;
-        scoped_files.sort_by(|left, right| left.scope.cmp(&right.scope));
-        let mut decoded = Vec::new();
-        let mut diagnostics = Vec::new();
-        for scoped in &scoped_files {
-            match decode_file(&scoped.file) {
-                Ok(document) => decoded.push(DecodedFile {
-                    scope: scoped.scope.clone(),
-                    document,
-                }),
-                Err(found) => diagnostics.extend(found),
-            }
+    /// Checks an entry file and exactly the files reached through `USE`.
+    /// The reader receives normalized paths relative to the caller's working
+    /// directory (or absolute paths when the entry is absolute). Each file is
+    /// read once. Libraries may be checked without a `PROTOCOL` header.
+    pub fn load<E: std::fmt::Display>(
+        entry: &str,
+        mut read: impl FnMut(&str) -> Result<String, E>,
+    ) -> Result<Schema, Vec<Diagnostic>> {
+        let entry = normalize_path(entry);
+        let mut loader = Loader {
+            read: &mut read,
+            files: Vec::new(),
+            decoded: Vec::new(),
+            visiting: Vec::new(),
+            attempted: std::collections::BTreeSet::new(),
+            diagnostics: Vec::new(),
+        };
+        loader.visit(&entry);
+        if !loader.diagnostics.is_empty() {
+            return Err(loader.diagnostics);
         }
-        if !diagnostics.is_empty() {
-            return Err(diagnostics);
-        }
-        let sources = scoped_files
-            .iter()
-            .map(|scoped| SourceFile {
-                path: scoped.file.path.to_string(),
-                scope: scoped.scope.clone(),
-                source: scoped.file.source.to_string(),
-            })
-            .collect();
         let mut checker = Checker::default();
-        let schema = checker.schema(sources, &decoded);
+        let schema = checker.schema(loader.files, &loader.decoded);
         let mut diagnostics = checker.diagnostics;
-        if diagnostics.is_empty() {
-            return Ok(schema);
-        }
         diagnostics.sort_by_key(|diagnostic| {
             (
-                scoped_files
+                schema
+                    .files
                     .iter()
-                    .position(|scoped| scoped.file.path == diagnostic.path),
+                    .position(|file| file.path == diagnostic.path),
                 diagnostic.span.start,
                 diagnostic.message.clone(),
             )
         });
         diagnostics.dedup();
-        Err(diagnostics)
+        if diagnostics.is_empty() {
+            Ok(schema)
+        } else {
+            Err(diagnostics)
+        }
+    }
+
+    /// Whether this entry declares an endpoint rather than a library.
+    pub fn is_protocol(&self) -> bool {
+        !self.name.is_empty()
     }
 
     /// `shape` with each slot written as its parameter and type:
@@ -520,18 +471,8 @@ impl Schema {
             .join(" ")
     }
 
+    /// A type's plain protocol name, filling the slots of generic shapes.
     pub fn type_name(&self, r#type: &Type) -> String {
-        self.type_name_in(r#type, &[])
-    }
-
-    /// `type` as it is written in `scope`: a type of that scope by its
-    /// name, `file id`, and one of another by its full path,
-    /// `common/File Id`.
-    pub fn type_name_in(&self, r#type: &Type, scope: &[String]) -> String {
-        let path = |definition: &TypeDefinition, name: &str| match definition.scope == scope {
-            true => name.to_string(),
-            false => scoped(&definition.scope, name),
-        };
         match r#type {
             Type::Text
             | Type::Bytes
@@ -541,19 +482,19 @@ impl Schema {
             | Type::Instant
             | Type::Duration => crate::prelude::of(r#type)
                 .map_or_else(|| format!("{type:?}"), |intrinsic| intrinsic.name.clone()),
-            Type::List(item) => keyword_before("LIST", self.type_name_in(item, scope)),
-            Type::Map(value) => keyword_before("MAP", self.type_name_in(value, scope)),
+            Type::List(item) => keyword_before("LIST", self.type_name(item)),
+            Type::Map(value) => keyword_before("MAP", self.type_name(value)),
             Type::Named(index) => {
                 let definition = &self.types[*index];
-                path(definition, &definition.name)
+                definition.name.clone()
             }
             Type::Generic(index, arguments) => {
                 let definition = &self.types[*index];
                 let arguments: Vec<String> = arguments
                     .iter()
-                    .map(|argument| self.type_name_in(argument, scope))
+                    .map(|argument| self.type_name(argument))
                     .collect();
-                path(definition, &fill_slots(&definition.name, &arguments))
+                fill_slots(&definition.name, &arguments)
             }
             Type::Parameter(name) => name.clone(),
         }
@@ -616,26 +557,26 @@ impl Schema {
             .find(|method| method.full_name() == full_name)
     }
 
-    /// Whether another method of `method`'s scope has its shape: an
+    /// Whether another method has the same shape: an
     /// overload, which a call chooses by its arguments' types.
     pub fn is_overloaded(&self, method: &Method) -> bool {
         self.methods
             .iter()
-            .filter(|other| other.scope == method.scope && other.shape.text == method.shape.text)
+            .filter(|other| other.shape.text == method.shape.text)
             .nth(1)
             .is_some()
     }
 
     /// `method`'s full name with each slot holding its parameter's type, as
-    /// written in its scope: `tag (LIST Text)`, `files/open (file id)`.
+    /// written in the flat namespace: `tag (LIST Text)`, `open (File Id)`.
     pub fn typed_name(&self, method: &Method) -> String {
         let types: Vec<String> = method
             .shape
             .parameters
             .iter()
-            .map(|parameter| self.type_name_in(&parameter.r#type, &method.scope))
+            .map(|parameter| self.type_name(&parameter.r#type))
             .collect();
-        scoped(&method.scope, &fill_slots(&method.shape.text, &types))
+        fill_slots(&method.shape.text, &types)
     }
 
     /// What JSON and the generated TypeScript call `method` by: its full
@@ -671,71 +612,133 @@ impl Schema {
             .map(|index| &self.errors[*index].error)
             .collect()
     }
+}
 
-    /// Every scope, each after the scope it is in, from the root: the scopes
-    /// of the files, and the folders they are in.
-    pub fn scopes(&self) -> Vec<Vec<String>> {
-        let mut scopes: Vec<Vec<String>> = self
-            .files
+/// Lexical path normalization also works in WebAssembly without a filesystem.
+fn normalize_path(path: &str) -> String {
+    let mut parts = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            ".." if path.starts_with('/') => {}
+            _ => parts.push(part),
+        }
+    }
+    format!(
+        "{}{}",
+        if path.starts_with('/') { "/" } else { "" },
+        parts.join("/")
+    )
+}
+
+struct Loader<'a, F> {
+    read: &'a mut F,
+    files: Vec<SourceFile>,
+    decoded: Vec<DecodedFile>,
+    visiting: Vec<String>,
+    attempted: std::collections::BTreeSet<String>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl<E: std::fmt::Display, F: FnMut(&str) -> Result<String, E>> Loader<'_, F> {
+    fn visit(&mut self, path: &str) -> Option<usize> {
+        if let Some(index) = self.files.iter().position(|file| file.path == path) {
+            return Some(index);
+        }
+        if !self.attempted.insert(path.to_string()) {
+            return None;
+        }
+        let source = match (self.read)(path) {
+            Ok(source) => source,
+            Err(error) => {
+                self.diagnostics.push(Diagnostic {
+                    path: path.to_string(),
+                    span: Span::empty(0),
+                    message: format!("cannot read `{path}`: {error}"),
+                });
+                return None;
+            }
+        };
+        let document = match decode_file(&SchemaFile {
+            path,
+            source: &source,
+        }) {
+            Ok(document) => document,
+            Err(errors) => {
+                self.diagnostics.extend(errors);
+                return None;
+            }
+        };
+        let imports: Vec<_> = document
+            .definition
             .iter()
-            .flat_map(|file| (0..=file.scope.len()).map(|length| file.scope[..length].to_vec()))
+            .filter_map(|definition| {
+                if let ast::Definition::Import(import) = definition {
+                    Some(import.clone())
+                } else {
+                    None
+                }
+            })
             .collect();
-        scopes.sort();
-        scopes.dedup();
-        scopes
-    }
-}
-
-/// The scope `file` declares, from its path.
-fn file_scope(files: &[SchemaFile], file: &SchemaFile) -> Result<Vec<String>, Vec<Diagnostic>> {
-    let at_start = |path: &str, message: String| {
-        vec![Diagnostic {
+        let index = self.files.len();
+        self.files.push(SourceFile {
             path: path.to_string(),
-            span: Span::empty(0),
-            message,
-        }]
-    };
-    if files.iter().filter(|other| other.path == file.path).count() > 1 {
-        return Err(at_start(
-            file.path,
-            format!(
-                "found `{}` twice among the schema's files; expected each path once",
-                file.path
-            ),
-        ));
+            source,
+        });
+        self.decoded.push(DecodedFile {
+            imports: Vec::new(),
+            document,
+        });
+        self.visiting.push(path.to_string());
+        for import in imports {
+            let relative = &import.path.value.value;
+            let error = |message| Diagnostic {
+                path: path.to_string(),
+                span: import.span,
+                message,
+            };
+            if relative.is_empty()
+                || relative.starts_with('/')
+                || relative.contains('\\')
+                || relative.contains(':')
+            {
+                self.diagnostics.push(error(format!(
+                    "expected a relative file path in `USE`, found `{relative}`"
+                )));
+                continue;
+            }
+            let parent = path.rfind('/').map_or("", |slash| &path[..=slash]);
+            let target = normalize_path(&format!("{parent}{relative}"));
+            if let Some(start) = self.visiting.iter().position(|path| *path == target) {
+                let mut cycle = self.visiting[start..].to_vec();
+                cycle.push(target);
+                self.diagnostics.push(error(format!(
+                    "`USE \"{relative}\"` makes a circular import: {}",
+                    cycle.join(" → ")
+                )));
+                continue;
+            }
+            let before = self.diagnostics.len();
+            if let Some(imported) = self.visit(&target) {
+                if self.decoded[imported].document.header.is_some() {
+                    self.diagnostics.push(error(format!("cannot import `{target}`: it has a `PROTOCOL` header; move shared declarations into a headerless library")));
+                } else if !self.decoded[index].imports.contains(&imported) {
+                    self.decoded[index].imports.push(imported);
+                }
+            } else if self.diagnostics.len() > before {
+                // Report read failures at USE; syntax errors keep their own file.
+                if self.diagnostics[before].message.starts_with("cannot read") {
+                    let message = self.diagnostics.remove(before).message;
+                    self.diagnostics.push(error(message));
+                }
+            }
+        }
+        self.visiting.pop();
+        Some(index)
     }
-    if !files.iter().any(|other| other.path == ROOT_FILE) {
-        return Err(at_start(
-            ROOT_FILE,
-            format!(
-                "found no `{ROOT_FILE}` among the schema's files; expected it, with the `PROTOCOL` header"
-            ),
-        ));
-    }
-    if file.path == ROOT_FILE {
-        return Ok(Vec::new());
-    }
-    let segments: Option<Vec<String>> = file
-        .path
-        .strip_suffix(EXTENSION)
-        .map(|stem| stem.split('/').map(str::to_string).collect());
-    match segments {
-        Some(segments) if segments.iter().all(|segment| is_scope_word(segment)) => Ok(segments),
-        _ => Err(at_start(
-            file.path,
-            format!(
-                "found the schema file `{}`; expected a path of single lowercase words, each of ASCII letters and digits starting with a letter, ending in `{EXTENSION}`, such as `files/export{EXTENSION}`, since each word names a scope that requests write",
-                file.path
-            ),
-        )),
-    }
-}
-
-fn is_scope_word(word: &str) -> bool {
-    word.starts_with(|c: char| c.is_ascii_lowercase())
-        && word
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
 }
 
 /// Parses `file` and decodes it with the schema language's grammar.
@@ -760,7 +763,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
             return vec![found(
                 shape,
                 format!(
-                    "found the method `{name}`, with `/` in its name; expected words alone, since a method's scope is its file: `METHOD read` in `files.anyx` is called as `files/read`"
+                    "found the method `{name}`, with `/` in its name; expected words alone, method names are flat: write `METHOD read` and call it as `read`"
                 ),
             )];
         }
@@ -942,8 +945,7 @@ fn slashed_method(nodes: &[Node], span: Span) -> Option<Span> {
 /// Something wrong in a schema, and where.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
-    /// The file it is in, as given to [`Schema::parse_files`], or
-    /// [`ROOT_FILE`] for a schema of one file.
+    /// The normalized path of the source file.
     pub path: String,
     pub span: Span,
     pub message: String,
