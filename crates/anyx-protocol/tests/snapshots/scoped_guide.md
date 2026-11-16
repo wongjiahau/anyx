@@ -7,10 +7,7 @@ Send a request as the body of `POST /notes`.
 A request is a list of calls separated by commas. Each call is written in the
 shape of one of the methods below, with a value in each `(name: TYPE)` slot:
 
-    files/write "a" at revision 3 content "a"
-
-A method in a scope is called by its full name, as above: the scope's
-path, `/`, then the call.
+    write "a" at revision 3 content "a"
 
 Every call runs, in order, and the response has one result per call.
 
@@ -121,17 +118,49 @@ are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. `ERRORS name […]`
 is a group of errors that methods share by joining it with `+`.
 
-The schema is a file per scope, each shown below under its full name. A
-type or an error group is private to its scope unless it is `PUBLIC`; another
-scope writes its full path, such as `common/Diagnostic`. A response writes
-an error in its shape alone, without its scope: `ERROR missing`.
+Files form one flat namespace. `USE "relative path"` includes a file and
+makes its `PUBLIC` types and error groups visible to the importing file.
+Imports are direct, with no re-export. File paths never appear in calls or
+type names.
 
 ### `protocol.anyx`
 
 # Notes keeps a person's notes, a file each.
 PROTOCOL notes VERSION 1,
 
-### `common` (`common.anyx`)
+USE "./files.anyx",
+USE "./files/export.anyx",
+
+### `files.anyx`
+
+USE "./common.anyx",
+
+RECORD File { path: Text, revision: Integer, content: Text },
+
+PUBLIC ERRORS file errors [
+    # The note is in the trash.
+    trashed,
+] + common errors,
+
+READ ONLY METHOD list RETURNS (paths: LIST Text),
+
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+
+# Saves the note, if it is still at `revision`.
+METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
+    RETURNS (warnings: LIST Diagnostic)
+    ERRORS [
+        # The note has errors, so nothing was saved.
+        rejected (diagnostics: LIST Diagnostic),
+    ] + file errors,
+
+# Moves the note to the trash.
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
+
+# Forgets every note in the trash.
+METHOD empty trash RETURNS NOTHING,
+
+### `common.anyx`
 
 # One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
@@ -141,46 +170,18 @@ PUBLIC ERRORS common errors [
     missing,
 ],
 
-### `files` (`files.anyx`)
+### `files/export.anyx`
 
-Methods: `files/list`, `files/read _`, `files/write _ at revision _ content _`, `files/trash _`, `files/empty trash`.
-
-RECORD File { path: Text, revision: Integer, content: Text },
-
-PUBLIC ERRORS file errors [
-    # The note is in the trash.
-    trashed,
-] + common/common errors,
-
-READ ONLY METHOD list RETURNS (paths: LIST Text),
-
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
-
-# Saves the note, if it is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (warnings: LIST common/Diagnostic)
-    ERRORS [
-        # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/Diagnostic),
-    ] + file errors,
-
-# Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
-
-# Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING,
-
-### `files/export` (`files/export.anyx`)
-
-Methods: `files/export/html _`, `files/export/pdf _`.
+USE "../common.anyx",
+USE "../files.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
+RECORD Page { html: Text, problem: OPTIONAL Diagnostic },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/Diagnostic),
-    ] + files/file errors,
+        unreadable (diagnostics: LIST Diagnostic),
+    ] + file errors,

@@ -108,7 +108,7 @@ impl Server<'_> {
                 let uri = params.text_document.uri;
                 self.documents
                     .insert(uri.clone(), params.text_document.text);
-                Ok(vec![self.publish(uri)])
+                Ok(self.publish_changed(uri))
             }
             DidChangeTextDocument::METHOD => {
                 let params: DidChangeTextDocumentParams =
@@ -118,24 +118,49 @@ impl Server<'_> {
                 if let Some(change) = params.content_changes.into_iter().last() {
                     self.documents.insert(uri.clone(), change.text);
                 }
-                Ok(vec![self.publish(uri)])
+                Ok(self.publish_changed(uri))
             }
             DidCloseTextDocument::METHOD => {
                 let params: DidCloseTextDocumentParams =
                     serde_json::from_value(notification.params)?;
-                self.documents.remove(&params.text_document.uri);
-                Ok(Vec::new())
+                let uri = params.text_document.uri;
+                self.documents.remove(&uri);
+                if let Some(problems) = self.language.check_workspace(&self.documents) {
+                    let mut messages = vec![self.publish_problems(uri, Vec::new())];
+                    messages.extend(self.publish_workspace(problems));
+                    Ok(messages)
+                } else {
+                    Ok(Vec::new())
+                }
             }
             _ => Ok(Vec::new()),
         }
     }
 
-    fn publish(&self, uri: Url) -> Message {
+    fn publish_changed(&self, uri: Url) -> Vec<Message> {
+        if let Some(problems) = self.language.check_workspace(&self.documents) {
+            self.publish_workspace(problems)
+        } else {
+            let source = self.documents.get(&uri).map_or("", String::as_str);
+            vec![self.publish_problems(uri, self.language.check(source))]
+        }
+    }
+
+    fn publish_workspace(&self, mut problems: HashMap<Url, Vec<crate::Problem>>) -> Vec<Message> {
+        let mut uris: Vec<_> = self.documents.keys().cloned().collect();
+        uris.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        uris.into_iter()
+            .map(|uri| {
+                let found = problems.remove(&uri).unwrap_or_default();
+                self.publish_problems(uri, found)
+            })
+            .collect()
+    }
+
+    fn publish_problems(&self, uri: Url, problems: Vec<crate::Problem>) -> Message {
         let source = self.documents.get(&uri).map_or("", String::as_str);
         let index = LineIndex::new(source);
-        let diagnostics = self
-            .language
-            .check(source)
+        let diagnostics = problems
             .into_iter()
             .map(|problem| Diagnostic {
                 range: index.range(problem.span.start, problem.span.end),

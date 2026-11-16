@@ -1,10 +1,13 @@
-# A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem: OPTIONAL common/Diagnostic },
+USE "../common.anyx",
+USE "../files.anyx",
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS files/file errors,
+# A page of a note, with what is wrong on it.
+RECORD Page { html: Text, problem: OPTIONAL Diagnostic },
+
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST common/Diagnostic),
-    ] + files/file errors,
+        unreadable (diagnostics: LIST Diagnostic),
+    ] + file errors,

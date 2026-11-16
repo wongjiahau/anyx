@@ -134,15 +134,14 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `CHOICE` is generic, `TYPE Name: T` is not, and
   `PUBLIC RECORD Page of (item: TYPE)` shares one. A parameter is a
   lowercase name, once in its declaration, used by at least one field or
-  variant, and not the name of a type visible there: a type of its scope,
-  or another scope's `PUBLIC` type. A parameter has no slots, and a field
+  variant, and not the name of a type visible there: a type declared in its file,
+  or a directly imported `PUBLIC` type. A parameter has no slots, and a field
   whose type holds one takes no `DEFAULT`, since it couldn't be checked
   against every argument. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
   with its own parameters as they are, `LIST Tree of (item)`, and only
-  through a `LIST` or a `MAP`. Another scope's type is written with its
-  scope first, `common/Page of (Order)`.
+  through a `LIST` or a `MAP`. An imported type uses its plain shape, `Page of (Order)`.
 
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
@@ -174,9 +173,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   It may join other groups with `+`: `ERRORS export errors [unreadable] +
   file errors`. A group exists only to be shared; an error used by one
   method goes in that method's brackets.
-- Each error is defined once in a scope, in the brackets of the one method
+- Each error is defined once in the protocol, in the brackets of the one method
   or group that has it. To share an error, put it in a group.
-- **Overloads:** methods of a scope may share a shape and differ in their
+- **Overloads:** methods of a protocol may share a shape and differ in their
   parameters' types, `METHOD tag (paths: LIST Text)` and `METHOD tag (ids:
   LIST File Id)`. A call runs the one whose parameters have its
   arguments' types; see [Annotations and
@@ -290,7 +289,7 @@ METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [missing],
   annotations and Protobuf's `IDEMPOTENCY_UNKNOWN`.
 - **`UNDONE BY call`**, after `RETURNS` and `ERRORS`, names the call that
   compensates the method's effect, as a step of a saga is compensated: a
-  call of another method of the same scope. It is written like a shape whose
+  call of another method of the protocol. It is written like a shape whose
   slots are the method's own parameters, each `(name: TYPE)` with that
   parameter's name and type: `move (path) to (new path)` is undone by
   `move (new path: Text) to (path: Text)`. The types say which method it
@@ -314,54 +313,71 @@ Generated clients expose each method's markers as data, so that a tool can
 build a policy on them, such as running read only calls freely and asking
 before anything that can't be undone.
 
-### Scopes
+### Files and USE
 
-A schema can be a folder instead of one file. `protocol.anyx` at its root
-holds only the `PROTOCOL` header, and every other `.anyx` file is a *scope*,
-named by its path without `.anyx`:
-
-```text
-notes/
-  protocol.anyx        PROTOCOL notes VERSION 1,
-  common.anyx          scope `common`
-  files.anyx           scope `files`
-  files/export.anyx    scope `files/export`
-```
-
-A file or folder name is one lowercase word, letters and digits.
-
-- **A method is called by its full name**: the scope's path, `/`, then its
-  shape. `METHOD pdf (path: Text)` in `files/export.anyx` is called as
-  `files/export/pdf "a.note"`. A method's own shape has no `/`.
-- **Types and error groups are private** to the scope that declares them;
-  folders give no special access, so `files/export` can't see what `files`
-  keeps to itself. **`PUBLIC`** before `RECORD`, `CHOICE`, `TYPE` or
-  `ERRORS` shares it, and another scope then names it by its full path:
+A protocol is one flat namespace, however many files it uses. An entry file
+starts with `PROTOCOL`; its filename is arbitrary. It can contain declarations
+alongside explicit imports:
 
 ```anyx
-## common.anyx
+## notes/protocol.anyx
+PROTOCOL notes VERSION 1,
+USE "./files.anyx",
+USE "./files/export.anyx",
+
+## notes/common.anyx
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 PUBLIC ERRORS common errors [missing],
 
-## files.anyx
-PUBLIC ERRORS file errors [trashed] + common/common errors,
-METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+## notes/files.anyx
+USE "./common.anyx",
+PUBLIC ERRORS file errors [trashed] + common errors,
+METHOD read (path: Text) RETURNS (text: Text) ERRORS file errors,
 
-## files/export.anyx
+## notes/files/export.anyx
+USE "../common.anyx",
+USE "../files.anyx",
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
-    ERRORS [unreadable (diagnostics: LIST common/Diagnostic)] + files/file errors,
+    ERRORS [unreadable (diagnostics: LIST Diagnostic)] + file errors,
 ```
 
-- In its own scope, a type or group is named without its path.
-- An error is written on the wire by its words alone, `ERROR missing`, so a
-  method can't list two errors of the same words from different scopes.
+- `USE "relative path"` is the only import form. It includes that file in
+  the protocol and makes its `PUBLIC` types and error groups visible in the
+  importing file, by their plain names. Private declarations are visible only
+  in their own file. All methods in included files join the protocol.
+- There is no re-export: importing `files.anyx` does not make its imports
+  visible. Each file must directly import the declarations it uses.
+- Every type and error-group name must be unique across the entire protocol,
+  including private declarations. Duplicate diagnostics name both files.
+  Method shapes must be unique except for overloads distinguished by parameter
+  types. Files and folders do not affect names.
+- Paths are relative to the importing file. `..` is allowed; absolute paths
+  and named package paths are rejected. Stray files are never included.
+- A file is loaded once, even if several files import it. Circular imports,
+  including self-imports, are rejected at the closing `USE`, with the complete
+  cycle. Mutually recursive types must be declared in the same file.
+- A headerless file is a library and can be shared by several protocols.
+  Importing a file with a `PROTOCOL` header is rejected: put shared declarations
+  in a headerless library. A library may contain methods; split types and
+  methods into separate files if callers need only the types.
+- Checking can start from any file, including a library. Code generation needs
+  an entry file with a `PROTOCOL` header; a library has no endpoint. Folder
+  input is not supported, and `protocol.anyx` is only a naming convention.
+
+Generated Rust uses a single module, and TypeScript a single file, with plain
+names. Shared types are copied into each protocol's generated code, so outputs
+stand alone: `notes::Session` and `billing::Session` are distinct Rust types.
+
+To migrate a folder schema, add explicit `USE` lines, remove path prefixes
+from calls and type/error-group references, and rename duplicate declarations.
+Checker diagnostics identify missing imports, private names and collisions.
 
 ### The prelude
 
 The built-in types are declared in the prelude,
 [`prelude.anyx`](prelude.anyx), written in the schema language with a `#`
 doc on each. It is read and checked before every schema, and its names are
-visible in every scope, so a schema can't declare a type of the same name:
+visible in every file, so a schema can't declare a type of the same name:
 `RECORD Integer { … }` is an error.
 
 ```anyx
@@ -398,8 +414,8 @@ write "Hymns/a.poentaro" at revision 3 content """
     """,
 ```
 
-In a schema of scopes, each call starts with its scope's path:
-`files/export/pdf "a.note", files/list`. Spaces around the `/` are allowed.
+Calls use plain method shapes regardless of the declaring file:
+`pdf "a.note", read "a.note"`. File paths never appear in requests.
 
 Every call runs, in order.
 
@@ -461,9 +477,8 @@ it: `tag ([] AS: LIST Text)`, `open ("abc" AS: File Id)`. It is the call
 `_ AS _`, so in a slot it goes in parentheses. `AS: x` is `AS (x)` by the
 `:` sugar, the same call as `AS x` wherever nothing would join; the `:`
 matters only before an all-caps type, where `AS LIST` would join into one
-keyword. The type is written as a parameter's type is in the method's
-scope: a built-in type, a type of the scope, or the full path of a
-`PUBLIC` one in another, `common/File Id`. It must be the parameter's type
+keyword. The type is written by its plain name in the protocol's flat namespace:
+a built-in type, a named type such as `File Id`, or a generic type. It must be the parameter's type
 exactly. An annotation is a checked claim, not a conversion: the value must
 fit the type as written, and `[1] AS: LIST Text` is an error.
 
@@ -574,7 +589,7 @@ that returns nothing), `{ "kind": "error",
 JSON names a method by its full name, `files/read _`. JSON can't tell
 `3` from `3.0`, nor a `File Id` from a `Text`, so an overload is named by
 its full name with its parameters' types in its slots, as written in its
-scope: `scale (Float)`, `tag (LIST File Id)`. Any method may be named
+namespace: `scale (Float)`, `tag (LIST File Id)`. Any method may be named
 that way; an overloaded one must be, and its full name alone is an error
 listing the typed names. `decode_request_json` writes an overload's typed
 name, and the generated TypeScript calls and keys `EFFECTS` by it.
@@ -584,7 +599,7 @@ name, and the generated TypeScript calls and keys `EFFECTS` by it.
 `anyx_protocol::guide(schema, how_to_send)` writes the markdown an agent
 reads before its first request, and what `SCHEMA` answers (with
 `how_to_send` empty): these rules, briefly, then the schema with
-its `#` lines, a section per scope's file. It lists the overloads of each
+its `#` lines, a section per source file. It lists the overloads of each
 shape together, by their typed shapes, and annotates its made-up sample
 calls where a request must. Its sample call is the first
 example of the widest method with `EXAMPLES`, or, in a schema without

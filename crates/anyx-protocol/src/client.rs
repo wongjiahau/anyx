@@ -28,7 +28,7 @@ pub struct Effects {
     /// with an error saying it is already done.
     pub idempotent: bool,
     /// `UNDONE BY`: the call that undoes it, as written in the schema, in
-    /// the method's scope, with the method's own arguments in its slots:
+    /// the protocol's flat namespace, with the method's own arguments in its slots:
     /// `move (new path: Text) to (path: Text)`.
     pub undone_by: Option<&'static str>,
 }

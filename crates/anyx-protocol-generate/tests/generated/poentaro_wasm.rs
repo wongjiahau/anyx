@@ -3,7 +3,7 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
 const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
-    path: "protocol.anyx",
+    path: "schema.anyx",
     source: r#"# Poentaro turns `.poentaro` text into numbered musical notation (jianpu) and
 # keeps the account owner's scores in the cloud. When you save, anyone who
 # has the score open sees the change.
@@ -87,14 +87,20 @@ READ ONLY METHOD export midi (path: Text)
 fn schema() -> &'static anyx_protocol::Schema {
     static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =
         ::std::sync::LazyLock::new(|| {
-            anyx_protocol::Schema::parse_files(SCHEMA_FILES)
-                .expect("the generator checked the schema")
+            anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| {
+                SCHEMA_FILES
+                    .iter()
+                    .find(|file| file.path == path)
+                    .map(|file| file.source.to_string())
+                    .ok_or_else(|| format!("missing embedded file: {path}"))
+            })
+            .expect("the generator checked the schema")
         });
     &SCHEMA_READ
 }
 
 /// Writes a request from a JSON array of calls, each `{ "method": …,
-/// "arguments": […] }` with the method's full name, such as `files/read _`.
+/// "arguments": […] }` with the method's full name, such as `read _`.
 #[wasm_bindgen(js_name = encodePoentaroRequest)]
 pub fn encode_poentaro_request(calls: &str) -> Result<String, String> {
     anyx_protocol::json::encode_requests_json(schema(), calls)

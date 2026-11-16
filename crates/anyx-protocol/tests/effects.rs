@@ -79,9 +79,12 @@ fn the_built_in_schema_call_is_read_only() {
 }
 
 #[test]
-fn an_undo_may_name_a_method_declared_after_it_in_its_scope() {
+fn an_undo_may_name_an_imported_method_declared_after_it() {
     let files = [
-        ("protocol.anyx", "PROTOCOL documents VERSION 1,"),
+        (
+            "protocol.anyx",
+            "PROTOCOL documents VERSION 1, USE \"./trash.anyx\",",
+        ),
         (
             "trash.anyx",
             "IDEMPOTENT METHOD trash (id: Integer) RETURNS NOTHING UNDONE BY restore (id: Integer),
@@ -90,7 +93,7 @@ METHOD restore (id: Integer) RETURNS NOTHING,",
     ];
     let schema = common::parse_files(&files).unwrap();
     let undo = schema.methods[0].undone_by.as_ref().unwrap();
-    assert_eq!(schema.methods[undo.method].full_name(), "trash/restore _");
+    assert_eq!(schema.methods[undo.method].full_name(), "restore _");
 }
 
 #[test]

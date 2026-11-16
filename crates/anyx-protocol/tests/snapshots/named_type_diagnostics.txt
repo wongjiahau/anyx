@@ -21,13 +21,13 @@ schema:1:47: found the type `a` holding itself; expected a type that holds itsel
 
 == a named type defined twice
 PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },
-schema:1:44: found a second type named `a`; expected each type to be defined once in a scope; rename or remove one of them
+schema:1:44: duplicate declaration `a` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },
                                              ^
 
 == a named type over an unknown type
 PROTOCOL a VERSION 1, TYPE a: thing,
-schema:1:31: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+schema:1:31: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, TYPE a: thing,
                                 ^^^^^
 

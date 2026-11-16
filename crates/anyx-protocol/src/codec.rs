@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use anyx::{NamePart, Node, NodeKind, Span, line_column};
 
 use crate::annotation::{annotated_type, annotation, own_type};
-use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind, scoped};
+use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind};
 use crate::value::Value;
 
 /// One call of a request: which method, and its arguments in order.
@@ -124,57 +124,10 @@ pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Proble
         .map_err(|mismatch| problem(source, mismatch.span, mismatch.message))
 }
 
-/// A call in a scope: `files/export/midi "a"` reads as the call `_/_/_` of
-/// `files`, `export` and `midi "a"`.
-struct ScopedCall<'n> {
-    scope: Vec<String>,
-    call: &'n Node,
-}
-
-/// `node` as a call in a scope, if its name is slots between `/`s and each
-/// slot before the last holds a single word.
-fn scoped_call(node: &Node) -> Option<ScopedCall<'_>> {
-    let NodeKind::Call(call) = &node.kind else {
-        return None;
-    };
-    let slashes_between_slots = call.name.len() >= 3
-        && call.name.len() % 2 == 1
-        && call
-            .name
-            .iter()
-            .enumerate()
-            .all(|(index, part)| match part {
-                NamePart::Slot => index % 2 == 0,
-                NamePart::Word { text, .. } => index % 2 == 1 && text == "/",
-            });
-    if !slashes_between_slots {
-        return None;
-    }
-    let (last, segments) = call.arguments.split_last()?;
-    let scope = segments
-        .iter()
-        .map(|segment| match &segment.kind {
-            NodeKind::Call(word) if word.arguments.is_empty() => match word.name.as_slice() {
-                [NamePart::Word { text, .. }] => Some(text.clone()),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(ScopedCall { scope, call: last })
-}
-
-/// Reads `node` as a call of one of the schema's methods: in the root, or
-/// in the scope its path names. Of the methods of its shape, the call is of
-/// the one whose parameters have its arguments' types.
+/// Reads a flat method shape, choosing an overload by its argument types.
 fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Mismatch> {
-    let ScopedCall { scope, call } = scoped_call(node).unwrap_or(ScopedCall {
-        scope: Vec::new(),
-        call: node,
-    });
-    let methods: Vec<usize> = (0..=schema.introspection())
-        .filter(|index| schema.method_at(*index).scope == scope)
-        .collect();
+    let call = node;
+    let methods: Vec<usize> = (0..=schema.introspection()).collect();
     let all_methods = || {
         let mut names: Vec<String> = Vec::new();
         for method in &schema.methods {
@@ -185,16 +138,6 @@ fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Misma
         }
         names.join(", ")
     };
-    if methods.is_empty() {
-        return Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found the scope `{}`, which has no methods; expected one of the methods {}",
-                scope.join("/"),
-                all_methods()
-            ),
-        });
-    }
     let NodeKind::Call(found) = &call.kind else {
         return Err(Mismatch {
             span: node.span,
@@ -211,24 +154,11 @@ fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Misma
         .filter(|index| schema.method_at(*index).shape.text == text)
         .collect();
     if candidates.is_empty() {
-        let elsewhere: Vec<String> = schema
-            .methods
-            .iter()
-            .filter(|method| method.shape.text == text && method.scope != scope)
-            .map(|method| format!("`{}`", method.full_name()))
-            .collect();
-        let hint = match elsewhere.is_empty() {
-            true => String::new(),
-            false => format!(
-                "; a method of that shape is in a scope, so write its full name: {}",
-                elsewhere.join(", ")
-            ),
-        };
         return Err(Mismatch {
             span: node.span,
             message: format!(
-                "found the call `{}`; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses{hint}",
-                scoped(&scope, &text),
+                "found the call `{}`; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses",
+                text,
                 all_methods()
             ),
         });
@@ -253,12 +183,9 @@ pub(crate) fn decode_call_of(
     method: &Method,
     node: &Node,
 ) -> Result<Vec<Value>, Mismatch> {
-    let ScopedCall { scope, call } = scoped_call(node).unwrap_or(ScopedCall {
-        scope: Vec::new(),
-        call: node,
-    });
+    let call = node;
     let found = match &call.kind {
-        NodeKind::Call(found) => format!("a call of `{}`", scoped(&scope, &found.name_text())),
+        NodeKind::Call(found) => format!("a call of `{}`", found.name_text()),
         _ => describe(call),
     };
     let expected = method.full_name();
@@ -269,7 +196,7 @@ pub(crate) fn decode_call_of(
         ),
     };
     match &call.kind {
-        NodeKind::Call(call) if scope == method.scope && call.name_text() == method.shape.text => {
+        NodeKind::Call(call) if call.name_text() == method.shape.text => {
             decode_arguments(schema, source, &[method], node, call).map(|(_, arguments)| arguments)
         }
         _ => Err(mismatch(found)),
@@ -294,7 +221,7 @@ impl Argument<'_> {
 }
 
 /// Reads the arguments of `call`, a call of one of `methods`, all of the
-/// same shape and scope: which one it is a call of, and the arguments.
+/// same shape: which one it is a call of, and the arguments.
 fn decode_arguments(
     schema: &Schema,
     source: &str,
@@ -302,12 +229,11 @@ fn decode_arguments(
     node: &Node,
     call: &anyx::Call,
 ) -> Result<(usize, Vec<Value>), Mismatch> {
-    let scope = &methods[0].scope;
     let text = call.name_text();
     let arguments = call
         .arguments
         .iter()
-        .map(|argument| read_argument(schema, source, scope, argument))
+        .map(|argument| read_argument(schema, source, argument))
         .collect::<Result<Vec<_>, _>>()?;
     let chosen = match methods {
         [_] => 0,
@@ -334,8 +260,8 @@ fn decode_arguments(
                     span: argument.node.span,
                     message: format!(
                         "found `AS: {}`; expected `AS: {}`, the type of `{}`",
-                        schema.type_name_in(annotated, scope),
-                        schema.type_name_in(&parameter.r#type, scope),
+                        schema.type_name(annotated),
+                        schema.type_name(&parameter.r#type),
                         parameter.name
                     ),
                 }));
@@ -348,8 +274,8 @@ fn decode_arguments(
                     None => format!("`{written}` has no type of its own; annotate it, as in `{fix}`"),
                     Some(own) => format!(
                         "`{written}` has the type {} of its own, not `{}`; annotate it, as in `{fix}`",
-                        schema.type_name_in(own, scope),
-                        schema.type_name_in(&parameter.r#type, scope)
+                        schema.type_name(own),
+                        schema.type_name(&parameter.r#type)
                     ),
                 };
                 return Err(in_parameter(Mismatch {
@@ -367,7 +293,6 @@ fn decode_arguments(
 fn read_argument<'n>(
     schema: &Schema,
     source: &str,
-    scope: &[String],
     node: &'n Node,
 ) -> Result<Argument<'n>, Mismatch> {
     let (value, written_type) = match annotation(node) {
@@ -388,7 +313,7 @@ fn read_argument<'n>(
             own: own_type(schema, node),
         });
     };
-    let annotated = annotated_type(schema, scope, written_type).ok_or_else(|| {
+    let annotated = annotated_type(schema, written_type).ok_or_else(|| {
         let text = written(source, written_type);
         let renamed = text
             .split(|c: char| !c.is_alphanumeric())
@@ -402,11 +327,7 @@ fn read_argument<'n>(
         Mismatch {
             span: written_type.span,
             message: format!(
-                "found `{text}` after `AS`, which names no type of {}; expected a type written as a parameter's is: `Text`, `LIST Text`, a type of the scope, such as `File Id`, or the full path of a `PUBLIC` one in another, such as `common/File Id`{renamed}",
-                match scope.is_empty() {
-                    true => "the schema's root".to_string(),
-                    false => format!("the scope `{}`", scope.join("/")),
-                }
+                "found `{text}` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`{renamed}"
             ),
         }
     })?;
@@ -442,8 +363,7 @@ fn choose(
     call: &anyx::Call,
     arguments: &[Argument],
 ) -> Result<usize, Mismatch> {
-    let scope = &methods[0].scope;
-    let text = scoped(scope, &call.name_text());
+    let text = call.name_text();
     let fits = |method: &Method, except: Option<usize>| {
         method
             .shape
@@ -463,12 +383,7 @@ fn choose(
     }
     let overloads = |indices: &mut dyn Iterator<Item = usize>| {
         indices
-            .map(|index| {
-                format!(
-                    "`{}`",
-                    scoped(scope, &schema.typed_shape(&methods[index].shape))
-                )
-            })
+            .map(|index| format!("`{}`", schema.typed_shape(&methods[index].shape)))
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -502,7 +417,7 @@ fn choose(
     let types: Vec<String> = arguments
         .iter()
         .filter_map(|argument| argument.stated())
-        .map(|stated| format!("`{}`", schema.type_name_in(stated, scope)))
+        .map(|stated| format!("`{}`", schema.type_name(stated)))
         .collect();
     Err(Mismatch {
         span: node.span,
@@ -535,7 +450,7 @@ fn written(source: &str, node: &Node) -> String {
 /// with its parameter's type: `tag ([] AS: LIST Text)`.
 fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index: usize) -> String {
     let mut slots = call.arguments.iter().enumerate().peekable();
-    let text = method
+    method
         .shape
         .text
         .split(' ')
@@ -545,7 +460,7 @@ fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index:
                 format!(
                     "({} AS: {})",
                     written(source, value),
-                    schema.type_name_in(&method.shape.parameters[slot].r#type, &method.scope)
+                    schema.type_name(&method.shape.parameters[slot].r#type)
                 )
             }
             (_, Some((_, argument))) => match &argument.kind {
@@ -555,8 +470,7 @@ fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index:
             (word, None) => word.to_string(),
         })
         .collect::<Vec<_>>()
-        .join(" ");
-    scoped(&method.scope, &text)
+        .join(" ")
 }
 
 enum ShapeMismatch {
@@ -935,7 +849,7 @@ fn decode_fields(
 }
 
 /// Writes calls as a request, each call laid out the way `anyx::format`
-/// lays it out, after its scope's path: `files/export/midi "a"`. The
+/// lays it out in its method shape: `export midi "a"`. The
 /// formatter would space the `/`s, which reads less like a name.
 pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeError> {
     let written = calls
@@ -944,7 +858,7 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
             let method = schema.method_at(call.method);
             let mut shape = String::new();
             write_call(schema, method, &call.arguments, &mut shape)?;
-            Ok(scoped(&method.scope, layout(shape).trim_end()))
+            Ok(layout(shape).trim_end().to_string())
         })
         .collect::<Result<Vec<_>, EncodeError>>()?;
     Ok(match written.as_slice() {
@@ -989,7 +903,7 @@ fn write_call(
             true => write_slot(schema, &parameter.r#type, value, out)?,
             false => out.push_str(&format!(
                 "({written} AS: {})",
-                schema.type_name_in(&parameter.r#type, &method.scope)
+                schema.type_name(&parameter.r#type)
             )),
         }
     }

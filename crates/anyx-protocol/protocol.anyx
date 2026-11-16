@@ -2,9 +2,8 @@
 ## `src/grammar.rs` is generated from it; `tests/schema.rs` checks that it is
 ## up to date.
 
-## A schema of one file has the `PROTOCOL` header first. A schema of a
-## folder has it alone in `protocol.anyx`; every other file is a scope, and
-## holds only definitions.
+## A protocol entry starts with its header; a headerless file is a library.
+## USE explicitly includes a file and exposes its PUBLIC declarations.
 ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 
 ## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
@@ -21,7 +20,9 @@ protocol: ANYFIX CALL [
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [record, choice, named type, errors, method],
+definition: ONE OF [record, choice, named type, errors, method, import],
+
+import: ANYFIX CALL [WORD "USE", path: STRING],
 
 record: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
@@ -113,7 +114,7 @@ variant slot: ONE OF [doc: LINE STRING, parameter],
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in
 ## `ERRORS export errors [unreadable (diagnostics: LIST Diagnostic)] + file errors`.
-## `PUBLIC` lets other scopes use a type or a group, by its full path.
+## `PUBLIC` lets direct importers use a type or a group, by its plain name.
 errors: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   intrinsic: OPTIONAL: WORD "INTRINSIC",
@@ -171,10 +172,8 @@ returns: parameter,
 
 ## A method's errors: its own in brackets, then groups joined with `+`:
 ## `[conflict at revision (revision: Integer)] + file errors`. Joined terms
-## make one call, `_ + _`, and a group's full path, `files/file errors`,
-## reads as `_/_` among them, so the schema checker reads the terms from the
-## call's name: brackets, group names, and in a group's `ERRORS` its name
-## before its own errors, the call `file errors _`.
+## make one call, `_ + _`, so the checker reads the plain group names
+## from its arguments. A group's own errors follow its name.
 error list: error term,
 
 error term: ONE OF [
@@ -200,9 +199,7 @@ type: ONE OF [
 
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a
 ## type in each slot, in parentheses: `Page of (File)`, `(Integer) or
-## (Text)`. Another scope's type goes by its full path, `common/Diagnostic`
-## or `common/Page of (File)`, which reads as the call `_/_` of `common` and
-## the type. The schema checker tells them apart.
+## (Text)`. Names are always unqualified; the checker rejects legacy paths.
 reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
 
 type name: ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS],

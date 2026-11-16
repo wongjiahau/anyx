@@ -15,7 +15,7 @@ mod wasm;
 use std::collections::BTreeMap;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Effect, Method, Type, TypeKind, scoped};
+use anyx_protocol::schema::{Effect, Method, Type, TypeKind};
 
 pub use names::{camel_case, pascal_case, snake_case};
 pub use rust::rust;
@@ -102,24 +102,21 @@ pub fn method_words(schema: &Schema, method: &Method) -> String {
 }
 
 /// A type in lowercase words, for a name: `LIST Text` is `list of text`,
-/// `common/File Id` is `common file id`, and `Page of (Integer)` is
+/// `File Id` is `file id`, and `Page of (Integer)` is
 /// `page of integer`.
 fn type_words(schema: &Schema, r#type: &Type) -> String {
     let named = |index: usize, arguments: &[Type]| {
         let definition = &schema.types[index];
         let mut arguments = arguments.iter();
         definition
-            .scope
-            .iter()
-            .cloned()
-            .chain(definition.name.split(' ').map(|word| {
-                match word {
-                    "_" => arguments
-                        .next()
-                        .map_or_else(String::new, |argument| type_words(schema, argument)),
-                    word => word.to_lowercase(),
-                }
-            }))
+            .name
+            .split(' ')
+            .map(|word| match word {
+                "_" => arguments
+                    .next()
+                    .map_or_else(String::new, |argument| type_words(schema, argument)),
+                word => word.to_lowercase(),
+            })
             .collect::<Vec<_>>()
             .join(" ")
     };
@@ -133,57 +130,15 @@ fn type_words(schema: &Schema, r#type: &Type) -> String {
     }
 }
 
-/// The enum of a method's errors, in the module of its scope:
+/// The enum of a method's errors:
 /// `write _ at revision _ content _` has `WriteAtRevisionContentError`.
 pub fn error_enum_name(schema: &Schema, method: &Method) -> String {
     format!("{}Error", pascal_case(&method_words(schema, method)))
 }
 
-/// A name in TypeScript, where every scope shares one namespace, so the
-/// scope's words come first: `diagnostic` in `common` is
-/// `CommonDiagnostic`.
-pub fn scoped_pascal_case(scope: &[String], name: &str) -> String {
-    scope
-        .iter()
-        .map(|segment| pascal_case(segment))
-        .collect::<String>()
-        + &pascal_case(name)
-}
-
-/// The TypeScript union of a method's errors: `FilesReadError`.
+/// The TypeScript union of a method's errors.
 pub fn typescript_error_name(schema: &Schema, method: &Method) -> String {
-    format!(
-        "{}Error",
-        scoped_pascal_case(&method.scope, &method_words(schema, method))
-    )
-}
-
-/// The scopes directly in `scope`.
-pub fn children(schema: &Schema, scope: &[String]) -> Vec<Vec<String>> {
-    schema
-        .scopes()
-        .into_iter()
-        .filter(|child| child.len() == scope.len() + 1 && child.starts_with(scope))
-        .collect()
-}
-
-/// Whether `scope`, or a scope in it, has a method, so that the client
-/// reaches it.
-pub fn has_methods(schema: &Schema, scope: &[String]) -> bool {
-    schema
-        .methods
-        .iter()
-        .any(|method| method.scope.starts_with(scope))
-}
-
-/// The methods declared in `scope` itself.
-pub fn methods_in<'s>(schema: &'s Schema, scope: &[String]) -> Vec<(usize, &'s Method)> {
-    schema
-        .methods
-        .iter()
-        .enumerate()
-        .filter(|(_, method)| method.scope == scope)
-        .collect()
+    error_enum_name(schema, method)
 }
 
 /// Names the generated code declares or uses, which a schema's types would
@@ -224,19 +179,20 @@ pub fn type_parameter_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
     parameter
 }
 
-/// Whether `name` is a type a type parameter in the Rust module of `scope`
-/// would shadow: the scope's types, the errors of its methods, and the
+/// Whether `name` is a type a type parameter would shadow:
+/// the protocol's types, the errors of its methods, and the
 /// names the generated code uses.
-pub fn rust_type_taken(schema: &Schema, scope: &[String], name: &str) -> bool {
+pub fn rust_type_taken(schema: &Schema, name: &str) -> bool {
     RESERVED_TYPE_NAMES.contains(&name)
         || name == "Self"
         || schema
             .types
             .iter()
-            .any(|definition| definition.scope == scope && pascal_case(&definition.name) == name)
-        || methods_in(schema, scope)
-            .into_iter()
-            .any(|(_, method)| !method.errors.is_empty() && error_enum_name(schema, method) == name)
+            .any(|definition| pascal_case(&definition.name) == name)
+        || schema
+            .methods
+            .iter()
+            .any(|method| !method.errors.is_empty() && error_enum_name(schema, method) == name)
 }
 
 /// Whether `name` is a type a type parameter in the TypeScript code would
@@ -249,7 +205,7 @@ pub fn typescript_type_taken(schema: &Schema, name: &str) -> bool {
         || schema
             .types
             .iter()
-            .any(|definition| scoped_pascal_case(&definition.scope, &definition.name) == name)
+            .any(|definition| pascal_case(&definition.name) == name)
         || schema.methods.iter().any(|method| {
             !method.errors.is_empty() && typescript_error_name(schema, method) == name
         })
@@ -258,16 +214,7 @@ pub fn typescript_type_taken(schema: &Schema, name: &str) -> bool {
 /// Names the Rust and TypeScript clients declare next to the methods.
 const RESERVED_METHOD_NAMES: [&str; 5] = ["new", "call", "codec", "send", "constructor"];
 
-fn scope_name(scope: &[String]) -> String {
-    match scope.is_empty() {
-        true => "the root".to_string(),
-        false => format!("the scope `{}`", scope.join("/")),
-    }
-}
-
-/// Checks that every name the code declares in one place is distinct there:
-/// in Rust, a module per scope; in TypeScript, one namespace for the types
-/// and an object per scope for the methods.
+/// Checks names in the flat generated namespace.
 fn check_names(schema: &Schema) -> Result<(), Error> {
     let reserved_types = || {
         RESERVED_TYPE_NAMES
@@ -279,89 +226,37 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
             .iter()
             .map(|name| (name.to_string(), format!("the client's `{name}`")))
     };
-    for scope in schema.scopes() {
-        let types = schema
-            .types
-            .iter()
-            .filter(|definition| definition.scope == scope)
-            .map(|definition| {
-                (
-                    pascal_case(&definition.name),
-                    format!("the type `{}`", definition.shape()),
-                )
-            });
-        let error_enums = methods_in(schema, &scope)
-            .into_iter()
-            .filter(|(_, method)| !method.errors.is_empty())
-            .map(|(_, method)| {
-                (
-                    error_enum_name(schema, method),
-                    format!("the errors of `{}`", schema.call_name(method)),
-                )
-            });
-        distinct("type", reserved_types().chain(types).chain(error_enums))?;
-        let methods = methods_in(schema, &scope).into_iter().map(|(_, method)| {
-            (
-                snake_case(&method_words(schema, method)),
-                format!("`{}`", schema.call_name(method)),
-            )
-        });
-        let scopes = children(schema, &scope).into_iter().map(|child| {
-            (
-                snake_case(child.last().expect("a child scope has a name")),
-                format!("the scope `{}` in {}", child.join("/"), scope_name(&scope)),
-            )
-        });
-        let introspection = scope.is_empty().then(|| {
-            (
-                "schema".to_string(),
-                "the client's `schema`, which calls `SCHEMA`".to_string(),
-            )
-        });
-        distinct(
-            "method",
-            reserved_methods()
-                .chain(introspection)
-                .chain(methods)
-                .chain(scopes),
-        )?;
-        if let Some(segment) = scope
-            .iter()
-            .find(|segment| ["self", "super", "crate"].contains(&segment.as_str()))
-        {
-            return Err(Error {
-                message: format!(
-                    "found the scope `{}`; expected a scope that isn't named `{segment}`, which Rust reserves for module paths",
-                    scope.join("/")
-                ),
-            });
-        }
-    }
-    let typescript_types = schema
-        .types
+    let types = schema.types.iter().map(|definition| {
+        (
+            pascal_case(&definition.name),
+            format!("the type `{}`", definition.shape()),
+        )
+    });
+    let errors = schema
+        .methods
         .iter()
-        .map(|definition| {
+        .filter(|method| !method.errors.is_empty())
+        .map(|method| {
             (
-                scoped_pascal_case(&definition.scope, &definition.name),
-                format!(
-                    "the type `{}`",
-                    scoped(&definition.scope, &definition.shape())
-                ),
+                error_enum_name(schema, method),
+                format!("the errors of `{}`", method.full_name()),
             )
-        })
-        .chain(
-            schema
-                .methods
-                .iter()
-                .filter(|method| !method.errors.is_empty())
-                .map(|method| {
-                    (
-                        typescript_error_name(schema, method),
-                        format!("the errors of `{}`", schema.call_name(method)),
-                    )
-                }),
-        );
-    distinct("TypeScript type", reserved_types().chain(typescript_types))?;
+        });
+    distinct("type", reserved_types().chain(types).chain(errors))?;
+    let methods = schema.methods.iter().map(|method| {
+        (
+            snake_case(&method_words(schema, method)),
+            format!("`{}`", schema.call_name(method)),
+        )
+    });
+    let introspection = std::iter::once((
+        "schema".to_string(),
+        "the client's `schema`, which calls `SCHEMA`".to_string(),
+    ));
+    distinct(
+        "method",
+        reserved_methods().chain(introspection).chain(methods),
+    )?;
     for definition in &schema.types {
         let parameter =
             |name: &String| format!("the type parameter `{name}` of `{}`", definition.shape());
@@ -369,9 +264,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
             "type parameter",
             definition.parameters.iter().map(|name| {
                 (
-                    type_parameter_name(name, |taken| {
-                        rust_type_taken(schema, &definition.scope, taken)
-                    }),
+                    type_parameter_name(name, |taken| rust_type_taken(schema, taken)),
                     parameter(name),
                 )
             }),

@@ -296,30 +296,33 @@ METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\
 }
 
 #[test]
-fn a_public_generic_type_is_shared_by_its_full_path() {
+fn a_public_generic_type_is_shared_by_a_direct_import() {
     let files = [
-        ("protocol.anyx", "PROTOCOL p VERSION 1,"),
+        (
+            "protocol.anyx",
+            "PROTOCOL p VERSION 1, USE \"./files.anyx\",",
+        ),
         (
             "common.anyx",
             "PUBLIC RECORD page of (item: TYPE) { items: LIST: item }, RECORD secret of (item: TYPE) { items: LIST: item },",
         ),
         (
             "files.anyx",
-            "RECORD file { path: Text }, METHOD list RETURNS (files: common/page of (file)),",
+            "USE \"./common.anyx\", RECORD file { path: Text }, METHOD list RETURNS (files: page of (file)),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
-    let list = schema.method("files/list").unwrap();
+    let list = schema.method("list").unwrap();
     assert_eq!(
         schema.type_name(&list.returns.as_ref().unwrap().r#type),
-        "common/page of (files/file)"
+        "page of (file)"
     );
     let files = [
         files[0],
         files[1],
         (
             "files.anyx",
-            "RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: common/secret of (Text)), METHOD all RETURNS (files: common/page (Text)),",
+            "USE \"./common.anyx\", RECORD (page: TYPE) boxed { value: page }, METHOD list RETURNS (files: secret of (Text)), METHOD all RETURNS (files: page (Text)),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();

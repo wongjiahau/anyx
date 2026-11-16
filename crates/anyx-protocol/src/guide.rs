@@ -2,7 +2,7 @@
 //! such as an AI agent: how to write a request and read a response, then the
 //! schema as written.
 
-use crate::schema::{Method, Schema, Type, TypeKind, fill_slots, scoped};
+use crate::schema::{Method, Schema, Type, TypeKind, fill_slots};
 
 /// The guide to `schema`. `how_to_send` tells the reader where and how to
 /// send a request, such as the URL and the header to send it with; when it
@@ -20,20 +20,6 @@ pub fn guide(schema: &Schema, how_to_send: &str) -> String {
         .copied()
         .max_by_key(|method| method.shape.parameters.len());
     let example = widest.map_or(String::new(), |method| call_of(schema, method));
-    let scoped_example = match widest.filter(|method| !method.scope.is_empty()) {
-        Some(_) => "\nA method in a scope is called by its full name, as above: the scope's\npath, `/`, then the call.\n".to_string(),
-        None => shown
-            .iter()
-            .copied()
-            .find(|method| !method.scope.is_empty())
-            .or_else(|| schema.methods.iter().find(|method| !method.scope.is_empty()))
-            .map_or(String::new(), |method| {
-                format!(
-                    "\nA method in a scope is called by its full name: the scope's path, `/`,\nthen the call:\n\n    {}\n",
-                    call_of(schema, method)
-                )
-            }),
-    };
     format!(
         "# {name} (anyx protocol, version {version})
 
@@ -43,7 +29,7 @@ A request is a list of calls separated by commas. Each call is written in the
 shape of one of the methods below, with a value in each `(name: TYPE)` slot:
 
     {example}
-{scoped_example}{overloads}
+{overloads}
 Every call runs, in order, and the response has one result per call.
 
 `SCHEMA` is a call every server answers, with this guide.
@@ -127,7 +113,7 @@ A request that can't be read gets one result, and none of its calls run:
 In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. `ERRORS name […]`
-is a group of errors that methods share by joining it with `+`.{examples}{scopes}
+is a group of errors that methods share by joining it with `+`.{examples}{imports}
 
 {source}
 ",
@@ -137,9 +123,9 @@ is a group of errors that methods share by joining it with `+`.{examples}{scopes
             true => String::new(),
             false => format!("{how_to_send}\n\n"),
         },
-        scopes = match schema.files.len() {
+        imports = match schema.files.len() {
             1 => "",
-            _ => SCOPES,
+            _ => IMPORTS,
         },
         source = sources(schema),
         overloads = overloads(schema),
@@ -178,12 +164,7 @@ fn overloads(schema: &Schema) -> String {
         .map(|shape| {
             let typed: Vec<String> = shape
                 .iter()
-                .map(|method| {
-                    format!(
-                        "`{}`",
-                        scoped(&method.scope, &schema.typed_shape(&method.shape))
-                    )
-                })
+                .map(|method| format!("`{}`", schema.typed_shape(&method.shape)))
                 .collect();
             format!("- {}\n", typed.join(", "))
         })
@@ -310,7 +291,7 @@ fn generic_types(schema: &Schema) -> String {
     format!(
         "- A generic RECORD or CHOICE has a type parameter in each slot of its\n  name, which its fields or variants use as a type: `{keyword} {}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
         fill_slots(&definition.name, &declared),
-        scoped(&definition.scope, &fill_slots(&definition.name, &arguments)),
+        fill_slots(&definition.name, &arguments),
     )
 }
 
@@ -329,7 +310,7 @@ fn named_types(schema: &Schema) -> String {
             });
             Some(format!(
                 "  - `{}`: `{}`.{doc}\n",
-                scoped(&definition.scope, &definition.name),
+                definition.name.clone(),
                 schema.type_name(underlying)
             ))
         })
@@ -343,20 +324,19 @@ fn named_types(schema: &Schema) -> String {
     }
 }
 
-const SCOPES: &str = "
+const IMPORTS: &str = "
 
-The schema is a file per scope, each shown below under its full name. A
-type or an error group is private to its scope unless it is `PUBLIC`; another
-scope writes its full path, such as `common/Diagnostic`. A response writes
-an error in its shape alone, without its scope: `ERROR missing`.";
+Files form one flat namespace. `USE \"relative path\"` includes a file and
+makes its `PUBLIC` types and error groups visible to the importing file.
+Imports are direct, with no re-export. File paths never appear in calls or
+type names.";
 
 const EXAMPLES: &str = "
 `EXAMPLES […]` after a method lists calls of it, each with its result side
 by side, as in `read \"a\" RETURNS …`, and a `#` line saying what it shows.
 A response writes the result alone.";
 
-/// The schema's files as written: a schema of one file as it is, else each
-/// file under a heading of its scope.
+/// The schema's files in import traversal order.
 fn sources(schema: &Schema) -> String {
     if let [file] = schema.files.as_slice() {
         return file.source.trim_end().to_string();
@@ -364,34 +344,7 @@ fn sources(schema: &Schema) -> String {
     schema
         .files
         .iter()
-        .map(|file| {
-            // Overloads together, each by its name with its parameters'
-            // types.
-            let mut methods: Vec<String> = Vec::new();
-            let in_scope = || {
-                schema
-                    .methods
-                    .iter()
-                    .filter(|method| method.scope == file.scope)
-            };
-            for method in in_scope() {
-                for overload in in_scope().filter(|other| other.shape.text == method.shape.text) {
-                    let name = format!("`{}`", schema.call_name(overload));
-                    if !methods.contains(&name) {
-                        methods.push(name);
-                    }
-                }
-            }
-            let heading = match file.scope.is_empty() {
-                true => format!("### `{}`", file.path),
-                false => format!("### `{}` (`{}`)", file.scope.join("/"), file.path),
-            };
-            let calls = match methods.is_empty() {
-                true => String::new(),
-                false => format!("Methods: {}.\n\n", methods.join(", ")),
-            };
-            format!("{heading}\n\n{calls}{}", file.source.trim_end())
-        })
+        .map(|file| format!("### `{}`\n\n{}", file.path, file.source.trim_end()))
         .collect::<Vec<_>>()
         .join("\n\n")
 }
@@ -412,12 +365,12 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
             true => format!(
                 "({} AS: {})",
                 sample(schema, &parameter.r#type),
-                schema.type_name_in(&parameter.r#type, &method.scope)
+                schema.type_name(&parameter.r#type)
             ),
             false => sample(schema, &parameter.r#type),
         }
     });
-    let call = method
+    method
         .shape
         .text
         .split(' ')
@@ -426,8 +379,7 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
             word => word.to_string(),
         })
         .collect::<Vec<_>>()
-        .join(" ");
-    scoped(&method.scope, &call)
+        .join(" ")
 }
 
 /// Whether no value of `type` shows it, so an argument of it is always

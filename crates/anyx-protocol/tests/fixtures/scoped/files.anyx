@@ -1,9 +1,11 @@
+USE "./common.anyx",
+
 RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
     trashed,
-] + common/common errors,
+] + common errors,
 
 READ ONLY METHOD list RETURNS (paths: LIST Text),
 
@@ -11,10 +13,10 @@ READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (warnings: LIST common/Diagnostic)
+    RETURNS (warnings: LIST Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST common/Diagnostic),
+        rejected (diagnostics: LIST Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.

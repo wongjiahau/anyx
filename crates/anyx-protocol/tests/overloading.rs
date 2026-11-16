@@ -146,11 +146,11 @@ fn an_annotation_is_a_checked_claim() {
     );
     assert_eq!(
         message("feel (calm AS: weather)"),
-        "found `weather` after `AS`, which names no type of the schema's root; expected a type written as a parameter's is: `Text`, `LIST Text`, a type of the scope, such as `File Id`, or the full path of a `PUBLIC` one in another, such as `common/File Id`"
+        "found `weather` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`"
     );
     assert_eq!(
         message("tag ([] AS: LIST: TEXT)"),
-        "found `LIST: TEXT` after `AS`, which names no type of the schema's root; expected a type written as a parameter's is: `Text`, `LIST Text`, a type of the scope, such as `File Id`, or the full path of a `PUBLIC` one in another, such as `common/File Id`; the built-in type `Text` is written in Title Case"
+        "found `LIST: TEXT` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`; the built-in type `Text` is written in Title Case"
     );
     assert_eq!(
         message("tag [(\"a\" AS Text)]"),

@@ -30,6 +30,6 @@ schema:2:38: found `EXAMPLES` without an example; expected a call of `ping` and 
   METHOD ping RETURNS NOTHING EXAMPLES [],
                                        ^^
 
-schema:2:16: found `unknown`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `unknown`, or fix the name
+schema:2:16: found `unknown`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `unknown`, or fix the name; import the declaration directly with `USE` if it is in another file
   METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
                  ^^^^^^^

@@ -1,6 +1,6 @@
 == an unknown type
 PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
-schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
                                      ^^^^^
 
@@ -36,7 +36,7 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
 
 == a type named like a built-in one
 PROTOCOL a VERSION 1, RECORD Integer { a: Text },
-schema:1:30: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every scope; rename it
+schema:1:30: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it
   PROTOCOL a VERSION 1, RECORD Integer { a: Text },
                                ^^^^^^^
 
@@ -60,7 +60,7 @@ schema:1:61: found the number `3`; expected the call `… _`, a `#` line string 
 
 == a type defined twice
 PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
-schema:1:52: found a second type named `x`; expected each type to be defined once in a scope; rename or remove one of them
+schema:1:52: duplicate declaration `x` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
                                                      ^
 
@@ -84,19 +84,19 @@ schema:1:45: found a second parameter named `x`; expected each parameter once; r
 
 == a method twice
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
-schema:1:58: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+schema:1:58: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
                                                            ^
 
 == overloads with the same parameter types
 PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
-schema:1:136: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+schema:1:136: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
   PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
                                                                                                                                          ^^^
 
 == overloads that differ only in what they return
 PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
-schema:1:80: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in a scope to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
+schema:1:80: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
   PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
                                                                                  ^^^^^
 
@@ -142,12 +142,6 @@ schema:1:37: found a parameter named `kind`; expected another name, since a vari
   PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },
                                       ^^^^
 
-== a missing protocol line
-RECORD x { a: Text },
-schema:1:1: found no `PROTOCOL` header; expected the schema to start with one, such as `PROTOCOL notes VERSION 1`
-  RECORD x { a: Text },
-  ^
-
 == a keyword in a name
 PROTOCOL a VERSION 1, RECORD x { a Text b: Text },
 schema:1:34: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
@@ -156,13 +150,13 @@ schema:1:34: found `a Text b` as the name of a field; expected words of lowercas
 
 == an unknown group
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
-schema:1:57: found `gone`, which is not an error group of this schema; expected the name of an `ERRORS` group, such as `file errors` for `ERRORS file errors [trashed, missing]`
+schema:1:57: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
                                                           ^^^^
 
 == an error where a group goes
 PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
-schema:1:83: found `gone`, which is an error, not a group; expected a group after a `+`; put the error in an `ERRORS` group and join that group, since an error is defined once, in the brackets of the group or method that has it
+schema:1:83: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
   PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
                                                                                     ^^^^
 
@@ -180,13 +174,13 @@ schema:1:78: found the error `gone` twice among this method's errors, counting t
 
 == an error defined twice in a scope
 PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
-schema:1:75: found a second error `gone` in this schema, after the one on line 1; expected each error once in a scope; to share one, put it in an `ERRORS` group and join the group with `+`
+schema:1:75: found a second error `gone` in this schema, after the one on line 1; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`
   PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
                                                                             ^^^^
 
 == a group joining an unknown group
 PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
-schema:1:38: found `lost`, which is not an error group of this schema; expected the name of an `ERRORS` group, such as `file errors` for `ERRORS file errors [trashed, missing]`
+schema:1:38: found `lost`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
   PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
                                        ^^^^
 
@@ -198,7 +192,7 @@ schema:1:30: found an `ERRORS` without a name before its errors; expected a grou
 
 == a group defined twice
 PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
-schema:1:44: found a second error group named `x`; expected each group once in a scope; rename one of them
+schema:1:44: duplicate declaration `x` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
                                              ^
 

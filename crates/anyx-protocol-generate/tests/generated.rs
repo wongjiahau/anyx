@@ -50,7 +50,14 @@ fn scoped() -> Schema {
         .zip(&sources)
         .map(|(path, source)| SchemaFile { path, source })
         .collect();
-    Schema::parse_files(&files).unwrap()
+    Schema::load("protocol.anyx", |path| {
+        files
+            .iter()
+            .find(|file| file.path == path)
+            .map(|file| file.source.to_string())
+            .ok_or("file not found")
+    })
+    .unwrap()
 }
 
 /// Every kind of type.
@@ -177,40 +184,6 @@ fn a_keyword_becomes_a_raw_identifier() {
     assert!(code.contains("pub r#loop: i64"), "{code}");
 }
 
-fn scoped_error(files: &[(&str, &str)]) -> String {
-    let files: Vec<SchemaFile> = files
-        .iter()
-        .map(|(path, source)| SchemaFile { path, source })
-        .collect();
-    let schema = Schema::parse_files(&files).unwrap();
-    let rust = anyx_protocol_generate::rust(&schema).unwrap_err();
-    let typescript = anyx_protocol_generate::typescript(&schema).unwrap_err();
-    assert_eq!(rust, typescript);
-    rust.message
-}
-
-#[test]
-fn names_in_scopes_that_become_the_same_name_are_rejected() {
-    let root = ("protocol.anyx", "PROTOCOL p VERSION 1,");
-    assert_eq!(
-        scoped_error(&[
-            root,
-            ("files.anyx", "METHOD read RETURNS (a: Text),"),
-            ("files/read.anyx", "METHOD open RETURNS (a: Text),"),
-        ]),
-        "found the scope `files/read` in the scope `files`, which becomes the method `read`, like `files/read`; expected names that stay distinct in the generated code, so rename one"
-    );
-    assert_eq!(
-        scoped_error(&[
-            root,
-            ("files.anyx", "RECORD export page { a: Text },"),
-            ("files/export.anyx", "RECORD page { a: Text },"),
-        ]),
-        "found the type `files/export/page`, which becomes the TypeScript type `FilesExportPage`, like the type `files/export page`; expected names that stay distinct in the generated code, so rename one"
-    );
-}
-
-/// Generic records and choices, and their uses.
 fn generic() -> Schema {
     Schema::parse(&read("tests/fixtures/generic.anyx")).unwrap()
 }

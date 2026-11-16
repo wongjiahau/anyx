@@ -11,6 +11,9 @@
 //! }
 //! ```
 //!
+//! With the `protocol` feature, `Protocol` checks protocol schemas and follows
+//! their `USE` imports through open editor buffers, including in WebAssembly.
+//!
 //! What it offers, all from the grammar:
 //!
 //! - diagnostics: anyx's syntax errors, and every error the decoder kept
@@ -25,6 +28,10 @@
 //! Worker: the page needs no server.
 
 mod position;
+#[cfg(feature = "protocol")]
+mod protocol;
+#[cfg(feature = "protocol")]
+pub use protocol::Protocol;
 mod server;
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -69,6 +76,16 @@ impl Problem {
 pub trait Language {
     /// Every problem in `source`, syntax errors first.
     fn check(&self, source: &str) -> Vec<Problem>;
+
+    /// Optional workspace diagnostics for languages with file imports. Paths
+    /// are document URIs; the server republishes all affected open buffers.
+    fn check_workspace(
+        &self,
+        documents: &std::collections::HashMap<lsp_types::Url, String>,
+    ) -> Option<std::collections::HashMap<lsp_types::Url, Vec<Problem>>> {
+        let _ = documents;
+        None
+    }
 
     /// `source` laid out canonically, or `None` when it has syntax errors.
     fn format(&self, source: &str) -> Option<String>;

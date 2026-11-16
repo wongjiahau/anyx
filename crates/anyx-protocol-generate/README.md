@@ -8,8 +8,9 @@ anyx-protocol-generate wasm schema.anyx > src/protocol_wasm.rs
 anyx-protocol-generate typescript schema.anyx > web/src/protocol.ts
 ```
 
-The schema is one file, or a folder of scopes (see
-[`PROTOCOL.md`](../anyx-protocol/PROTOCOL.md#scopes)).
+Pass an entry file with a `PROTOCOL` header. Its `USE "relative path"`
+imports are followed explicitly; folder input is rejected. See
+[`PROTOCOL.md`](../anyx-protocol/PROTOCOL.md#files-and-use).
 
 ## Rust
 
@@ -37,7 +38,7 @@ The schema is one file, or a folder of scopes (see
   `page (item: TYPE)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the
   module already uses, such as `value` (the generated code uses `Value`) or
-  a type of the scope, gets `Parameter` after it: `ValueParameter`. The
+  a type of the protocol, gets `Parameter` after it: `ValueParameter`. The
   same goes in TypeScript, `interface PageOf<Item>`, against every type there.
 - An enum of each method's errors, named after the method:
   `write _ at revision _ content _` has `WriteAtRevisionContentError`.
@@ -61,17 +62,16 @@ The schema is one file, or a folder of scopes (see
 - `SCHEMA_FILES`, the schema as written, and `schema()`, the schema read
   once, for `anyx_protocol::guide`.
 
-Each scope is a module of its own, `files::export`, with its types, the
-error enums of its methods, a `Server` trait of its methods and a `Client`.
-A scope's `Server` extends the root's, which holds `type Error`, and
-`handle` needs every one of them:
+All declarations are generated into one Rust module, with one `Server`
+trait and a flat client:
 
 ```rust
-impl poentaro::Server for Agent { type Error = worker::Error; }
-impl poentaro::files::Server for Agent {
+impl poentaro::Server for Agent {
+    type Error = worker::Error;
     async fn read(&self, path: String) -> Result<Result<File, ReadError>, Self::Error> { … }
+    // Implement the remaining methods here.
 }
-let pdf = client.files().export().pdf(path).await;
+let pdf = client.pdf(path).await;
 ```
 
 The module needs `anyx-protocol`.
@@ -91,7 +91,7 @@ const client = new Client(
   (request) => fetch(url, { method: "POST", body: request }).then((r) => r.text()),
 );
 const outcome = await client.read("hymn.poentaro");
-const pdf = await client.files.export.pdf("hymn.poentaro"); // a scope's method
+const pdf = await client.pdf("hymn.poentaro");
 // Several calls in one request, run in order:
 const [a, b] = await client.batch((calls) => [calls.read("a"), calls.read("b")]);
 ```
@@ -117,18 +117,17 @@ its own, and a use passes them: a method returning
 no reviving, unless `page of (item: TYPE)` holds an `Instant` itself, when it passes
 `unchanged`.
 
-In TypeScript every type shares one namespace, so a scoped type's name starts
-with its scope: `diagnostic` in `common` is `CommonDiagnostic`, and the errors
-of `files/read _` are `FilesReadError`.
+TypeScript uses plain names: `Diagnostic` and `ReadError`. Shared library
+types are copied into each protocol's generated output so outputs stand alone.
 
 Overloads, methods of one shape with different parameter types, each get a
 name of their own: the shape's words, `with`, then each parameter's type in
 words, joined by `and`. `LIST: T` is `list of T`, `MAP: T` is `map of T`, a
-type of the schema is its words after its scope's, and a generic type has
+type of the schema is its plain words, and a generic type has
 its arguments' words in its slots: `tag (paths: LIST Text)` is
 `tag_with_list_of_text` (`tagWithListOfText`, `TagWithListOfTextError`,
-`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: common/File Id)` is
-`open_with_common_file_id`, and `scale (factor: Float)` is
+`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: File Id)` is
+`open_with_file_id`, and `scale (factor: Float)` is
 `scale_with_float`. A method without overloads keeps its shape's words, so
 adding an overload renames the methods of its shape. The server runs the
 overload a call resolves to, and the clients write the annotations a

@@ -27,6 +27,13 @@ pub enum Definition {
     NamedType(NamedType),
     Errors(Errors),
     Method(Method),
+    Import(Import),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Import {
+    pub path: Spanned<StringLiteral>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -270,6 +277,7 @@ impl Definition {
             Definition::NamedType(value) => value.span,
             Definition::Errors(value) => value.span,
             Definition::Method(value) => value.span,
+            Definition::Import(value) => value.span,
         }
     }
 }
@@ -408,7 +416,14 @@ impl support::Errors for Definition {
             Definition::NamedType(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
+            Definition::Import(value) => support::Errors::errors(value, found),
         }
+    }
+}
+
+impl support::Errors for Import {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.path, found);
     }
 }
 
@@ -726,6 +741,20 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
+        .or_else(|error| error.or(decode_import(node).map(Definition::Import)))
+}
+
+pub fn decode_import(node: &Node) -> Result<Import, DecodeError> {
+    let mut parts = support::call(node, "the call `USE _`")?;
+    let decoded = Import {
+        path: parts.word("USE")?.one(
+            |node| support::string(node, |_| true, "a string"),
+            "a string",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {

@@ -247,7 +247,6 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "a parameter named kind",
             "PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },",
         ),
-        ("a missing protocol line", "RECORD x { a: Text },"),
         (
             "a keyword in a name",
             "PROTOCOL a VERSION 1, RECORD x { a Text b: Text },",
