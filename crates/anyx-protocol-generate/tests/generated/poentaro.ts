@@ -246,11 +246,11 @@ export interface Effects {
 
 /** Each method's `Effects`, by the full name the client calls it by. Only a
  * method whose `idempotent` is true may be retried on its own. */
-export const EFFECTS: { readonly [method: string]: Effects } = {
+export const EFFECTS = {
   "list files": { readOnly: true, idempotent: true, undoneBy: null },
   "read _": { readOnly: true, idempotent: true, undoneBy: null },
   "write _ at revision _ content _": { readOnly: false, idempotent: false, undoneBy: null },
   "create _ content _": { readOnly: false, idempotent: false, undoneBy: null },
   "export midi _": { readOnly: true, idempotent: true, undoneBy: null },
   SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
-};
+} as const satisfies Record<string, Effects>;
