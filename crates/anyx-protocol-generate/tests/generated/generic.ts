@@ -120,10 +120,6 @@ export interface Codec {
  * `Date` for each instant. */
 type Reviver = (json: any) => unknown;
 
-function reviveInstant(json: string): Date {
-  return new Date(json);
-}
-
 /** `outcome` with its value or error revived. */
 function revive(outcome: Outcome<never, never>, value?: Reviver, error?: Reviver): Outcome<never, never> {
   if (outcome.kind === "value" && value) return { ...outcome, value: value(outcome.value) as never };
@@ -272,3 +268,7 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "prices": { readOnly: false, idempotent: false, undoneBy: null },
   SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
 };
+
+function reviveInstant(json: string): Date {
+  return new Date(json);
+}

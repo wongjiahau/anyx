@@ -122,6 +122,9 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
     );
     out.push_str("}\n");
     effects(&mut out, schema);
+    if revivers.uses_instant.get() {
+        out.push_str(INSTANT_REVIVER);
+    }
     Ok(out)
 }
 
@@ -184,6 +187,12 @@ fn signature(schema: &Schema, revivers: &Revivers, method: &Method) -> Signature
     }
 }
 
+const INSTANT_REVIVER: &str = r#"
+function reviveInstant(json: string): Date {
+  return new Date(json);
+}
+"#;
+
 const PRELUDE: &str = r#"/** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -207,10 +216,6 @@ export interface Codec {
 /** Turns the JSON of a type that holds an `Instant` into its value, with a
  * `Date` for each instant. */
 type Reviver = (json: any) => unknown;
-
-function reviveInstant(json: string): Date {
-  return new Date(json);
-}
 
 /** `outcome` with its value or error revived. */
 function revive(outcome: Outcome<never, never>, value?: Reviver, error?: Reviver): Outcome<never, never> {
@@ -495,12 +500,14 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 /// are; a use of it also when one of its arguments does.
 struct Revivers {
     holds: Vec<bool>,
+    uses_instant: std::cell::Cell<bool>,
 }
 
 impl Revivers {
     fn new(schema: &Schema) -> Self {
         let mut revivers = Revivers {
             holds: vec![false; schema.types.len()],
+            uses_instant: std::cell::Cell::new(false),
         };
         loop {
             let found: Vec<usize> = (0..schema.types.len())
@@ -555,7 +562,10 @@ impl Revivers {
     /// no `Instant`.
     fn of(&self, schema: &Schema, r#type: &Type, parameters: bool) -> Option<String> {
         match r#type {
-            Type::Instant => Some("reviveInstant".to_string()),
+            Type::Instant => {
+                self.uses_instant.set(true);
+                Some("reviveInstant".to_string())
+            },
             Type::List(item) => self
                 .of(schema, item, parameters)
                 .map(|item| format!("(json: any[]) => json.map({item})")),
