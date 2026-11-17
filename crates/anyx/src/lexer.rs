@@ -410,28 +410,21 @@ impl Lexer<'_> {
         ));
     }
 
-    /// The rest of a raw string after its first `"`: more quotes, the end of
-    /// the line, then content lines up to a line holding only indentation and
-    /// as many quotes as opened it. That indentation is stripped from every
-    /// line, and the line breaks after the opening quotes and before the
-    /// closing line are not part of the value. There are no escapes.
+    /// The rest of a raw string after its first `"`. Inline strings close at
+    /// a matching quote run; multiline strings close after indentation at the
+    /// start of a line. Multiline content is stripped of that indentation and
+    /// the line breaks around it. Neither form has escapes.
     fn raw_string(&mut self, start: usize) -> StringLiteral {
         self.bump_while(|c| c == '"');
         let quotes = self.text(start);
-        self.bump_while(is_indentation);
-        let extra_start = self.position;
-        self.bump_while(|c| c != '\n');
-        let extra = self.source[extra_start..self.position]
-            .trim_end_matches(|c| c == '\r' || is_indentation(c));
-        if !extra.is_empty() {
-            self.errors.push(Error::new(
-                ErrorCode::RawStringOpening,
-                Span::new(extra_start, extra_start + extra.len()),
-                format!(
-                    "found `{extra}` after the opening `{quotes}` of a raw string; expected the end of the line; start the content on the next line, or use a `\"…\"` string for one line"
-                ),
-            ));
+        let content_start = self.position;
+        let opening_tail = self
+            .rest()
+            .trim_start_matches(|c| is_indentation(c) || c == '\r');
+        if !opening_tail.is_empty() && !opening_tail.starts_with('\n') {
+            return self.inline_raw_string(start, quotes.len(), content_start);
         }
+        self.bump_while(|c| c != '\n');
         self.bump();
         let mut lines = Vec::new();
         loop {
@@ -464,6 +457,47 @@ impl Lexer<'_> {
             Span::new(content_start, self.position),
         );
         literal.content.end = self.position;
+        literal
+    }
+
+    /// Scan one line, accepting only a maximal quote run of the opener's length.
+    fn inline_raw_string(
+        &mut self,
+        start: usize,
+        quote_count: usize,
+        content_start: usize,
+    ) -> StringLiteral {
+        while let Some(c) = self.peek() {
+            if c == '\n' || (c == '\r' && self.peek_nth(1) == Some('\n')) {
+                break;
+            }
+            if c == '"' {
+                let run_start = self.position;
+                self.bump_while(|c| c == '"');
+                if self.position - run_start == quote_count {
+                    let mut literal = StringLiteral::new(StringKind::Raw, content_start);
+                    literal.push_verbatim(
+                        &self.source[content_start..run_start],
+                        Span::new(content_start, run_start),
+                    );
+                    literal.content.end = run_start;
+                    return literal;
+                }
+            } else {
+                self.bump();
+            }
+        }
+        let mut literal = StringLiteral::new(StringKind::Raw, content_start);
+        literal.push_verbatim(
+            &self.source[content_start..self.position],
+            Span::new(content_start, self.position),
+        );
+        literal.content.end = self.position;
+        self.errors.push(Error::new(
+            ErrorCode::UnterminatedString,
+            Span::new(start, self.position),
+            format!("found an inline raw string without closing quotes before the end of the line; expected {} quotes", quote_count),
+        ));
         literal
     }
 

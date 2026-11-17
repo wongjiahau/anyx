@@ -88,11 +88,22 @@ fn invalid_escape() {
 }
 
 #[test]
-fn raw_string_opening_points_at_the_text_after_the_quotes() {
-    let source = "\"\"\"abc \n  x\n  \"\"\"";
-    assert_eq!(errors(source), [(ErrorCode::RawStringOpening, 3, 6)]);
-    assert_eq!(tree_despite_errors(source), r#""x""#);
-    assert!(messages(source)[0].contains("`abc`"));
+fn unterminated_inline_raw_string_recovers_at_the_next_line() {
+    for newline in ["\n", "\r\n"] {
+        let source = format!("x \"\"\"abc{newline}next");
+        assert_eq!(errors(&source), [(ErrorCode::UnterminatedString, 2, 8)]);
+        assert_eq!(tree_despite_errors(&source), "(`x _ next` \"abc\")");
+    }
+}
+
+#[test]
+fn unterminated_inline_raw_string_at_eof_keeps_content() {
+    let source = "\"\"\"#\\w";
+    assert_eq!(
+        errors(source),
+        [(ErrorCode::UnterminatedString, 0, source.len())]
+    );
+    assert_eq!(tree_despite_errors(source), "\"#\\\\w\"");
 }
 
 #[test]

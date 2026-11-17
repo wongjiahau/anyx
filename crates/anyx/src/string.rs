@@ -15,7 +15,7 @@ pub struct StringLiteral {
     pub value: String,
     /// The parts of `value` in order, each with the source it came from.
     pub pieces: Vec<StringPiece>,
-    /// The source between the delimiters. For a raw string, the lines between
+    /// The source between the delimiters. For a raw string, the inline content or the lines between
     /// the opening and closing lines.
     pub content: Span,
 }
@@ -27,7 +27,7 @@ pub enum StringKind {
     Line,
     /// A `"…"` string, with escapes.
     Quoted,
-    /// A `"""…"""` raw string, over lines of its own, without escapes.
+    /// A `"""…"""` raw string, inline or multiline, without escapes.
     Raw,
 }
 

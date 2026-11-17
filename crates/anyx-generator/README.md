@@ -323,9 +323,8 @@ STRING [STARTS WITH "v", ENDS WITH "x", CONTAINS "-", MATCHING REGEX "^[a-z]+$"]
 The conditions are on the string's value, after escapes, and must all hold.
 `MATCHING REGEX` takes a [regex](https://docs.rs/regex) and finds it
 anywhere in the value, so anchor it with `^` and `$` to match the whole
-value. Until one-line raw strings arrive
-([#2](https://github.com/wongjiahau/anyx/issues/2)), write a regex
-backslash twice: `"^\\d+$"`.
+value. Use an inline raw string to write backslashes directly, for example
+`"""^\d+$"""`, or escape them in a quoted string: `"^\\d+$"`.
 
 ### `LINE STRING`
 

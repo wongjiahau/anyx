@@ -32,7 +32,7 @@ string     : quoted | raw | line,
 quoted     : "\"" { any char except ("\"" | "\\") | escape } "\"",
 escape     : "\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
                   | "u{" hex { hex } "}" | "u" hex hex hex hex),
-raw        : quotes newline { line newline } indent quotes,
+raw        : quotes (inline-content quotes | newline { line newline } indent quotes),
 quotes     : "\"\"\"" { "\"" },
 line       : "#" [" "] rest { newline indent "#" [" "] rest },
 rest       : { any char except newline },
