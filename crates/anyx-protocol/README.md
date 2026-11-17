@@ -21,3 +21,8 @@ with [`anyx-protocol-generate`](../anyx-protocol-generate).
 
 `encode_value(schema, expected_type, value)` writes a checked standalone anyx
 value without a response envelope, for consumers such as `anyx-shell`.
+
+`decode_argument` reads a literal argument and synthesizes its type,
+`decode_value` reads a literal in a known type, and `decode_type` resolves a
+type expression. These let consumers type-check expressions without changing
+the protocol's literal-only wire requests.

@@ -5,12 +5,14 @@
 //! Successful results are standalone anyx values; protocol envelopes are not
 //! displayed. A method failure stops execution without rolling back earlier calls.
 
+mod compile;
 pub mod environment;
 
 use std::collections::BTreeMap;
 
-use anyx::{Element, Expression, Item, TokenKind, line_column};
+use anyx::line_column;
 use anyx_protocol::{Call, Outcome, Problem, Response, Schema, Value};
+use compile::{Argument, Call as PreparedCall, Compiler, ExpressionValue};
 
 /// A session-owned tool. Calls have already been checked against `schema()`.
 /// Implementations must keep their schema stable for their lifetime.
@@ -32,11 +34,6 @@ pub struct Execution {
     pub values: Vec<Value>,
     pub output: String,
     pub error: Option<String>,
-}
-
-struct Prepared {
-    scope: String,
-    call: Call,
 }
 
 impl Interpreter {
@@ -70,48 +67,26 @@ impl Interpreter {
         if let Some(error) = parsed.errors.first() {
             return Err(at(source, error.span.start, error.message.clone()));
         }
+        let compiler = Compiler {
+            interpreter: self,
+            source,
+        };
         let prepared = parsed
             .syntax
             .sequence
             .elements
             .iter()
-            .map(|element| self.prepare(source, element))
+            .map(|element| compiler.element(element))
             .collect::<Result<Vec<_>, _>>()?;
         let mut execution = Execution::default();
         let mut written = Vec::new();
         for prepared in prepared {
-            let tool = self
-                .tools
-                .get_mut(&prepared.scope)
-                .expect("prepared scope exists");
-            let schema = tool.schema();
-            let outcome = if prepared.call.method == schema.introspection() {
-                anyx_protocol::server::introspect(schema)
-            } else {
-                tool.invoke(&prepared.call)
-            };
-            let schema = tool.schema();
-            // Check the complete outcome, including declared method errors, before
-            // displaying it. Invalid tool output is an internal failure.
-            let response = Response::Outcomes(vec![outcome.clone()]);
-            let wire = anyx_protocol::encode_response(
-                schema,
-                std::slice::from_ref(&prepared.call),
-                &response,
-            );
-            let wire = wire.and_then(|wire| {
-                anyx_protocol::decode_response(schema, &[prepared.call.method], &wire).map_err(
-                    |problem| anyx_protocol::EncodeError {
-                        message: problem.message,
-                    },
-                )?;
-                Ok(wire)
-            });
-            match (outcome, wire) {
-                (Outcome::Value(Value::Nothing), Ok(_)) => {}
-                (Outcome::Value(value), Ok(_)) => {
+            match self.evaluate_call(&prepared) {
+                Ok(Value::Nothing) => {}
+                Ok(value) => {
+                    let schema = self.tools[&prepared.scope].schema();
                     let returns = schema
-                        .method_at(prepared.call.method)
+                        .method_at(prepared.method)
                         .returns
                         .as_ref()
                         .expect("a checked value has a return type");
@@ -126,12 +101,8 @@ impl Interpreter {
                         }
                     }
                 }
-                (Outcome::Error(_), Ok(wire)) => {
-                    execution.error = Some(wire);
-                    break;
-                }
-                _ => {
-                    execution.error = Some("INTERNAL ERROR\n".into());
+                Err(error) => {
+                    execution.error = Some(error);
                     break;
                 }
             }
@@ -148,66 +119,73 @@ impl Interpreter {
         Ok(execution)
     }
 
-    fn prepare(&self, source: &str, element: &Element) -> Result<Prepared, Problem> {
-        // Read only the shell prefix from the lossless tree. In particular,
-        // `environment / SCHEMA` has a different abstract grouping because
-        // uppercase words bind looser than `/`. The protocol owns the body.
-        let Expression::Run(run) = &element.expression else {
-            return Err(at(
-                source,
-                expression_start(&element.expression),
-                "expected `scope / method arguments`; top-level chaining is not supported yet"
-                    .into(),
-            ));
+    fn evaluate_call(&mut self, prepared: &PreparedCall) -> Result<Value, String> {
+        let arguments = prepared
+            .arguments
+            .iter()
+            .map(|argument| self.evaluate(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let call = Call {
+            method: prepared.method,
+            arguments,
         };
-        let fail = |message| at(source, run.position, message);
-        let [Item::Atom(scope), Item::Atom(slash), ..] = run.items.as_slice() else {
-            return Err(fail(
-                "expected a scoped call, such as `environment / list variables`".into(),
-            ));
-        };
-        if scope.kind != TokenKind::Word || slash.kind != TokenKind::Word || slash.text != "/" {
-            return Err(fail(
-                "expected a scoped call, such as `environment / list variables`".into(),
-            ));
-        }
         let tool = self
             .tools
-            .get(&scope.text)
-            .ok_or_else(|| fail(format!("unknown tool scope `{}`", scope.text)))?;
-        let start = slash.span.end;
-        let end = element
-            .comma
-            .as_ref()
-            .map_or(source.len(), |comma| comma.span.start);
-        let calls = anyx_protocol::decode_request(tool.schema(), &source[start..end]).map_err(
-            |problem| {
-                let base = line_column(source, start);
-                Problem {
-                    line: base.line + problem.line - 1,
-                    column: if problem.line == 1 {
-                        base.column + problem.column - 1
-                    } else {
-                        problem.column
-                    },
-                    message: problem.message,
-                }
-            },
-        )?;
-        let [call] = calls.as_slice() else {
-            return Err(fail("expected exactly one method call after `/`".into()));
+            .get_mut(&prepared.scope)
+            .expect("prepared scope exists");
+        let schema = tool.schema();
+        let outcome = if call.method == schema.introspection() {
+            anyx_protocol::server::introspect(schema)
+        } else {
+            tool.invoke(&call)
         };
-        Ok(Prepared {
-            scope: scope.text.clone(),
-            call: call.clone(),
-        })
+        let schema = tool.schema();
+        let response = Response::Outcomes(vec![outcome]);
+        let wire = anyx_protocol::encode_response(schema, std::slice::from_ref(&call), &response)
+            .map_err(|_| "INTERNAL ERROR\n".to_string())?;
+        // Decode the response to validate the tool output and materialize defaults.
+        let response = anyx_protocol::decode_response(schema, &[call.method], &wire)
+            .map_err(|_| "INTERNAL ERROR\n".to_string())?;
+        match response {
+            Response::Outcomes(mut outcomes) => match outcomes.remove(0) {
+                Outcome::Value(value) => Ok(value),
+                Outcome::Error(_) => Err(wire),
+                _ => Err("INTERNAL ERROR\n".into()),
+            },
+            _ => Err("INTERNAL ERROR\n".into()),
+        }
     }
-}
 
-fn expression_start(expression: &Expression) -> usize {
-    match expression {
-        Expression::Run(run) => run.position,
-        Expression::Dot(binary) | Expression::Colon(binary) => expression_start(&binary.left),
+    fn evaluate(&mut self, argument: &Argument) -> Result<Value, String> {
+        Ok(match &argument.value {
+            ExpressionValue::Literal(value) => value.clone(),
+            ExpressionValue::Call(call) => self.evaluate_call(call)?,
+            ExpressionValue::List(items) => Value::List(
+                items
+                    .iter()
+                    .map(|item| self.evaluate(item))
+                    .collect::<Result<_, _>>()?,
+            ),
+            ExpressionValue::Record(fields) => Value::Record(
+                fields
+                    .iter()
+                    .map(|(name, value)| Ok((name.clone(), self.evaluate(value)?)))
+                    .collect::<Result<_, String>>()?,
+            ),
+            ExpressionValue::Map(fields) => Value::Map(
+                fields
+                    .iter()
+                    .map(|(name, value)| Ok((name.clone(), self.evaluate(value)?)))
+                    .collect::<Result<_, String>>()?,
+            ),
+            ExpressionValue::Variant(shape, arguments) => Value::Variant {
+                shape: shape.clone(),
+                arguments: arguments
+                    .iter()
+                    .map(|argument| self.evaluate(argument))
+                    .collect::<Result<_, _>>()?,
+            },
+        })
     }
 }
 

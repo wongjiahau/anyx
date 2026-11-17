@@ -51,11 +51,55 @@ collision. The built-in protocol discovery call is scoped too:
 environment / SCHEMA
 ```
 
-It returns the environment protocol's guide as an anyx text value. Calls
-use the protocol's existing request syntax and argument validation. This
-first interpreter runs literal calls; variables, expressions that feed
-results to later calls, pipelines, subprocesses and an interactive prompt
-are future work. Top-level `.` and `:` chaining are rejected.
+It returns the environment protocol's guide as an anyx text value. The shell
+accepts protocol literals and evaluated argument expressions. Protocol wire
+requests still carry values; evaluation belongs to the shell.
+
+## Argument expressions and types
+
+A method argument can be an expression, including another scoped call:
+
+```anyx
+environment / set variable "COPY" to (environment / read variable "HOME")
+```
+
+Only the outer call's variable record is displayed. The nested text value
+becomes its argument. Expressions also work inside lists, record fields, map
+values, and choice arguments. Anyx's grouping sugar works too:
+
+```anyx
+environment / set variable "COPY" to: environment / read variable "HOME"
+```
+
+The checker synthesizes argument types from the inside out, using each
+nested method's declared return type. Those argument types select the enclosing
+overload; its expected result type never selects its own overload. All calls
+are checked before any tool runs, including calls nested in containers.
+Unambiguous literals infer their type as in protocol requests. Empty lists,
+ambiguous variants, and named types can use `AS: Type` annotations. A computed
+value keeps its declared type even when its runtime value is an empty list.
+An annotation must agree with a computed expression's type; it is not a cast.
+Record fields and choice slots check their contents against their declared types.
+
+Built-in types cross tool boundaries directly. Protocol-local named types keep
+their identity: another tool must declare the same name and reachable type
+definitions to consume one. Unrelated types cannot mix just because their
+values have the same representation. Methods returning nothing cannot appear
+as arguments.
+
+At runtime, arguments evaluate from left to right, before their enclosing
+method. A nested failure stops remaining arguments and the enclosing call.
+Earlier successful effects remain. Lists, records, and maps evaluate their
+contents in source order. Unknown expressions produce a diagnostic; accepting
+anyx syntax does not invent arithmetic operators or unregistered functions.
+
+Run the example with:
+
+```sh
+cargo run -p anyx-shell -- crates/anyx-shell/examples/expressions.shell.anyx
+```
+
+Shell variables, pipelines, subprocesses and an interactive prompt are future work.
 
 The library exposes `Interpreter` and a synchronous `Tool` trait. Register a
 protocol implementation under a lowercase scope with

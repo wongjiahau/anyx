@@ -27,3 +27,36 @@ fn rejects_values_that_do_not_fit_the_type() {
     assert!(encode_value(&schema, &Type::Float, &Value::Float(f64::NAN)).is_err());
     assert!(encode_value(&schema, &Type::Text, &Value::Nothing).is_err());
 }
+
+#[test]
+fn standalone_arguments_synthesize_types_without_a_method() {
+    use anyx_protocol::{decode_argument, decode_type, decode_value};
+    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE File Id: Text").unwrap();
+    assert_eq!(
+        decode_argument(&schema, "42").unwrap(),
+        (Type::Integer, Value::Integer(42))
+    );
+    let named = decode_type(&schema, "File Id").unwrap();
+    assert_eq!(
+        decode_argument(&schema, "(\"path\" AS: File Id)").unwrap(),
+        (named, Value::Text("path".into()))
+    );
+    assert!(decode_argument(&schema, "[]").is_err());
+    assert_eq!(
+        decode_value(&schema, &Type::List(Box::new(Type::Text)), "[]").unwrap(),
+        Value::List(vec![])
+    );
+    assert!(decode_value(&schema, &Type::Integer, "\"wrong\"").is_err());
+    assert!(decode_type(&schema, "Unknown Type").is_err());
+}
+
+#[test]
+fn wire_requests_still_accept_values_rather_than_executable_expressions() {
+    let schema =
+        Schema::parse("PROTOCOL example VERSION 1, METHOD read (name: Text) RETURNS (value: Text)")
+            .unwrap();
+    assert!(
+        anyx_protocol::decode_request(&schema, "read (environment / read variable \"HOME\")")
+            .is_err()
+    );
+}

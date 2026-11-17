@@ -131,3 +131,10 @@ fn non_unicode_inherited_values_are_reported_without_lossy_conversion() {
             .contains("not Unicode")
     );
 }
+
+#[test]
+fn nested_expression_results_are_arguments_not_extra_output() {
+    let output = command().args(["--expression", "environment / set variable \"COPY\" to (environment / read variable \"ANYX_INHERITED\")"]).output().unwrap();
+    succeeds(&output);
+    assert_eq!(output.stdout, b"{ name \"COPY\", value \"original\" }\n");
+}

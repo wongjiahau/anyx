@@ -1,0 +1,5 @@
+environment / set variable "ANYX_SOURCE" to "hello",
+environment / set variable "ANYX_COPY" to (environment / read variable "ANYX_SOURCE"),
+environment / read variable "ANYX_COPY",
+environment / remove variable "ANYX_SOURCE",
+environment / remove variable "ANYX_COPY",

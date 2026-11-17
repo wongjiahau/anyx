@@ -22,7 +22,8 @@ mod time;
 pub mod value;
 
 pub use codec::{
-    Call, EncodeError, Outcome, Problem, Response, decode_request, encode_request, encode_value,
+    Call, EncodeError, Outcome, Problem, Response, decode_argument, decode_request, decode_type,
+    decode_value, encode_request, encode_value,
 };
 pub use guide::guide;
 pub use response::{decode_response, encode_response};

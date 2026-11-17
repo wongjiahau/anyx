@@ -507,6 +507,59 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
     })
 }
 
+/// Reads one literal argument, including an optional `AS` annotation, and
+/// synthesizes its type independently of any enclosing method.
+pub fn decode_argument(schema: &Schema, source: &str) -> Result<(Type, Value), Problem> {
+    let node = single_node(source)?;
+    let syntax =
+        request::decode_argument(&node).map_err(|error| request_syntax_problem(source, error))?;
+    let argument = read_argument(schema, source, &syntax)
+        .map_err(|error| problem(source, error.span, error.message))?;
+    let expected = argument.stated().ok_or_else(|| {
+        problem(
+            source,
+            node.span,
+            "this value has no unambiguous type of its own; annotate it with `AS: Type`".into(),
+        )
+    })?;
+    let value = crate::request::decode(schema, expected, argument.value)
+        .map_err(|error| problem(source, error.span, error.message))?;
+    Ok((expected.clone(), value))
+}
+
+/// Reads a literal in a known type, such as a record field. Unlike a method
+/// argument, it does not need to state that type itself.
+pub fn decode_value(schema: &Schema, expected: &Type, source: &str) -> Result<Value, Problem> {
+    let node = single_node(source)?;
+    decode(schema, expected, &node).map_err(|error| problem(source, error.span, error.message))
+}
+
+/// Resolves a type expression in this protocol's namespace.
+pub fn decode_type(schema: &Schema, source: &str) -> Result<Type, Problem> {
+    let node = single_node(source)?;
+    let syntax =
+        request::decode_type(&node).map_err(|error| request_syntax_problem(source, error))?;
+    request_type(schema, &syntax).ok_or_else(|| {
+        problem(
+            source,
+            node.span,
+            "expected a type declared in this protocol or its prelude".into(),
+        )
+    })
+}
+
+fn single_node(source: &str) -> Result<Node, Problem> {
+    let mut nodes = parse(source)?;
+    if nodes.len() != 1 {
+        return Err(problem(
+            source,
+            Span::empty(0),
+            "expected exactly one expression".into(),
+        ));
+    }
+    Ok(nodes.remove(0))
+}
+
 /// Writes a standalone value, without a protocol response envelope.
 /// The value is checked against its type before it is returned.
 /// `Nothing` is not a value and cannot be written this way.
