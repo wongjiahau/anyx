@@ -130,8 +130,8 @@ fn checking_a_library_needs_no_header() {
 #[test]
 fn filenames_with_spaces_resolve_and_self_imports_are_read_once() {
     let mut server = Server::new(&Protocol);
-    let entry = "file:///notes/Entry%20File.anyx";
-    let library = "file:///shared%20types.anyx";
+    let entry = "file:///notes/Entry%20File.protocol.anyx";
+    let library = "file:///shared%20types.protocol.anyx";
     open(
         &mut server,
         entry,
