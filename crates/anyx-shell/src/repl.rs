@@ -1,45 +1,11 @@
-use rustyline::{
-    CompletionType, Config, Context, Editor, Helper,
-    completion::Completer,
-    error::ReadlineError,
-    highlight::Highlighter,
-    hint::Hinter,
-    history::MemHistory,
-    validate::{ValidationContext, ValidationResult, Validator},
-};
+mod editor;
+mod terminal;
 
 use anyx_shell::Interpreter;
-
-struct ShellHelper {
-    interpreter: Interpreter,
-}
-
-impl Helper for ShellHelper {}
-impl Highlighter for ShellHelper {}
-impl Hinter for ShellHelper {
-    type Hint = String;
-}
-impl Completer for ShellHelper {
-    type Candidate = String;
-
-    fn complete(
-        &self,
-        line: &str,
-        pos: usize,
-        _: &Context<'_>,
-    ) -> rustyline::Result<(usize, Vec<String>)> {
-        Ok(self.interpreter.complete(line, pos))
-    }
-}
-impl Validator for ShellHelper {
-    fn validate(&self, context: &mut ValidationContext<'_>) -> rustyline::Result<ValidationResult> {
-        Ok(if incomplete(context.input()) {
-            ValidationResult::Incomplete
-        } else {
-            ValidationResult::Valid(None)
-        })
-    }
-}
+use crossterm::event::{self, Event, KeyEventKind};
+use editor::{Action, Editor};
+use std::io::{self, BufRead, IsTerminal};
+use terminal::Terminal;
 
 fn incomplete(source: &str) -> bool {
     use anyx::ErrorCode;
@@ -53,30 +19,64 @@ fn incomplete(source: &str) -> bool {
         })
 }
 
-pub fn run(interpreter: Interpreter) -> Result<bool, String> {
-    let config = Config::builder()
-        .completion_type(CompletionType::List)
-        .build();
-    let mut editor = Editor::<ShellHelper, MemHistory>::with_history(config, MemHistory::new())
-        .map_err(|error| error.to_string())?;
-    editor.set_helper(Some(ShellHelper { interpreter }));
+pub fn run(mut interpreter: Interpreter) -> Result<bool, String> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return read_lines(&mut interpreter);
+    }
+    let mut history = Vec::new();
     loop {
-        match editor.readline("anyx> ") {
-            Ok(source) => {
-                if source.trim().is_empty() {
-                    continue;
+        let mut editor = Editor::default();
+        let mut terminal = Terminal::new().map_err(|error| error.to_string())?;
+        let action = loop {
+            terminal.draw(&editor).map_err(|error| error.to_string())?;
+            let action = match event::read().map_err(|error| error.to_string())? {
+                Event::Key(key) if key.kind != KeyEventKind::Release => {
+                    editor.key(key, &interpreter, &history)
                 }
-                editor
-                    .add_history_entry(source.as_str())
-                    .map_err(|error| error.to_string())?;
-                // A failed command reports its diagnostic but leaves the session alive.
-                super::execute(&mut editor.helper_mut().unwrap().interpreter, &source)?;
+                Event::Paste(text) => {
+                    editor.paste(&text);
+                    Action::Edit
+                }
+                _ => Action::Edit,
+            };
+            if action != Action::Edit {
+                break action;
             }
-            Err(ReadlineError::Interrupted) => continue,
-            Err(ReadlineError::Eof) => return Ok(true),
-            Err(error) => return Err(error.to_string()),
+        };
+        terminal
+            .finish(&editor, action == Action::Cancel)
+            .map_err(|error| error.to_string())?;
+        drop(terminal);
+        match action {
+            Action::Exit => return Ok(true),
+            Action::Submit if !editor.text.trim().is_empty() => {
+                if history.last() != Some(&editor.text) {
+                    if history.len() == 1000 {
+                        history.remove(0);
+                    }
+                    history.push(editor.text.clone());
+                }
+                super::execute(&mut interpreter, &editor.text)?;
+            }
+            _ => {}
         }
     }
+}
+
+fn read_lines(interpreter: &mut Interpreter) -> Result<bool, String> {
+    let mut source = String::new();
+    for line in io::stdin().lock().lines() {
+        source.push_str(&line.map_err(|error| error.to_string())?);
+        source.push('\n');
+        if !incomplete(&source) {
+            super::execute(interpreter, &source)?;
+            source.clear();
+        }
+    }
+    if !source.trim().is_empty() {
+        super::execute(interpreter, &source)?;
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

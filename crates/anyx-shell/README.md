@@ -59,14 +59,44 @@ Each submitted document runs in the same interpreter. Errors are displayed and
 the prompt returns; successful earlier changes remain available. Ctrl-C cancels
 the current input and Ctrl-D at an empty prompt exits successfully. Input/output
 failures still exit with an error. Up/Down recall commands from this session;
-history is kept in memory and is never saved to disk.
+the last 1,000 history entries stay in memory and are never saved to disk.
 
-Tab completes registered scopes and method words from their protocol schemas:
-`env<Tab>` becomes `environment / `, `environment / li<Tab>` becomes
-`environment / list variables `, and after `set variable "EDITOR" ` it suggests
-`to `. Press Tab twice to list ambiguous matches. Completion also works inside
-parenthesized calls and after `:` or a comma. It does not execute tools or
-complete argument values, record fields, choice variants, or types.
+Completion opens while typing and shows matching scopes or full method
+signatures, parameter types, return types, and protocol documentation. Use
+Up/Down to choose an entry, Enter or Tab to accept it, and Esc to dismiss it.
+Ctrl-Space opens completion explicitly. Accepting a menu entry edits the input;
+it never runs a command.
+
+Methods insert editable argument templates. For example, type `env`, press Tab,
+type `set`, and press Enter:
+
+```text
+anyx> environment / set variable "name" to "value"
+                                ^^^^ selected
+```
+
+Type a name to replace the selection, then Tab to select `value`. Shift-Tab goes
+back to the previous argument, including its current edited value. Tab after
+the last argument leaves snippet editing and moves to the end of the template.
+Esc also leaves snippet editing. The selected argument is highlighted, with its
+name, type, and position shown below the input. Press Enter with no menu open
+to run the command. Template values are editable defaults, so replace them
+before submitting.
+
+Completion reads registered tools' schemas without executing them. It works
+inside nested calls and after commas or grouping operators, and preserves
+existing arguments when editing a method word in the middle of a command.
+Record-field completion, choice-variant menus, and filtering nested calls by
+expected return type are future work.
+
+The REPL uses Ratatui in an inline viewport, keeping command output in terminal
+scrollback. Long input lines scroll horizontally to keep the cursor visible.
+
+Left/Right move by Unicode graphemes. Up/Down move through multiline input or
+history when the completion menu is closed. Home/End and Ctrl-A/Ctrl-E move to
+line boundaries; Backspace/Delete edit text, and Ctrl-W/Ctrl-U/Ctrl-K delete a
+word, the prefix, or the suffix of the current line. Bracketed paste inserts
+text without submitting it. Alt-Enter inserts a newline explicitly.
 
 Open brackets, unfinished quoted/raw strings, and a trailing `:` or `.` continue
 input onto another line. Other invalid input is submitted for a diagnostic.
@@ -187,4 +217,7 @@ preambles or debug representations.
 
 ```sh
 cargo test -p anyx-shell
+# Terminal integration checks on Unix:
+cargo build -p anyx-shell
+python3 crates/anyx-shell/tests/repl_terminal.py
 ```

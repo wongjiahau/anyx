@@ -7,6 +7,7 @@
 
 mod compile;
 mod completion;
+pub use completion::{Completion, Completions, TabStop};
 pub mod environment;
 
 use std::collections::BTreeMap;
