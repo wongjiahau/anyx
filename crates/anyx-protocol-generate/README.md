@@ -80,46 +80,43 @@ let pdf = client.pdf(path).await;
 
 The module needs `anyx-protocol`.
 
-## wasm and TypeScript
+## TypeScript
 
-TypeScript only sends the request: encoding and decoding stay in Rust. The
-`wasm` output has two `#[wasm_bindgen]` functions, such as
-`encodePoentaroRequest` and `decodePoentaroResponse`, for a crate that has
-`wasm-bindgen` and `anyx-protocol` with its `json` feature. The `typescript`
-output has the types as JSON (camelCase names, and a `kind` on each variant
-and error) and a `Client`:
+The `typescript` output is a standalone ES module with a schema-specific
+native codec. It needs no wasm or runtime validation package, and runs in
+Node, browsers, and edge runtimes with ES2022 support. Supply a transport
+that sends and receives AnyX text:
 
 ```ts
 const client = new Client(
-  { encodeRequest: encodePoentaroRequest, decodeResponse: decodePoentaroResponse },
   (request) => fetch(url, { method: "POST", body: request }).then((r) => r.text()),
 );
 const outcome = await client.read("hymn.poentaro");
-const pdf = await client.pdf("hymn.poentaro");
-// Several calls in one request, run in order:
+const value = unwrapOutcome(outcome);
 const [a, b] = await client.batch((calls) => [calls.read("a"), calls.read("b")]);
 ```
 
-The wasm functions take and give every call of a request at once:
-`encodePoentaroRequest('[{"method":"read _","arguments":["a"]}]')` and
-`decodePoentaroResponse('["read _"]', response)`, one outcome per call, in
-the order of the calls.
+`Integer` is a `bigint` in the inclusive range -2^63 through 2^63-1; use
+`BigInt` to convert safe integers; before converting back to `number`,
+check that the bigint is between `BigInt(Number.MIN_SAFE_INTEGER)` and
+`BigInt(Number.MAX_SAFE_INTEGER)`. `Bytes` is `Uint8Array` and is encoded on the
+wire as padded standard base64. `Float` is a finite JavaScript `number`.
+`Instant` is `Date`; `Duration` is a `bigint` number of milliseconds
+from 0 through 2^64-1. Lists are arrays, maps are string-keyed objects, records use
+camelCase fields, and choices and declared errors use a `kind` discriminant.
+Named `TYPE`s are branded and have a same-named constructor.
 
-An `Instant` is a `Date`: the client turns the text JSON carries into one,
-and `JSON.stringify` writes a `Date` back as that text. A `Duration` is a
-`number` of whole milliseconds.
+Every response is parsed and checked against the expected method before an
+outcome is returned. Invalid text, incorrect values, undeclared errors and
+incorrect batch counts reject the promise, as do transport or request encoding
+failures. A batch rejects all queued calls if its transport or codec fails.
+An `invalidRequest` response is returned for each call in a batch. Declared
+errors, `internalError`, `notRun`, and `invalidRequest` remain outcome
+variants. `unwrapOutcome` returns a value or throws `OutcomeFailure`, whose
+`outcome` property preserves the declared error or protocol failure.
 
-A named `TYPE` is a branded type, with a function of the same name that
-brands a value: `TYPE File Id: Text` is
-`type FileId = string & { readonly __brand: "file id" }` and
-`FileId("a")`. Its JSON is the value underneath.
-
-A generic type's reviver takes the reviver of each parameter and returns
-its own, and a use passes them: a method returning
-`page of (Payment)`, where a payment holds an `Instant`, revives with
-`revivePageOf(revivePayment)`, and one returning `page of (Text)` needs
-no reviving, unless `page of (item: TYPE)` holds an `Instant` itself, when it passes
-`unchanged`.
+The optional `wasm` output remains available separately for applications
+that use its JSON interface.
 
 TypeScript uses plain names: `Diagnostic` and `ReadError`. Shared library
 types are copied into each protocol's generated output so outputs stand alone.

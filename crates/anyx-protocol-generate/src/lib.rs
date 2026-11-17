@@ -2,10 +2,8 @@
 //!
 //! - [`rust`]: the schema's types, a `Server` trait with `handle`, and a
 //!   `Client`.
-//! - [`wasm`]: `#[wasm_bindgen]` functions that encode a call and decode its
-//!   response as JSON, for the TypeScript client.
-//! - [`typescript`]: the schema's types and a `Client` that calls into the
-//!   wasm functions, so encoding and decoding stay in Rust.
+//! - [`wasm`]: optional `#[wasm_bindgen]` functions for a JSON interface.
+//! - [`typescript`]: the schema's types and a native `Client` and codec.
 
 mod names;
 pub(crate) mod rust;
@@ -143,7 +141,7 @@ pub fn typescript_error_name(schema: &Schema, method: &Method) -> String {
 
 /// Names the generated code declares or uses, which a schema's types would
 /// shadow.
-const RESERVED_TYPE_NAMES: [&str; 18] = [
+const RESERVED_TYPE_NAMES: [&str; 32] = [
     "Client",
     "Server",
     "Value",
@@ -164,6 +162,20 @@ const RESERVED_TYPE_NAMES: [&str; 18] = [
     "Reviver",
     // The TypeScript client's description of a method's markers.
     "Effects",
+    "OutcomeFailure",
+    "TypeDescriptor",
+    "ParameterDescriptor",
+    "ShapeDescriptor",
+    "FieldDescriptor",
+    "Definition",
+    "MethodDescriptor",
+    "Bindings",
+    "Syntax",
+    "QueuedCall",
+    "Uint8Array",
+    "Promise",
+    "Error",
+    "Array",
 ];
 
 /// The name of a type parameter in the generated code: the parameter in
@@ -212,7 +224,16 @@ pub fn typescript_type_taken(schema: &Schema, name: &str) -> bool {
 }
 
 /// Names the Rust and TypeScript clients declare next to the methods.
-const RESERVED_METHOD_NAMES: [&str; 5] = ["new", "call", "codec", "send", "constructor"];
+const RESERVED_METHOD_NAMES: [&str; 8] = [
+    "new",
+    "call",
+    "codec",
+    "send",
+    "constructor",
+    "batch",
+    "queue",
+    "send_calls",
+];
 
 /// Checks names in the flat generated namespace.
 fn check_names(schema: &Schema) -> Result<(), Error> {
