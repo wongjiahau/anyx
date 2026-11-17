@@ -6,6 +6,7 @@
 //! - [`typescript`]: the schema's types and a native `Client` and codec.
 
 mod names;
+mod refinement;
 pub(crate) mod rust;
 mod typescript;
 mod wasm;
@@ -119,6 +120,7 @@ fn type_words(schema: &Schema, r#type: &Type) -> String {
             .join(" ")
     };
     match r#type {
+        Type::Refined(base, _) => format!("{} refined", type_words(schema, base)),
         Type::List(item) => format!("list of {}", type_words(schema, item)),
         Type::Map(value) => format!("map of {}", type_words(schema, value)),
         Type::Named(index) => named(*index, &[]),

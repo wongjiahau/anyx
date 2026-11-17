@@ -191,6 +191,7 @@ parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 ## A built-in type such as `Integer` is no keyword: the prelude declares
 ## it, so it reads as a `reference` like any other type.
 type: ONE OF [
+  refined: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
   list: ANYFIX CALL [WORD "LIST", item: type],
   ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
   map: ANYFIX CALL [WORD "MAP", value: type],

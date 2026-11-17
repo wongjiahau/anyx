@@ -105,6 +105,41 @@ Newlines alone do not separate commands: use commas to submit several calls
 in one document. Wrap a multiline argument in brackets or parentheses to keep
 input open while editing.
 
+## Try refinements
+
+The default executable registers only `environment`. To try a tool whose
+schema uses `WHERE`, run the local demo with the same interactive REPL:
+
+```sh
+cargo run -p anyx-shell --example refinements
+```
+
+Enter each command at its own prompt:
+
+```anyx
+checked / limit 10
+checked / limit 29
+checked / limit 30
+checked / revision (1 AS: Revision)
+checked / revision (0 AS: Revision)
+checked / path ("a.poentaro" AS: Score Path)
+checked / path ("a.txt" AS: Score Path)
+checked / short "😀"
+checked / broken limit 10
+```
+
+The first two return `10` and `29`; `30` is `INVALID REQUEST` with the failed
+bound, "less than 30". Revision `1` and the `.poentaro` path pass; revision
+`0` and `.txt` fail. The emoji passes the text length check. `broken limit`
+deliberately returns `30`, producing `INTERNAL ERROR`.
+
+Inline refinements accept arguments of their base type and check the predicate
+without an `AS:` annotation. Named types still use `AS:` with their name.
+`checked / SCHEMA` shows the guide and predicate
+explanations. The demo schema is
+[`examples/refinements.protocol.anyx`](examples/refinements.protocol.anyx).
+Ctrl-D at an empty prompt exits. Piped input also works, one command per line.
+
 ## Scopes and protocols
 
 Every call must name a registered tool: `environment / list variables` or

@@ -29,6 +29,10 @@ the file.
 - A struct around the type underneath per named `TYPE`, with `From` both
   ways: `TYPE File Id: Text` is `pub struct FileId(pub String)`, so a
   `FileId` can't be passed where a `ShareId` goes.
+- A named `TYPE` with a `WHERE` refinement has a private field, a checked
+  `new` constructor and `TryFrom`, and `get` / `into_inner` accessors. Its
+  `FromValue` conversion checks the predicate too. Inline refinements use
+  the base Rust type and are checked by the codec on input and output.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
@@ -104,7 +108,11 @@ wire as padded standard base64. `Float` is a finite JavaScript `number`.
 `Instant` is `Date`; `Duration` is a `bigint` number of milliseconds
 from 0 through 2^64-1. Lists are arrays, maps are string-keyed objects, records use
 camelCase fields, and choices and declared errors use a `kind` discriminant.
-Named `TYPE`s are branded and have a same-named constructor.
+Named `TYPE`s are branded and have a same-named constructor. A refined
+constructor validates its value and throws on failure. The native codec
+checks refinements on requests and responses too, including nested fields,
+container items and generic arguments. Integer predicates use bigint
+arithmetic without rounding; text length counts Unicode scalar values.
 
 Every response is parsed and checked against the expected method before an
 outcome is returned. Invalid text, incorrect values, undeclared errors and

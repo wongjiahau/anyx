@@ -65,3 +65,18 @@ pub fn respond(schema: &Schema, calls: &[Call], outcomes: Vec<Outcome>) -> Strin
     encode_response(schema, calls, &Response::Outcomes(outcomes))
         .expect("every outcome was checked to have a form")
 }
+
+/// Check an outcome before running the next call. Generated servers use this
+/// so an invalid returned value becomes INTERNAL ERROR and stops the batch.
+pub fn validate_outcome(
+    schema: &Schema,
+    call: &Call,
+    outcome: &Outcome,
+) -> Result<(), crate::EncodeError> {
+    encode_response(
+        schema,
+        std::slice::from_ref(call),
+        &Response::Outcomes(vec![outcome.clone()]),
+    )
+    .map(|_| ())
+}

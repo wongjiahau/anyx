@@ -246,6 +246,8 @@ pub enum Type {
     /// A length of time, to the millisecond. On the wire, whole numbers
     /// with their units: `1 hour 30 minutes`.
     Duration,
+    /// A type narrowed by a checked predicate: `(Integer) WHERE [1 <= _]`.
+    Refined(Box<Type>, crate::refinement::Predicate),
     List(Box<Type>),
     /// Text keys, each to a value of the type. On the wire, braces of keys
     /// and values: `{ "hymn" 3, "ode" 1 }`.
@@ -263,6 +265,21 @@ pub enum Type {
 }
 
 impl Type {
+    /// Whether an argument's type matches this parameter before checking its
+    /// value against inline refinements. Named types retain their identity.
+    /// This is only a type check; the parameter's predicates must still run.
+    pub fn accepts_argument_type(&self, argument: &Type) -> bool {
+        if self == argument {
+            return true;
+        }
+        match (self, argument) {
+            (Type::Refined(base, _), argument) => base.accepts_argument_type(argument),
+            (Type::List(expected), Type::List(actual))
+            | (Type::Map(expected), Type::Map(actual)) => expected.accepts_argument_type(actual),
+            _ => false,
+        }
+    }
+
     /// `self` with each of `parameters` replaced by the argument at its
     /// place in `arguments`.
     pub fn substitute(&self, parameters: &[String], arguments: &[Type]) -> Type {
@@ -273,6 +290,10 @@ impl Type {
                 .and_then(|index| arguments.get(index))
                 .cloned()
                 .unwrap_or_else(|| self.clone()),
+            Type::Refined(base, predicate) => Type::Refined(
+                Box::new(base.substitute(parameters, arguments)),
+                predicate.clone(),
+            ),
             Type::List(item) => Type::List(Box::new(item.substitute(parameters, arguments))),
             Type::Map(value) => Type::Map(Box::new(value.substitute(parameters, arguments))),
             Type::Generic(index, inner) => Type::Generic(
@@ -291,7 +312,7 @@ impl Type {
         fn walk<'t>(r#type: &'t Type, found: &mut Vec<&'t str>) {
             match r#type {
                 Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
-                Type::List(item) | Type::Map(item) => walk(item, found),
+                Type::List(item) | Type::Map(item) | Type::Refined(item, _) => walk(item, found),
                 Type::Generic(_, arguments) => {
                     arguments.iter().for_each(|argument| walk(argument, found))
                 }
@@ -482,6 +503,9 @@ impl Schema {
             | Type::Instant
             | Type::Duration => crate::prelude::of(r#type)
                 .map_or_else(|| format!("{type:?}"), |intrinsic| intrinsic.name.clone()),
+            Type::Refined(base, predicate) => {
+                format!("({}) WHERE [{}]", self.type_name(base), predicate.source)
+            }
             Type::List(item) => keyword_before("LIST", self.type_name(item)),
             Type::Map(value) => keyword_before("MAP", self.type_name(value)),
             Type::Named(index) => {
@@ -535,13 +559,21 @@ impl Schema {
     pub fn underlying<'t>(&'t self, r#type: &'t Type) -> &'t Type {
         let mut underlying = r#type;
         // The checker rejects named types that lead back to themselves, so
-        // this ends within as many steps as there are types.
-        for _ in 0..=self.types.len() {
+        // named transitions are bounded; inline refinements are finite trees.
+        let mut named = 0;
+        loop {
             match underlying {
-                Type::Named(index) => match &self.types[*index].kind {
-                    TypeKind::Distinct(inner) => underlying = inner,
-                    TypeKind::Record(_) | TypeKind::Choice(_) => break,
-                },
+                Type::Refined(base, _) => underlying = base,
+                Type::Named(index) => {
+                    named += 1;
+                    if named > self.types.len() {
+                        break;
+                    }
+                    match &self.types[*index].kind {
+                        TypeKind::Distinct(inner) => underlying = inner,
+                        TypeKind::Record(_) | TypeKind::Choice(_) => break,
+                    }
+                }
                 _ => break,
             }
         }

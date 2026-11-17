@@ -485,6 +485,11 @@ impl<'a> Checker<'a> {
         }
         self.check_recursion(&schema);
         if self.diagnostics.is_empty() {
+            for diagnostic in crate::refinement::check_schema(&schema) {
+                self.diagnostics.push(diagnostic);
+            }
+        }
+        if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
         }
         // Examples are read against the schema, defaults and all, which
@@ -1550,6 +1555,25 @@ impl<'a> Checker<'a> {
 
     fn r#type(&mut self, r#type: &ast::Type) -> Type {
         match r#type {
+            ast::Type::Refined {
+                base, predicate, ..
+            } => {
+                let base = self.r#type(base);
+                let source = self.written(predicate.span).to_string();
+                match crate::refinement::Predicate::parse(
+                    &predicate.value,
+                    &source[1..source.len() - 1],
+                ) {
+                    Ok(mut predicate) => {
+                        predicate.path = self.paths[self.file].clone();
+                        Type::Refined(Box::new(base), predicate)
+                    }
+                    Err(message) => {
+                        self.error(predicate.span, message);
+                        base
+                    }
+                }
+            }
             ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
             ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
             ast::Type::Named(reference) => self.type_use(reference),
@@ -1621,7 +1645,9 @@ impl<'a> Checker<'a> {
         fn mentioned(r#type: &Type, found: &mut Vec<usize>) {
             match r#type {
                 Type::Named(index) => found.push(*index),
-                Type::List(item) | Type::Map(item) => mentioned(item, found),
+                Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
+                    mentioned(item, found)
+                }
                 Type::Generic(index, arguments) => {
                     found.push(*index);
                     arguments
@@ -1675,6 +1701,7 @@ impl<'a> Checker<'a> {
             parameters: &mut Vec<&'t str>,
         ) {
             match r#type {
+                Type::Refined(base, _) => held(base, holds_parameters, schema, types, parameters),
                 Type::Named(index) => types.push(*index),
                 Type::Generic(index, arguments) => {
                     types.push(*index);
@@ -1781,7 +1808,7 @@ impl<'a> Checker<'a> {
                     found.push((*index, arguments));
                     arguments.iter().for_each(|argument| uses(argument, found));
                 }
-                Type::List(item) | Type::Map(item) => uses(item, found),
+                Type::List(item) | Type::Map(item) | Type::Refined(item, _) => uses(item, found),
                 _ => {}
             }
         }

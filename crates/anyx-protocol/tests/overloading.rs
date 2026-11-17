@@ -150,7 +150,7 @@ fn an_annotation_is_a_checked_claim() {
     );
     assert_eq!(
         message("tag ([] AS: LIST: TEXT)"),
-        "found the word `TEXT`; expected the word `LIST`, `MAP` or a call whose name has no keyword; the built-in type `Text` is written in Title Case"
+        "found the word `TEXT`; expected the word `LIST`, `MAP`, the call `_ WHERE _` or a call whose name has no keyword; the built-in type `Text` is written in Title Case"
     );
     assert_eq!(
         message("tag [(\"a\" AS Text)]"),

@@ -35,6 +35,7 @@ entry: ONE OF [
 ## These rules are the schema language's type rules, including generic
 ## types. A snapshot test keeps them in step with protocol.anyx.
 type: ONE OF [
+  refined: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
   list: ANYFIX CALL [WORD "LIST", item: type],
   map: ANYFIX CALL [WORD "MAP", value: type],
   named: reference,

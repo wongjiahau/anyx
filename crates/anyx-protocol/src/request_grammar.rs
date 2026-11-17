@@ -82,8 +82,19 @@ pub enum Entry {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    List { item: Box<Type>, span: Span },
-    Map { value: Box<Type>, span: Span },
+    Refined {
+        base: Box<Type>,
+        predicate: Spanned<Vec<Node>>,
+        span: Span,
+    },
+    List {
+        item: Box<Type>,
+        span: Span,
+    },
+    Map {
+        value: Box<Type>,
+        span: Span,
+    },
     Named(Reference),
 }
 
@@ -137,7 +148,7 @@ impl Entry {
 impl Type {
     pub fn span(&self) -> Span {
         match self {
-            Type::List { span, .. } | Type::Map { span, .. } => *span,
+            Type::Refined { span, .. } | Type::List { span, .. } | Type::Map { span, .. } => *span,
             Type::Named(value) => value.span,
         }
     }
@@ -224,6 +235,12 @@ impl support::Errors for Entry {
 impl support::Errors for Type {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
+            Type::Refined {
+                base, predicate, ..
+            } => {
+                support::Errors::errors(base, found);
+                support::Errors::errors(predicate, found);
+            }
             Type::List { item, .. } => {
                 support::Errors::errors(item, found);
             }
@@ -414,9 +431,33 @@ fn decode_entry_field(node: &Node) -> Result<Entry, DecodeError> {
 }
 
 pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
-    decode_type_list(node)
+    decode_type_refined(node)
+        .or_else(|error| error.or(decode_type_list(node)))
         .or_else(|error| error.or(decode_type_map(node)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
+}
+
+fn decode_type_refined(node: &Node) -> Result<Type, DecodeError> {
+    let mut parts = support::call(node, "the call `_ WHERE _`")?;
+    let decoded = Type::Refined {
+        base: parts.one(|node| decode_type(node).map(Box::new), "a type")?,
+        predicate: parts
+            .word("WHERE")?
+            .one(decode_type_refined_predicate, "`[...]`")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_type_refined_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.one_or_more(support::any_node, "a node")?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
 }
 
 fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {

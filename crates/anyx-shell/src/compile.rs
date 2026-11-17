@@ -115,7 +115,9 @@ impl Compiler<'_> {
                     && parameters
                         .iter()
                         .zip(&arguments)
-                        .all(|(parameter, argument)| parameter.r#type == argument.r#type)
+                        .all(|(parameter, argument)| {
+                            parameter.r#type.accepts_argument_type(&argument.r#type)
+                        })
             })
             .collect();
         let [method] = fitting.as_slice() else {
@@ -129,7 +131,9 @@ impl Compiler<'_> {
                         .iter()
                         .zip(&arguments)
                         .enumerate()
-                        .find(|(_, (parameter, argument))| parameter.r#type != argument.r#type)
+                        .find(|(_, (parameter, argument))| {
+                            !parameter.r#type.accepts_argument_type(&argument.r#type)
+                        })
                         .map(|(index, _)| call.arguments[index].span)
                 })
                 .unwrap_or(node.span);
@@ -148,6 +152,21 @@ impl Compiler<'_> {
                 format!("`{name}` has argument types [{found}]; expected one of: {expected}"),
             ));
         };
+        // Re-read in the selected parameter types so literals are checked
+        // against predicates before any call in the document can run.
+        let arguments = call
+            .arguments
+            .iter()
+            .zip(arguments)
+            .zip(&schema.method_at(*method).shape.parameters)
+            .map(|((node, argument), parameter)| {
+                if argument.r#type == parameter.r#type {
+                    Ok(argument)
+                } else {
+                    self.argument(schema, node, Some(&parameter.r#type))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Call {
             scope: scope.text.clone(),
             method: *method,
@@ -424,7 +443,9 @@ impl Compiler<'_> {
         argument: Argument,
         expected: Option<&Type>,
     ) -> Result<Argument, Problem> {
-        if let Some(expected) = expected.filter(|expected| **expected != argument.r#type) {
+        if let Some(expected) =
+            expected.filter(|expected| !expected.accepts_argument_type(&argument.r#type))
+        {
             return Err(self.error(
                 span,
                 format!(
@@ -517,6 +538,10 @@ fn transfer(
         return Some(r#type.clone());
     }
     Some(match r#type {
+        Type::Refined(base, predicate) => Type::Refined(
+            Box::new(transfer(origin, target, base, visited)?),
+            predicate.clone(),
+        ),
         Type::List(item) => Type::List(Box::new(transfer(origin, target, item, visited)?)),
         Type::Map(item) => Type::Map(Box::new(transfer(origin, target, item, visited)?)),
         Type::Named(index) | Type::Generic(index, _) => {

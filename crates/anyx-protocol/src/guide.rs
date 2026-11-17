@@ -83,7 +83,7 @@ or `Instant` never do. Without its annotation, the request is invalid.
 Only a whole argument is annotated; a value inside it is read by the type
 around it. An annotation states the type; it doesn't convert the value.
 
-## Responses
+{refinements}## Responses
 
 The response has one result per call, in the order of the calls, separated
 by commas. A result doesn't repeat its call: the first result answers the
@@ -132,6 +132,7 @@ is a group of errors that methods share by joining it with `+`.{examples}{import
         named_types = named_types(schema),
         built_in = built_in_types(),
         generic_types = generic_types(schema),
+        refinements = refinements(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
             true => EXAMPLES,
             false => "",
@@ -388,6 +389,7 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
 fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
     match r#type {
         Type::Bytes | Type::Instant | Type::Generic(..) => true,
+        Type::Refined(base, _) => always_annotated(schema, base),
         Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
         Type::List(item) | Type::Map(item) => always_annotated(schema, item),
         _ => false,
@@ -396,6 +398,12 @@ fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
 
 /// A value of `type` as an example fills a slot with it.
 fn sample(schema: &Schema, r#type: &Type) -> String {
+    if crate::refinement::has_refinements(schema, r#type) {
+        return crate::refinement::example(schema, r#type)
+            .and_then(|value| crate::encode_value(schema, r#type, &value).ok())
+            .map(|source| source.trim().to_string())
+            .unwrap_or_else(|| "…".to_string());
+    }
     match schema.underlying(r#type) {
         Type::Text => "\"a\"".to_string(),
         Type::Bytes => "\"AQI=\"".to_string(),
@@ -404,6 +412,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Boolean => "(true)".to_string(),
         Type::Instant => "\"2026-11-14T06:00:08.000Z\"".to_string(),
         Type::Duration => "(5 minutes)".to_string(),
+        Type::Refined(base, _) => sample(schema, base),
         Type::List(_) => "[…]".to_string(),
         Type::Map(_) => "{ … }".to_string(),
         Type::Named(index) | Type::Generic(index, _) => match schema.types[*index].kind {
@@ -412,5 +421,86 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
             TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
         },
         Type::Parameter(_) => "…".to_string(),
+    }
+}
+
+fn refinements(schema: &Schema) -> String {
+    fn describe(schema: &Schema, ty: &Type, label: &str, rows: &mut Vec<String>) {
+        match ty {
+            Type::Refined(base, predicate) => {
+                rows.push(format!(
+                    "- `{label}`: a `{}` {} (`{}`).\n",
+                    schema.type_name(base),
+                    predicate.words(),
+                    predicate.source
+                ));
+                describe(schema, base, label, rows);
+            }
+            Type::List(item) | Type::Map(item) => {
+                describe(schema, item, &format!("{label} item"), rows)
+            }
+            Type::Generic(_, args) => {
+                for arg in args {
+                    describe(schema, arg, label, rows);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut rows = Vec::new();
+    for definition in &schema.types {
+        match &definition.kind {
+            TypeKind::Distinct(base) => describe(schema, base, &definition.name, &mut rows),
+            TypeKind::Record(fields) => {
+                for f in fields {
+                    describe(
+                        schema,
+                        &f.r#type,
+                        &format!("{} / {}", definition.name, f.name),
+                        &mut rows,
+                    );
+                }
+            }
+            TypeKind::Choice(variants) => {
+                for v in variants {
+                    for p in &v.shape.parameters {
+                        describe(
+                            schema,
+                            &p.r#type,
+                            &format!("{} / {} / {}", definition.name, v.shape.text, p.name),
+                            &mut rows,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    for method in &schema.methods {
+        for p in method.shape.parameters.iter().chain(method.returns.iter()) {
+            describe(
+                schema,
+                &p.r#type,
+                &format!("{} / {}", method.shape.text, p.name),
+                &mut rows,
+            );
+        }
+    }
+    for error in &schema.errors {
+        for p in &error.error.shape.parameters {
+            describe(
+                schema,
+                &p.r#type,
+                &format!("{} / {}", error.error.shape.text, p.name),
+                &mut rows,
+            );
+        }
+    }
+    if rows.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "## Refinements\n\nA refined value has its base type's representation and must satisfy every\npredicate. A failed argument rejects the whole request before any call runs.\nA failed returned value is an internal server error.\n\n{}\n",
+            rows.concat()
+        )
     }
 }

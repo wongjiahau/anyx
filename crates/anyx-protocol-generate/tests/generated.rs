@@ -228,3 +228,15 @@ fn an_overload_whose_name_another_method_has_is_rejected() {
         "found `tag with text`, which becomes the method `tag_with_text`, like `tag (Text)`; expected names that stay distinct in the generated code, so rename one"
     );
 }
+
+#[test]
+fn refined_types_are_generated_with_checked_constructors() {
+    let schema = Schema::parse(include_str!("fixtures/refined.protocol.anyx")).unwrap();
+    let rust = anyx_protocol_generate::rust(&schema).unwrap();
+    let rust = anyx_protocol_generate::format_rust(&rust).unwrap();
+    assert_snapshot("tests/generated/refined.rs", &rust);
+    assert_snapshot(
+        "tests/generated/refined.ts",
+        &anyx_protocol_generate::typescript(&schema).unwrap(),
+    );
+}

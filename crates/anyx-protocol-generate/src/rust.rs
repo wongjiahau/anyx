@@ -95,6 +95,7 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
         Type::Boolean => "bool".to_string(),
         Type::Instant => "::std::time::SystemTime".to_string(),
         Type::Duration => "::std::time::Duration".to_string(),
+        Type::Refined(base, _) => rust_type(schema, base),
         Type::List(item) => format!("Vec<{}>", rust_type(schema, item)),
         Type::Map(value) => format!(
             "::std::collections::BTreeMap<String, {}>",
@@ -238,6 +239,21 @@ fn record(
 /// A named type: a struct around the type underneath, which converts to and
 /// from it, and is written on the wire exactly like it.
 fn newtype(out: &mut String, schema: &Schema, doc: &str, name: &str, underlying: &Type) {
+    if anyx_protocol::refinement::has_refinements(schema, underlying) {
+        let index = schema
+            .types
+            .iter()
+            .position(|definition| pascal_case(&definition.name) == name)
+            .unwrap();
+        let inner = rust_type(schema, underlying);
+        write!(out, "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name}({inner});\n\n\
+            impl {name} {{\n    pub fn new(value: {inner}) -> Result<Self, String> {{\n        let wire = value.clone().into_value();\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &wire)?;\n        Ok(Self(value))\n    }}\n    pub fn get(&self) -> &{inner} {{ &self.0 }}\n    pub fn into_inner(self) -> {inner} {{ self.0 }}\n}}\n\n\
+            impl TryFrom<{inner}> for {name} {{\n    type Error = String;\n    fn try_from(value: {inner}) -> Result<Self, Self::Error> {{ Self::new(value) }}\n}}\n\n\
+            impl From<{name}> for {inner} {{\n    fn from(value: {name}) -> Self {{ value.0 }}\n}}\n\n\
+            impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{ self.0.into_value() }}\n}}\n\n\
+            impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &value).ok()?;\n        FromValue::from_value(value).map(Self)\n    }}\n}}\n\n").unwrap();
+        return;
+    }
     let underlying = rust_type(schema, underlying);
     write!(
         out,
@@ -474,7 +490,8 @@ fn handle(out: &mut String, schema: &Schema) {
          \x20       if stopped {{\n            outcomes.push(anyx_protocol::Outcome::NotRun);\n            continue;\n        }}\n\
          \x20       let mut arguments = call.arguments.clone().into_iter();\n\
          \x20       let outcome = match call.method {{\n{arms}            {introspection} => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),\n            _ => unreachable!(\"the codec read a method of the schema\"),\n        }};\n\
-         \x20       outcomes.push(outcome.unwrap_or_else(|error| {{\n            on_internal_error(error);\n            stopped = true;\n            anyx_protocol::Outcome::InternalError\n        }}));\n    }}\n\
+         \x20       let outcome = outcome.unwrap_or_else(|error| {{\n            on_internal_error(error);\n            stopped = true;\n            anyx_protocol::Outcome::InternalError\n        }});\n\
+         \x20       if anyx_protocol::server::validate_outcome(schema, call, &outcome).is_err() {{\n            stopped = true;\n            outcomes.push(anyx_protocol::Outcome::InternalError);\n        }} else {{\n            outcomes.push(outcome);\n        }}\n    }}\n\
          \x20   anyx_protocol::server::respond(schema, &calls, outcomes)\n}}\n\n",
         introspection = schema.introspection(),
     )

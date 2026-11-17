@@ -116,6 +116,18 @@ fn same_type(schema: &Schema, values: &[&Syntax]) -> Option<Type> {
 pub(crate) fn request_type(schema: &Schema, written: &request::Type) -> Option<Type> {
     fn schema_type(written: &request::Type) -> ast::Type {
         match written {
+            request::Type::Refined {
+                base,
+                predicate,
+                span,
+            } => ast::Type::Refined {
+                base: Box::new(schema_type(base)),
+                predicate: ast::Spanned {
+                    value: predicate.value.clone(),
+                    span: predicate.span,
+                },
+                span: *span,
+            },
             request::Type::List { item, span } => ast::Type::List {
                 item: Box::new(schema_type(item)),
                 span: *span,
@@ -146,6 +158,14 @@ fn only<'d, T: 'd>(mut found: impl Iterator<Item = (usize, &'d T)>) -> Option<Ty
 
 fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
     Some(match written {
+        ast::Type::Refined {
+            base, predicate, ..
+        } => {
+            let base = resolve(schema, base)?;
+            let predicate = crate::refinement::Predicate::from_nodes(&predicate.value).ok()?;
+            predicate.check_type(schema, &base).ok()?;
+            Type::Refined(Box::new(base), predicate)
+        }
         ast::Type::List { item, .. } => Type::List(Box::new(resolve(schema, item)?)),
         ast::Type::Map { value, .. } => Type::Map(Box::new(resolve(schema, value)?)),
         ast::Type::Named(reference) => {
@@ -182,6 +202,8 @@ fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
 /// same type, where a type parameter stands for every type.
 pub(crate) fn overlaps(a: &Type, b: &Type) -> bool {
     match (a, b) {
+        (Type::Refined(a, _), Type::Refined(b, _)) => overlaps(a, b),
+        (Type::Refined(a, _), b) | (b, Type::Refined(a, _)) => overlaps(a, b),
         (Type::Parameter(_), _) | (_, Type::Parameter(_)) => true,
         (Type::List(a), Type::List(b)) | (Type::Map(a), Type::Map(b)) => overlaps(a, b),
         (Type::Generic(a, a_arguments), Type::Generic(b, b_arguments)) => {

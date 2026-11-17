@@ -25,6 +25,15 @@ fn describe(value: &Syntax) -> String {
 }
 
 pub(crate) fn decode(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value, Mismatch> {
+    let decoded = decode_raw(schema, expected, value)?;
+    crate::refinement::validate(schema, expected, &decoded).map_err(|message| Mismatch {
+        span: value.span(),
+        message,
+    })?;
+    Ok(decoded)
+}
+
+fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value, Mismatch> {
     if let Syntax::Boolean(boolean) = value {
         return decode(schema, expected, &boolean_call(boolean));
     }
@@ -170,6 +179,7 @@ pub(crate) fn decode(schema: &Schema, expected: &Type, value: &Syntax) -> Result
                 TypeKind::Distinct(_) => unreachable!("underlying reads past named types"),
             }
         }
+        (Type::Refined(..), _) => unreachable!("underlying removes refinements"),
         (Type::Parameter(name), _) => Err(mismatch(format!(
             "a value of a type in place of the type parameter `{name}`"
         ))),

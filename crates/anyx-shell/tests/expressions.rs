@@ -291,3 +291,108 @@ fn argument_failure_keeps_effects_of_preceding_arguments() {
     assert_eq!(*calls.borrow(), ["text"]);
     assert!(execution.output.is_empty());
 }
+
+#[test]
+fn refined_types_translate_their_base_type_indices_across_protocols() {
+    let (mut interpreter, _) = interpreter();
+    interpreter.register("source",Identity(Schema::parse("PROTOCOL source VERSION 1, TYPE Count: Integer, TYPE Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, RECORD Earlier { value: Text }, TYPE Count: Integer, TYPE Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    let result = interpreter
+        .execute("target / identity (source / identity (1 AS: Positive))")
+        .unwrap();
+    assert!(result.error.is_none());
+    assert_eq!(result.values, vec![Value::Integer(1)]);
+    interpreter.register("different",Identity(Schema::parse("PROTOCOL different VERSION 1, TYPE Count: Integer, TYPE Positive: Count . WHERE [10 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    assert!(
+        interpreter
+            .execute("different / identity (source / identity (1 AS: Positive))")
+            .is_err()
+    );
+}
+
+#[test]
+fn inline_refinement_literals_are_checked_before_any_tool_runs() {
+    let (mut interpreter, calls) = interpreter();
+    interpreter
+        .register(
+            "checked",
+            Identity(Schema::parse(include_str!("../examples/refinements.protocol.anyx")).unwrap()),
+        )
+        .unwrap();
+    for request in [
+        r#"checked / short "he""#,
+        r#"checked / short ("😀")"#,
+        "checked / limit 10",
+    ] {
+        let result = interpreter.execute(request).unwrap();
+        assert!(result.error.is_none(), "{request}: {result:?}");
+    }
+    let error = interpreter
+        .execute("example / text,\nchecked / short (\"hello\")")
+        .unwrap_err();
+    assert!(error.message.contains("at most 3"), "{error}");
+    assert_eq!(error.line, 2);
+    assert!(calls.borrow().is_empty());
+    let error = interpreter.execute("checked / limit 30").unwrap_err();
+    assert!(error.message.contains("less than 30"), "{error}");
+}
+
+#[test]
+fn computed_refinement_arguments_are_checked_before_the_parent_runs() {
+    let (mut interpreter, calls) = interpreter();
+    struct Tracked {
+        schema: Schema,
+        calls: Rc<RefCell<Vec<String>>>,
+    }
+    impl Tool for Tracked {
+        fn schema(&self) -> &Schema {
+            &self.schema
+        }
+        fn invoke(&mut self, call: &Call) -> Outcome {
+            self.calls.borrow_mut().push("parent".into());
+            Outcome::Value(call.arguments[0].clone())
+        }
+    }
+    interpreter
+        .register(
+            "checked",
+            Tracked {
+                schema: Schema::parse(include_str!("../examples/refinements.protocol.anyx"))
+                    .unwrap(),
+                calls: calls.clone(),
+            },
+        )
+        .unwrap();
+    let result = interpreter
+        .execute("checked / short (example / text)")
+        .unwrap();
+    // The source returns `hello`, which violates the consuming parameter.
+    assert_eq!(result.error.as_deref(), Some("INTERNAL ERROR\n"));
+    assert!(result.values.is_empty());
+    assert_eq!(*calls.borrow(), ["text"]);
+}
+
+#[test]
+fn refinement_overloads_resolve_using_base_types() {
+    let (mut interpreter, _) = interpreter();
+    interpreter
+        .register(
+            "checked",
+            Identity(
+                Schema::parse(
+                    r#"PROTOCOL checked VERSION 1,
+METHOD use (value: Text . WHERE [1 <= (_ length)]) RETURNS (value: Text),
+METHOD use (value: Integer . WHERE [0 < _]) RETURNS (value: Integer),
+"#,
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+    for request in [r#"checked / use "he""#, "checked / use 1"] {
+        assert!(
+            interpreter.execute(request).unwrap().error.is_none(),
+            "{request}"
+        );
+    }
+}
