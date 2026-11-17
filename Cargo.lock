@@ -55,6 +55,7 @@ version = "0.1.0"
 dependencies = [
  "anyx-generator",
  "anyx-protocol",
+ "serde_json",
 ]
 
 [[package]]

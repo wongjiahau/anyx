@@ -5,7 +5,7 @@ export interface PageOf<Item> {
   items: Item[];
   next?: string;
   /** How many there are in all. */
-  total: number;
+  total: bigint;
 }
 
 /**
@@ -35,7 +35,7 @@ export interface TableFromTo<Key, ValueParameter> {
 }
 
 export interface Payment {
-  amount: number;
+  amount: bigint;
   at: Date;
 }
 
@@ -50,52 +50,394 @@ export function Payments(value: PageOf<Payment>): Payments {
   return value as Payments;
 }
 
-function revivePageOf<Item>(reviveItem: (json: any) => Item): (json: any) => PageOf<Item> {
-  return function (json: any): PageOf<Item> {
-    return { ...json, items: ((json: any[]) => json.map(reviveItem))(json.items) };
-  };
-}
+// Runtime descriptors are emitted from the same checked schema as the API.
+type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string };
+type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
+type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
+type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; optional: boolean; defaultValue?: () => unknown };
+type Definition = { parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
+type Bindings = Record<string, TypeDescriptor>;
 
-function reviveOr<ValueParameter, Problem>(reviveValueParameter: (json: any) => ValueParameter, reviveProblem: (json: any) => Problem): (json: any) => Or<ValueParameter, Problem> {
-  return function (json: any): Or<ValueParameter, Problem> {
-    switch (json.kind) {
-      case "done":
-        return { ...json, value: reviveValueParameter(json.value) };
-      case "failed":
-        return { ...json, problem: reviveProblem(json.problem) };
-      default:
-        return json;
+function fail(message: string): never { throw new Error(`AnyX codec: ${message}`); }
+function resolved(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
+  if (type.k !== "parameter") return type;
+  const found = bindings[type.name!];
+  if (!found) return fail(`unbound type parameter ${type.name}`);
+  return resolved(found, bindings);
+}
+function substitute(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
+  type = resolved(type, bindings);
+  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)) };
+}
+function instance(type: TypeDescriptor, bindings: Bindings): [Definition, Bindings] {
+  const def = definitions[type.index!];
+  if (!def || def.parameters.length !== type.args!.length) return fail("invalid type descriptor");
+  const next: Bindings = Object.assign(Object.create(null), bindings);
+  def.parameters.forEach((name, index) => { next[name] = substitute(type.args![index], bindings); });
+  return [def, next];
+}
+function quoted(value: string): string {
+  return `"${Array.from(value, c => {
+    if (c === '"') return '\\"';
+    if (c === "\\") return "\\\\";
+    if (c === "\n") return "\\n";
+    if (c === "\r") return "\\r";
+    if (c === "\t") return "\\t";
+    const n = c.codePointAt(0)!;
+    if (n >= 0xd800 && n <= 0xdfff) return fail("unpaired surrogate in text");
+    return n < 32 || (n >= 127 && n <= 159) ? `\\u{${n.toString(16)}}` : c;
+  }).join("")}"`;
+}
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function encodeBytes(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
+    out += alphabet[n >>> 18] + alphabet[(n >>> 12) & 63] + (i + 1 < bytes.length ? alphabet[(n >>> 6) & 63] : "=") + (i + 2 < bytes.length ? alphabet[n & 63] : "=");
+  }
+  return out;
+}
+function object(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Object.prototype.toString.call(value) !== "[object Object]") return fail("expected an object");
+  return value as Record<string, unknown>;
+}
+const durationUnits: [string, bigint][] = [["day",86400000n], ["hour",3600000n], ["minute",60000n], ["second",1000n], ["millisecond",1n]];
+function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = {}): string {
+  type = resolved(type, bindings);
+  switch (type.k) {
+    case "text": if (typeof value === "string") return quoted(value); break;
+    case "bytes": if (value instanceof Uint8Array) return quoted(encodeBytes(value)); break;
+    case "integer": if (typeof value === "bigint" && value >= -(1n << 63n) && value < (1n << 63n)) return String(value); break;
+    case "float": if (typeof value === "number" && Number.isFinite(value)) { const s = Object.is(value, -0) ? "-0" : String(value); return /[.eE]/.test(s) ? s : `${s}.0`; } break;
+    case "boolean": if (typeof value === "boolean") return String(value); break;
+    case "instant": if (value instanceof Date && Number.isFinite(value.valueOf())) { const text = value.toISOString(); if (/^\d{4}-/.test(text)) return quoted(text); } break;
+    case "duration": if (typeof value === "bigint" && value >= 0n && value <= (1n << 64n) - 1n) {
+      let rest = value; const output: string[] = [];
+      for (const [name, size] of durationUnits) { const n = rest / size; rest %= size; if (n) output.push(`${n} ${name}${n === 1n ? "" : "s"}`); }
+      return output.join(" ") || "0 seconds";
+    } break;
+    case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
+    case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "named": {
+      const [def, env] = instance(type, bindings);
+      if (def.kind === "distinct") return encodeValue(def.type!, value, env);
+      const obj = object(value);
+      if (def.kind === "record") {
+        const fields = def.fields!;
+        for (const key of Object.keys(obj)) if (!fields.some(f => f.name === key)) return fail(`unknown field ${key}`);
+        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.optional ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
+      }
+      const variant = def.variants!.find(v => v.kind === obj.kind);
+      if (!variant) return fail("unknown choice variant");
+      return encodeShape(variant, variant.params.map(p => obj[p.name]), env);
     }
-  };
+  }
+  return fail(`invalid ${type.k} value`);
+}
+function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
+  if (args.length !== shape.params.length) return fail("incorrect argument count");
+  let i = 0;
+  return shape.text.split(" ").map(word => word === "_" ? `(${encodeValue(shape.params[i].type, args[i++], bindings)})` : word).join(" ");
+}
+function encodeCall(method: MethodDescriptor, args: unknown[]): string {
+  if (args.length !== method.shape.params.length) return fail("incorrect argument count");
+  let i = 0;
+  return method.shape.text.split(" ").map(word => {
+    if (word !== "_") return word;
+    const p = method.shape.params[i];
+    return `(${encodeValue(p.type, args[i++])} AS: ${p.annotation})`;
+  }).join(" ");
 }
 
-function reviveDated<Item>(reviveItem: (json: any) => Item): (json: any) => Dated<Item> {
-  return function (json: any): Dated<Item> {
-    return { ...json, item: reviveItem(json.item), at: reviveInstant(json.at) };
-  };
+type Syntax = { tag: "arg"; value: Syntax } | { tag: "word" | "number" | "text"; text: string } | { tag: "call"; parts: Syntax[] } | { tag: "list" | "braces"; items: Syntax[] };
+function parseDocument(source: string): Syntax[] {
+  for (const c of source) { const n = c.codePointAt(0)!; if (n >= 0xd800 && n <= 0xdfff) return fail("unpaired surrogate in source"); }
+  let at = 0;
+  function whitespace(): void {
+    while (at < source.length) {
+      if (/\s/u.test(source[at]) || (at === 0 && source[at] === "\ufeff")) { at++; continue; }
+      if (source.startsWith("##", at)) { while (at < source.length && source[at] !== "\n") at++; continue; }
+      break;
+    }
+  }
+  function text(): Syntax {
+    if (source[at] === "#") {
+      const lineStart = source.lastIndexOf("\n", at - 1) + 1;
+      const joins = /^[ \t]*$/.test(source.slice(lineStart, at));
+      const lines: string[] = [];
+      while (true) {
+        at++;
+        if (source[at] === " ") at++;
+        const start = at;
+        while (at < source.length && source[at] !== "\n") at++;
+        lines.push(source.slice(start, at).replace(/\r$/, ""));
+        if (!joins || source[at] !== "\n") break;
+        const next = source.slice(at + 1).match(/^[ \t]*#(?!#)/);
+        if (!next) break;
+        at += next[0].length;
+      }
+      return { tag: "text", text: lines.join("\n") };
+    }
+    let count = 0;
+    while (source[at + count] === '"') count++;
+    if (count >= 3) {
+      at += count;
+      while (source[at] === " " || source[at] === "\t") at++;
+      if (source[at] !== "\n" && !(source[at] === "\r" && source[at + 1] === "\n")) return fail("invalid raw string opening");
+      if (source[at] === "\r") at++;
+      at++;
+      const lines: string[] = [];
+      while (at <= source.length) {
+        const end = source.indexOf("\n", at);
+        const line = source.slice(at, end < 0 ? source.length : end).replace(/\r$/, "");
+        const close = line.match(/^[ \t]*/)!;
+        if (line.slice(close[0].length).startsWith('"'.repeat(count)) && line[close[0].length + count] !== '"') {
+          const indent = close[0];
+          at += indent.length + count;
+          return { tag: "text", text: lines.map(line => line.trim() === "" ? "" : line.startsWith(indent) ? line.slice(indent.length) : fail("invalid raw string indentation")).join("\n") };
+        }
+        if (end < 0) return fail("unterminated raw string");
+        lines.push(line); at = end + 1;
+      }
+      return fail("unterminated raw string");
+    }
+    at++;
+    let out = "";
+    while (at < source.length && source[at] !== '"') {
+      const c = source[at++];
+      if (c !== "\\") { out += c; continue; }
+      const escape = source[at++]?.toLowerCase();
+      const simple: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+      if (escape in simple) { out += simple[escape]; continue; }
+      if (escape === "u" && source[at] !== "{") {
+        const digits = source.slice(at, at + 4); if (!/^[0-9a-fA-F]{4}$/.test(digits)) return fail("invalid Unicode escape");
+        at += 4; let code = parseInt(digits, 16);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          const low = source.slice(at).match(/^\\[uU]([0-9a-fA-F]{4})/); if (!low) return fail("unpaired surrogate");
+          const value = parseInt(low[1], 16); if (value < 0xdc00 || value > 0xdfff) return fail("unpaired surrogate");
+          at += 6; code = 0x10000 + ((code - 0xd800) << 10) + value - 0xdc00;
+        } else if (code >= 0xdc00 && code <= 0xdfff) return fail("unpaired surrogate");
+        out += String.fromCodePoint(code); continue;
+      }
+      if (escape === "u" && source[at++] === "{") {
+        const end = source.indexOf("}", at);
+        const digits = source.slice(at, end);
+        if (end < 0 || !/^[0-9a-fA-F]{1,6}$/.test(digits)) return fail("invalid Unicode escape");
+        const code = parseInt(digits, 16);
+        if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return fail("invalid Unicode scalar");
+        out += String.fromCodePoint(code); at = end + 1; continue;
+      }
+      return fail("invalid string escape");
+    }
+    if (source[at++] !== '"') return fail("unterminated string");
+    return { tag: "text", text: out };
+  }
+  function sequence(close = "", depth = 0): Syntax[] {
+    if (depth > 256) return fail("nesting too deep");
+    const result: Syntax[] = [];
+    while (true) {
+      whitespace();
+      if (close && source[at] === close) { at++; return result; }
+      if (at === source.length) { if (close) return fail("unclosed group"); return result; }
+      if (source[at] === ",") return fail("empty element");
+      let run: Syntax[] = [];
+      const runs: Syntax[][] = [];
+      const operators: string[] = [];
+      while (true) {
+        whitespace();
+        const c = source[at];
+        if (!c || c === "," || c === close) break;
+        if (")]}".includes(c)) return fail("unexpected punctuation");
+        if (c === ":" || c === ".") { if (!run.length) return fail("missing operand"); runs.push(run); operators.push(c); run = []; at++; continue; }
+        if (c === '"' || c === "#") { run.push(text()); continue; }
+        if (c === "(" || c === "[" || c === "{") {
+          at++;
+          const items = sequence(c === "(" ? ")" : c === "[" ? "]" : "}", depth + 1);
+          if (c === "(") { if (items.length !== 1) return fail("parentheses must contain one value"); run.push({ tag: "arg", value: items[0] }); }
+          else run.push({ tag: c === "[" ? "list" : "braces", items });
+          continue;
+        }
+        const rest = source.slice(at);
+        const number = rest.match(/^-?(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)/);
+        if (number) { run.push({ tag: "number", text: number[0] }); at += number[0].length; continue; }
+        const word = rest.match(/^[\p{L}_][\p{L}\p{N}_]*/u) || rest.match(/^[^\s,:.()\[\]{}#"\p{L}\p{N}_]+/u);
+        if (!word) return fail("invalid token");
+        run.push({ tag: "word", text: word[0] }); at += word[0].length;
+      }
+      if (!run.length) return fail("missing value");
+      runs.push(run);
+      const fill = (receiver: Syntax[], value: Syntax, front: boolean): Syntax[] => {
+        const slots = receiver.filter(p => word(p, "_")).length;
+        if (slots > 1) return fail("multiple placeholders");
+        const arg: Syntax = { tag: "arg", value };
+        return slots ? receiver.map(p => word(p, "_") ? arg : p) : front ? [arg, ...receiver] : [...receiver, arg];
+      };
+      const groups: Syntax[][] = [runs[0]];
+      for (let i = 0; i < operators.length; i++) {
+        if (operators[i] === ".") groups[groups.length - 1] = fill(runs[i + 1], syntaxRun(groups[groups.length - 1]), true);
+        else groups.push(runs[i + 1]);
+      }
+      let expression = syntaxRun(groups.pop()!);
+      while (groups.length) expression = syntaxRun(fill(groups.pop()!, expression, false));
+      result.push(expression);
+      whitespace();
+      if (source[at] === ",") { at++; continue; }
+      if (close && source[at] === close) { at++; return result; }
+      if (at === source.length && !close) return result;
+      return fail("expected a comma or closing bracket");
+    }
+  }
+  return sequence();
 }
-
-function reviveTreeOf<Item>(reviveItem: (json: any) => Item): (json: any) => TreeOf<Item> {
-  return function (json: any): TreeOf<Item> {
-    return { ...json, value: reviveItem(json.value), children: ((json: any[]) => json.map(reviveTreeOf(reviveItem)))(json.children) };
-  };
+function ungroup(node: Syntax): Syntax { while (node.tag === "arg") node = node.value; return node; }
+function parts(node: Syntax): Syntax[] { node = ungroup(node); return node.tag === "call" ? node.parts : [node]; }
+function word(node: Syntax | undefined, expected: string): boolean { return !!node && node.tag === "word" && node.text === expected; }
+function syntaxRun(nodes: Syntax[]): Syntax {
+  const keyword = (n: Syntax) => n.tag === "word" && /\p{Lu}/u.test(n.text) && !/\p{Ll}/u.test(n.text);
+  const symbol = (n: Syntax) => n.tag === "word" && !/^[\p{L}_]/u.test(n.text);
+  const split = nodes.some(keyword) ? keyword : nodes.some(symbol) ? symbol : null;
+  if (!split) return fromParts(nodes);
+  const output: Syntax[] = []; let stretch: Syntax[] = [];
+  const flush = () => { if (stretch.length) { output.push({ tag: "arg", value: syntaxRun(stretch) }); stretch = []; } };
+  for (const n of nodes) { if (split(n)) { flush(); output.push(n); } else stretch.push(n); }
+  flush();
+  return fromParts(output);
 }
-
-function reviveTableFromTo<Key, ValueParameter>(reviveKey: (json: any) => Key, reviveValueParameter: (json: any) => ValueParameter): (json: any) => TableFromTo<Key, ValueParameter> {
-  return function (json: any): TableFromTo<Key, ValueParameter> {
-    return { ...json, keys: ((json: any[]) => json.map(reviveKey))(json.keys), values: ((json: any[]) => json.map(reviveValueParameter))(json.values) };
-  };
+function fromParts(nodes: Syntax[]): Syntax {
+  if (!nodes.length) return fail("missing value");
+  return nodes.length === 1 ? nodes[0] : { tag: "call", parts: nodes };
 }
-
-function revivePayment(json: any): Payment {
-  return { ...json, at: reviveInstant(json.at) };
+function shapeValue(shape: ShapeDescriptor, node: Syntax, bindings: Bindings): Record<string, unknown> | null {
+  const tokens = parts(node), shapeParts = shape.text.split(" ");
+  if (tokens.length !== shapeParts.length) return null;
+  if (shapeParts.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return null;
+  const out: Record<string, unknown> = { kind: shape.kind };
+  let i = 0;
+  for (let n = 0; n < shapeParts.length; n++) {
+    if (shapeParts[n] === "_") { const p = shape.params[i++]; Object.defineProperty(out, p.name, { value: decodeValue(p.type, tokens[n], bindings), enumerable: true, writable: true, configurable: true }); }
+    else if (!word(tokens[n], shapeParts[n])) return null;
+  }
+  return out;
 }
-
-/** The reviver of an argument of a generic type that needs no reviving. */
-function unchanged(json: any): any {
-  return json;
+function decodeBytes(value: string): Uint8Array {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return fail("invalid base64");
+  const out: number[] = [];
+  for (let i = 0; i < value.length; i += 4) {
+    const a = alphabet.indexOf(value[i]), b = alphabet.indexOf(value[i + 1]);
+    const c = value[i + 2] === "=" ? 0 : alphabet.indexOf(value[i + 2]);
+    const d = value[i + 3] === "=" ? 0 : alphabet.indexOf(value[i + 3]);
+    if ((value[i + 2] === "=" && (b & 15)) || (value[i + 3] === "=" && value[i + 2] !== "=" && (c & 3))) return fail("non-canonical base64");
+    const n = a << 18 | b << 12 | c << 6 | d;
+    out.push(n >>> 16, ...(value[i + 2] === "=" ? [] : [(n >>> 8) & 255]), ...(value[i + 3] === "=" ? [] : [n & 255]));
+  }
+  return new Uint8Array(out);
 }
-
+function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}): unknown {
+  type = resolved(type, bindings);
+  node = ungroup(node);
+  switch (type.k) {
+    case "text": if (node.tag === "text") return node.text; break;
+    case "bytes": if (node.tag === "text") return decodeBytes(node.text); break;
+    case "integer": if (node.tag === "number" && /^-?\d+$/.test(node.text)) {
+      try {
+        let text = node.text.replace(/_/g, "");
+        const negative = text.startsWith("-");
+        if (negative) text = text.slice(1);
+        const n = BigInt(text) * (negative ? -1n : 1n);
+        if (n >= -(1n << 63n) && n < (1n << 63n)) return n;
+      } catch { /* malformed number */ }
+      break;
+    } break;
+    case "float": if (node.tag === "number" && /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text) && /[.eE]/.test(node.text)) { const n = Number(node.text.replace(/_/g, "")); if (Number.isFinite(n)) return n; } break;
+    case "boolean": if (word(node, "true")) return true; if (word(node, "false")) return false; break;
+    case "instant": if (node.tag === "text" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(node.text)) { const date = new Date(node.text); const canonical = node.text.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction || "").padEnd(3, "0")}Z`); if (Number.isFinite(date.valueOf()) && date.toISOString() === canonical) return date; } break;
+    case "duration": { const p = parts(node); if (!p.length || p.length % 2) break; let total = 0n, previous = -1;
+      for (let i = 0; i < p.length; i += 2) { const count = p[i], unit = p[i + 1]; if (count.tag !== "number" || !/^\d+$/.test(count.text) || unit.tag !== "word") return fail("invalid duration");
+        const index = durationUnits.findIndex(([name]) => unit.text === name || unit.text === `${name}s`);
+        if (index <= previous) return fail("invalid duration unit order"); previous = index;
+        total += BigInt(count.text) * durationUnits[index][1]; if (total > (1n << 64n) - 1n) return fail("duration exceeds unsigned 64-bit range");
+      } return total; }
+    case "list": if (node.tag === "list") return node.items.map(n => decodeValue(type.item!, n, bindings)); break;
+    case "map": if (node.tag === "braces") {
+      const out: Record<string, unknown> = Object.create(null);
+      for (const entry of node.items) {
+        const p = parts(entry);
+        if (p.length !== 2 || p[0].tag !== "text" || p[1].tag === "word" || Object.hasOwn(out, p[0].text)) return fail("invalid map entry");
+        out[p[0].text] = decodeValue(type.item!, fromParts(p.slice(1)), bindings);
+      }
+      return out;
+    } break;
+    case "named": {
+      const [def, env] = instance(type, bindings);
+      if (def.kind === "distinct") return decodeValue(def.type!, node, env);
+      if (def.kind === "record" && node.tag === "braces") {
+        const out: Record<string, unknown> = {};
+        for (const entry of node.items) {
+          const p = parts(entry);
+          const field = def.fields!.find(f => {
+            const words = f.wire.split(" ");
+            return p.length === words.length + 1 && p[words.length].tag !== "word" && words.every((w, i) => word(p[i], w));
+          });
+          if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
+          Object.defineProperty(out, field.name, { value: decodeValue(field.type, fromParts(p.slice(field.wire.split(" ").length)), env), enumerable: true, writable: true, configurable: true });
+        }
+        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else if (!f.optional) return fail(`missing field ${f.wire}`); }
+        return out;
+      }
+      if (def.kind === "choice") {
+        for (const variant of def.variants!) { const value = shapeValue(variant, node, env); if (value) return value; }
+      }
+      break;
+    }
+  }
+  return fail(`invalid ${type.k} value`);
+}
+function decodeResponses(descriptors: MethodDescriptor[], response: string): Outcome<never, never>[] {
+  const nodes = parseDocument(response);
+  if (nodes.length === 1) {
+    const p = parts(nodes[0]);
+    if (p.length === 3 && word(p[0], "INVALID") && word(p[1], "REQUEST") && ungroup(p[2]).tag === "braces") {
+      const problem = ungroup(p[2]) as {tag: "braces"; items: Syntax[]};
+      const obj: Record<string, Syntax> = {};
+      for (const entry of problem.items) { const e = parts(entry); if (e.length !== 2 || e[0].tag !== "word" || Object.hasOwn(obj, e[0].text)) return fail("invalid request problem"); obj[e[0].text] = ungroup(e[1]); }
+      if (Object.keys(obj).length !== 3 || obj.line?.tag !== "number" || obj.column?.tag !== "number" || obj.message?.tag !== "text" || !/^\d+$/.test(obj.line.text) || !/^\d+$/.test(obj.column.text)) return fail("invalid request problem");
+      const line = Number(obj.line.text), column = Number(obj.column.text);
+      if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column)) return fail("invalid request position");
+      return descriptors.map(() => ({ kind: "invalidRequest", line, column, message: (obj.message as {text: string}).text }));
+    }
+  }
+  if (nodes.length !== descriptors.length) return fail("incorrect outcome count");
+  return nodes.map((node, index) => {
+    const p = parts(node), method = descriptors[index];
+    if (p.length === 2 && word(p[0], "NOT") && word(p[1], "RUN")) return { kind: "notRun" };
+    if (p.length === 2 && word(p[0], "INTERNAL") && word(p[1], "ERROR")) return { kind: "internalError" };
+    if (p.length === 2 && word(p[0], "RETURNS") && word(p[1], "NOTHING") && !method.returns) return { kind: "value", value: undefined as never };
+    if (word(p[0], "RETURNS") && p.length === 2 && p[1].tag !== "word") {
+      if (!method.returns) { if (p.length === 2 && word(p[1], "NOTHING")) return { kind: "value", value: undefined as never }; return fail("expected NOTHING"); }
+      return { kind: "value", value: decodeValue(method.returns, fromParts(p.slice(1))) as never };
+    }
+    if (word(p[0], "ERROR") && p.length === 2 && p[1].tag !== "word") {
+      for (const shape of method.errors) { const value = shapeValue(shape, fromParts(p.slice(1)), {}); if (value) return { kind: "error", error: value as never }; }
+    }
+    return fail("invalid outcome");
+  });
+}
+const definitions: Definition[] = [{parameters:["item"],kind:'record', fields:[{wire:"items", name:"items", type:{k:'list', item:{k:'parameter', name:"item"}}, optional:false},{wire:"next", name:"next", type:{k:'text'}, optional:true},{wire:"total", name:"total", type:{k:'integer'}, optional:true, defaultValue:()=>0n}]},
+{parameters:["value","problem"],kind:'choice', variants:[{text:"done _", kind:"done", params:[{name:"value", type:{k:'parameter', name:"value"}, annotation:"value"}]},{text:"failed _", kind:"failed", params:[{name:"problem", type:{k:'parameter', name:"problem"}, annotation:"problem"}]}]},
+{parameters:["item"],kind:'record', fields:[{wire:"item", name:"item", type:{k:'parameter', name:"item"}, optional:false},{wire:"at", name:"at", type:{k:'instant'}, optional:false}]},
+{parameters:["item"],kind:'record', fields:[{wire:"value", name:"value", type:{k:'parameter', name:"item"}, optional:false},{wire:"children", name:"children", type:{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"item"}]}}, optional:false}]},
+{parameters:["key","value"],kind:'record', fields:[{wire:"keys", name:"keys", type:{k:'list', item:{k:'parameter', name:"key"}}, optional:false},{wire:"values", name:"values", type:{k:'list', item:{k:'parameter', name:"value"}}, optional:false}]},
+{parameters:[],kind:'record', fields:[{wire:"amount", name:"amount", type:{k:'integer'}, optional:false},{wire:"at", name:"at", type:{k:'instant'}, optional:false}]},
+{parameters:[],kind:'choice', variants:[{text:"insufficient funds", kind:"insufficientFunds", params:[]},{text:"card expired", kind:"cardExpired", params:[]}]},
+{parameters:[],kind:'distinct', type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}}];
+const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _", kind:"pay", params:[{name:"amount", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}, errors:[]},
+["pay all _"]:{shape:{text:"pay all _", kind:"payAll", params:[{name:"amounts", type:{k:'list', item:{k:'integer'}}, annotation:"LIST Integer"}]}, returns:{k:'named', index:0, args:[{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}]}, errors:[]},
+["payments"]:{shape:{text:"payments", kind:"payments", params:[]}, returns:{k:'named', index:7, args:[]}, errors:[]},
+["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"payments", type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}, annotation:"Page of (Payment)"}]}, returns:{k:'integer'}, errors:[]},
+["categories"]:{shape:{text:"categories", kind:"categories", params:[]}, returns:{k:'named', index:3, args:[{k:'text'}]}, errors:[]},
+["latest"]:{shape:{text:"latest", kind:"latest", params:[]}, returns:{k:'named', index:2, args:[{k:'text'}]}, errors:[]},
+["prices"]:{shape:{text:"prices", kind:"prices", params:[]}, returns:{k:'named', index:4, args:[{k:'text'},{k:'integer'}]}, errors:[]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -107,120 +449,78 @@ export type Outcome<T, E> =
   /** The server couldn't read the request. */
   | { kind: "invalidRequest"; line: number; column: number; message: string };
 
-/** The generated wasm functions, which encode and decode in Rust. */
-export interface Codec {
-  /** Writes a request from a JSON array of `{ method, arguments }`. */
-  encodeRequest(calls: string): string;
-  /** Reads a response as a JSON array of `Outcome`s, one per method of the
-   * JSON array `methods`. */
-  decodeResponse(methods: string, response: string): string;
+/** A protocol-level failure returned by the server. Declared method errors
+ * remain available on `outcome` as the `error` variant. */
+export class OutcomeFailure<E> extends Error {
+  constructor(readonly outcome: Exclude<Outcome<never, E>, { kind: "value" }>) {
+    super(`AnyX outcome: ${outcome.kind}`);
+    this.name = "OutcomeFailure";
+  }
 }
 
-/** Turns the JSON of a type that holds an `Instant` into its value, with a
- * `Date` for each instant. */
-type Reviver = (json: any) => unknown;
-
-function reviveInstant(json: string): Date {
-  return new Date(json);
+/** Return a successful value or throw an OutcomeFailure containing the
+ * declared error or protocol failure. Transport and codec failures reject
+ * the client promise directly and are not represented as outcomes. */
+export function unwrapOutcome<T, E>(outcome: Outcome<T, E>): T {
+  if (outcome.kind === "value") return outcome.value;
+  throw new OutcomeFailure(outcome);
 }
 
-/** `outcome` with its value or error revived. */
-function revive(outcome: Outcome<never, never>, value?: Reviver, error?: Reviver): Outcome<never, never> {
-  if (outcome.kind === "value" && value) return { ...outcome, value: value(outcome.value) as never };
-  if (outcome.kind === "error" && error) return { ...outcome, error: error(outcome.error) as never };
-  return outcome;
-}
-
-/** A call waiting for its request to be sent. */
 interface QueuedCall {
   method: string;
-  arguments: unknown[];
-  value?: Reviver;
-  error?: Reviver;
+  args: unknown[];
   resolve: (outcome: Outcome<never, never>) => void;
   reject: (reason: unknown) => void;
 }
 
-/** Calls the schema's methods: each call is a request of its own, and the
- * calls made in `batch` share one. `send` sends a request and returns the
- * response, such as with `fetch`. */
+/** Calls the schema's methods using a transport that sends AnyX text. Codec
+ * and transport failures reject the call (and every call in its batch). */
 export class Client {
-  private readonly codec: Codec;
-  private readonly send: (request: string) => Promise<string>;
-  /** Inside `batch`, where its calls wait to be sent together. */
   private queue: QueuedCall[] | null = null;
-
-  constructor(codec: Codec, send: (request: string) => Promise<string>) {
-    this.codec = codec;
-    this.send = send;
-  }
-
-  /**
-   * Sends every call `build` makes on `calls` as one request, in order, and
-   * resolves to their outcomes. After a call fails with an internal error
-   * the rest don't run (`notRun`).
-   */
+  constructor(private readonly send: (request: string) => Promise<string>) {}
   async batch<R>(build: (calls: Client) => Promise<R>[]): Promise<R[]> {
-    const calls = new Client(this.codec, this.send);
+    const calls = new Client(this.send);
     const queue: QueuedCall[] = [];
     calls.queue = queue;
     const outcomes = build(calls);
     calls.queue = null;
-    if (queue.length > 0) void this.sendCalls(queue);
+    if (queue.length) void this.sendCalls(queue);
     return Promise.all(outcomes);
   }
-
-  /** Calls a method by its full name, such as `read _`. `value` and
-   * `error` revive what it returns and its error. */
-  private call<T, E>(
-    method: string,
-    args: unknown[],
-    value?: Reviver,
-    error?: Reviver,
-  ): Promise<Outcome<T, E>> {
-    return new Promise<Outcome<T, E>>((resolve, reject) => {
-      const call = { method, arguments: args, value, error, resolve, reject };
-      if (this.queue) this.queue.push(call);
-      else void this.sendCalls([call]);
+  private call<T, E>(method: string, args: unknown[]): Promise<Outcome<T, E>> {
+    return new Promise((resolve, reject) => {
+      const call: QueuedCall = { method, args, resolve: resolve as (outcome: Outcome<never, never>) => void, reject };
+      if (this.queue) this.queue.push(call); else void this.sendCalls([call]);
     });
   }
-
   private async sendCalls(calls: QueuedCall[]): Promise<void> {
     try {
-      const request = this.codec.encodeRequest(
-        JSON.stringify(calls.map((call) => ({ method: call.method, arguments: call.arguments }))),
-      );
+      const descriptors = calls.map(c => methods[c.method] || fail(`unknown method ${c.method}`));
+      const request = calls.map((c, i) => encodeCall(descriptors[i], c.args)).join(",\n") + "\n";
       const response = await this.send(request);
-      const outcomes = JSON.parse(
-        this.codec.decodeResponse(JSON.stringify(calls.map((call) => call.method)), response),
-      ) as Outcome<never, never>[];
-      for (const [index, call] of calls.entries()) {
-        const outcome = outcomes[index];
-        if (outcome) call.resolve(revive(outcome, call.value, call.error));
-        else call.reject(new Error(`no outcome for ${call.method}`));
-      }
-    } catch (error) {
-      for (const call of calls) call.reject(error);
-    }
+      const outcomes = decodeResponses(descriptors, response);
+      calls.forEach((call, i) => call.resolve(outcomes[i]));
+    } catch (error) { calls.forEach(call => call.reject(error)); }
+  }
+
+
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
+  pay(amount: bigint): Promise<Outcome<Or<Payment, Decline>, never>> {
+    return this.call("pay _", [amount]);
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  pay(amount: number): Promise<Outcome<Or<Payment, Decline>, never>> {
-    return this.call("pay _", [amount], reviveOr(revivePayment, unchanged));
-  }
-
-  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  payAll(amounts: number[]): Promise<Outcome<PageOf<Or<Payment, Decline>>, never>> {
-    return this.call("pay all _", [amounts], revivePageOf(reviveOr(revivePayment, unchanged)));
+  payAll(amounts: bigint[]): Promise<Outcome<PageOf<Or<Payment, Decline>>, never>> {
+    return this.call("pay all _", [amounts]);
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   payments(): Promise<Outcome<Payments, never>> {
-    return this.call("payments", [], revivePageOf(revivePayment));
+    return this.call("payments", []);
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  count(payments: PageOf<Payment>): Promise<Outcome<number, never>> {
+  count(payments: PageOf<Payment>): Promise<Outcome<bigint, never>> {
     return this.call("count _", [payments]);
   }
 
@@ -231,11 +531,11 @@ export class Client {
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
   latest(): Promise<Outcome<Dated<string>, never>> {
-    return this.call("latest", [], reviveDated(unchanged));
+    return this.call("latest", []);
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  prices(): Promise<Outcome<TableFromTo<string, number>, never>> {
+  prices(): Promise<Outcome<TableFromTo<string, bigint>, never>> {
     return this.call("prices", []);
   }
 
