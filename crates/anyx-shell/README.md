@@ -1,6 +1,6 @@
 # anyx-shell
 
-A non-interactive interpreter for scoped anyx protocols. Each tool has its
+An interpreter for scoped anyx protocols. Each tool has its
 own schema and session state. Successful commands return anyx values:
 records, lists, strings, numbers or choices. The shell displays these values
 as anyx, with no `RETURNS` envelope or text-table rendering.
@@ -13,9 +13,10 @@ cargo run -p anyx-shell -- --expression 'environment / list variables'
 printf 'environment / read variable "HOME"' | cargo run -p anyx-shell
 ```
 
-With no arguments or `-`, read standard input. With one file argument, read
-that file. `--expression SOURCE` runs an inline document. `--help` returns
-usage as an anyx text value. Saved shell documents use `.shell.anyx`.
+With no arguments, start an interactive prompt when standard input and output
+are terminals; otherwise read standard input as a batch document. `-` always
+reads a batch document. With one file argument, read that file.
+`--expression SOURCE` runs an inline document. `--help` returns usage as an anyx text value. Saved shell documents use `.shell.anyx`.
 
 Calls are comma-separated; newlines are whitespace:
 
@@ -38,6 +39,40 @@ false,
 An empty collection is a list `[]`; an empty document or a
 method that returns nothing produces no output. Multiple results form one
 comma-separated anyx document.
+
+## Interactive shell
+
+```sh
+cargo run -p anyx-shell
+# Or explicitly select interactive mode:
+cargo run -p anyx-shell -- --interactive
+```
+
+```text
+anyx> environment / set variable "EDITOR" to "helix"
+{ name "EDITOR", value "helix" }
+anyx> environment / read variable "EDITOR"
+"helix"
+```
+
+Each submitted document runs in the same interpreter. Errors are displayed and
+the prompt returns; successful earlier changes remain available. Ctrl-C cancels
+the current input and Ctrl-D at an empty prompt exits successfully. Input/output
+failures still exit with an error. Up/Down recall commands from this session;
+history is kept in memory and is never saved to disk.
+
+Tab completes registered scopes and method words from their protocol schemas:
+`env<Tab>` becomes `environment / `, `environment / li<Tab>` becomes
+`environment / list variables `, and after `set variable "EDITOR" ` it suggests
+`to `. Press Tab twice to list ambiguous matches. Completion also works inside
+parenthesized calls and after `:` or a comma. It does not execute tools or
+complete argument values, record fields, choice variants, or types.
+
+Open brackets, unfinished quoted/raw strings, and a trailing `:` or `.` continue
+input onto another line. Other invalid input is submitted for a diagnostic.
+Newlines alone do not separate commands: use commas to submit several calls
+in one document. Wrap a multiline argument in brackets or parentheses to keep
+input open while editing.
 
 ## Scopes and protocols
 
@@ -99,7 +134,7 @@ Run the example with:
 cargo run -p anyx-shell -- crates/anyx-shell/examples/expressions.shell.anyx
 ```
 
-Shell variables, pipelines, subprocesses and an interactive prompt are future work.
+Shell variables, pipelines and subprocesses are future work.
 
 The library exposes `Interpreter` and a synchronous `Tool` trait. Register a
 protocol implementation under a lowercase scope with
@@ -144,7 +179,8 @@ ERROR variable does not exist
 
 Input and validation failures use `INVALID REQUEST { line, column, message }`,
 with one-based source positions. Internal failures use `INTERNAL ERROR`.
-Every failure exits with a nonzero status. The CLI prints no human-text
+In batch mode, every failure exits with a nonzero status. Interactive mode
+reports command errors and keeps running. Batch output contains no human-text
 preambles or debug representations.
 
 ## Verify

@@ -138,3 +138,26 @@ fn nested_expression_results_are_arguments_not_extra_output() {
     succeeds(&output);
     assert_eq!(output.stdout, b"{ name \"COPY\", value \"original\" }\n");
 }
+
+#[test]
+fn interactive_session_keeps_state_and_recovers_after_errors() {
+    let mut child = command()
+        .arg("--interactive")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"environment / set variable \"SESSION\" to \"kept\"\nenvironment / read variable \"missing\"\nunknown / call\nenvironment / read variable \"SESSION\"\n").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("{ name \"SESSION\", value \"kept\" }"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("\"kept\"\n"), "{stdout}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("ERROR variable does not exist"), "{stderr}");
+    assert!(stderr.contains("INVALID REQUEST"), "{stderr}");
+}

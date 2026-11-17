@@ -1,4 +1,4 @@
-//! A non-interactive interpreter for calls to scoped anyx protocols.
+//! An interpreter for calls to scoped anyx protocols.
 //!
 //! Each top-level expression is `scope / method arguments`. The interpreter
 //! validates every call before invoking any tool, then executes in order.
@@ -6,6 +6,7 @@
 //! displayed. A method failure stops execution without rolling back earlier calls.
 
 mod compile;
+mod completion;
 pub mod environment;
 
 use std::collections::BTreeMap;
