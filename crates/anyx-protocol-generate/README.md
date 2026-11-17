@@ -24,8 +24,8 @@ the file.
   `std::time::Duration`; the wire keeps both to the millisecond.
 - `MAP: T` is `std::collections::BTreeMap<String, T>`, and
   `Record<string, T>` in TypeScript.
-- An `OPTIONAL` field is an `Option`, and `?` in TypeScript, unless it has a
-  `DEFAULT`: the reader fills that in, so the field is always there.
+- A field with a `DEFAULT` may be omitted on input. The reader fills in
+  its default, so generated records always contain the field.
 - A struct around the type underneath per named `TYPE`, with `From` both
   ways: `TYPE File Id: Text` is `pub struct FileId(pub String)`, so a
   `FileId` can't be passed where a `ShareId` goes.
@@ -36,14 +36,14 @@ the file.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `RECORD Page of (item: TYPE)`
+  `IntoValue` and `FromValue` bound on them: `RECORD Page of (item: Type)`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
-  is `PageOf<Order>`. `RECORD (item: TYPE) history` is `History<Item>`,
-  `RECORD Table from (key: TYPE) to (value: TYPE)` is
-  `TableFromTo<Key, Value>`, and `CHOICE (left: TYPE) or (right: TYPE)` is
+  is `PageOf<Order>`. `RECORD (item: Type) history` is `History<Item>`,
+  `RECORD Table from (key: Type) to (value: Type)` is
+  `TableFromTo<Key, Value>`, and `CHOICE (left: Type) or (right: Type)` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
-  `page (item: TYPE)`, would get the same name, so generating either
+  `page (item: Type)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the
   module already uses, such as `value` (the generated code uses `Value`) or
   a type of the protocol, gets `Parameter` after it: `ValueParameter`. The
@@ -146,3 +146,8 @@ request needs themselves. TypeScript calls an overload, and keys its
 A schema whose names become the same name in the generated code, such as a
 type `read error` next to the method `read _`, or a method `tag with text`
 next to the overload `tag (Text)`, is rejected.
+
+The prelude's `Boolean` and postfix `T?` are ordinary choices. They generate
+`Boolean` and `Nullable<Item>` enums in Rust and tagged unions in TypeScript.
+`DEFAULT` makes a record field omittable on input; decoded records always
+contain that field. The protocol has no `OPTIONAL` modifier.

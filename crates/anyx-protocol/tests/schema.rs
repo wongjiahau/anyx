@@ -142,13 +142,13 @@ fn choice_variants_are_shapes_with_docs() {
 fn optional_fields_and_record_inputs_read() {
     let schema = schema(
         "PROTOCOL shop VERSION 2,
-        RECORD filter { name: OPTIONAL Text, limit: OPTIONAL Integer },
+        RECORD filter { name: Text DEFAULT \"\", limit: Integer DEFAULT 0 },
         METHOD find (filter: filter) RETURNS (names: LIST Text),",
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
         panic!("filter is a record")
     };
-    assert!(fields.iter().all(|field| field.optional));
+    assert!(fields.iter().all(|field| field.default.is_some()));
     assert_eq!(schema.methods[0].shape.parameters[0].r#type, Type::Named(0));
 }
 
@@ -229,11 +229,11 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type holding itself through an optional field",
-            "PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },",
+            "PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },",
         ),
         (
             "a map default that is not a map",
-            "PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: Integer DEFAULT [] },",
+            "PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },",
         ),
         (
             "a cycle through a choice",
@@ -407,18 +407,18 @@ fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         CHOICE shade { dark, light },
-        RECORD page { size: OPTIONAL: Integer DEFAULT 50, after: OPTIONAL Text },
+        RECORD page { size: Integer DEFAULT 50, after: Text DEFAULT \"\" },
         RECORD search {
             query: Text,
-            limit: OPTIONAL: Integer DEFAULT 50,
-            include trash: OPTIONAL: Boolean DEFAULT false,
-            shade: OPTIONAL: shade DEFAULT dark,
-            tags: OPTIONAL: LIST: Text DEFAULT [\"new\"],
-            shades: OPTIONAL: LIST shade DEFAULT [light],
-            sizes: OPTIONAL: (LIST Integer) DEFAULT [],
-            wait: OPTIONAL: Duration DEFAULT 5 minutes,
-            page: OPTIONAL: page DEFAULT { after \"a\" },
-            note: OPTIONAL Text,
+            limit: Integer DEFAULT 50,
+            include trash: Boolean DEFAULT false,
+            shade: shade DEFAULT dark,
+            tags: LIST: Text DEFAULT [\"new\"],
+            shades: LIST shade DEFAULT [light],
+            sizes: (LIST Integer) DEFAULT [],
+            wait: Duration DEFAULT 5 minutes,
+            page: page DEFAULT { after \"a\" },
+            note: Text DEFAULT \"\",
         },",
     );
     let TypeKind::Record(fields) = &schema.types[2].kind else {
@@ -445,7 +445,13 @@ fn an_optional_field_may_have_a_default() {
         [
             ("query", None),
             ("limit", Some(&Value::Integer(50))),
-            ("include trash", Some(&Value::Boolean(false))),
+            (
+                "include trash",
+                Some(&Value::Variant {
+                    shape: "false".into(),
+                    arguments: vec![]
+                })
+            ),
             ("shade", Some(&variant("dark"))),
             ("tags", Some(&Value::List(vec![text("new")]))),
             ("shades", Some(&Value::List(vec![variant("light")]))),
@@ -455,7 +461,7 @@ fn an_optional_field_may_have_a_default() {
                 Some(&Value::Duration(std::time::Duration::from_secs(300)))
             ),
             ("page", Some(&page)),
-            ("note", None),
+            ("note", Some(&text(""))),
         ]
     );
     let types: Vec<String> = fields
@@ -477,7 +483,7 @@ fn an_optional_field_may_have_a_default() {
             "Text"
         ]
     );
-    assert!(fields.iter().skip(1).all(|field| field.optional));
+    assert!(fields.iter().skip(1).all(|field| field.default.is_some()));
 }
 
 #[test]
@@ -485,15 +491,15 @@ fn mistakes_in_a_default_are_diagnosed() {
     let cases = [
         (
             "a default of another type",
-            "PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL: Integer DEFAULT \"50\" },",
+            "PROTOCOL a VERSION 1, RECORD x { limit: Integer DEFAULT \"50\" },",
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: OPTIONAL: shade DEFAULT dim },",
+            "PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: shade DEFAULT dim },",
         ),
         (
-            "a default on a field that must be written",
-            "PROTOCOL a VERSION 1, RECORD x { limit: Integer DEFAULT 50 },",
+            "the removed OPTIONAL keyword",
+            "PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL Integer },",
         ),
         (
             "a default on a parameter",
@@ -514,7 +520,7 @@ fn mistakes_in_a_default_are_diagnosed() {
 fn a_schema_with_defaults_is_formatted_as_written() {
     let source = "PROTOCOL a VERSION 1,
 
-RECORD search { limit: OPTIONAL: Integer DEFAULT 50, tags: OPTIONAL: LIST: Text DEFAULT [] },
+RECORD search { limit: Integer DEFAULT 50, tags: LIST: Text DEFAULT [] },
 ";
     assert_eq!(anyx_protocol::format_schema(source).unwrap(), source);
 }
@@ -527,9 +533,9 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
         RECORD folder {
             files: MAP Integer,
             folders: MAP: folder,
-            shades: OPTIONAL: MAP: shade DEFAULT { \"a\": dark },
-            names: OPTIONAL: MAP: LIST: Text DEFAULT { \"b\" [\"c\"] },
-            lights: OPTIONAL: MAP shade DEFAULT {},
+            shades: MAP: shade DEFAULT { \"a\": dark },
+            names: MAP: LIST: Text DEFAULT { \"b\" [\"c\"] },
+            lights: MAP shade DEFAULT {},
         },
         METHOD sizes (sizes: MAP Float) RETURNS (folder: folder),",
     );

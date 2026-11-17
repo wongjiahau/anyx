@@ -432,7 +432,7 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                             if let Some(value) = values.get(&field.name) {
                                 validate(schema, &field.r#type, value)
                                     .map_err(|e| format!("in `{}`: {e}", field.name))?;
-                            } else if !field.optional {
+                            } else if field.default.is_none() {
                                 return Err(format!(
                                     "missing field `{}` of `{}`",
                                     field.name, definition.name
@@ -490,7 +490,6 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                 (Type::Integer, Value::Integer(_))
                     | (Type::Text, Value::Text(_))
                     | (Type::Bytes, Value::Bytes(_))
-                    | (Type::Boolean, Value::Boolean(_))
                     | (Type::Instant, Value::Instant(_))
                     | (Type::Duration, Value::Duration(_))
             ) =>
@@ -695,7 +694,6 @@ pub(crate) fn example(schema: &Schema, ty: &Type) -> Option<Value> {
             Type::Float => vec![Value::Float(1.5)],
             Type::Text => vec![Value::Text("a".into())],
             Type::Bytes => vec![Value::Bytes(vec![1, 2])],
-            Type::Boolean => vec![Value::Boolean(true)],
             Type::List(_) => vec![Value::List(Vec::new())],
             Type::Map(_) => vec![Value::Map(Default::default())],
             _ => Vec::new(),

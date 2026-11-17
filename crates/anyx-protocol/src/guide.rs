@@ -26,7 +26,7 @@ pub fn guide(schema: &Schema, how_to_send: &str) -> String {
 {how_to_send}## Requests
 
 A request is a list of calls separated by commas. Each call is written in the
-shape of one of the methods below, with a value in each `(name: TYPE)` slot:
+shape of one of the methods below, with a value in each `(name: Type)` slot:
 
     {example}
 {overloads}
@@ -64,8 +64,8 @@ the account, such as by sending or sharing it.
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
   words, put `:` after its key: `{{ \"hymn\": done }}`.
 - A RECORD is its fields in braces, each its name and value, in any order:
-  `{{ path \"a\", revision 3 }}`. An `OPTIONAL` field may be left out; one
-  with a `DEFAULT` then holds that value. When a value is words, put `:`
+  `{{ path \"a\", revision 3 }}`. A field with a `DEFAULT` may be left out
+  and then holds that value. When a value is words, put `:`
   after the field's name: `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
@@ -76,13 +76,14 @@ the account, such as by sending or sharing it.
 An argument whose type its value doesn't show is annotated with `AS:` and
 its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
 `open (\"a\" AS: File Id)`. A value shows its type when it is a number, a
-string (`Text`), `true` or `false`, a duration, a list or map whose items
+string (`Text`), a duration, a list or map whose items
 show one type, or a record or variant that only one type of the schema
 fits. `[]`, `{{}}`, and a value of a named TYPE, a generic type, `Bytes`
 or `Instant` never do. Without its annotation, the request is invalid.
 Only a whole argument is annotated; a value inside it is read by the type
 around it. An annotation states the type; it doesn't convert the value.
 
+{prelude}
 {refinements}## Responses
 
 The response has one result per call, in the order of the calls, separated
@@ -131,6 +132,7 @@ is a group of errors that methods share by joining it with `+`.{examples}{import
         overloads = overloads(schema),
         named_types = named_types(schema),
         built_in = built_in_types(),
+        prelude = prelude_choices(),
         generic_types = generic_types(schema),
         refinements = refinements(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
@@ -270,7 +272,7 @@ fn wrap(text: &str, indent: &str) -> String {
 }
 
 /// The rule for generic types, shown with the schema's first one: "`RECORD
-/// page of (item: TYPE)`", then a use of it. Empty for a schema without any.
+/// page of (item: Type)`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
@@ -286,7 +288,7 @@ fn generic_types(schema: &Schema) -> String {
     let declared: Vec<String> = definition
         .parameters
         .iter()
-        .map(|parameter| format!("{parameter}: TYPE"))
+        .map(|parameter| format!("{parameter}: Type"))
         .collect();
     let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(
@@ -409,7 +411,6 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Bytes => "\"AQI=\"".to_string(),
         Type::Integer => "3".to_string(),
         Type::Float => "1.5".to_string(),
-        Type::Boolean => "(true)".to_string(),
         Type::Instant => "\"2026-11-14T06:00:08.000Z\"".to_string(),
         Type::Duration => "(5 minutes)".to_string(),
         Type::Refined(base, _) => sample(schema, base),
@@ -503,4 +504,20 @@ fn refinements(schema: &Schema) -> String {
             rows.concat()
         )
     }
+}
+
+/// Show the ordinary prelude library, including its docs and variant shapes.
+fn prelude_choices() -> String {
+    let source = crate::prelude::declarations()
+        .definition
+        .iter()
+        .map(|definition| {
+            let span = definition.span();
+            format!("{},", &crate::prelude::SOURCE[span.start..span.end])
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    format!(
+        "## Prelude\n\nThese ordinary types are visible in every schema. `T?` is nullable; only\n`DEFAULT` makes a record field omittable.\n\n```anyx\n{source}\n```\n"
+    )
 }

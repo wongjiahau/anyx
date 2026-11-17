@@ -158,7 +158,7 @@ fn an_invalid_request_reads_back() {
 const MODES: &str = "PROTOCOL a VERSION 1,
 CHOICE shade { dark, light },
 CHOICE mode { dark, light, custom hue (hue: Float), (base: shade) dimmed },
-RECORD options { mode: mode, strict: OPTIONAL Boolean },
+RECORD options { mode: mode, strict: Boolean DEFAULT false },
 METHOD set (mode: mode) strict (strict: Boolean) RETURNS (ok: Boolean),
 METHOD apply (options: options) RETURNS (modes: LIST: mode),";
 
@@ -169,25 +169,40 @@ fn words_in_slots_go_in_parentheses() {
     let calls = vec![
         Call {
             method: 0,
-            arguments: vec![variant("dark", vec![]), Value::Boolean(true)],
+            arguments: vec![
+                variant("dark", vec![]),
+                Value::Variant {
+                    shape: "true".into(),
+                    arguments: vec![],
+                },
+            ],
         },
         Call {
             method: 0,
-            arguments: vec![custom.clone(), Value::Boolean(false)],
+            arguments: vec![
+                custom.clone(),
+                Value::Variant {
+                    shape: "false".into(),
+                    arguments: vec![],
+                },
+            ],
         },
         Call {
             method: 0,
             arguments: vec![
                 variant("_ dimmed", vec![variant("dark", vec![])]),
-                Value::Boolean(false),
+                Value::Variant {
+                    shape: "false".into(),
+                    arguments: vec![],
+                },
             ],
         },
         Call {
             method: 1,
-            arguments: vec![record(&[(
-                "mode",
-                variant("_ dimmed", vec![variant("light", vec![])]),
-            )])],
+            arguments: vec![record(&[
+                ("mode", variant("_ dimmed", vec![variant("light", vec![])])),
+                ("strict", variant("false", vec![])),
+            ])],
         },
     ];
     let request = encode_request(&schema, &calls).unwrap();
@@ -196,7 +211,7 @@ fn words_in_slots_go_in_parentheses() {
         "set (dark AS mode) strict (true),
 set (custom hue 0.5) strict (false),
 set ((dark) dimmed) strict (false),
-apply { mode: (light) dimmed },
+apply { mode: (light) dimmed, strict: false },
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -434,7 +449,7 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-RECORD timer { at: Instant, every: Duration, pause: OPTIONAL Duration },
+RECORD timer { at: Instant, every: Duration, pause: Duration DEFAULT 0 seconds },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant),
 METHOD set (timer: timer) RETURNS (left: Duration),
 METHOD list RETURNS (durations: LIST Duration),";
@@ -549,29 +564,35 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        RECORD search { query: Text, limit: OPTIONAL: Integer DEFAULT 50, note: OPTIONAL Text },
+        RECORD search { query: Text, limit: Integer DEFAULT 50, note: Text DEFAULT \"\" },
         METHOD find (search: search) RETURNS (search: search),",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
-    let filled = record(&[("query", text("ode")), ("limit", Value::Integer(50))]);
+    let filled = record(&[
+        ("query", text("ode")),
+        ("limit", Value::Integer(50)),
+        ("note", text("")),
+        ("note", text("")),
+    ]);
     assert_eq!(calls[0].arguments, std::slice::from_ref(&filled));
     assert_eq!(
         encode_request(&schema, &calls).unwrap(),
-        "find { query \"ode\", limit 50 }\n"
+        "find { query \"ode\", limit 50, note \"\" }\n"
     );
     let response = decode_response(&schema, &[0], "RETURNS { query \"a\", limit 3 }").unwrap();
     assert_eq!(
         response,
         Response::Outcomes(vec![Outcome::Value(record(&[
             ("query", text("a")),
-            ("limit", Value::Integer(3))
+            ("limit", Value::Integer(3)),
+            ("note", text(""))
         ]))])
     );
 }
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
 CHOICE mood { calm, wild },
-RECORD tally { counts: MAP Integer, moods: OPTIONAL: MAP: mood DEFAULT {} },
+RECORD tally { counts: MAP Integer, moods: MAP: mood DEFAULT {} },
 METHOD count (tally: tally) RETURNS (counts: MAP Integer),
 METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: mood),";
 

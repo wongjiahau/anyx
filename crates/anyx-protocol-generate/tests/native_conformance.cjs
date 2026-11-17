@@ -8,7 +8,7 @@ const pending = [];
 lines.on('line', line => pending.shift()(JSON.parse(line)));
 const send = request => new Promise(resolve => { pending.push(resolve); process.stdout.write(JSON.stringify(request) + '\n'); });
 const client = new Client(send);
-const packet = {text:'one\ntwo', bytes:new Uint8Array([0,1,127,128,255]), integer:-9223372036854775808n, number:1.25, flag:true, items:[9007199254740993n,9223372036854775807n], dict:{a:'b'}, identifier:Identifier(42n), selection:{kind:'selected',item:'x'}};
+const packet = {text:'one\ntwo', bytes:new Uint8Array([0,1,127,128,255]), integer:-9223372036854775808n, number:1.25, flag:{kind:'true'}, items:[9007199254740993n,9223372036854775807n], dict:{a:'b'}, identifier:Identifier(42n), selection:{kind:'selected',item:'x'}};
 (async () => {
   const result = await client.echo(packet);
   assert.equal(result.kind, 'value');

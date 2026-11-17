@@ -382,7 +382,8 @@ impl Compiler<'_> {
                         .iter()
                         .all(|(name, _)| record.iter().any(|field| field.name == *name))
                     && record.iter().all(|field| {
-                        field.optional || fields.iter().any(|(name, _)| field.name == *name)
+                        field.default.is_some()
+                            || fields.iter().any(|(name, _)| field.name == *name)
                     }))
                 .then_some(Type::Named(index))
             })
@@ -423,7 +424,7 @@ impl Compiler<'_> {
                             value: ExpressionValue::Literal(value.clone()),
                         },
                     ));
-                } else if !field.optional {
+                } else if field.default.is_none() {
                     return Err(
                         self.error(span, format!("missing required field `{}`", field.name))
                     );
@@ -558,7 +559,7 @@ fn transfer(
                         left.len() == right.len()
                             && left.iter().zip(right).all(|(left, right)| {
                                 left.name == right.name
-                                    && left.optional == right.optional
+                                    && left.default.is_some() == right.default.is_some()
                                     && left.default == right.default
                                     && transfer(origin, target, &left.r#type, visited).as_ref()
                                         == Some(&right.r#type)

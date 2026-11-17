@@ -33,7 +33,6 @@ pub(crate) fn own_type(schema: &Schema, node: &Node) -> Option<Type> {
 
 pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
     match value {
-        Syntax::Boolean(_) => Some(Type::Boolean),
         Syntax::Integer(_) => Some(Type::Integer),
         Syntax::Float(_) => Some(Type::Float),
         Syntax::Text(_) => Some(Type::Text),
@@ -68,9 +67,9 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
                     && names
                         .iter()
                         .all(|name| fields.iter().any(|field| field.name == *name))
-                    && fields
-                        .iter()
-                        .all(|field| field.optional || names.contains(&field.name.as_str()))
+                    && fields.iter().all(|field| {
+                        field.default.is_some() || names.contains(&field.name.as_str())
+                    })
             }))
         }
         Syntax::Duration(duration) => {
@@ -87,9 +86,6 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
         }
         Syntax::Call(call) => {
             let text = &call.name.text;
-            if call.arguments.is_empty() && (text == "true" || text == "false") {
-                return Some(Type::Boolean);
-            }
             choice_of(schema, text)
         }
     }

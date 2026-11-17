@@ -10,7 +10,6 @@ argument: ONE OF [
 ],
 value: ONE OF [
   duration,
-  boolean,
   integer: NUMBER [WRITTEN INTEGER],
   float: NUMBER [WRITTEN FLOAT],
   text: STRING,
@@ -25,7 +24,6 @@ duration: ANYFIX CALL [
   ARGUMENTS: ONE OR MORE: count,
 ],
 count: NUMBER [WRITTEN INTEGER],
-boolean: ONE OF [WORD "true", WORD "false"],
 value call: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: value],
 entry: ONE OF [
   map: ANYFIX CALL [key: STRING, value],

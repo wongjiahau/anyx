@@ -194,7 +194,6 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         Type::Bytes => "Uint8Array".to_string(),
         Type::Integer => "bigint".to_string(),
         Type::Float => "number".to_string(),
-        Type::Boolean => "boolean".to_string(),
         Type::Instant => "Date".to_string(),
         // Whole milliseconds, preserving the protocol's unsigned 64-bit range.
         Type::Duration => "bigint".to_string(),
@@ -319,14 +318,9 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
     writeln!(out, "export interface {name} {{").unwrap();
     for field in fields {
         out.push_str(&doc(&field.doc, "  "));
-        let optional = if crate::rust::may_be_missing(field) {
-            "?"
-        } else {
-            ""
-        };
         writeln!(
             out,
-            "  {}{optional}: {};",
+            "  {}: {};",
             camel_case(&field.name),
             ts_type(schema, &field.r#type)
         )
@@ -403,7 +397,6 @@ fn native_type(ty: &Type) -> String {
         Type::Bytes => "{k:'bytes'}".into(),
         Type::Integer => "{k:'integer'}".into(),
         Type::Float => "{k:'float'}".into(),
-        Type::Boolean => "{k:'boolean'}".into(),
         Type::Instant => "{k:'instant'}".into(),
         Type::Duration => "{k:'duration'}".into(),
         Type::List(item) => format!("{{k:'list', item:{}}}", native_type(item)),
@@ -464,11 +457,10 @@ fn native_schema(schema: &Schema) -> String {
                     fields
                         .iter()
                         .map(|f| format!(
-                            "{{wire:{:?}, name:{:?}, type:{}, optional:{}{}}}",
+                            "{{wire:{:?}, name:{:?}, type:{}{}}}",
                             f.name,
                             camel_case(&f.name),
                             native_type(&f.r#type),
-                            f.optional,
                             f.default.as_ref().map_or(String::new(), |v| format!(
                                 ", defaultValue:()=>{}",
                                 native_default(schema, &f.r#type, v)
@@ -524,7 +516,6 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
         Value::Bytes(b) => format!("new Uint8Array({b:?})"),
         Value::Integer(n) => format!("{n}n"),
         Value::Float(n) => format!("{n:?}"),
-        Value::Boolean(b) => b.to_string(),
         Value::Instant(t) => {
             let ms: i128 = match t.duration_since(std::time::UNIX_EPOCH) {
                 Ok(d) => d.as_millis() as i128,

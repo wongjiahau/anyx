@@ -181,7 +181,7 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type over an optional type",
-            "PROTOCOL a VERSION 1, TYPE a: OPTIONAL Text,",
+            "PROTOCOL a VERSION 1, TYPE a: Text DEFAULT \"\",",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -201,7 +201,7 @@ fn a_named_type_may_be_an_instant_a_map_or_have_a_default() {
 TYPE opened at: Instant,
 TYPE openings: MAP: opened at,
 TYPE label: Text,
-RECORD visit { at: opened at, by person: openings, label: OPTIONAL: label DEFAULT \"none\" },
+RECORD visit { at: opened at, by person: openings, label: label DEFAULT \"none\" },
 METHOD visits RETURNS (visits: LIST: visit),
 ",
     );
@@ -224,9 +224,9 @@ METHOD visits RETURNS (visits: LIST: visit),
         diagnostics(
             "PROTOCOL visits VERSION 1,
 TYPE label: Text,
-RECORD visit { label: OPTIONAL: label DEFAULT 3 },
+RECORD visit { label: label DEFAULT 3 },
 "
         ),
-        "schema:3:47: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD visit { label: OPTIONAL: label DEFAULT 3 },\n                                                ^"
+        "schema:3:37: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD visit { label: label DEFAULT 3 },\n                                      ^"
     );
 }

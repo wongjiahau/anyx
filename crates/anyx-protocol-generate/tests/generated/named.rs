@@ -45,7 +45,7 @@ TYPE Opened At: Instant,
 
 TYPE Openings: MAP: Opened At,
 
-RECORD Visit { at: Opened At, by person: Openings, label: OPTIONAL: Share Id DEFAULT "none" },
+RECORD Visit { at: Opened At, by person: Openings, label: Share Id DEFAULT "none" },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit),
 "#,
@@ -356,6 +356,80 @@ impl FromValue for Visit {
             at: fields.field("at")?,
             by_person: fields.field("by person")?,
             label: fields.field("label")?,
+        })
+    }
+}
+
+/// `true` or `false`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Boolean {
+    False,
+    True,
+}
+
+impl IntoValue for Boolean {
+    fn into_value(self) -> Value {
+        match self {
+            Boolean::False => Value::Variant {
+                shape: "false".to_string(),
+                arguments: vec![],
+            },
+            Boolean::True => Value::Variant {
+                shape: "true".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for Boolean {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "false" => Boolean::False,
+            "true" => Boolean::True,
+            _ => return None,
+        })
+    }
+}
+
+/// A nullable item: `null`, or `value (item)` containing a value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Nullable<Item> {
+    Null,
+    Value { item: Item },
+}
+
+impl<Item: IntoValue> IntoValue for Nullable<Item> {
+    fn into_value(self) -> Value {
+        match self {
+            Nullable::Null => Value::Variant {
+                shape: "null".to_string(),
+                arguments: vec![],
+            },
+            Nullable::Value { item } => Value::Variant {
+                shape: "value _".to_string(),
+                arguments: vec![item.into_value()],
+            },
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for Nullable<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "null" => Nullable::Null,
+            "value _" => Nullable::Value {
+                item: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
         })
     }
 }

@@ -32,8 +32,8 @@ impl Server for Reminders {
 
     async fn remind(&self, reminder: Reminder) -> Result<Schedule, Self::Error> {
         Ok(match reminder.every {
-            Some(period) => Schedule::Every { period },
-            None => Schedule::OnceAt { at: reminder.at },
+            types::Nullable::Value { item: period } => Schedule::Every { period },
+            types::Nullable::Null => Schedule::OnceAt { at: reminder.at },
         })
     }
 
@@ -82,7 +82,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
     let reminder = Reminder {
         note: "tea".into(),
         at: at(1_794_636_008_123),
-        every: None,
+        every: types::Nullable::Null,
         times: 3,
         seen: BTreeMap::new(),
     };
@@ -94,7 +94,9 @@ fn instants_and_durations_reach_the_server_and_come_back() {
     );
     assert_eq!(
         run(client.remind(Reminder {
-            every: Some(Duration::from_secs(5400)),
+            every: types::Nullable::Value {
+                item: Duration::from_secs(5400)
+            },
             ..reminder.clone()
         })),
         Ok(Schedule::Every {
@@ -125,7 +127,7 @@ fn a_field_left_out_reaches_the_server_with_its_default() {
     ));
     assert_eq!(
         response,
-        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} }]\n"
+        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", every: null, times 3, seen {} }]\n"
     );
 }
 
@@ -135,7 +137,7 @@ fn maps_reach_the_server_and_come_back() {
     let reminder = Reminder {
         note: "tea".into(),
         at: at(1_794_636_008_123),
-        every: None,
+        every: types::Nullable::Null,
         times: 3,
         seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
     };

@@ -42,11 +42,11 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `RECORD Page of (item: TYPE)`. A type is known by its words and
+    /// `RECORD Page of (item: Type)`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
-    /// its shape, in order: `(value: TYPE) or (problem: TYPE)` has `value`
+    /// its shape, in order: `(value: Type) or (problem: Type)` has `value`
     /// and `problem`. Empty for any other type.
     pub parameters: Vec<String>,
     pub kind: TypeKind,
@@ -94,11 +94,8 @@ pub struct Field {
     pub doc: Option<String>,
     pub name: String,
     pub r#type: Type,
-    /// `OPTIONAL`: the field may be left out.
-    pub optional: bool,
-    /// What an `OPTIONAL` field with a `DEFAULT` holds when it is left
-    /// out. The codec fills it in, so a record read from the wire always
-    /// has the field.
+    /// The value supplied when the field is omitted. Without a default the
+    /// field is required, including when its type admits `null`.
     pub default: Option<crate::value::Value>,
 }
 
@@ -239,7 +236,6 @@ pub enum Type {
     /// A finite 64-bit IEEE 754 float: `f64` in Rust, `number` in
     /// TypeScript. Written with a point or an exponent, `1.5`, `3.0`, `1e3`.
     Float,
-    Boolean,
     /// A point in time, to the millisecond. On the wire, RFC 3339 text in
     /// UTC: `"2026-11-14T06:00:08.000Z"`.
     Instant,
@@ -442,8 +438,23 @@ impl Schema {
         if !loader.diagnostics.is_empty() {
             return Err(loader.diagnostics);
         }
+        // Append the implicit library after user types to keep their indices stable.
+        let prelude = loader.files.len();
+        for decoded in &mut loader.decoded {
+            decoded.imports.push(prelude);
+        }
+        loader.files.push(SourceFile {
+            path: crate::prelude::PATH.into(),
+            source: crate::prelude::SOURCE.into(),
+        });
+        loader.decoded.push(DecodedFile {
+            imports: Vec::new(),
+            document: crate::prelude::declarations(),
+        });
         let mut checker = Checker::default();
-        let schema = checker.schema(loader.files, &loader.decoded);
+        let mut schema = checker.schema(loader.files, &loader.decoded);
+        // Embedded schemas keep only explicit sources; loading injects the prelude.
+        schema.files.pop();
         let mut diagnostics = checker.diagnostics;
         diagnostics.sort_by_key(|diagnostic| {
             (
@@ -499,7 +510,6 @@ impl Schema {
             | Type::Bytes
             | Type::Integer
             | Type::Float
-            | Type::Boolean
             | Type::Instant
             | Type::Duration => crate::prelude::of(r#type)
                 .map_or_else(|| format!("{type:?}"), |intrinsic| intrinsic.name.clone()),
@@ -824,11 +834,11 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a `RECORD`; expected one only on an `OPTIONAL` field of a `RECORD`, as in `limit: OPTIONAL: Integer DEFAULT 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
-            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
+            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
             (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: Text) RETURNS (file: File) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`".to_string(),
             _ => error.message(),
         };

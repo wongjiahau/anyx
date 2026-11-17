@@ -80,9 +80,9 @@ impl Tool for Environment {
                 self.variables.insert(name.clone(), value.clone());
                 Outcome::Value(variable(name, value))
             }
-            "remove variable _" => {
-                Outcome::Value(Value::Boolean(self.variables.remove(&name).is_some()))
-            }
+            "remove variable _" => Outcome::Value(anyx_protocol::IntoValue::into_value(
+                self.variables.remove(&name).is_some(),
+            )),
             _ => unreachable!("the interpreter checked the method against the schema"),
         }
     }

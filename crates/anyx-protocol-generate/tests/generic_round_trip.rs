@@ -64,14 +64,16 @@ impl Server for Shop {
         Ok(PageOf {
             total: amounts.len() as i64,
             items: amounts.into_iter().map(attempt).collect(),
-            next: None,
+            next: generic::Nullable::Null,
         })
     }
 
     async fn payments(&self) -> Result<Payments, Self::Error> {
         Ok(Payments(PageOf {
             items: vec![payment(3)],
-            next: Some("2".to_string()),
+            next: generic::Nullable::Value {
+                item: "2".to_string(),
+            },
             total: 7,
         }))
     }
@@ -124,14 +126,14 @@ fn uses_of_generic_types_reach_the_server_and_come_back() {
         run(client.pay_all(vec![3, 300])),
         Ok(PageOf {
             items: vec![attempt(3), attempt(300)],
-            next: None,
+            next: generic::Nullable::Null,
             total: 2,
         })
     );
     assert_eq!(
         run(client.count(PageOf {
             items: vec![payment(3), payment(4)],
-            next: None,
+            next: generic::Nullable::Null,
             total: 0,
         })),
         Ok(7)
@@ -172,7 +174,7 @@ fn a_named_type_over_a_generic_type_is_written_like_it() {
     let response = run(generic::handle(&Shop, "payments", |_| {}));
     assert_eq!(
         response,
-        "RETURNS { items [{ amount 3, at \"2026-11-14T06:00:08.123Z\" }], next \"2\", total 7 }\n"
+        "RETURNS { items [{ amount 3, at \"2026-11-14T06:00:08.123Z\" }], next: value \"2\", total 7 }\n"
     );
 }
 

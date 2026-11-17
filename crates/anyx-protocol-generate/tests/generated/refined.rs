@@ -19,8 +19,8 @@ TYPE Linear: Integer . WHERE [0 < (_ * 2), (_ + 1) <= 30],
 TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)],
 TYPE Contains Zero: Text . WHERE [_ contains "\u00001"],
 TYPE Names: (LIST Text) WHERE [1 <= (_ length) <= 3],
-RECORD Summary { path: Score Path, revision: Revision, limit: OPTIONAL: Limit DEFAULT 10 },
-RECORD Box of (item: TYPE) { value: item },
+RECORD Summary { path: Score Path, revision: Revision, limit: Limit DEFAULT 10 },
+RECORD Box of (item: Type) { value: item },
 METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
@@ -618,6 +618,80 @@ impl<Item: FromValue> FromValue for BoxOf<Item> {
         let mut fields = FieldsReader::new(fields);
         Some(Self {
             value: fields.field("value")?,
+        })
+    }
+}
+
+/// `true` or `false`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Boolean {
+    False,
+    True,
+}
+
+impl IntoValue for Boolean {
+    fn into_value(self) -> Value {
+        match self {
+            Boolean::False => Value::Variant {
+                shape: "false".to_string(),
+                arguments: vec![],
+            },
+            Boolean::True => Value::Variant {
+                shape: "true".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for Boolean {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "false" => Boolean::False,
+            "true" => Boolean::True,
+            _ => return None,
+        })
+    }
+}
+
+/// A nullable item: `null`, or `value (item)` containing a value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Nullable<Item> {
+    Null,
+    Value { item: Item },
+}
+
+impl<Item: IntoValue> IntoValue for Nullable<Item> {
+    fn into_value(self) -> Value {
+        match self {
+            Nullable::Null => Value::Variant {
+                shape: "null".to_string(),
+                arguments: vec![],
+            },
+            Nullable::Value { item } => Value::Variant {
+                shape: "value _".to_string(),
+                arguments: vec![item.into_value()],
+            },
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for Nullable<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "null" => Nullable::Null,
+            "value _" => Nullable::Value {
+                item: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
         })
     }
 }

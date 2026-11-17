@@ -14,7 +14,7 @@ CHOICE shade { dark, light },
 CHOICE colour { dark, red },
 CHOICE mood { calm, wild },
 RECORD point { x: Integer, y: Integer },
-RECORD size { x: Integer, label: OPTIONAL Text },
+RECORD size { x: Integer, label: Text DEFAULT \"\" },
 RECORD width { x: Integer },
 METHOD tag (names: LIST Text) RETURNS NOTHING,
 METHOD tag (ids: LIST Integer) RETURNS NOTHING,
@@ -122,7 +122,16 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
         "in `size` of `fit _`: `{ x 1 }` has no type of its own; annotate it, as in `fit ({ x 1 } AS: size)`",
         "`size` and `width` both fit; `point` needs a `y`"
     );
-    assert_eq!(calls("show (true)"), [(11, vec![Value::Boolean(true)])]);
+    assert_eq!(
+        calls("show (true)"),
+        [(
+            11,
+            vec![Value::Variant {
+                shape: "true".into(),
+                arguments: vec![]
+            }]
+        )]
+    );
     assert_eq!(calls("wait (1 hour)")[0].0, 12);
 }
 

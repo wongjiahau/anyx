@@ -27,12 +27,12 @@ schema:1:44: duplicate declaration `a` in `schema.protocol.anyx` and `schema.pro
 
 == a named type over an unknown type
 PROTOCOL a VERSION 1, TYPE a: thing,
-schema:1:31: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:31: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, TYPE a: thing,
                                 ^^^^^
 
 == a named type over an optional type
-PROTOCOL a VERSION 1, TYPE a: OPTIONAL Text,
-schema:1:31: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
-  PROTOCOL a VERSION 1, TYPE a: OPTIONAL Text,
-                                ^^^^^^^^
+PROTOCOL a VERSION 1, TYPE a: Text DEFAULT "",
+schema:1:31: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written
+  PROTOCOL a VERSION 1, TYPE a: Text DEFAULT "",
+                                ^^^^^^^^^^^^^^^

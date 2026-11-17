@@ -12,13 +12,6 @@ fn describe(value: &Syntax) -> String {
         Syntax::Text(_) => "a string".into(),
         Syntax::List(_) => "a list `[…]`".into(),
         Syntax::Braces(_) => "braces `{…}`".into(),
-        Syntax::Boolean(value) => format!(
-            "the call `{}`",
-            match value {
-                crate::request_grammar::Boolean::True(_) => "true",
-                crate::request_grammar::Boolean::False(_) => "false",
-            }
-        ),
         Syntax::Duration(duration) => format!("the call `{}`", duration.name.text),
         Syntax::Call(call) => format!("the call `{}`", call.name.text),
     }
@@ -34,9 +27,6 @@ pub(crate) fn decode(schema: &Schema, expected: &Type, value: &Syntax) -> Result
 }
 
 fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value, Mismatch> {
-    if let Syntax::Boolean(boolean) = value {
-        return decode(schema, expected, &boolean_call(boolean));
-    }
     if let Syntax::Duration(duration) = value {
         return decode(schema, expected, &duration_call(duration));
     }
@@ -80,17 +70,6 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
             .map(Value::Float)
             .ok_or_else(|| mismatch("a finite Float, as in `1.5`".into())),
         (Type::Float, _) => Err(mismatch("a Float, as in `1.5`".into())),
-        (Type::Boolean, Syntax::Call(call))
-            if call.arguments.is_empty() && call.name.text == "true" =>
-        {
-            Ok(Value::Boolean(true))
-        }
-        (Type::Boolean, Syntax::Call(call))
-            if call.arguments.is_empty() && call.name.text == "false" =>
-        {
-            Ok(Value::Boolean(false))
-        }
-        (Type::Boolean, _) => Err(mismatch("`true` or `false`".into())),
         (Type::Instant, Syntax::Text(text)) => crate::time::parse_instant(&text.value.value)
             .map(Value::Instant)
             .ok_or_else(|| {
@@ -213,9 +192,6 @@ pub(crate) fn variant(
     value: &Syntax,
     what: &str,
 ) -> Result<Value, Mismatch> {
-    if let Syntax::Boolean(boolean) = value {
-        return variant(schema, shapes, &boolean_call(boolean), what);
-    }
     if let Syntax::Duration(duration) = value {
         return variant(schema, shapes, &duration_call(duration), what);
     }
@@ -299,14 +275,14 @@ fn fields_value(
     }
     let missing = fields
         .iter()
-        .filter(|field| !field.optional && !values.contains_key(&field.name))
+        .filter(|field| field.default.is_none() && !values.contains_key(&field.name))
         .map(|field| format!("`{}`", field.name))
         .collect::<Vec<_>>();
     if !missing.is_empty() {
         return Err(Mismatch {
             span,
             message: format!(
-                "found no {}; expected every field that is not `OPTIONAL`",
+                "found no {}; expected every field without a `DEFAULT`",
                 missing.join(", ")
             ),
         });
@@ -326,25 +302,6 @@ fn duration_call(duration: &crate::request_grammar::Duration) -> Syntax {
             .map(Syntax::Integer)
             .collect(),
         span: duration.span,
-    })
-}
-
-fn boolean_call(boolean: &crate::request_grammar::Boolean) -> Syntax {
-    let (text, span) = match boolean {
-        crate::request_grammar::Boolean::True(span) => ("true", *span),
-        crate::request_grammar::Boolean::False(span) => ("false", *span),
-    };
-    Syntax::Call(crate::request_grammar::ValueCall {
-        name: crate::request_grammar::CallName {
-            text: text.into(),
-            parts: vec![anyx::NamePart::Word {
-                text: text.into(),
-                span,
-            }],
-            span,
-        },
-        arguments: Vec::new(),
-        span,
     })
 }
 

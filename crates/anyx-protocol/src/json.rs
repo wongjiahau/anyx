@@ -297,7 +297,6 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
         Value::Bytes(bytes) => Json::String(crate::bytes::encode(bytes)),
         Value::Integer(integer) => json!(integer),
         Value::Float(number) => json!(number),
-        Value::Boolean(boolean) => Json::Bool(*boolean),
         Value::Instant(instant) => {
             crate::time::format_instant(*instant).map_or(Json::Null, Json::String)
         }
@@ -416,10 +415,6 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
         Type::Float => match json.as_f64() {
             Some(number) => Ok(Value::Float(number)),
             None => mismatch("a number"),
-        },
-        Type::Boolean => match json {
-            Json::Bool(boolean) => Ok(Value::Boolean(*boolean)),
-            _ => mismatch("true or false"),
         },
         Type::Instant => match json.as_str().and_then(crate::time::parse_instant) {
             Some(instant) => Ok(Value::Instant(instant)),
@@ -545,7 +540,7 @@ fn fields_from_json(
     let mut values = BTreeMap::new();
     for field in fields {
         match object.get(&camel_case(&field.name)) {
-            None | Some(Json::Null) if field.optional => {
+            None if field.default.is_some() => {
                 if let Some(default) = &field.default {
                     values.insert(field.name.clone(), default.clone());
                 }

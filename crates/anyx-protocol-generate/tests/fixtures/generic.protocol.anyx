@@ -3,25 +3,25 @@
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-RECORD Page of (item: TYPE) {
+RECORD Page of (item: Type) {
     items: LIST: item,
-    next: OPTIONAL Text,
+    next: Text? DEFAULT null,
     # How many there are in all.
-    total: OPTIONAL: Integer DEFAULT 0,
+    total: Integer DEFAULT 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) },
+CHOICE (value: Type) or (problem: Type) { done (value: value), failed (problem: problem) },
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-RECORD (item: TYPE) dated { item: item, at: Instant },
+RECORD (item: Type) dated { item: item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-RECORD Tree of (item: TYPE) { value: item, children: LIST Tree of (item) },
+RECORD Tree of (item: Type) { value: item, children: LIST Tree of (item) },
 
 # Keys and their values, in the same order: a slot between words.
-RECORD Table from (key: TYPE) to (value: TYPE) { keys: LIST: key, values: LIST: value },
+RECORD Table from (key: Type) to (value: Type) { keys: LIST: key, values: LIST: value },
 
 RECORD Payment { amount: Integer, at: Instant },
 
