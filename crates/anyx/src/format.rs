@@ -723,14 +723,18 @@ fn starts_with_symbol_word(expression: &Expression) -> bool {
 
 fn token_text(token: &Token) -> Doc {
     match &token.kind {
-        TokenKind::String(literal) if token.text.starts_with("\"\"\"") => Doc::Raw {
-            quotes: token.text.chars().take_while(|&c| c == '"').collect(),
-            lines: if literal.value.is_empty() {
-                Vec::new()
-            } else {
-                literal.value.split('\n').map(str::to_string).collect()
-            },
-        },
+        TokenKind::String(literal)
+            if token.text.starts_with("\"\"\"") && token.text.contains('\n') =>
+        {
+            Doc::Raw {
+                quotes: token.text.chars().take_while(|&c| c == '"').collect(),
+                lines: if literal.value.is_empty() {
+                    Vec::new()
+                } else {
+                    literal.value.split('\n').map(str::to_string).collect()
+                },
+            }
+        }
         TokenKind::String(literal) if is_line_string(token) => {
             Doc::LineString(literal.value.split('\n').map(str::to_string).collect())
         }

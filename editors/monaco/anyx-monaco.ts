@@ -55,9 +55,9 @@ export const anyxMonarchLanguage: Monaco.languages.IMonarchLanguage = {
       [/##.*$/, 'comment'],
       // A single `#` starts a line string, which runs to the end of the line.
       [/#.*$/, 'string'],
-      // Three or more quotes at the end of a line open a raw string, closed by
-      // a line holding only indentation and as many quotes.
+      // A raw opener followed only by whitespace opens a multiline string.
       [/("{3,})(?=[ \t]*$)/, { token: 'string.quote', next: '@raw.$1' }],
+      [/("{3,})/, { token: 'string.quote', next: '@inlineRaw.$1' }],
       [/"/, { token: 'string.quote', next: '@string' }],
       // A `-` before an ASCII digit always starts a number.
       [/-?0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*/, 'number'],
@@ -89,6 +89,22 @@ export const anyxMonarchLanguage: Monaco.languages.IMonarchLanguage = {
       [/\\(?:["\\/bBfFnNtTrR]|[uU]\{[0-9a-fA-F]{1,6}\}|[uU][0-9a-fA-F]{4})/, 'string.escape'],
       [/\\./, 'string.escape.invalid'],
       [/"/, { token: 'string.quote', next: '@pop' }],
+    ],
+    // Inline raw strings end at a matching maximal run, or at line end.
+    inlineRaw: [
+      [/("+)/, {
+        cases: {
+          '$1==$S2': { token: 'string.quote', next: '@pop' },
+          '@eos': { token: 'string', next: '@pop' },
+          '@default': 'string',
+        },
+      }],
+      [/[^"\r\n]+/, {
+        cases: {
+          '@eos': { token: 'string', next: '@pop' },
+          '@default': 'string',
+        },
+      }],
     ],
     // `$S2` is the run of quotes that opened the raw string.
     raw: [

@@ -82,7 +82,7 @@ string     = quoted | raw | line ;
 quoted     = '"' { ? any char except '"' or "\" ? | escape } '"' ;
 escape     = "\" ( '"' | "\" | "/" | "b" | "f" | "n" | "t" | "r"
                   | "u{" hex { hex } "}" | "u" hex hex hex hex ) ;
-raw        = quotes newline { line newline } indent quotes ;  (* see Raw strings *)
+raw        = quotes ( inline-content quotes | newline { line newline } indent quotes ) ;  (* see Raw strings *)
 quotes     = '"' '"' '"' { '"' } ;               (* closed by as many as opened *)
 line       = "#" [ " " ] rest { newline indent "#" [ " " ] rest } ;  (* see Line strings *)
 rest       = { ? any char except newline ? } ;   (* not starting with "#" *)
@@ -129,7 +129,7 @@ digit      = "0" … "9" ;                          (* ASCII only *)
    them in a row: `\ud83d\ude00` is 😀. A lone surrogate is invalid. `\/`,
    `\b` and `\f` are JSON's too. Strings may contain literal newlines. No
    interpolation.
-8. Three or more `"` at the end of a line open a [raw string](#raw-strings).
+8. Three or more `"` open a [raw string](#raw-strings).
    `""` is still the empty string.
 
 ## Raw strings
@@ -147,8 +147,15 @@ score """
 The value is `bpm=90 key=F4 label="Verse"   # not a comment: this is
 content` and `[S1] 3 3 2_1_`, on two lines.
 
-- **Opening:** three or more `"`, then the end of the line. Spaces and tabs
-  may follow the quotes; anything else is `RawStringOpening`.
+An inline raw string keeps everything between its delimiters as written, for
+example `"""^\d+$"""`. Its closing delimiter is the next run of exactly as
+many quotes as the opener, on the same line. Longer and shorter runs are
+content; tokens can follow the closer immediately. If no closer appears,
+`UnterminatedString` ends at the line break and parsing resumes on the next line.
+
+For a multiline raw string:
+
+- **Opening:** three or more `"`, followed only by spaces or tabs and a line break.
 - **Closing:** a line holding only spaces or tabs, then exactly as many `"`
   as opened the string. Tokens continue after it, so `""",` closes the string
   and then has a comma.
@@ -361,9 +368,8 @@ found, what was expected, and the fix.
 | `EmptyOperand` | `a..b`, `. a`, `a :`, `: b`, `a::b` | The operator next to the missing run, which becomes `Missing`. |
 | `EmptyElement` | `a,,b`, `[, a]` | The comma with nothing before it. A trailing comma is fine. |
 | `ExtraUnderscore` | `x . f _ _`, `_ f _ : x` | The second bare `_` in a run that receives a value. It stays an `Underscore`. |
-| `UnterminatedString` | `"abc`, a raw string with no closing line | The string, which runs to the end of input. A raw string's value is then its content as written. |
+| `UnterminatedString` | `"abc`, a raw string with no closer | The string runs to the end of input, except an inline raw string stops at the end of its line. Its value is the content as written. |
 | `InvalidEscape` | `"\q"`, `"\u{110000}"`, `"\uD800"` | The escape, kept as written in the decoded value. |
-| `RawStringOpening` | `"""abc` | The text after the opening quotes, which is skipped. The content starts on the next line. |
 | `RawStringIndentation` | a content line indented less than the closing line | The line's indentation. The line keeps what follows the indentation it shares with the closing line. |
 | `TooDeep` | 1000 nested `(` | The first bracket deeper than `MAX_DEPTH` (256). It and its contents are skipped, so the stack never overflows. |
 
@@ -414,7 +420,7 @@ string     : quoted | raw | line,
 quoted     : "\"" { any char except ("\"" | "\\") | escape } "\"",
 escape     : "\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
                   | "u{" hex { hex } "}" | "u" hex hex hex hex),
-raw        : quotes newline { line newline } indent quotes,
+raw        : quotes (inline-content quotes | newline { line newline } indent quotes),
 quotes     : "\"\"\"" { "\"" },
 line       : "#" [" "] rest { newline indent "#" [" "] rest },
 rest       : { any char except newline },
@@ -468,7 +474,8 @@ formatting it again changes nothing.
   follows other text. A line string of several lines always starts its line,
   and two in a row keep a blank line between them, so neither joins the
   other.
-- **Raw strings** are re-indented one level past the line they open on. Their
+- **Raw strings:** inline literals keep their spelling. Multiline literals are
+  re-indented one level past the line they open on. Their
   values are unchanged.
 - **A layout** from whoever knows what the document means. `format_with(source,
   &layout)` also lets a line break before the words the `Layout` marks: when

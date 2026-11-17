@@ -118,3 +118,42 @@ fn an_empty_string_maps_to_its_content_start() {
     assert_eq!(literal(r#"x """#).source_offset(0), 3);
     assert_eq!(literal("\"\"\"\n  \"\"\"").source_offset(0), 4);
 }
+
+#[test]
+fn inline_raw_strings_keep_content_and_map_source_offsets() {
+    let source = "x \"\"\"  ^\\d+\\s*$  \"\"\"";
+    let literal = literal(source);
+    assert_eq!(literal.value, "  ^\\d+\\s*$  ");
+    assert_eq!(
+        &source[literal.content.start..literal.content.end],
+        literal.value
+    );
+    for offset in 0..=literal.value.len() {
+        assert_eq!(
+            literal.source_offset(offset),
+            literal.content.start + offset
+        );
+    }
+}
+
+#[test]
+fn inline_closer_requires_an_exact_maximal_quote_run() {
+    assert_eq!(value("\"\"\"a\"\"b\"\"\"\"c\"\"\""), "a\"\"b\"\"\"\"c");
+    assert_eq!(value("\"\"\"\"a\"\"\"b\"\"\"\""), "a\"\"\"b");
+    assert_eq!(tree("f \"\"\"x\"\"\", g"), "(`f _` \"x\"), g");
+}
+
+#[test]
+fn inline_literals_allow_whitespace_unicode_and_literal_special_characters() {
+    assert_eq!(value("\"\"\" \t \"\"\""), " \t ");
+    let source = "\"\"\"é #\\w\\d\"\"\"";
+    let literal = literal(source);
+    assert_eq!(literal.value, "é #\\w\\d");
+    for offset in 0..=literal.value.len() {
+        assert_eq!(
+            literal.source_offset(offset),
+            literal.content.start + offset
+        );
+    }
+    assert!(!nodes("STRING [MATCHING REGEX \"\"\"\\w\\d\"\"\"]").is_empty());
+}

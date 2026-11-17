@@ -15,12 +15,12 @@ pub enum ErrorCode {
     EmptyElement,
     /// A second bare `_` in a run that receives a value from `.` or `:`, e.g. `x . f _ _`.
     ExtraUnderscore,
-    /// A string with no closing `"`, or a raw string with no closing line.
+    /// A string with no closing `"`, or a raw string with no closing delimiter.
     UnterminatedString,
     /// An unknown escape, a bad `\u{…}` or `\uXXXX`, or a lone UTF-16
     /// surrogate, e.g. `"\q"`, `"\u{110000}"`, `"\uD800"`.
     InvalidEscape,
-    /// Text after the opening quotes of a raw string, on the same line, e.g. `"""abc`.
+    /// Reserved for compatibility; inline raw string content is now allowed.
     RawStringOpening,
     /// A raw string line that does not start with the closing line's indentation.
     RawStringIndentation,

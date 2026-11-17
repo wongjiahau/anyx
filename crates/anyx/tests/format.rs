@@ -236,6 +236,14 @@ fn raw_strings_are_reindented_with_their_value_kept() {
 }
 
 #[test]
+fn inline_raw_strings_preserve_their_spelling() {
+    assert_eq!(
+        fmt("f(\"\"\"  ^\\d+$  \"\"\",x)"),
+        "f (\"\"\"  ^\\d+$  \"\"\", x)\n"
+    );
+}
+
+#[test]
 fn documents_with_errors_are_not_formatted() {
     let errors = format("f (a").unwrap_err();
     assert_eq!(errors[0].code, ErrorCode::UnclosedBracket);
