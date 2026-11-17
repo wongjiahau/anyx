@@ -2,7 +2,7 @@
 name = "anyx-shell"
 version.workspace = true
 edition.workspace = true
-description = "A non-interactive anyx shell with scoped, schema-checked tools"
+description = "An interactive anyx shell with scoped, schema-checked tools"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -11,3 +11,7 @@ readme = "README.md"
 [dependencies]
 anyx = { path = "../anyx", version = "0.1.0" }
 anyx-protocol = { path = "../anyx-protocol", version = "0.1.0" }
+crossterm = { version = "0.29", default-features = false, features = ["events", "bracketed-paste", "windows"] }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+unicode-segmentation = "1"
+unicode-width = "0.2"

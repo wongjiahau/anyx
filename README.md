@@ -511,6 +511,7 @@ calls and displays their returned values as anyx. Its first tool is a
 session-owned environment with methods to list, read, set and remove variables:
 
 ```sh
+cargo run -p anyx-shell # Interactive prompt with Tab completion
 cargo run -p anyx-shell -- --expression 'environment / list variables'
 ```
 

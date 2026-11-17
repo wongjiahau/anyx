@@ -1,6 +1,6 @@
 # anyx-shell
 
-A non-interactive interpreter for scoped anyx protocols. Each tool has its
+An interpreter for scoped anyx protocols. Each tool has its
 own schema and session state. Successful commands return anyx values:
 records, lists, strings, numbers or choices. The shell displays these values
 as anyx, with no `RETURNS` envelope or text-table rendering.
@@ -13,9 +13,10 @@ cargo run -p anyx-shell -- --expression 'environment / list variables'
 printf 'environment / read variable "HOME"' | cargo run -p anyx-shell
 ```
 
-With no arguments or `-`, read standard input. With one file argument, read
-that file. `--expression SOURCE` runs an inline document. `--help` returns
-usage as an anyx text value. Saved shell documents use `.shell.anyx`.
+With no arguments, start an interactive prompt when standard input and output
+are terminals; otherwise read standard input as a batch document. `-` always
+reads a batch document. With one file argument, read that file.
+`--expression SOURCE` runs an inline document. `--help` returns usage as an anyx text value. Saved shell documents use `.shell.anyx`.
 
 Calls are comma-separated; newlines are whitespace:
 
@@ -38,6 +39,71 @@ false,
 An empty collection is a list `[]`; an empty document or a
 method that returns nothing produces no output. Multiple results form one
 comma-separated anyx document.
+
+## Interactive shell
+
+```sh
+cargo run -p anyx-shell
+# Or explicitly select interactive mode:
+cargo run -p anyx-shell -- --interactive
+```
+
+```text
+anyx> environment / set variable "EDITOR" to "helix"
+{ name "EDITOR", value "helix" }
+anyx> environment / read variable "EDITOR"
+"helix"
+```
+
+Each submitted document runs in the same interpreter. Errors are displayed and
+the prompt returns; successful earlier changes remain available. Ctrl-C cancels
+the current input and Ctrl-D at an empty prompt exits successfully. Input/output
+failures still exit with an error. Up/Down recall commands from this session;
+the last 1,000 history entries stay in memory and are never saved to disk.
+
+Completion opens while typing and shows matching scopes or full method
+signatures, parameter types, return types, declared `ERRORS` (including shared
+error groups), and protocol documentation. Use
+Up/Down to choose an entry, Enter or Tab to accept it, and Esc to dismiss it.
+Ctrl-Space opens completion explicitly. Accepting a menu entry edits the input;
+it never runs a command.
+
+Methods insert editable argument templates. For example, type `env`, press Tab,
+type `set`, and press Enter:
+
+```text
+anyx> environment / set variable "name" to "value"
+                                ^^^^ selected
+```
+
+Type a name to replace the selection, then Tab to select `value`. Shift-Tab goes
+back to the previous argument, including its current edited value. Tab after
+the last argument leaves snippet editing and moves to the end of the template.
+Esc also leaves snippet editing. The selected argument is highlighted, with its
+name, type, and position shown below the input. Press Enter with no menu open
+to run the command. Template values are editable defaults, so replace them
+before submitting.
+
+Completion reads registered tools' schemas without executing them. It works
+inside nested calls and after commas or grouping operators, and preserves
+existing arguments when editing a method word in the middle of a command.
+Record-field completion, choice-variant menus, and filtering nested calls by
+expected return type are future work.
+
+The REPL uses Ratatui in an inline viewport, keeping command output in terminal
+scrollback. Long input lines scroll horizontally to keep the cursor visible.
+
+Left/Right move by Unicode graphemes. Up/Down move through multiline input or
+history when the completion menu is closed. Home/End and Ctrl-A/Ctrl-E move to
+line boundaries; Backspace/Delete edit text, and Ctrl-W/Ctrl-U/Ctrl-K delete a
+word, the prefix, or the suffix of the current line. Bracketed paste inserts
+text without submitting it. Alt-Enter inserts a newline explicitly.
+
+Open brackets, unfinished quoted/raw strings, and a trailing `:` or `.` continue
+input onto another line. Other invalid input is submitted for a diagnostic.
+Newlines alone do not separate commands: use commas to submit several calls
+in one document. Wrap a multiline argument in brackets or parentheses to keep
+input open while editing.
 
 ## Scopes and protocols
 
@@ -99,7 +165,7 @@ Run the example with:
 cargo run -p anyx-shell -- crates/anyx-shell/examples/expressions.shell.anyx
 ```
 
-Shell variables, pipelines, subprocesses and an interactive prompt are future work.
+Shell variables, pipelines and subprocesses are future work.
 
 The library exposes `Interpreter` and a synchronous `Tool` trait. Register a
 protocol implementation under a lowercase scope with
@@ -144,11 +210,15 @@ ERROR variable does not exist
 
 Input and validation failures use `INVALID REQUEST { line, column, message }`,
 with one-based source positions. Internal failures use `INTERNAL ERROR`.
-Every failure exits with a nonzero status. The CLI prints no human-text
+In batch mode, every failure exits with a nonzero status. Interactive mode
+reports command errors and keeps running. Batch output contains no human-text
 preambles or debug representations.
 
 ## Verify
 
 ```sh
 cargo test -p anyx-shell
+# Terminal integration checks on Unix:
+cargo build -p anyx-shell
+python3 crates/anyx-shell/tests/repl_terminal.py
 ```

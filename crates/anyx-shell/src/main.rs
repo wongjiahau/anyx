@@ -1,10 +1,12 @@
-use std::io::{self, Read, Write};
+mod repl;
+
+use std::io::{self, IsTerminal, Read, Write};
 use std::process::ExitCode;
 
 use anyx_protocol::Problem;
 use anyx_shell::{Interpreter, diagnostic, environment::Environment};
 
-const USAGE: &str = "anyx-shell [--expression SOURCE | FILE | -]\nWith no arguments or -, read an anyx document from standard input.\nCalls use scope / method arguments. Successful results are anyx values.\nExample: anyx-shell --expression 'environment / list variables'";
+const USAGE: &str = "anyx-shell [--interactive | --expression SOURCE | FILE | -]\nWith no arguments, start a REPL on a terminal or read standard input when piped.\n--interactive starts a REPL explicitly; - always reads a batch document.\nCompletion opens while typing; Ctrl-Space opens it explicitly. Arrow keys choose; Enter accepts.\nTab and Shift-Tab move between snippet arguments; typing replaces the selected argument.\nEsc dismisses completion or ends snippet editing. History lasts for the session.\nCtrl-C cancels input; Ctrl-D exits. Open brackets and strings continue on the next line.\nCalls use scope / method arguments. Successful results are anyx values.\nExample: anyx-shell --expression 'environment / list variables'";
 
 fn main() -> ExitCode {
     match run() {
@@ -43,6 +45,12 @@ fn run() -> Result<bool, String> {
             .map_err(|error| error.to_string())?;
         return Ok(true);
     }
+    let interactive =
+        (arguments.is_empty() && io::stdin().is_terminal() && io::stdout().is_terminal())
+            || (arguments.len() == 1 && arguments[0] == "--interactive");
+    if interactive {
+        return repl::run(interpreter()?);
+    }
     let source = match arguments.as_slice() {
         [] => read_standard_input()?,
         [path] if path == "-" => read_standard_input()?,
@@ -54,9 +62,17 @@ fn run() -> Result<bool, String> {
             .map_err(|error| format!("cannot read input file: {error}"))?,
         _ => return Err(USAGE.into()),
     };
+    execute(&mut interpreter()?, &source)
+}
+
+fn interpreter() -> Result<Interpreter, String> {
     let mut interpreter = Interpreter::new();
     interpreter.register("environment", Environment::from_process()?)?;
-    let execution = match interpreter.execute(&source) {
+    Ok(interpreter)
+}
+
+fn execute(interpreter: &mut Interpreter, source: &str) -> Result<bool, String> {
+    let execution = match interpreter.execute(source) {
         Ok(execution) => execution,
         Err(problem) => {
             io::stderr()
