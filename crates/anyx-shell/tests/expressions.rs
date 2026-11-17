@@ -1,0 +1,293 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use anyx_protocol::{Call, Outcome, Schema, Value};
+use anyx_shell::{Interpreter, Tool, environment::Environment};
+
+struct Example {
+    schema: Schema,
+    calls: Rc<RefCell<Vec<String>>>,
+}
+
+fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
+    let mut interpreter = Interpreter::new();
+    interpreter
+        .register("environment", Environment::new())
+        .unwrap();
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    interpreter
+        .register(
+            "example",
+            Example {
+                schema: Schema::parse(
+                    "PROTOCOL example VERSION 1,
+            RECORD Envelope { items: LIST Text },
+            CHOICE Message { message (text: Text) },
+            METHOD text RETURNS (value: Text),
+            METHOD integer RETURNS (value: Integer),
+            METHOD names RETURNS (names: LIST Text),
+            METHOD handle (value: Text) RETURNS (handled: Text),
+            METHOD handle (value: Integer) RETURNS (handled: Text),
+            METHOD handle (value: LIST Text) RETURNS (handled: Text),
+            METHOD handle (value: LIST Integer) RETURNS (handled: Text),
+            METHOD envelope (value: Envelope) RETURNS (value: Envelope),
+            METHOD mapping (value: MAP Text) RETURNS (value: MAP Text),
+            METHOD message (value: Message) RETURNS (value: Message),
+            METHOD pair (left: Text) with (right: Text) RETURNS (pair: LIST Text),
+            METHOD finish RETURNS NOTHING",
+                )
+                .unwrap(),
+                calls: calls.clone(),
+            },
+        )
+        .unwrap();
+    (interpreter, calls)
+}
+
+impl Tool for Example {
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+    fn invoke(&mut self, call: &Call) -> Outcome {
+        let method = self.schema.method_at(call.method);
+        self.calls
+            .borrow_mut()
+            .push(self.schema.typed_shape(&method.shape));
+        Outcome::Value(match method.shape.text.as_str() {
+            "text" => Value::Text("hello".into()),
+            "integer" => Value::Integer(42),
+            "names" => Value::List(vec![]),
+            "finish" => Value::Nothing,
+            "handle _" => Value::Text(self.schema.type_name(&method.shape.parameters[0].r#type)),
+            "pair _ with _" => Value::List(call.arguments.clone()),
+            _ => call.arguments[0].clone(),
+        })
+    }
+}
+
+#[test]
+fn nested_environment_call_supplies_a_value_without_printing_it() {
+    let (mut interpreter, _) = interpreter();
+    let execution = interpreter.execute("environment / set variable \"HOME\" to \"/home/example\", environment / set variable \"COPY\" to (environment / read variable \"HOME\")").unwrap();
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(execution.values.len(), 2);
+    let execution = interpreter
+        .execute("environment / read variable \"COPY\"")
+        .unwrap();
+    assert_eq!(execution.values, vec![Value::Text("/home/example".into())]);
+    assert_eq!(execution.output, "\"/home/example\"\n");
+}
+
+#[test]
+fn declared_return_types_disambiguate_overloads_even_for_empty_lists() {
+    let (mut interpreter, calls) = interpreter();
+    let execution = interpreter.execute("example / handle (example / text), example / handle (example / integer), example / handle (example / names)").unwrap();
+    assert!(execution.error.is_none());
+    assert_eq!(
+        execution.values,
+        vec![
+            Value::Text("Text".into()),
+            Value::Text("Integer".into()),
+            Value::Text("LIST Text".into())
+        ]
+    );
+    assert_eq!(
+        *calls.borrow(),
+        [
+            "text",
+            "handle (value: Text)",
+            "integer",
+            "handle (value: Integer)",
+            "names",
+            "handle (value: LIST Text)"
+        ]
+    );
+}
+
+#[test]
+fn argument_types_are_checked_before_any_calls_run() {
+    let (mut interpreter, calls) = interpreter();
+    for source in [
+        "example / text, environment / read variable (example / integer)",
+        "example / text, environment / read variable (missing / text)",
+        "example / text, environment / read variable (example / finish)",
+        "example / text, environment / read variable (example / unknown)",
+        "example / text, environment / read variable ((example / integer) AS: Text)",
+        "example / text, environment / read variable (example / pair (example / text) with (example / text))",
+    ] {
+        assert!(interpreter.execute(source).is_err(), "{source}");
+        assert!(calls.borrow().is_empty(), "{source}");
+    }
+}
+
+#[test]
+fn arguments_run_left_to_right_before_the_parent() {
+    let (mut interpreter, calls) = interpreter();
+    let execution = interpreter
+        .execute("example / pair (example / text) with (example / handle (example / integer))")
+        .unwrap();
+    assert!(execution.error.is_none());
+    assert_eq!(
+        *calls.borrow(),
+        [
+            "text",
+            "integer",
+            "handle (value: Integer)",
+            "pair (left: Text) with (right: Text)"
+        ]
+    );
+    assert_eq!(
+        execution.values,
+        vec![Value::List(vec![
+            Value::Text("hello".into()),
+            Value::Text("Integer".into())
+        ])]
+    );
+}
+
+#[test]
+fn nested_failure_skips_remaining_arguments_and_parent() {
+    let (mut interpreter, calls) = interpreter();
+    let execution = interpreter
+        .execute("example / pair (environment / read variable \"missing\") with (example / text)")
+        .unwrap();
+    assert_eq!(
+        execution.error.as_deref(),
+        Some("ERROR variable does not exist\n")
+    );
+    assert!(execution.values.is_empty());
+    assert!(calls.borrow().is_empty());
+}
+
+#[test]
+fn expressions_work_in_lists_records_maps_and_choice_arguments() {
+    let (mut interpreter, _) = interpreter();
+    for source in [
+        "example / handle [(example / text)]",
+        "example / envelope { items: [(example / text), (example / text)] }",
+        "example / mapping { \"key\": (example / text) }",
+        "example / message (message (example / text))",
+        "example / handle ((example / names) AS: LIST Text)",
+    ] {
+        let execution = interpreter
+            .execute(source)
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+        assert!(execution.error.is_none(), "{source}: {:?}", execution.error);
+        assert_eq!(execution.values.len(), 1);
+        assert!(anyx::parse(&execution.output).errors.is_empty());
+    }
+}
+
+#[test]
+fn anyx_sugar_groups_argument_expressions() {
+    let (mut interpreter, _) = interpreter();
+    let execution = interpreter
+        .execute("example / handle: example / text")
+        .unwrap();
+    assert_eq!(execution.values, vec![Value::Text("Text".into())]);
+    let execution = interpreter
+        .execute("example / message ((example / text) . message _)")
+        .unwrap();
+    assert!(execution.error.is_none());
+    assert_eq!(
+        execution.values,
+        vec![Value::Variant {
+            shape: "message _".into(),
+            arguments: vec![Value::Text("hello".into())]
+        }]
+    );
+}
+
+struct Identity(Schema);
+impl Tool for Identity {
+    fn schema(&self) -> &Schema {
+        &self.0
+    }
+    fn invoke(&mut self, call: &Call) -> Outcome {
+        Outcome::Value(call.arguments[0].clone())
+    }
+}
+
+#[test]
+fn named_result_types_keep_their_identity_across_protocols() {
+    let (mut interpreter, _) = interpreter();
+    interpreter.register("source", Identity(Schema::parse(
+        "PROTOCOL source VERSION 1, TYPE Identifier: Text, METHOD identity (value: Identifier) RETURNS (value: Identifier)"
+    ).unwrap())).unwrap();
+    interpreter.register("target", Identity(Schema::parse(
+        "PROTOCOL target VERSION 1, RECORD Earlier { count: Integer }, TYPE Identifier: Text, METHOD identity (value: Identifier) RETURNS (value: Identifier)"
+    ).unwrap())).unwrap();
+    let execution = interpreter
+        .execute("target / identity (source / identity (\"example\" AS: Identifier))")
+        .unwrap();
+    assert!(execution.error.is_none());
+    assert_eq!(execution.values, vec![Value::Text("example".into())]);
+    assert!(
+        interpreter
+            .execute("environment / read variable (source / identity (\"example\" AS: Identifier))")
+            .is_err()
+    );
+    interpreter.register("different", Identity(Schema::parse(
+        "PROTOCOL different VERSION 1, TYPE Identifier: Integer, METHOD identity (value: Identifier) RETURNS (value: Identifier)"
+    ).unwrap())).unwrap();
+    assert!(
+        interpreter
+            .execute("different / identity (source / identity (\"example\" AS: Identifier))")
+            .is_err()
+    );
+}
+
+#[test]
+fn nested_diagnostics_point_to_the_original_document() {
+    let (mut interpreter, calls) = interpreter();
+    let error = interpreter
+        .execute("example / text,\nenvironment / read variable (example / integer)")
+        .unwrap_err();
+    assert_eq!((error.line, error.column), (2, 30));
+    assert!(calls.borrow().is_empty());
+}
+
+#[test]
+fn generic_records_and_defaults_can_contain_computed_fields() {
+    let (mut interpreter, _) = interpreter();
+    interpreter.register("generic", Identity(Schema::parse(
+        "PROTOCOL generic VERSION 1, RECORD Box of (item: TYPE) { value: item, count: OPTIONAL: Integer DEFAULT 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text))"
+    ).unwrap())).unwrap();
+    let execution = interpreter
+        .execute("generic / identity ({ value: (example / text) } AS: Box of (Text))")
+        .unwrap();
+    assert!(execution.error.is_none());
+    let Value::Record(record) = &execution.values[0] else {
+        panic!()
+    };
+    assert_eq!(record["value"], Value::Text("hello".into()));
+    assert_eq!(record["count"], Value::Integer(7));
+}
+
+#[test]
+fn invalid_nested_tool_output_prevents_the_parent_from_running() {
+    let (mut interpreter, calls) = interpreter();
+    interpreter.register("broken", Identity(Schema::parse(
+        "PROTOCOL broken VERSION 1, METHOD identity (value: Text) RETURNS (value: Integer)"
+    ).unwrap())).unwrap();
+    let execution = interpreter
+        .execute("example / handle (broken / identity \"wrong\"), example / text")
+        .unwrap();
+    assert_eq!(execution.error.as_deref(), Some("INTERNAL ERROR\n"));
+    assert!(execution.values.is_empty());
+    assert!(calls.borrow().is_empty());
+}
+
+#[test]
+fn argument_failure_keeps_effects_of_preceding_arguments() {
+    let (mut interpreter, calls) = interpreter();
+    let execution = interpreter
+        .execute("example / pair (example / text) with (environment / read variable \"missing\")")
+        .unwrap();
+    assert_eq!(
+        execution.error.as_deref(),
+        Some("ERROR variable does not exist\n")
+    );
+    assert_eq!(*calls.borrow(), ["text"]);
+    assert!(execution.output.is_empty());
+}

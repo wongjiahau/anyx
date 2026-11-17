@@ -1,0 +1,4 @@
+environment / set variable "ANYX_EXAMPLE" to "hello",
+environment / read variable "ANYX_EXAMPLE",
+environment / remove variable "ANYX_EXAMPLE",
+environment / remove variable "ANYX_EXAMPLE",

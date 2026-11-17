@@ -59,6 +59,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyx-shell"
+version = "0.1.0"
+dependencies = [
+ "anyx",
+ "anyx-protocol",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
