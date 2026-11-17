@@ -62,7 +62,8 @@ failures still exit with an error. Up/Down recall commands from this session;
 the last 1,000 history entries stay in memory and are never saved to disk.
 
 Completion opens while typing and shows matching scopes or full method
-signatures, parameter types, return types, and protocol documentation. Use
+signatures, parameter types, return types, declared `ERRORS` (including shared
+error groups), and protocol documentation. Use
 Up/Down to choose an entry, Enter or Tab to accept it, and Esc to dismiss it.
 Ctrl-Space opens completion explicitly. Accepting a menu entry edits the input;
 it never runs a command.

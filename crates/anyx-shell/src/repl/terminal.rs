@@ -243,6 +243,9 @@ mod tests {
         assert!(text.contains("Completions"));
         assert!(text.contains("set variable (name: Text) to (value: Text)"));
         assert!(text.contains("returns Variable"));
+        assert!(text.contains("ERRORS ["));
+        assert!(text.contains("invalid variable value"));
+        assert!(text.contains("invalid variable name"));
         assert!(text.contains("Values may be empty"));
         editor.key(
             KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),

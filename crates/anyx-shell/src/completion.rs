@@ -216,12 +216,26 @@ fn method_completion(
     parts: &[&str],
     consumed: usize,
 ) -> Completion {
+    let returns = method.returns.as_ref().map_or_else(
+        || "returns nothing".into(),
+        |value| format!("returns {}", schema.type_name(&value.r#type)),
+    );
+    let errors = schema.errors_of(method);
+    let errors = if errors.is_empty() {
+        "ERRORS []".into()
+    } else {
+        format!(
+            "ERRORS [\n{}\n]",
+            errors
+                .iter()
+                .map(|error| format!("  {},", schema.typed_shape(&error.shape)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
     let mut item = Completion {
         label: schema.typed_shape(&method.shape),
-        detail: method.returns.as_ref().map_or_else(
-            || "returns nothing".into(),
-            |value| format!("returns {}", schema.type_name(&value.r#type)),
-        ),
+        detail: format!("{returns}\n{errors}"),
         documentation: method.doc.clone(),
         insert_text: String::new(),
         tab_stops: Vec::new(),
