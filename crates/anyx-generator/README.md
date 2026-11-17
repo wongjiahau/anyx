@@ -363,9 +363,16 @@ NUMBER                                    ## any number
 NUMBER 2                                  ## exactly this number
 NUMBER [INTEGER, AT LEAST 0, AT MOST 255] ## an integer from 0 to 255
 NUMBER [INTEGER, SIGNED]                  ## also `+ 4` and `- 4`
+NUMBER [WRITTEN INTEGER]                  ## `3`, `-1`, `0xFE`; preserves text
+NUMBER [WRITTEN FLOAT]                    ## `3.0`, `1e3`; preserves text
 ```
 
-The conditions are on the number's value, not its text: `0xFF`, `255`,
+`WRITTEN INTEGER` and `WRITTEN FLOAT` classify a number's spelling and
+return `Spanned<String>`, preserving its text without floating point rounding.
+A float spelling contains a point or an exponent; a based literal such as
+`0xdead` is an integer. These conditions describe one number token.
+
+The other conditions are on the number's value, not its text: `0xFF`, `255`,
 `2.55e2` and `25_5` are all the integer 255. A number that breaks a
 condition is a decode error at that number.
 

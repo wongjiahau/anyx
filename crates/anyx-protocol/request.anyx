@@ -1,0 +1,42 @@
+## Fixed wire syntax, independent of the methods and types in a schema.
+## Calls and value calls keep their words and slots neutral: the checker
+## decides which method, variant, or duration they mean.
+ENTRY [ONE OR MORE: call],
+
+call: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: argument],
+argument: ONE OF [
+  annotated: ANYFIX CALL [value, WORD "AS", type],
+  value,
+],
+value: ONE OF [
+  duration,
+  boolean,
+  integer: NUMBER [WRITTEN INTEGER],
+  float: NUMBER [WRITTEN FLOAT],
+  text: STRING,
+  list: SQUARE BRACKET [ZERO OR MORE: value],
+  braces: CURLY BRACE [ZERO OR MORE: entry],
+  call: value call,
+],
+## This is also a possible choice shape. The checker chooses the reading
+## that fits its expected type; time.rs checks order, repeats and overflow.
+duration: ANYFIX CALL [
+  NAME [MATCHING REGEX "^(_ (days?|hours?|minutes?|seconds?|milliseconds?))( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$"],
+  ARGUMENTS: ONE OR MORE: count,
+],
+count: NUMBER [WRITTEN INTEGER],
+boolean: ONE OF [WORD "true", WORD "false"],
+value call: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: value],
+entry: ONE OF [
+  map: ANYFIX CALL [key: STRING, value],
+  field: ANYFIX CALL [name: WORDS [NO KEYWORD], value],
+],
+
+## These rules are the schema language's type rules, including generic
+## types. A snapshot test keeps them in step with protocol.anyx.
+type: ONE OF [
+  list: ANYFIX CALL [WORD "LIST", item: type],
+  map: ANYFIX CALL [WORD "MAP", value: type],
+  named: reference,
+],
+reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],

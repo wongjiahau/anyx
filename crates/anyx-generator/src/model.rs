@@ -334,6 +334,8 @@ impl StringCondition {
 /// written apart from the number, as in `+ 4` or `- 4`, is taken too.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NumberPattern {
+    /// Restrict the spelling and retain the original text (float when true).
+    pub literal: Option<bool>,
     pub integer: bool,
     pub signed: bool,
     pub minimum: Option<NumberValue>,
@@ -673,7 +675,11 @@ impl Grammar {
 }
 
 fn describe_number(number: &NumberPattern) -> String {
-    let noun = if number.integer {
+    let noun = if number.literal == Some(false) {
+        "an integer literal"
+    } else if number.literal == Some(true) {
+        "a float literal"
+    } else if number.integer {
         "an integer"
     } else {
         "a number"

@@ -779,3 +779,51 @@ setting: ONE OF [
         "{generated}"
     );
 }
+
+#[path = "generated/literals.rs"]
+mod literals;
+
+#[test]
+fn literal_spelling_classifies_numbers_without_rounding_their_text() {
+    assert_eq!(
+        assert_generated(
+            "tests/fixtures/literals.anyx",
+            "tests/generated/literals.rs"
+        ),
+        Vec::<String>::new()
+    );
+    for text in [
+        "3",
+        "-1",
+        "9007199254740993",
+        "9223372036854775807",
+        "0xdead",
+        "0XFE",
+        "0b101",
+        "1_000",
+    ] {
+        let nodes = anyx::parse(text).syntax.nodes();
+        match literals::decode_literal(&nodes[0]).unwrap() {
+            literals::Literal::Integer(value) => assert_eq!(value.value, text),
+            other => panic!("{text}: {other:?}"),
+        }
+    }
+    for text in ["3.0", "-1.5", "1e3", "3E0", "1e-3"] {
+        let nodes = anyx::parse(text).syntax.nodes();
+        match literals::decode_literal(&nodes[0]).unwrap() {
+            literals::Literal::Float(value) => assert_eq!(value.value, text),
+            other => panic!("{text}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn spelling_conditions_are_unique_and_describe_one_number_token() {
+    for source in [
+        "ENTRY [NUMBER [WRITTEN INTEGER, WRITTEN FLOAT]]",
+        "ENTRY [NUMBER [WRITTEN INTEGER, SIGNED]]",
+        "ENTRY [NUMBER [WRITTEN FLOAT, SIGNED]]",
+    ] {
+        assert!(anyx_generator::generate(source).is_err(), "{source}");
+    }
+}

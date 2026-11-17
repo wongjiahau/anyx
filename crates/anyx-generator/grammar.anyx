@@ -176,6 +176,9 @@ number: ONE OF [
 ],
 
 number condition: ONE OF [
+  ## Classify by spelling, retaining the literal's text without rounding it.
+  written integer: ANYFIX CALL [WORD "WRITTEN", WORD "INTEGER"],
+  written float: ANYFIX CALL [WORD "WRITTEN", WORD "FLOAT"],
   WORD "INTEGER",
   ## Also `+ 4` and `- 4`, a sign written apart from its number.
   WORD "SIGNED",

@@ -3,10 +3,10 @@
 //! claims for it. A call resolves to the overload of its shape whose
 //! parameters have exactly those types.
 
-use anyx::{NamePart, Node, NodeKind};
+use anyx::{NamePart, Node};
 
-use crate::codec::{duration_pairs, is_float_text};
 use crate::grammar as ast;
+use crate::request_grammar::{self as request, Entry, Value as Syntax};
 use crate::schema::{Schema, Type, TypeKind};
 
 /// The type `node` has of its own, read from how it is written and the
@@ -28,117 +28,120 @@ use crate::schema::{Schema, Type, TypeKind};
 /// Anything else has none: `[]`, `{}`, a value of a generic type, and a
 /// record or variant that several types fit.
 pub(crate) fn own_type(schema: &Schema, node: &Node) -> Option<Type> {
-    match &node.kind {
-        NodeKind::Number(text) => Some(match is_float_text(text) {
-            true => Type::Float,
-            false => Type::Integer,
-        }),
-        NodeKind::String(_) => Some(Type::Text),
-        NodeKind::Brackets(items) => same_type(schema, &items.iter().collect::<Vec<_>>())
+    own_syntax_type(schema, &request::decode_value(node).ok()?)
+}
+
+pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
+    match value {
+        Syntax::Boolean(_) => Some(Type::Boolean),
+        Syntax::Integer(_) => Some(Type::Integer),
+        Syntax::Float(_) => Some(Type::Float),
+        Syntax::Text(_) => Some(Type::Text),
+        Syntax::List(items) => same_type(schema, &items.value.iter().collect::<Vec<_>>())
             .map(|item| Type::List(Box::new(item))),
-        NodeKind::Braces(entries) if entries.is_empty() => None,
-        NodeKind::Braces(entries) => match map_values(entries) {
-            Some(values) => same_type(schema, &values).map(|value| Type::Map(Box::new(value))),
-            None => record_of(schema, entries),
-        },
-        NodeKind::Call(call) => {
-            let text = call.name_text();
+        Syntax::Braces(entries) if entries.value.is_empty() => None,
+        Syntax::Braces(entries) => {
+            let map_values = entries
+                .value
+                .iter()
+                .map(|entry| match entry {
+                    Entry::Map { value, .. } => Some(value),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>();
+            if let Some(values) = map_values {
+                return same_type(schema, &values).map(|value| Type::Map(Box::new(value)));
+            }
+            let names = entries
+                .value
+                .iter()
+                .map(|entry| match entry {
+                    Entry::Field { name, .. } => Some(name.value.as_str()),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()?;
+            only(schema.types.iter().enumerate().filter(|(_, definition)| {
+                let TypeKind::Record(fields) = &definition.kind else {
+                    return false;
+                };
+                definition.parameters.is_empty()
+                    && names
+                        .iter()
+                        .all(|name| fields.iter().any(|field| field.name == *name))
+                    && fields
+                        .iter()
+                        .all(|field| field.optional || names.contains(&field.name.as_str()))
+            }))
+        }
+        Syntax::Duration(duration) => {
+            let pairs = duration
+                .name
+                .words()
+                .zip(&duration.arguments)
+                .map(|(unit, count)| (count.value.as_str(), unit))
+                .collect::<Vec<_>>();
+            if crate::time::parse_duration(&pairs).is_ok() {
+                return Some(Type::Duration);
+            }
+            choice_of(schema, &duration.name.text)
+        }
+        Syntax::Call(call) => {
+            let text = &call.name.text;
             if call.arguments.is_empty() && (text == "true" || text == "false") {
                 return Some(Type::Boolean);
             }
-            if duration_pairs(call).is_some_and(|pairs| crate::time::parse_duration(&pairs).is_ok())
-            {
-                return Some(Type::Duration);
-            }
-            only(schema.types.iter().enumerate().filter(|(_, definition)| {
-                definition.parameters.is_empty()
-                    && matches!(&definition.kind, TypeKind::Choice(variants)
-                        if variants.iter().any(|variant| variant.shape.text == text))
-            }))
+            choice_of(schema, text)
         }
-        _ => None,
     }
 }
 
-/// The one type all of `nodes` have of their own, if there are any.
-fn same_type(schema: &Schema, nodes: &[&Node]) -> Option<Type> {
-    let (first, rest) = nodes.split_first()?;
-    let first = own_type(schema, first)?;
+fn choice_of(schema: &Schema, text: &str) -> Option<Type> {
+    only(schema.types.iter().enumerate().filter(|(_, definition)| {
+        definition.parameters.is_empty()
+            && matches!(&definition.kind, TypeKind::Choice(variants)
+                if variants.iter().any(|variant| variant.shape.text == text))
+    }))
+}
+
+fn same_type(schema: &Schema, values: &[&Syntax]) -> Option<Type> {
+    let (first, rest) = values.split_first()?;
+    let first = own_syntax_type(schema, first)?;
     rest.iter()
-        .all(|node| own_type(schema, node).as_ref() == Some(&first))
+        .all(|value| own_syntax_type(schema, value).as_ref() == Some(&first))
         .then_some(first)
 }
 
-/// The values of braces of entries, each a string key and its value, or
-/// `None` when an entry is not one.
-fn map_values(entries: &[Node]) -> Option<Vec<&Node>> {
-    entries
-        .iter()
-        .map(|entry| match &entry.kind {
-            NodeKind::Call(call) => match (&call.name[..], &call.arguments[..]) {
-                ([NamePart::Slot, NamePart::Slot], [key, value])
-                    if matches!(key.kind, NodeKind::String(_)) =>
-                {
-                    Some(value)
-                }
-                _ => None,
+/// Resolve the request grammar's copy of the schema's type rule with the
+/// same semantic resolver. No type syntax is decoded a second time.
+pub(crate) fn request_type(schema: &Schema, written: &request::Type) -> Option<Type> {
+    fn schema_type(written: &request::Type) -> ast::Type {
+        match written {
+            request::Type::List { item, span } => ast::Type::List {
+                item: Box::new(schema_type(item)),
+                span: *span,
             },
-            _ => None,
-        })
-        .collect()
-}
-
-/// The one record, not generic, that braces of the fields `entries` fit:
-/// it has each field written, and none it requires is missing.
-fn record_of(schema: &Schema, entries: &[Node]) -> Option<Type> {
-    let written: Vec<String> = entries
-        .iter()
-        .map(|entry| match &entry.kind {
-            NodeKind::Call(call) if call.arguments.len() == 1 => {
-                call.name_text().strip_suffix(" _").map(str::to_string)
-            }
-            _ => None,
-        })
-        .collect::<Option<_>>()?;
-    only(schema.types.iter().enumerate().filter(|(_, definition)| {
-        let TypeKind::Record(fields) = &definition.kind else {
-            return false;
-        };
-        definition.parameters.is_empty()
-            && written
-                .iter()
-                .all(|name| fields.iter().any(|field| &field.name == name))
-            && fields
-                .iter()
-                .all(|field| field.optional || written.contains(&field.name))
-    }))
+            request::Type::Map { value, span } => ast::Type::Map {
+                value: Box::new(schema_type(value)),
+                span: *span,
+            },
+            request::Type::Named(reference) => ast::Type::Named(ast::Reference {
+                name: ast::CallName {
+                    text: reference.name.text.clone(),
+                    parts: reference.name.parts.clone(),
+                    span: reference.name.span,
+                },
+                arguments: reference.arguments.iter().map(schema_type).collect(),
+                span: reference.span,
+            }),
+        }
+    }
+    resolve(schema, &schema_type(written))
 }
 
 /// The type at the one index `found` yields, if it yields exactly one.
 fn only<'d, T: 'd>(mut found: impl Iterator<Item = (usize, &'d T)>) -> Option<Type> {
     let (index, _) = found.next()?;
     found.next().is_none().then_some(Type::Named(index))
-}
-
-/// `node` as an annotation, `value AS: type`: the value and the type as
-/// written.
-pub(crate) fn annotation(node: &Node) -> Option<(&Node, &Node)> {
-    let NodeKind::Call(call) = &node.kind else {
-        return None;
-    };
-    match (&call.name[..], &call.arguments[..]) {
-        ([NamePart::Slot, NamePart::Word { text, .. }, NamePart::Slot], [value, r#type])
-            if text == "AS" =>
-        {
-            Some((value, r#type))
-        }
-        _ => None,
-    }
-}
-
-/// A type written after `AS`, resolved in the protocol's flat namespace.
-pub(crate) fn annotated_type(schema: &Schema, node: &Node) -> Option<Type> {
-    resolve(schema, &ast::decode_type(node).ok()?)
 }
 
 fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {

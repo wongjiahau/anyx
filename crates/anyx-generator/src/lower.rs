@@ -1080,6 +1080,7 @@ impl Lowerer<'_> {
 
     fn number(&mut self, number: &ast::Number) -> NumberPattern {
         let mut pattern = NumberPattern {
+            literal: None,
             integer: false,
             signed: false,
             minimum: None,
@@ -1090,6 +1091,7 @@ impl Lowerer<'_> {
             ast::Number::Exact { value, .. } => {
                 let value = number_value(self.text(value.span));
                 pattern = NumberPattern {
+                    literal: None,
                     integer: matches!(value, crate::grammar::support::NumberValue::Integer(_)),
                     signed: false,
                     minimum: Some(value),
@@ -1097,9 +1099,11 @@ impl Lowerer<'_> {
                 };
             }
             ast::Number::Conditions { conditions, span } => {
-                let mut seen = [false; 4];
+                let mut seen = [false; 5];
                 for condition in conditions.iter() {
                     let (index, keyword) = match condition {
+                        ast::NumberCondition::WrittenInteger { .. } => (4, "WRITTEN"),
+                        ast::NumberCondition::WrittenFloat { .. } => (4, "WRITTEN"),
                         ast::NumberCondition::Integer(_) => (0, "INTEGER"),
                         ast::NumberCondition::Signed(_) => (3, "SIGNED"),
                         ast::NumberCondition::AtLeast { .. } => (1, "AT LEAST"),
@@ -1114,6 +1118,10 @@ impl Lowerer<'_> {
                         );
                     }
                     match condition {
+                        ast::NumberCondition::WrittenInteger { .. } => {
+                            pattern.literal = Some(false)
+                        }
+                        ast::NumberCondition::WrittenFloat { .. } => pattern.literal = Some(true),
                         ast::NumberCondition::Integer(_) => pattern.integer = true,
                         ast::NumberCondition::Signed(_) => pattern.signed = true,
                         ast::NumberCondition::AtLeast { bound, .. } => {
@@ -1123,6 +1131,9 @@ impl Lowerer<'_> {
                             pattern.maximum = Some(number_value(self.text(bound.span)));
                         }
                     }
+                }
+                if pattern.literal.is_some() && pattern.signed {
+                    self.error(*span, "found `WRITTEN` with `SIGNED`; expected a single number token for `WRITTEN`; remove `SIGNED`");
                 }
                 if !pattern.is_satisfiable() {
                     self.error(

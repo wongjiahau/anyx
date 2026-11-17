@@ -460,30 +460,41 @@ impl Builder<'_> {
                     ),
                 }
             }
-            Pattern::Number(number) => match number.number_type() {
-                NumberType::Integer {
-                    rust,
-                    minimum,
-                    maximum,
-                } => Value::Leaf {
-                    kind: Leaf::Number(rust),
-                    call: format!(
-                        "support::integer::<{rust}>(node, {}, {}, {}, {expected:?})",
-                        integer_text(minimum),
-                        integer_text(maximum),
-                        number.signed
-                    ),
-                },
-                NumberType::Float { minimum, maximum } => Value::Leaf {
-                    kind: Leaf::Number("f64"),
-                    call: format!(
-                        "support::float(node, {}, {}, {}, {expected:?})",
-                        float_text(minimum),
-                        float_text(maximum),
-                        number.signed
-                    ),
-                },
-            },
+            Pattern::Number(number) => {
+                let decoded = match number.number_type() {
+                    NumberType::Integer {
+                        rust,
+                        minimum,
+                        maximum,
+                    } => Value::Leaf {
+                        kind: Leaf::Number(rust),
+                        call: format!(
+                            "support::integer::<{rust}>(node, {}, {}, {}, {expected:?})",
+                            integer_text(minimum),
+                            integer_text(maximum),
+                            number.signed
+                        ),
+                    },
+                    NumberType::Float { minimum, maximum } => Value::Leaf {
+                        kind: Leaf::Number("f64"),
+                        call: format!(
+                            "support::float(node, {}, {}, {}, {expected:?})",
+                            float_text(minimum),
+                            float_text(maximum),
+                            number.signed
+                        ),
+                    },
+                };
+                match (number.literal, decoded) {
+                    (Some(float), Value::Leaf { call, .. }) => Value::Leaf {
+                        kind: Leaf::Number("String"),
+                        call: format!(
+                            "{call}.and_then(|_| support::number_literal(node, {float}, {expected:?}))"
+                        ),
+                    },
+                    (_, decoded) => decoded,
+                }
+            }
         }
     }
 

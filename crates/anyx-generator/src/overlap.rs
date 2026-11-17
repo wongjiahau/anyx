@@ -817,6 +817,9 @@ fn sign_calls(number: &NumberPattern) -> [Pattern; 2] {
 }
 
 fn numbers_overlap(a: &NumberPattern, b: &NumberPattern) -> bool {
+    if matches!((a.literal, b.literal), (Some(a), Some(b)) if a != b) {
+        return false;
+    }
     let highest_minimum = match (a.minimum, b.minimum) {
         (Some(a), Some(b)) if a.as_float() < b.as_float() => Some(b),
         (Some(a), _) => Some(a),
@@ -828,6 +831,7 @@ fn numbers_overlap(a: &NumberPattern, b: &NumberPattern) -> bool {
         (None, b) => b,
     };
     let both = NumberPattern {
+        literal: a.literal.or(b.literal),
         integer: a.integer || b.integer,
         signed: false,
         minimum: highest_minimum,
@@ -969,6 +973,7 @@ mod tests {
     #[test]
     fn numbers_overlap_when_their_ranges_share_a_value() {
         let number = |integer, minimum: Option<f64>, maximum: Option<f64>| NumberPattern {
+            literal: None,
             integer,
             signed: false,
             minimum: minimum.map(NumberValue::Float),

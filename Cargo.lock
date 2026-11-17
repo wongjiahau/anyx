@@ -45,6 +45,7 @@ dependencies = [
  "anyx",
  "anyx-generator",
  "base64",
+ "regex",
  "serde_json",
 ]
 

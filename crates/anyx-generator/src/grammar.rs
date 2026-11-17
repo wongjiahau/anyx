@@ -272,6 +272,8 @@ pub enum Number {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NumberCondition {
+    WrittenInteger { span: Span },
+    WrittenFloat { span: Span },
     Integer(Span),
     Signed(Span),
     AtLeast { bound: Spanned<f64>, span: Span },
@@ -430,7 +432,9 @@ impl Number {
 impl NumberCondition {
     pub fn span(&self) -> Span {
         match self {
-            NumberCondition::Integer(span)
+            NumberCondition::WrittenInteger { span, .. }
+            | NumberCondition::WrittenFloat { span, .. }
+            | NumberCondition::Integer(span)
             | NumberCondition::Signed(span)
             | NumberCondition::AtLeast { span, .. }
             | NumberCondition::AtMost { span, .. } => *span,
@@ -723,6 +727,8 @@ impl support::Errors for Number {
 impl support::Errors for NumberCondition {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
+            NumberCondition::WrittenInteger { .. } => {}
+            NumberCondition::WrittenFloat { .. } => {}
             NumberCondition::Integer(_) => {}
             NumberCondition::Signed(_) => {}
             NumberCondition::AtLeast { bound, .. } => {
@@ -1480,11 +1486,28 @@ fn decode_number_conditions_conditions(
 }
 
 pub fn decode_number_condition(node: &Node) -> Result<NumberCondition, DecodeError> {
-    support::word(node, "INTEGER")
-        .map(NumberCondition::Integer)
+    decode_number_condition_written_integer(node)
+        .or_else(|error| error.or(decode_number_condition_written_float(node)))
+        .or_else(|error| error.or(support::word(node, "INTEGER").map(NumberCondition::Integer)))
         .or_else(|error| error.or(support::word(node, "SIGNED").map(NumberCondition::Signed)))
         .or_else(|error| error.or(decode_number_condition_at_least(node)))
         .or_else(|error| error.or(decode_number_condition_at_most(node)))
+}
+
+fn decode_number_condition_written_integer(node: &Node) -> Result<NumberCondition, DecodeError> {
+    let mut parts = support::call(node, "the call `WRITTEN INTEGER`")?;
+    let decoded = NumberCondition::WrittenInteger { span: node.span };
+    parts.word("WRITTEN")?.word("INTEGER")?;
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_number_condition_written_float(node: &Node) -> Result<NumberCondition, DecodeError> {
+    let mut parts = support::call(node, "the call `WRITTEN FLOAT`")?;
+    let decoded = NumberCondition::WrittenFloat { span: node.span };
+    parts.word("WRITTEN")?.word("FLOAT")?;
+    parts.finish()?;
+    Ok(decoded)
 }
 
 fn decode_number_condition_at_least(node: &Node) -> Result<NumberCondition, DecodeError> {
@@ -2591,5 +2614,29 @@ pub mod support {
                 _ => {}
             }
         }
+    }
+
+    /// A number classified by its spelling, retaining its text exactly. A based
+    /// integer's hexadecimal `e` is a digit, never an exponent.
+    pub fn number_literal(
+        node: &Node,
+        float: bool,
+        expected: &str,
+    ) -> Result<Spanned<String>, DecodeError> {
+        let NodeKind::Number(text) = &node.kind else {
+            return Err(mismatch(node, expected));
+        };
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
+            .iter()
+            .any(|prefix| digits.starts_with(prefix));
+        let is_float = !based && digits.contains(['.', 'e', 'E']);
+        if is_float != float {
+            return Err(mismatch(node, expected));
+        }
+        Ok(Spanned {
+            value: text.clone(),
+            span: node.span,
+        })
     }
 }

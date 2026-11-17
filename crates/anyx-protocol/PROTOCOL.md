@@ -430,6 +430,11 @@ SCHEMA,
 
 ## Values
 
+[`request.anyx`](request.anyx) is the fixed grammar for request syntax,
+including values, annotations and type names. The checker gives that syntax
+its meaning against the schema; duration order and overflow, instant text,
+and base64 are checked in Rust.
+
 | Type | Written |
 | --- | --- |
 | `Text` | `"text"` with `\"`, `\\`, `\n`, `\r`, `\t` and `\u{…}` escapes; or a raw string of three or more quotes, whose closing quotes' indentation is removed from every line |
