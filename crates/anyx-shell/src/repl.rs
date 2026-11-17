@@ -1,4 +1,6 @@
+#[path = "repl/editor.rs"]
 mod editor;
+#[path = "repl/terminal.rs"]
 mod terminal;
 
 use anyx_shell::Interpreter;
