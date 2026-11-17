@@ -1,0 +1,30 @@
+# The interpreter session's environment. Changes do not alter the parent process.
+PROTOCOL environment VERSION 1,
+
+RECORD Variable {
+    name: Text,
+    value: Text,
+},
+
+ERRORS name errors [
+    # Names must be nonempty and contain neither an equals sign nor a null character.
+    invalid variable name,
+],
+
+# Includes empty values. Results are sorted by name, with case-sensitive names.
+READ ONLY METHOD list variables
+    RETURNS (variables: LIST Variable),
+
+READ ONLY METHOD read variable (name: Text)
+    RETURNS (value: Text)
+    ERRORS [variable does not exist] + name errors,
+
+# Values may be empty but must not contain a null character.
+IDEMPOTENT METHOD set variable (name: Text) to (value: Text)
+    RETURNS (variable: Variable)
+    ERRORS [invalid variable value] + name errors,
+
+# Returns false if the variable was already absent.
+IDEMPOTENT METHOD remove variable (name: Text)
+    RETURNS (removed: Boolean)
+    ERRORS name errors,

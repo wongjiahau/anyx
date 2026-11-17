@@ -18,3 +18,6 @@ let response = anyx_protocol::encode_response(&schema, &calls, &outcomes)?;
 
 Rather than calling the codec by hand, generate a typed server and client
 with [`anyx-protocol-generate`](../anyx-protocol-generate).
+
+`encode_value(schema, expected_type, value)` writes a checked standalone anyx
+value without a response envelope, for consumers such as `anyx-shell`.

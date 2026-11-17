@@ -507,6 +507,30 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
     })
 }
 
+/// Writes a standalone value, without a protocol response envelope.
+/// The value is checked against its type before it is returned.
+/// `Nothing` is not a value and cannot be written this way.
+pub fn encode_value(
+    schema: &Schema,
+    expected: &Type,
+    value: &Value,
+) -> Result<String, EncodeError> {
+    let mut text = String::new();
+    write(schema, expected, value, &mut text)?;
+    let nodes = parse(&text).map_err(|problem| EncodeError {
+        message: problem.message,
+    })?;
+    let [node] = nodes.as_slice() else {
+        return Err(EncodeError {
+            message: "expected exactly one value".into(),
+        });
+    };
+    decode(schema, expected, node).map_err(|mismatch| EncodeError {
+        message: mismatch.message,
+    })?;
+    Ok(layout(text))
+}
+
 /// Lays `text` out canonically. The text is always valid anyx, so the
 /// formatter never fails on it; if it did, the text is still a fine message.
 pub(crate) fn layout(text: String) -> String {

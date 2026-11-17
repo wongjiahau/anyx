@@ -504,6 +504,16 @@ above into it:
 anyx-generate grammar.grammar.anyx > src/parser.rs
 ```
 
+## Shell interpreter
+
+[`anyx-shell`](crates/anyx-shell/README.md) runs documents of scoped protocol
+calls and displays their returned values as anyx. Its first tool is a
+session-owned environment with methods to list, read, set and remove variables:
+
+```sh
+cargo run -p anyx-shell -- --expression 'environment / list variables'
+```
+
 ## Editor highlighting
 
 [`editors/monaco`](editors/monaco/README.md) has syntax highlighting for the
@@ -520,6 +530,7 @@ Anyx document languages use compound extensions:
 | Protocol definition or shared type library | `<name>.protocol.anyx` |
 | Protocol request | `<name>.request.anyx` |
 | Protocol response | `<name>.response.anyx` |
+| Shell document | `<name>.shell.anyx` |
 
 Both generators require their input suffixes, including `.protocol.anyx`
 for imported protocol definitions. The request and response suffixes are
