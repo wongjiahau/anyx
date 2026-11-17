@@ -34,7 +34,7 @@ array: SQUARE BRACKET: ZERO OR MORE: value,
 
 ## The grammar language
 
-The grammar language describes itself in [`grammar.anyx`](grammar.anyx).
+The grammar language describes itself in [`grammar.grammar.anyx`](grammar.grammar.anyx).
 
 Two rules of thumb cover most of it:
 
@@ -419,8 +419,11 @@ name.
 ## Running the generator
 
 ```sh
-anyx-generate grammar.anyx > src/parser.rs
+anyx-generate grammar.grammar.anyx > src/parser.rs
 ```
+
+The input filename must end in `.grammar.anyx` (case-sensitive).
+`--tree` accepts any source filename.
 
 The output is one Rust file, which builds on Rust edition 2021 and later. It
 needs `anyx` as a dependency, and `regex` when the grammar uses
@@ -434,7 +437,7 @@ Errors and warnings about the grammar go to the terminal, with the line
 they are about. An error stops the output; a warning does not:
 
 ```text
-grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
+grammar.grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
   value: ONE OF [text: STRING, lsit],
                                ^^^^
 ```

@@ -82,7 +82,7 @@ fn the_built_in_schema_call_is_read_only() {
 fn an_undo_may_name_an_imported_method_declared_after_it() {
     let files = [
         (
-            "protocol.anyx",
+            "protocol.protocol.anyx",
             "PROTOCOL documents VERSION 1, USE \"./trash.anyx\",",
         ),
         (

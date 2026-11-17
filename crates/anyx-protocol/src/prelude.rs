@@ -1,4 +1,4 @@
-//! The prelude, `prelude.anyx`: the built-in types, declared in the schema
+//! The prelude, `prelude.protocol.anyx`: the built-in types, declared in the schema
 //! language with their docs. It is read and checked once, before the first
 //! schema, and its names are visible in every scope of every schema.
 //!
@@ -15,10 +15,10 @@ use crate::grammar as ast;
 use crate::schema::Type;
 
 /// The name the prelude's diagnostics are under.
-pub const PATH: &str = "prelude.anyx";
+pub const PATH: &str = "prelude.protocol.anyx";
 
 /// The prelude as written.
-pub const SOURCE: &str = include_str!("../prelude.anyx");
+pub const SOURCE: &str = include_str!("../prelude.protocol.anyx");
 
 /// A built-in type, as the prelude declares it.
 #[derive(Clone, Debug, PartialEq)]

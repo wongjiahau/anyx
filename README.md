@@ -494,7 +494,7 @@ itself written in anyx, into a typed Rust AST and a decoder from the tree
 above into it:
 
 ```sh
-anyx-generate grammar.anyx > src/parser.rs
+anyx-generate grammar.grammar.anyx > src/parser.rs
 ```
 
 ## Editor highlighting
@@ -502,6 +502,22 @@ anyx-generate grammar.anyx > src/parser.rs
 [`editors/monaco`](editors/monaco/README.md) has syntax highlighting for the
 Monaco editor: one file to copy into your app, the same for every anyx
 document.
+
+## File naming
+
+Anyx document languages use compound extensions:
+
+| Document | Filename convention |
+| --- | --- |
+| Parser-generator grammar | `<name>.grammar.anyx` |
+| Protocol definition or shared type library | `<name>.protocol.anyx` |
+| Protocol request | `<name>.request.anyx` |
+| Protocol response | `<name>.response.anyx` |
+
+Both generators require their input suffixes, including `.protocol.anyx`
+for imported protocol definitions. The request and response suffixes are
+conventions for saved wire documents. Source-string parsing APIs do not
+require filenames, and `anyx-generate --tree` accepts any source filename.
 
 ## License
 

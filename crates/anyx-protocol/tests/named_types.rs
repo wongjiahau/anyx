@@ -123,16 +123,16 @@ fn the_guide_names_each_named_type_and_the_type_underneath() {
 fn a_public_named_type_is_shared_by_a_direct_import() {
     let files = [
         (
-            "protocol.anyx",
-            "PROTOCOL p VERSION 1, USE \"./files.anyx\",",
+            "protocol.protocol.anyx",
+            "PROTOCOL p VERSION 1, USE \"./files.protocol.anyx\",",
         ),
         (
-            "common.anyx",
+            "common.protocol.anyx",
             "PUBLIC TYPE file id: Text, TYPE secret: Text,",
         ),
         (
-            "files.anyx",
-            "USE \"./common.anyx\", METHOD read (id: file id) RETURNS (text: Text),",
+            "files.protocol.anyx",
+            "USE \"./common.protocol.anyx\", METHOD read (id: file id) RETURNS (text: Text),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -147,8 +147,8 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         files[0],
         files[1],
         (
-            "files.anyx",
-            "USE \"./common.anyx\", METHOD read (id: secret) RETURNS (text: Text),",
+            "files.protocol.anyx",
+            "USE \"./common.protocol.anyx\", METHOD read (id: secret) RETURNS (text: Text),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -156,7 +156,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         found
             .iter()
             .any(|diagnostic| diagnostic.message.contains("not visible")
-                && diagnostic.message.contains("common.anyx"))
+                && diagnostic.message.contains("common.protocol.anyx"))
     );
 }
 

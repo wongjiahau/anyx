@@ -30,7 +30,7 @@ schema:1:119: found a `RECORD` whose name has no words; expected at least one wo
 
 == a shape twice, while the same words without the slot are another type
 PROTOCOL a VERSION 1, RECORD page { number: Integer }, RECORD page of (item: TYPE) { items: LIST: item }, CHOICE page of (other: TYPE) { one (value: other) },
-schema:1:114: duplicate declaration `page of _` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
+schema:1:114: duplicate declaration `page of _` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, RECORD page { number: Integer }, RECORD page of (item: TYPE) { items: LIST: item }, CHOICE page of (other: TYPE) { one (value: other) },
                                                                                                                    ^^^^^^^
 

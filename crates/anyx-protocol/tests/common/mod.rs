@@ -77,7 +77,7 @@ pub fn schema_files(folder: &str) -> Vec<(String, String)> {
 
 /// Reads the schema of `files`, each a path and its source.
 pub fn parse_files(files: &[(&str, &str)]) -> Result<Schema, Vec<anyx_protocol::Diagnostic>> {
-    Schema::load("protocol.anyx", |path| {
+    Schema::load("protocol.protocol.anyx", |path| {
         files
             .iter()
             .find(|(file, _)| *file == path)

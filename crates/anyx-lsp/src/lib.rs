@@ -2,7 +2,7 @@
 //! grammar by hand: the decoder anyx-generate writes is enough.
 //!
 //! ```ignore
-//! mod generated; // written by `anyx-generate grammar.anyx`
+//! mod generated; // written by `anyx-generate grammar.grammar.anyx`
 //!
 //! anyx_lsp::language!(MyLanguage = generated);
 //!

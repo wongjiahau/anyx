@@ -7,7 +7,7 @@ use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 
 /// The schema as written, with explicit imports.
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
-    path: "schema.anyx",
+    path: "schema.protocol.anyx",
     source: r#"## Every kind of type, for the tests of the generated code.
 PROTOCOL types VERSION 1,
 

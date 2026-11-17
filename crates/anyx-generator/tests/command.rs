@@ -29,7 +29,7 @@ fn grammar_file(name: &str, source: &str) -> String {
 
 #[test]
 fn it_prints_the_parser_laid_out() {
-    let output = run(&["tests/fixtures/json.anyx"]);
+    let output = run(&["tests/fixtures/json.grammar.anyx"]);
     assert!(output.status.success());
     assert_eq!(text(&output.stderr), "");
     assert!(text(&output.stdout) == fixture("tests/generated/json.rs"));
@@ -37,7 +37,7 @@ fn it_prints_the_parser_laid_out() {
 
 #[test]
 fn unformatted_output_is_the_same_code() {
-    let output = run(&["--unformatted", "tests/fixtures/json.anyx"]);
+    let output = run(&["--unformatted", "tests/fixtures/json.grammar.anyx"]);
     assert!(output.status.success());
     let formatted = anyx_generator::format(&text(&output.stdout)).unwrap();
     assert!(formatted == fixture("tests/generated/json.rs"));
@@ -46,7 +46,7 @@ fn unformatted_output_is_the_same_code() {
 #[test]
 fn errors_show_the_line_and_stop_the_output() {
     let path = grammar_file(
-        "unknown.anyx",
+        "unknown.grammar.anyx",
         "ENTRY: value,\nvalue: ONE OF [text: STRING, lsit],\nlist: SQUARE BRACKET: ZERO OR MORE: value",
     );
     let output = run(&[&path]);
@@ -67,7 +67,7 @@ fn errors_show_the_line_and_stop_the_output() {
 #[test]
 fn warnings_are_shown_and_the_parser_is_still_printed() {
     let path = grammar_file(
-        "competing.anyx",
+        "competing.grammar.anyx",
         "ENTRY: value,\nvalue: ONE OF [any: STRING, empty: STRING \"\"]",
     );
     let output = run(&[&path]);
@@ -113,11 +113,27 @@ the call `LET _`
 
 #[test]
 fn a_missing_file_or_argument_is_explained() {
-    let output = run(&["no-such-file.anyx"]);
+    let output = run(&["no-such-file.grammar.anyx"]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(text(&output.stderr).starts_with("no-such-file.anyx: "));
+    assert!(text(&output.stderr).starts_with("no-such-file.grammar.anyx: "));
 
     let output = run(&[]);
     assert_eq!(output.status.code(), Some(2));
     assert!(text(&output.stderr).starts_with("found no grammar file; expected its path"));
+}
+
+#[test]
+fn generation_requires_the_exact_grammar_suffix() {
+    for name in [
+        "input.anyx",
+        "input.protocol.anyx",
+        "input.GRAMMAR.anyx",
+        "input.grammar.anyx.bak",
+    ] {
+        let path = grammar_file(name, "ENTRY: STRING");
+        let output = run(&["--unformatted", &path]);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(text(&output.stderr).contains("ending in `.grammar.anyx`"));
+    }
 }

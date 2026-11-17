@@ -1,7 +1,7 @@
 //! The code generated from Poentaro's schema, from the schema of scopes in
-//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.anyx`,
-//! `tests/fixtures/named.anyx`, `tests/fixtures/generic.anyx` and
-//! `tests/fixtures/overloaded.anyx`, kept in `tests/generated` so a change
+//! `anyx-protocol`'s fixtures, and from `tests/fixtures/types.protocol.anyx`,
+//! `tests/fixtures/named.protocol.anyx`, `tests/fixtures/generic.protocol.anyx` and
+//! `tests/fixtures/overloaded.protocol.anyx`, kept in `tests/generated` so a change
 //! to the generator shows up as a diff. `round_trip.rs`,
 //! `scoped_round_trip.rs`, `types_round_trip.rs`, `named_round_trip.rs`,
 //! `generic_round_trip.rs` and `overloaded_round_trip.rs` compile the Rust
@@ -36,10 +36,10 @@ fn poentaro() -> Schema {
 /// The scoped fixture: a file per scope.
 fn scoped() -> Schema {
     let paths = [
-        "protocol.anyx",
-        "common.anyx",
-        "files.anyx",
-        "files/export.anyx",
+        "protocol.protocol.anyx",
+        "common.protocol.anyx",
+        "files.protocol.anyx",
+        "files/export.protocol.anyx",
     ];
     let sources: Vec<String> = paths
         .iter()
@@ -50,7 +50,7 @@ fn scoped() -> Schema {
         .zip(&sources)
         .map(|(path, source)| SchemaFile { path, source })
         .collect();
-    Schema::load("protocol.anyx", |path| {
+    Schema::load("protocol.protocol.anyx", |path| {
         files
             .iter()
             .find(|file| file.path == path)
@@ -62,7 +62,7 @@ fn scoped() -> Schema {
 
 /// Every kind of type.
 fn types() -> Schema {
-    Schema::parse(&read("tests/fixtures/types.anyx")).unwrap()
+    Schema::parse(&read("tests/fixtures/types.protocol.anyx")).unwrap()
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn the_typescript_client_of_every_type_is_up_to_date() {
 
 /// Named types, each over a type of another kind.
 fn named() -> Schema {
-    Schema::parse(&read("tests/fixtures/named.anyx")).unwrap()
+    Schema::parse(&read("tests/fixtures/named.protocol.anyx")).unwrap()
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn a_keyword_becomes_a_raw_identifier() {
 }
 
 fn generic() -> Schema {
-    Schema::parse(&read("tests/fixtures/generic.anyx")).unwrap()
+    Schema::parse(&read("tests/fixtures/generic.protocol.anyx")).unwrap()
 }
 
 #[test]
@@ -203,7 +203,7 @@ fn the_typescript_client_of_generic_types_is_up_to_date() {
 
 /// Methods of one shape with different parameter types.
 fn overloaded() -> Schema {
-    Schema::parse(&read("tests/fixtures/overloaded.anyx")).unwrap()
+    Schema::parse(&read("tests/fixtures/overloaded.protocol.anyx")).unwrap()
 }
 
 #[test]

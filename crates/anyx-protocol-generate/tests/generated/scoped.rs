@@ -8,17 +8,17 @@ use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 /// The schema as written, with explicit imports.
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[
     anyx_protocol::SchemaFile {
-        path: "protocol.anyx",
+        path: "protocol.protocol.anyx",
         source: r#"# Notes keeps a person's notes, a file each.
 PROTOCOL notes VERSION 1,
 
-USE "./files.anyx",
-USE "./files/export.anyx",
+USE "./files.protocol.anyx",
+USE "./files/export.protocol.anyx",
 "#,
     },
     anyx_protocol::SchemaFile {
-        path: "files.anyx",
-        source: r#"USE "./common.anyx",
+        path: "files.protocol.anyx",
+        source: r#"USE "./common.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 
@@ -47,7 +47,7 @@ METHOD empty trash RETURNS NOTHING,
 "#,
     },
     anyx_protocol::SchemaFile {
-        path: "common.anyx",
+        path: "common.protocol.anyx",
         source: r#"# One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
@@ -58,9 +58,9 @@ PUBLIC ERRORS common errors [
 "#,
     },
     anyx_protocol::SchemaFile {
-        path: "files/export.anyx",
-        source: r#"USE "../common.anyx",
-USE "../files.anyx",
+        path: "files/export.protocol.anyx",
+        source: r#"USE "../common.protocol.anyx",
+USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
 RECORD Page { html: Text, problem: OPTIONAL Diagnostic },
