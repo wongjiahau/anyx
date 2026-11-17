@@ -136,6 +136,18 @@ impl Interpreter {
             .get_mut(&prepared.scope)
             .expect("prepared scope exists");
         let schema = tool.schema();
+        // Computed arguments become available only now. Check them before
+        // invoking the consuming tool, just as literals were checked at compile time.
+        for (parameter, value) in schema
+            .method_at(call.method)
+            .shape
+            .parameters
+            .iter()
+            .zip(&call.arguments)
+        {
+            anyx_protocol::refinement::validate(schema, &parameter.r#type, value)
+                .map_err(|_| "INTERNAL ERROR\n".to_string())?;
+        }
         let outcome = if call.method == schema.introspection() {
             anyx_protocol::server::introspect(schema)
         } else {

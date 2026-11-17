@@ -388,7 +388,8 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
 /// map of one of them.
 fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
     match r#type {
-        Type::Bytes | Type::Instant | Type::Generic(..) | Type::Refined(..) => true,
+        Type::Bytes | Type::Instant | Type::Generic(..) => true,
+        Type::Refined(base, _) => always_annotated(schema, base),
         Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
         Type::List(item) | Type::Map(item) => always_annotated(schema, item),
         _ => false,

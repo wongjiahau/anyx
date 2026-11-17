@@ -372,3 +372,50 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
     assert!(anyx_protocol::refinement::validate(&schema, &ty(&schema, "Small Map"), &map).is_err());
     assert!(anyx_protocol::decode_type(&schema, "Text . WHERE [0 < _]").is_err());
 }
+
+#[test]
+fn inline_refinement_arguments_need_no_annotation() {
+    let schema = Schema::parse(
+        r#"
+METHOD short (value: Text . WHERE [1 <= (_ length) <= 3]) RETURNS NOTHING,
+METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS NOTHING,
+METHOD many (values: LIST (Integer . WHERE [0 < _])) RETURNS NOTHING,
+"#,
+    )
+    .unwrap();
+    for request in [
+        r#"short "he""#,
+        r#"short ("😀")"#,
+        "limit 10",
+        "many [1, 2]",
+    ] {
+        assert!(decode_request(&schema, request).is_ok(), "{request}");
+    }
+    for (request, bound) in [
+        (r#"short "hello""#, "at most 3"),
+        ("limit 30", "less than 30"),
+        ("many [1, 0]", "greater than 0"),
+    ] {
+        let error = decode_request(&schema, request).unwrap_err();
+        assert!(error.message.contains(bound), "{error}");
+    }
+}
+
+#[test]
+fn refinement_overloads_use_base_types() {
+    let schema = Schema::parse(
+        r#"
+METHOD use (value: Text . WHERE [1 <= (_ length)]) RETURNS NOTHING,
+METHOD use (value: Integer . WHERE [0 < _]) RETURNS NOTHING,
+"#,
+    )
+    .unwrap();
+    assert_eq!(decode_request(&schema, r#"use "he""#).unwrap()[0].method, 0);
+    assert_eq!(decode_request(&schema, "use 1").unwrap()[0].method, 1);
+    assert!(
+        decode_request(&schema, "use 0")
+            .unwrap_err()
+            .message
+            .contains("greater than 0")
+    );
+}

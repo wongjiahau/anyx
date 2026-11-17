@@ -265,6 +265,21 @@ pub enum Type {
 }
 
 impl Type {
+    /// Whether an argument's type matches this parameter before checking its
+    /// value against inline refinements. Named types retain their identity.
+    /// This is only a type check; the parameter's predicates must still run.
+    pub fn accepts_argument_type(&self, argument: &Type) -> bool {
+        if self == argument {
+            return true;
+        }
+        match (self, argument) {
+            (Type::Refined(base, _), argument) => base.accepts_argument_type(argument),
+            (Type::List(expected), Type::List(actual))
+            | (Type::Map(expected), Type::Map(actual)) => expected.accepts_argument_type(actual),
+            _ => false,
+        }
+    }
+
     /// `self` with each of `parameters` replaced by the argument at its
     /// place in `arguments`.
     pub fn substitute(&self, parameters: &[String], arguments: &[Type]) -> Type {

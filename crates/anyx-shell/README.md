@@ -117,15 +117,15 @@ cargo run -p anyx-shell --example refinements
 Enter each command at its own prompt:
 
 ```anyx
-checked / limit (10 AS: (Integer) WHERE [10 <= _ < 30])
-checked / limit (29 AS: (Integer) WHERE [10 <= _ < 30])
-checked / limit (30 AS: (Integer) WHERE [10 <= _ < 30])
+checked / limit 10
+checked / limit 29
+checked / limit 30
 checked / revision (1 AS: Revision)
 checked / revision (0 AS: Revision)
 checked / path ("a.poentaro" AS: Score Path)
 checked / path ("a.txt" AS: Score Path)
-checked / short ("😀" AS: (Text) WHERE [1 <= (_ length) <= 3])
-checked / broken limit (10 AS: (Integer) WHERE [10 <= _ < 30])
+checked / short "😀"
+checked / broken limit 10
 ```
 
 The first two return `10` and `29`; `30` is `INVALID REQUEST` with the failed
@@ -133,9 +133,9 @@ bound, "less than 30". Revision `1` and the `.poentaro` path pass; revision
 `0` and `.txt` fail. The emoji passes the text length check. `broken limit`
 deliberately returns `30`, producing `INTERNAL ERROR`.
 
-`AS:` states the whole parameter type, including an inline refinement;
-it does not apply a predicate to an arbitrary expression. Named types use
-their name instead. `checked / SCHEMA` shows the guide and predicate
+Inline refinements accept arguments of their base type and check the predicate
+without an `AS:` annotation. Named types still use `AS:` with their name.
+`checked / SCHEMA` shows the guide and predicate
 explanations. The demo schema is
 [`examples/refinements.protocol.anyx`](examples/refinements.protocol.anyx).
 Ctrl-D at an empty prompt exits. Piped input also works, one command per line.

@@ -268,7 +268,7 @@ fn decode_arguments(
             }
             let value = crate::request::decode(schema, &parameter.r#type, argument.value)
                 .map_err(in_parameter)?;
-            if argument.stated() != Some(&parameter.r#type) {
+            if !argument.stated().is_some_and(|stated| parameter.r#type.accepts_argument_type(stated)) {
                 let fix = fix(schema, source, method, call, index);
                 let written = written(source, argument.value.span());
                 let message = match &argument.own {
@@ -318,7 +318,8 @@ fn read_argument<'n>(
 }
 
 /// Which of `methods`, overloads of one shape, a call is of: the one whose
-/// parameters have exactly the types its arguments state.
+/// parameters match the types its arguments state, allowing base types for
+/// unannotated inline refinements. Predicates are checked after selection.
 fn choose(
     schema: &Schema,
     source: &str,
@@ -336,7 +337,14 @@ fn choose(
             .zip(arguments)
             .enumerate()
             .all(|(index, (parameter, argument))| {
-                Some(index) == except || argument.stated() == Some(&parameter.r#type)
+                Some(index) == except
+                    || argument.stated().is_some_and(|stated| {
+                        if argument.annotated.is_some() {
+                            stated == &parameter.r#type
+                        } else {
+                            parameter.r#type.accepts_argument_type(stated)
+                        }
+                    })
             })
     };
     let fitting: Vec<usize> = (0..methods.len())
