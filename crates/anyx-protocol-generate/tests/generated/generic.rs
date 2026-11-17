@@ -13,25 +13,25 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-RECORD Page of (item: TYPE) {
+RECORD Page of (item: Type) {
     items: LIST: item,
-    next: OPTIONAL Text,
+    next: Text? DEFAULT null,
     # How many there are in all.
-    total: OPTIONAL: Integer DEFAULT 0,
+    total: Integer DEFAULT 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-CHOICE (value: TYPE) or (problem: TYPE) { done (value: value), failed (problem: problem) },
+CHOICE (value: Type) or (problem: Type) { done (value: value), failed (problem: problem) },
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-RECORD (item: TYPE) dated { item: item, at: Instant },
+RECORD (item: Type) dated { item: item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-RECORD Tree of (item: TYPE) { value: item, children: LIST Tree of (item) },
+RECORD Tree of (item: Type) { value: item, children: LIST Tree of (item) },
 
 # Keys and their values, in the same order: a slot between words.
-RECORD Table from (key: TYPE) to (value: TYPE) { keys: LIST: key, values: LIST: value },
+RECORD Table from (key: Type) to (value: Type) { keys: LIST: key, values: LIST: value },
 
 RECORD Payment { amount: Integer, at: Instant },
 
@@ -76,7 +76,7 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PageOf<Item> {
     pub items: Vec<Item>,
-    pub next: Option<String>,
+    pub next: Nullable<String>,
     /// How many there are in all.
     pub total: i64,
 }
@@ -86,7 +86,7 @@ impl<Item: IntoValue> IntoValue for PageOf<Item> {
         Value::Record(
             FieldsBuilder::new()
                 .field("items", self.items)
-                .optional("next", self.next)
+                .field("next", self.next)
                 .field("total", self.total)
                 .build(),
         )
@@ -101,7 +101,7 @@ impl<Item: FromValue> FromValue for PageOf<Item> {
         let mut fields = FieldsReader::new(fields);
         Some(Self {
             items: fields.field("items")?,
-            next: fields.optional("next")?,
+            next: fields.field("next")?,
             total: fields.field("total")?,
         })
     }
@@ -330,6 +330,80 @@ impl IntoValue for Payments {
 impl FromValue for Payments {
     fn from_value(value: Value) -> Option<Self> {
         FromValue::from_value(value).map(Self)
+    }
+}
+
+/// `true` or `false`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Boolean {
+    False,
+    True,
+}
+
+impl IntoValue for Boolean {
+    fn into_value(self) -> Value {
+        match self {
+            Boolean::False => Value::Variant {
+                shape: "false".to_string(),
+                arguments: vec![],
+            },
+            Boolean::True => Value::Variant {
+                shape: "true".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for Boolean {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "false" => Boolean::False,
+            "true" => Boolean::True,
+            _ => return None,
+        })
+    }
+}
+
+/// A nullable item: `null`, or `value (item)` containing a value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Nullable<Item> {
+    Null,
+    Value { item: Item },
+}
+
+impl<Item: IntoValue> IntoValue for Nullable<Item> {
+    fn into_value(self) -> Value {
+        match self {
+            Nullable::Null => Value::Variant {
+                shape: "null".to_string(),
+                arguments: vec![],
+            },
+            Nullable::Value { item } => Value::Variant {
+                shape: "value _".to_string(),
+                arguments: vec![item.into_value()],
+            },
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for Nullable<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "null" => Nullable::Null,
+            "value _" => Nullable::Value {
+                item: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
+        })
     }
 }
 

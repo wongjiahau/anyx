@@ -127,7 +127,7 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
     ];
     for entry in ["notes.anyx", "billing.anyx", "shared.anyx"] {
         let schema = load(entry, &files).unwrap();
-        assert_eq!(schema.types.len(), 1);
+        assert_eq!(schema.types.len(), 3);
         assert_eq!(schema.methods[0].full_name(), "current");
         assert_eq!(schema.is_protocol(), entry != "shared.anyx");
     }
@@ -139,7 +139,7 @@ fn own_declarations_and_direct_public_imports_are_visible() {
         ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
         ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [gone],"),
     ]).unwrap();
-    assert_eq!(schema.types.len(), 2);
+    assert_eq!(schema.types.len(), 4);
     assert_eq!(schema.errors.len(), 1);
 }
 

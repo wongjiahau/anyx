@@ -35,7 +35,6 @@ pub enum Argument {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Duration(Duration),
-    Boolean(Boolean),
     Integer(Spanned<String>),
     Float(Spanned<String>),
     Text(Spanned<StringLiteral>),
@@ -52,12 +51,6 @@ pub struct Duration {
 }
 
 pub type Count = Spanned<String>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Boolean {
-    True(Span),
-    False(Span),
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValueCall {
@@ -118,21 +111,12 @@ impl Value {
     pub fn span(&self) -> Span {
         match self {
             Value::Duration(value) => value.span,
-            Value::Boolean(value) => value.span(),
             Value::Integer(value) => value.span,
             Value::Float(value) => value.span,
             Value::Text(value) => value.span,
             Value::List(value) => value.span,
             Value::Braces(value) => value.span,
             Value::Call(value) => value.span,
-        }
-    }
-}
-
-impl Boolean {
-    pub fn span(&self) -> Span {
-        match self {
-            Boolean::True(span) | Boolean::False(span) => *span,
         }
     }
 }
@@ -183,7 +167,6 @@ impl support::Errors for Value {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
             Value::Duration(value) => support::Errors::errors(value, found),
-            Value::Boolean(value) => support::Errors::errors(value, found),
             Value::Integer(value) => support::Errors::errors(value, found),
             Value::Float(value) => support::Errors::errors(value, found),
             Value::Text(value) => support::Errors::errors(value, found),
@@ -198,15 +181,6 @@ impl support::Errors for Duration {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
-    }
-}
-
-impl support::Errors for Boolean {
-    fn errors<'a>(&'a self, _: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            Boolean::True(_) => {}
-            Boolean::False(_) => {}
-        }
     }
 }
 
@@ -300,7 +274,6 @@ fn decode_argument_annotated(node: &Node) -> Result<Argument, DecodeError> {
 pub fn decode_value(node: &Node) -> Result<Value, DecodeError> {
     decode_duration(node)
         .map(Value::Duration)
-        .or_else(|error| error.or(decode_boolean(node).map(Value::Boolean)))
         .or_else(|error| {
             error.or(support::float(
                 node,
@@ -374,12 +347,6 @@ pub fn decode_count(node: &Node) -> Result<Count, DecodeError> {
         "an integer literal",
     )
     .and_then(|_| support::number_literal(node, false, "an integer literal"))
-}
-
-pub fn decode_boolean(node: &Node) -> Result<Boolean, DecodeError> {
-    support::word(node, "true")
-        .map(Boolean::True)
-        .or_else(|error| error.or(support::word(node, "false").map(Boolean::False)))
 }
 
 pub fn decode_value_call(node: &Node) -> Result<ValueCall, DecodeError> {

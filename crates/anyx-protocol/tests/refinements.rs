@@ -10,7 +10,7 @@ TYPE Probability: Float . WHERE [0 <= _ <= 1],
 TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE Limit: (Integer) WHERE [10 <= _ < 30],
 TYPE Short Text: Text . WHERE [1 <= (_ length) <= 3],
-RECORD Summary { path: Score Path, revision: Revision, limit: OPTIONAL: Limit DEFAULT 10 },
+RECORD Summary { path: Score Path, revision: Revision, limit: Limit DEFAULT 10 },
 METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
@@ -93,7 +93,10 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
         };
         assert!(decode_request(&s, wire).is_err());
     }
-    let invalid=Schema::parse("TYPE Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit: OPTIONAL: Limit DEFAULT 30 }").unwrap_err();
+    let invalid = Schema::parse(
+        "TYPE Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit: Limit DEFAULT 30 }",
+    )
+    .unwrap_err();
     assert!(
         invalid.iter().any(|e| e.message.contains("less than 30")),
         "{invalid:?}"
@@ -304,7 +307,7 @@ fn imports_keep_predicate_diagnostic_locations_and_named_refinements() {
 
 #[test]
 fn inline_refinements_work_inside_generic_arguments_and_container_constraints() {
-    let schema = Schema::parse("RECORD Box of (item: TYPE) { value: item }, TYPE Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING, METHOD batch (value: Batch) RETURNS NOTHING").unwrap();
+    let schema = Schema::parse("RECORD Box of (item: Type) { value: item }, TYPE Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING, METHOD batch (value: Batch) RETURNS NOTHING").unwrap();
     let call = Call {
         method: 0,
         arguments: vec![Value::Record([("value".into(), Value::Integer(10))].into())],

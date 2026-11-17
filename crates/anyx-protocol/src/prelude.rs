@@ -1,9 +1,10 @@
 //! The prelude, `prelude.protocol.anyx`: the built-in types, declared in the schema
-//! language with their docs. It is read and checked once, before the first
-//! schema, and its names are visible in every scope of every schema.
+//! language with their docs. Its source is decoded once; ordinary declarations
+//! are checked with each schema, and its names are visible in every scope.
 //!
-//! Each declaration is `INTRINSIC`: the prelude writes its name and shape,
-//! and this module supplies its meaning, the [`Type`] its values have. The
+//! Intrinsic declarations name representations supplied by Rust; ordinary
+//! declarations are checked alongside user types. For an intrinsic,
+//! this module supplies its meaning, the [`Type`] its values have. The
 //! codec reads and writes those; for `Duration`, the prelude's variants are
 //! the units, and `time.rs` knows how long each is.
 
@@ -42,7 +43,6 @@ fn implementation(name: &str) -> Option<Type> {
         "Bytes" => Type::Bytes,
         "Integer" => Type::Integer,
         "Float" => Type::Float,
-        "Boolean" => Type::Boolean,
         "Instant" => Type::Instant,
         "Duration" => Type::Duration,
         _ => return None,
@@ -117,6 +117,9 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
     }
     let mut intrinsics: Vec<Intrinsic> = Vec::new();
     for definition in &document.definition {
+        if !is_intrinsic(definition) {
+            continue;
+        }
         let declared = match definition {
             ast::Definition::NamedType(ast::NamedType {
                 doc,
@@ -191,7 +194,6 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
         Type::Bytes,
         Type::Integer,
         Type::Float,
-        Type::Boolean,
         Type::Instant,
         Type::Duration,
     ];
@@ -211,6 +213,30 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
     }
 }
 
+/// Ordinary prelude declarations use the same checker as user declarations.
+pub(crate) fn declarations() -> ast::Document {
+    static DECLARATIONS: LazyLock<ast::Document> = LazyLock::new(|| {
+        let parsed = anyx::parse(SOURCE);
+        let mut document =
+            ast::decode_document(&parsed.syntax.nodes()).expect("the prelude parses");
+        document
+            .definition
+            .retain(|definition| !is_intrinsic(definition));
+        document
+    });
+    DECLARATIONS.clone()
+}
+
+fn is_intrinsic(definition: &ast::Definition) -> bool {
+    match definition {
+        ast::Definition::NamedType(d) => d.intrinsic.is_some(),
+        ast::Definition::Choice(d) => d.intrinsic.is_some(),
+        ast::Definition::Record(d) => d.intrinsic.is_some(),
+        ast::Definition::Errors(d) => d.intrinsic.is_some(),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,9 +249,7 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            [
-                "Text", "Bytes", "Integer", "Float", "Boolean", "Instant", "Duration"
-            ]
+            ["Text", "Bytes", "Integer", "Float", "Instant", "Duration"]
         );
         assert_eq!(
             find("Duration").unwrap().variants,

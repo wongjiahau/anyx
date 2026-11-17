@@ -5,7 +5,7 @@ Send a request as the body of `POST /notes`.
 ## Requests
 
 A request is a list of calls separated by commas. Each call is written in the
-shape of one of the methods below, with a value in each `(name: TYPE)` slot:
+shape of one of the methods below, with a value in each `(name: Type)` slot:
 
     write "a" at revision 3 content "a"
 
@@ -54,7 +54,6 @@ the account, such as by sending or sharing it.
 - `Float`: A finite 64-bit float, written with a point or an exponent:
   `1.5`, `3.0`, `1e3`. `3` is an `Integer`, so it doesn't fit a `Float`;
   write `3.0`.
-- `Boolean`: `true` or `false`.
 - `Instant`: A point in time, in UTC to the millisecond, as a string:
   `"2026-11-14T06:00:08.000Z"`.
 - `Duration`: A length of time, to the millisecond: whole numbers each
@@ -67,11 +66,15 @@ the account, such as by sending or sharing it.
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `{ "hymn": done }`.
 - A RECORD is its fields in braces, each its name and value, in any order:
-  `{ path "a", revision 3 }`. An `OPTIONAL` field may be left out; one
-  with a `DEFAULT` then holds that value. When a value is words, put `:`
+  `{ path "a", revision 3 }`. A field with a `DEFAULT` may be left out
+  and then holds that value. When a value is words, put `:`
   after the field's name: `{ status: done }`, `{ timeout: 5 minutes }`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
+- A generic RECORD or CHOICE has a type parameter in each slot of its
+  name, which its fields or variants use as a type: `CHOICE (item: Type) ?`.
+  A use puts a type in each slot, in parentheses, `(Text) ?`, and its value
+  is written with those types in place of the parameters.
 - In a slot, a value written as words goes in parentheses so that it doesn't
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
@@ -79,12 +82,28 @@ the account, such as by sending or sharing it.
 An argument whose type its value doesn't show is annotated with `AS:` and
 its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
 `open ("a" AS: File Id)`. A value shows its type when it is a number, a
-string (`Text`), `true` or `false`, a duration, a list or map whose items
+string (`Text`), a duration, a list or map whose items
 show one type, or a record or variant that only one type of the schema
 fits. `[]`, `{}`, and a value of a named TYPE, a generic type, `Bytes`
 or `Instant` never do. Without its annotation, the request is invalid.
 Only a whole argument is annotated; a value inside it is read by the type
 around it. An annotation states the type; it doesn't convert the value.
+
+## Prelude
+
+These ordinary types are visible in every schema. `T?` is nullable; only
+`DEFAULT` makes a record field omittable.
+
+```anyx
+# `true` or `false`.
+CHOICE Boolean { false, true },
+
+# A nullable item: `null`, or `value (item)` containing a value.
+CHOICE (item: Type) ? {
+    null,
+    value (item),
+},
+```
 
 ## Responses
 
@@ -176,7 +195,7 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem: OPTIONAL Diagnostic },
+RECORD Page { html: Text, problem: Diagnostic? DEFAULT null },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 

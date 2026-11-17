@@ -11,7 +11,6 @@ pub enum Value {
     Bytes(Vec<u8>),
     Integer(i64),
     Float(f64),
-    Boolean(bool),
     /// An `Instant`. The wire keeps it to the millisecond, rounded down.
     Instant(SystemTime),
     /// A `Duration`. The wire keeps it to the millisecond, rounded down.
@@ -19,7 +18,7 @@ pub enum Value {
     List(Vec<Value>),
     /// A `MAP`: values by their text keys.
     Map(BTreeMap<String, Value>),
-    /// A record's fields by name. An `OPTIONAL` field left out is absent.
+    /// A record's fields by name, with defaults filled in when decoded.
     Record(BTreeMap<String, Value>),
     /// A choice's variant or an error: its shape's text, such as
     /// `conflict at revision _`, and a value for each slot.
@@ -125,14 +124,17 @@ impl FromValue for f64 {
 
 impl IntoValue for bool {
     fn into_value(self) -> Value {
-        Value::Boolean(self)
+        Value::Variant {
+            shape: self.to_string(),
+            arguments: Vec::new(),
+        }
     }
 }
 
 impl FromValue for bool {
     fn from_value(value: Value) -> Option<Self> {
         match value {
-            Value::Boolean(boolean) => Some(boolean),
+            Value::Variant { shape, arguments } if arguments.is_empty() => shape.parse().ok(),
             _ => None,
         }
     }
@@ -226,7 +228,7 @@ impl FieldsBuilder {
         self
     }
 
-    /// Adds an `OPTIONAL` field when it has a value.
+    /// Adds a field when supplied; the schema may supply its default.
     pub fn optional(mut self, name: &str, value: Option<impl IntoValue>) -> Self {
         if let Some(value) = value {
             self.0.insert(name.to_string(), value.into_value());
@@ -251,7 +253,7 @@ impl FieldsReader {
         T::from_value(self.0.remove(name)?)
     }
 
-    /// Reads an `OPTIONAL` field: `Some(None)` when it was left out.
+    /// Reads a field if present: `Some(None)` when absent.
     pub fn optional<T: FromValue>(&mut self, name: &str) -> Option<Option<T>> {
         match self.0.remove(name) {
             None => Some(None),

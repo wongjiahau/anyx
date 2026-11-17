@@ -2,7 +2,7 @@
 ## language. It is read and checked before every schema, and its names are
 ## visible in every scope, so a schema can't declare them again.
 ##
-## Every declaration is `INTRINSIC`: its shape is written here, and the
+## An `INTRINSIC` declaration has its shape written here, and the
 ## implementation supplies what it means (`src/prelude.rs`). Only the
 ## prelude may use `INTRINSIC`. The `#` lines are what the guide says about
 ## each type, so they say how a value of it is written.
@@ -29,7 +29,7 @@ INTRINSIC TYPE Integer,
 INTRINSIC TYPE Float,
 
 # `true` or `false`.
-INTRINSIC TYPE Boolean,
+CHOICE Boolean { false, true },
 
 # A point in time, in UTC to the millisecond, as a string:
 # `"2026-11-14T06:00:08.000Z"`.
@@ -39,3 +39,9 @@ INTRINSIC TYPE Instant,
 # unit, the largest first, as in `90 seconds` or `1 hour 30 minutes`. A
 # unit is in the plural for any count but 1: `1 day 1 second`.
 INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
+
+# A nullable item: `null`, or `value (item)` containing a value.
+CHOICE (item: Type) ? {
+    null,
+    value (item),
+},

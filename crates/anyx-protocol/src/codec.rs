@@ -448,8 +448,7 @@ fn fix(
                 request::Argument::Annotated { .. }
                 | request::Argument::Value(
                     request::Value::Call(_)
-                    | request::Value::Duration(_)
-                    | request::Value::Boolean(_),
+                    | request::Value::Duration(_),
                 ) => format!("({})", written(source, argument.span())),
                 _ => written(source, argument.span()),
             },
@@ -680,10 +679,7 @@ fn write_slot(
     value: &Value,
     out: &mut String,
 ) -> Result<(), EncodeError> {
-    let call = matches!(
-        value,
-        Value::Boolean(_) | Value::Duration(_) | Value::Variant { .. }
-    );
+    let call = matches!(value, Value::Duration(_) | Value::Variant { .. });
     if call {
         out.push('(');
     }
@@ -713,7 +709,6 @@ pub(crate) fn write(
                 message: format!("found the Float {number}; expected a finite one"),
             });
         }
-        Value::Boolean(boolean) => out.push_str(if *boolean { "true" } else { "false" }),
         Value::Instant(instant) => match crate::time::format_instant(*instant) {
             Some(text) => write_text(&text, out),
             None => {

@@ -33,35 +33,24 @@ record: ANYFIX CALL [
 
 ## A record's name is a shape, then its fields in braces fill the last slot:
 ## `File Summary { path: Text }`. A generic record has a type parameter in
-## each other slot, anywhere among the words: `Page of (item: TYPE) { … }`,
-## `(item: TYPE) history { … }`. The schema checker reads the shape from the
+## each other slot, anywhere among the words: `Page of (item: Type) { … }`,
+## `(item: Type) history { … }`. The schema checker reads the shape from the
 ## call's name, and checks that the braces come last.
 record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record part],
 
 record part: ONE OF [fields: CURLY BRACE [ZERO OR MORE: field], type parameter],
 
 ## A type parameter of a generic `RECORD` or `CHOICE`, in a slot of its
-## name: `(item: TYPE)`.
+## name: `(item: Type)`.
 type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
 
-type marker: ONE OF [WORD "TYPE"],
+type marker: ONE OF [WORD "Type"],
 
 field: ANYFIX CALL [doc: OPTIONAL: LINE STRING, name: WORDS [NO KEYWORD], type: field type],
 
-field type: ONE OF [
-  optional: ANYFIX CALL [WORD "OPTIONAL", type: optional type],
-  ## `DEFAULT` on a field that isn't `OPTIONAL`, which the schema checker
-  ## reports.
-  required with default: defaulted,
-  type,
-],
+field type: ONE OF [defaulted, type],
 
-optional type: ONE OF [defaulted, type],
-
-## An `OPTIONAL` field's type and the value it takes when left out:
-## `OPTIONAL: Integer DEFAULT 50`, the call `_ DEFAULT _`. All-caps words
-## side by side join into one call, so `LIST: Text DEFAULT []` is `LIST _`
-## of `Text DEFAULT _`: the default still belongs to the whole field.
+## A field's type and the value it takes when left out.
 defaulted: ONE OF [
   list: ANYFIX CALL [WORD "LIST", item: defaulted],
   ## `LIST File Summary DEFAULT []`
@@ -83,7 +72,7 @@ choice: ANYFIX CALL [
 ],
 
 ## A choice's name is a shape like a record's, with its variants in braces
-## last: `(left: TYPE) or (right: TYPE) { first (value: left), … }`.
+## last: `(left: Type) or (right: Type) { first (value: left), … }`.
 choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice part],
 
 choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
@@ -109,7 +98,7 @@ named type body: ONE OF [
 ## first, so it fills the call's first slot.
 variant: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: variant slot],
 
-variant slot: ONE OF [doc: LINE STRING, parameter],
+variant slot: ONE OF [doc: LINE STRING, parameter, unnamed: ANYFIX CALL [name: WORDS [NO KEYWORD]]],
 
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in

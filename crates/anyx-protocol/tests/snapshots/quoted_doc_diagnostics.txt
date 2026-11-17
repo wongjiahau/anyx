@@ -40,7 +40,7 @@ schema:1:23: found the quoted string "A shade."; expected the word `INTRINSIC`, 
 
 == a quoted doc on a variant
 PROTOCOL a VERSION 1, CHOICE shade { "Dim." dark, light },
-schema:1:38: found the quoted string "Dim."; expected the call `… _`, a `#` line string or the end of the call
+schema:1:38: found the quoted string "Dim."; expected the call `… _`, `…`, a `#` line string or the end of the call
   PROTOCOL a VERSION 1, CHOICE shade { "Dim." dark, light },
                                        ^^^^^^
 
@@ -58,6 +58,6 @@ schema:1:23: found the quoted string "Shared."; expected the word `INTRINSIC`, `
 
 == a quoted doc on an error
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS ["Gone." missing],
-schema:1:58: found the quoted string "Gone."; expected the call `… _`, a `#` line string or the end of the call
+schema:1:58: found the quoted string "Gone."; expected the call `… _`, `…`, a `#` line string or the end of the call
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS ["Gone." missing],
                                                            ^^^^^^^

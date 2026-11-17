@@ -15,7 +15,7 @@ RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
-    note: OPTIONAL Text,
+    note: Text ? DEFAULT null,
 },
 
 CHOICE Shade { dark, light },
@@ -58,7 +58,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   language, so a word with no lowercase letter is a keyword: write `Id`,
   never `ID`. Title Case is a convention; the checker takes a type name of
   any case. Keywords side by side join into one name, so write
-  `LIST: LIST Text` and `OPTIONAL: Integer DEFAULT 50` with the `:`; a
+  `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
   (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
@@ -73,19 +73,21 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   written exactly like `T`, on the wire and in JSON, and generated code
   keeps it distinct from `T` and from other named types over `T`. `T` is any
   type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
-- **`RECORD Name { field: TYPE, … }`**: fields by name. An `OPTIONAL` field
-  may be left out. `DEFAULT value` after its type gives it the value it
-  holds when left out: `limit: OPTIONAL: Integer DEFAULT 50`, or
-  `tags: OPTIONAL: LIST Text DEFAULT []`. The value is written as on the
-  wire and checked against the type. Only an `OPTIONAL` field of a `RECORD`
-  takes a `DEFAULT`; a parameter is always written. The reader of a value
-  fills the default in, so code sees the field as always there.
+- **`RECORD Name { field: T, … }`**: fields by name. `DEFAULT value`
+  after a field's type makes it omittable and supplies its value when absent:
+  `limit: Integer DEFAULT 50`, or `tags: LIST Text DEFAULT []`.
+  Without a default the field must be supplied. Defaults are checked against
+  the field's type; parameters cannot have defaults.
+- **Nullability** is the prelude's generic choice `T?`: `null`, or
+  `value (item)`. `note: Text?` is required but admits `null`;
+  `note: Text? DEFAULT null` may be omitted. `OPTIONAL` is no longer a
+  protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
 - **`CHOICE Name { variant, … }`**: one of its variants. A variant is a
-  *shape*: words, with `(name: TYPE)` slots anywhere among them, as in
+  *shape*: words, with `(name: Type)` slots anywhere among them, as in
   `custom hue (hue: Float)` or `(base: Shade) dimmed`. Variants differ by
   their words.
 - **A generic `RECORD` or `CHOICE`** has type parameters in its name. Its
-  name is a shape, like a variant's: words, with a `(parameter: TYPE)` slot
+  name is a shape, like a variant's: words, with a `(parameter: Type)` slot
   anywhere among them, at the start, between words, or at the end. Its
   fields or variants use each parameter as a type. A use writes the same
   words with a type in parentheses in each slot, in the same places:
@@ -96,19 +98,19 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  RECORD Page of (item: TYPE) {
+  RECORD Page of (item: Type) {
       items: LIST: item,
-      next: OPTIONAL Text,
+      next: Text? DEFAULT null,
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
-  CHOICE (value: TYPE) or (problem: TYPE) {
+  CHOICE (value: Type) or (problem: Type) {
       done (value: value),
       failed (problem: problem),
   },
 
   # A value and who vouches for it. (A slot between words.)
-  RECORD (value: TYPE) signed by (signer: TYPE) {
+  RECORD (value: Type) signed by (signer: Type) {
       value: value,
       signer: signer,
   },
@@ -124,20 +126,20 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `RECORD Box of (item: TYPE) sealed`, used as `Box of (Letter) sealed`, and
+  `RECORD Box of (item: Type) sealed`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `RECORD Table from (key: TYPE) to (value: TYPE)`.
+  `RECORD Table from (key: Type) to (value: Type)`.
 
   A type is known by its words and where its slots are, so `Page` and
-  `Page of (item: TYPE)` are two types, and both may be declared; two
+  `Page of (item: Type)` are two types, and both may be declared; two
   declarations of the same shape are an error. Only a `RECORD` or a
   `CHOICE` is generic, `TYPE Name: T` is not, and
-  `PUBLIC RECORD Page of (item: TYPE)` shares one. A parameter is a
+  `PUBLIC RECORD Page of (item: Type)` shares one. A parameter is a
   lowercase name, once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
   or a directly imported `PUBLIC` type. A parameter has no slots, and a field
-  whose type holds one takes no `DEFAULT`, since it couldn't be checked
-  against every argument. A use fills every slot, in order; a use whose
+  whose type holds one can have a `DEFAULT` only if it can be checked
+  without knowing the argument, as in `content: item? DEFAULT null`. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
   with its own parameters as they are, `LIST Tree of (item)`, and only
@@ -147,9 +149,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
   name reads better: `RECORD Trashed File { file: File Summary, trashed at: Instant }`,
-  not `RECORD (item: TYPE) in trash since (when: TYPE)` used only as
+  not `RECORD (item: Type) in trash since (when: Type)` used only as
   `(File Summary) in trash since (Instant)`.
-- **`METHOD shape RETURNS (name: TYPE) ERRORS errors`**: the method's
+- **`METHOD shape RETURNS (name: Type) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` may be left out. A method with
   nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
@@ -198,7 +200,7 @@ TYPE Revision: Integer . WHERE [1 <= _],
 TYPE Probability: Float . WHERE [0 <= _ <= 1],
 TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE Limit: (Integer) WHERE [10 <= _ < 30],
-RECORD Settings { limit: OPTIONAL: Limit DEFAULT 10 },
+RECORD Settings { limit: Limit DEFAULT 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 ```
@@ -363,7 +365,7 @@ METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [missing],
 - **`UNDONE BY call`**, after `RETURNS` and `ERRORS`, names the call that
   compensates the method's effect, as a step of a saga is compensated: a
   call of another method of the protocol. It is written like a shape whose
-  slots are the method's own parameters, each `(name: TYPE)` with that
+  slots are the method's own parameters, each `(name: Type)` with that
   parameter's name and type: `move (path) to (new path)` is undone by
   `move (new path: Text) to (path: Text)`. The types say which method it
   is, among methods with the same words, so the call must match exactly one
@@ -459,6 +461,13 @@ visible in every file, so a schema can't declare a type of the same name:
 INTRINSIC TYPE Integer,
 
 INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
+
+CHOICE Boolean { false, true },
+
+CHOICE (item: Type) ? {
+    null,
+    value (item),
+},
 ```
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
@@ -466,11 +475,15 @@ INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
   units, and the Rust code gives how its values are read, written and
   generated. Only the prelude may use it; `INTRINSIC` in a schema is an
   error. An `INTRINSIC TYPE` has no type after it.
+- The prelude also contains ordinary declarations, checked as user types are.
+  `Boolean` and postfix `?` are ordinary choices: their variants and generic
+  payloads are declared here, without intrinsic Rust type or value cases.
+  A variant slot `(item)` abbreviates `(item: item)`.
 - The guide's list of built-in types is the prelude's docs, and a
   `Duration`'s units are the prelude's variants.
 - The built-in types were once keywords, `INTEGER`, `TEXT` and so on. An
   old name is an error that names the new one: "found `INTEGER`; expected
-  `Integer`". `LIST`, `MAP`, `OPTIONAL` and `TYPE` stay keywords.
+  `Integer`". `LIST`, `MAP` and `TYPE` stay keywords.
 - Generated code doesn't change: an `Integer` is still `i64` in Rust and
   `number` in TypeScript, and values are written as before. A method's
   typed name, which names an overload in JSON, writes the types as the
@@ -568,7 +581,7 @@ methods:
 | --- | --- |
 | a number | `Integer` without a point or an exponent, else `Float` |
 | a string | `Text` |
-| `true`, `false` | `Boolean` (even where a choice has a variant `true`) |
+| `true`, `false` | the unique matching choice, normally `Boolean`; annotate if ambiguous |
 | whole numbers each with a unit | `Duration` |
 | a list with items | `LIST` of its items' type, when they all have the same one |
 | braces of string keys | `MAP` of its values' type, the same way |
@@ -657,7 +670,12 @@ camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
 An `Instant` is its text, as on the wire, and a `Duration` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
-A field with a `DEFAULT` that is left out or `null` takes its default.
+A field with a `DEFAULT` that is left out takes its default. An explicitly
+supplied value is always checked against the field's type.
+`Boolean` and `T?` use ordinary choice objects too: `{ "kind": "true" }`,
+`{ "kind": "null" }`, or `{ "kind": "value", "item": "hello" }`. Generated
+Rust uses `Boolean` and `Nullable<Item>` enums, and TypeScript uses tagged
+unions; neither choice has an intrinsic primitive representation.
 A `MAP` is an object whose keys are kept as written, not camelCased:
 `{ "old ode": 1 }`.
 A result is `{ "kind": "value", "value": … }` (with no `value` for a method

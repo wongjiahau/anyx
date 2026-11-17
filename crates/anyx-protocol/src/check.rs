@@ -122,7 +122,7 @@ enum Part<'b, T> {
     Parameter(&'b ast::TypeParameter),
 }
 
-/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (item: TYPE)
+/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (item: Type)
 /// { … }` is the shape `page of _` with the parameter `item`, and its fields.
 struct TypeShape<'b, T> {
     /// The shape without the slot of the braces, `page of _`, spanned from
@@ -237,6 +237,8 @@ fn spanned_words(name: &ast::CallName) -> ast::Spanned<String> {
 #[derive(Default)]
 pub(crate) struct Checker<'a> {
     paths: Vec<String>,
+    prelude_file: usize,
+    prelude_names: Vec<String>,
     imports: Vec<Vec<usize>>,
     sources: Vec<String>,
     /// The file being checked, which diagnostics are in.
@@ -285,6 +287,18 @@ impl<'a> Checker<'a> {
     }
 
     pub(crate) fn schema(&mut self, files: Vec<SourceFile>, decoded: &'a [DecodedFile]) -> Schema {
+        self.prelude_file = files.len() - 1;
+        self.prelude_names = decoded[self.prelude_file]
+            .document
+            .definition
+            .iter()
+            .filter_map(|definition| match definition {
+                ast::Definition::Record(d) => Some(record(d).body.name.value),
+                ast::Definition::Choice(d) => Some(choice(d).body.name.value),
+                ast::Definition::NamedType(d) => Some(named_type_name(&d.body).value.clone()),
+                _ => None,
+            })
+            .collect();
         self.paths = files.iter().map(|file| file.path.clone()).collect();
         self.sources = files.iter().map(|file| file.source.clone()).collect();
         self.imports = decoded.iter().map(|file| file.imports.clone()).collect();
@@ -347,7 +361,7 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
-                            public: found.public,
+                            public: found.public || self.file == self.prelude_file,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
                             parameters: self.parameter_names(index),
@@ -366,7 +380,7 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
-                            public: found.public,
+                            public: found.public || self.file == self.prelude_file,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
                             parameters: self.parameter_names(index),
@@ -381,7 +395,7 @@ impl<'a> Checker<'a> {
                             ast::NamedTypeBody::Bare { .. } => Type::Text,
                         };
                         types.push(TypeDefinition {
-                            public: found.public,
+                            public: found.public || self.file == self.prelude_file,
                             doc: doc(found.doc),
                             name: named_type_name(found.body).value.clone(),
                             parameters: Vec::new(),
@@ -678,7 +692,7 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (item: TYPE)`"
+                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (item: Type)`"
                 ),
             );
         } else {
@@ -692,7 +706,7 @@ impl<'a> Checker<'a> {
         if shape.body.is_none() && shape.misplaced.is_empty() {
             let declared: Vec<String> = parameters
                 .iter()
-                .map(|parameter| format!("{parameter}: TYPE"))
+                .map(|parameter| format!("{parameter}: Type"))
                 .collect();
             self.error(
                 shape.name.span,
@@ -707,7 +721,7 @@ impl<'a> Checker<'a> {
             self.error(
                 *span,
                 format!(
-                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(item: TYPE)` in the name's other slots"
+                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(item: Type)` in the name's other slots"
                 ),
             );
         }
@@ -718,7 +732,10 @@ impl<'a> Checker<'a> {
     /// Declares a type by its shape, `page of _`, and reports a second type
     /// of that shape in the protocol.
     fn declare_type(&mut self, name: &ast::Spanned<String>, public: bool) {
-        if crate::prelude::find(&name.value).is_some() {
+        if self.file != self.prelude_file
+            && (crate::prelude::find(&name.value).is_some()
+                || self.prelude_names.contains(&name.value))
+        {
             self.error(
                 name.span,
                 format!(
@@ -727,7 +744,16 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        self.check_duplicate_name(name);
+        // A user shadowing the prelude was diagnosed at the user declaration.
+        // Still check duplicates within the prelude itself.
+        let user_shadow = self.file == self.prelude_file
+            && self
+                .types
+                .iter()
+                .any(|known| known.file != self.prelude_file && known.name == name.value);
+        if !user_shadow {
+            self.check_duplicate_name(name);
+        }
         let declared = self.declared(name, public);
         self.types.push(declared);
     }
@@ -961,6 +987,9 @@ impl<'a> Checker<'a> {
     }
 
     fn accessible(&self, declared: &Declared) -> bool {
+        if declared.file == self.prelude_file {
+            return true;
+        }
         declared.file == self.file
             || (declared.public && self.imports[self.file].contains(&declared.file))
     }
@@ -1138,8 +1167,9 @@ impl<'a> Checker<'a> {
     /// case reads.
     fn check_type_words(&mut self, name: &ast::Spanned<String>) {
         let fits = name.value.split(' ').all(|word| {
-            word.starts_with(|c: char| c.is_ascii_alphabetic())
-                && word.chars().all(|c| c.is_ascii_alphanumeric())
+            word == "?"
+                || word.starts_with(|c: char| c.is_ascii_alphabetic())
+                    && word.chars().all(|c| c.is_ascii_alphanumeric())
         });
         if !fits {
             self.error(
@@ -1185,52 +1215,23 @@ impl<'a> Checker<'a> {
                     ),
                 );
             }
-            let (r#type, optional) = match &field.r#type {
-                ast::FieldType::Optional {
-                    r#type: ast::OptionalType::Type(r#type),
-                    ..
-                } => (self.r#type(r#type), true),
-                ast::FieldType::Optional {
-                    r#type: ast::OptionalType::Defaulted(defaulted),
-                    ..
-                } => {
+            let r#type = match &field.r#type {
+                ast::FieldType::Defaulted(defaulted) => {
                     let (r#type, node) = self.defaulted(defaulted);
-                    if let Some(parameter) = r#type.parameters().first() {
-                        self.error(
-                            defaulted.span(),
-                            format!(
-                                "found a `DEFAULT` on the field `{name}`, whose type holds the type parameter `{parameter}`; expected a `DEFAULT` only on a field whose type is the same in every use of `{record}`, since the default can't be checked against each type `{parameter}` stands for",
-                                name = field.name.value,
-                                record = self.type_shown(record),
-                            ),
-                        );
-                    } else {
-                        self.defaults.push(PendingDefault {
-                            r#type: record,
-                            field: checked.len(),
-                            node: node.clone(),
-                            file: self.file,
-                        });
-                    }
-                    (r#type, true)
+                    self.defaults.push(PendingDefault {
+                        r#type: record,
+                        field: checked.len(),
+                        node: node.clone(),
+                        file: self.file,
+                    });
+                    r#type
                 }
-                ast::FieldType::RequiredWithDefault(defaulted) => {
-                    self.error(
-                        defaulted.span(),
-                        format!(
-                            "found a `DEFAULT` on the field `{name}`, which is not `OPTIONAL`; expected a `DEFAULT` only on an `OPTIONAL` field, which may be left out, as in `{name}: OPTIONAL: Integer DEFAULT 50`",
-                            name = field.name.value
-                        ),
-                    );
-                    (self.defaulted(defaulted).0, false)
-                }
-                ast::FieldType::Type(r#type) => (self.r#type(r#type), false),
+                ast::FieldType::Type(r#type) => self.r#type(r#type),
             };
             checked.push(Field {
                 doc: doc(&field.doc),
                 name: field.name.value.clone(),
                 r#type,
-                optional,
                 default: None,
             });
         }
@@ -1279,6 +1280,13 @@ impl<'a> Checker<'a> {
                     ),
                 ),
                 ast::VariantSlot::Parameter(parameter) => parameters.push(parameter.clone()),
+                ast::VariantSlot::Unnamed { name, .. } => {
+                    let reference = ast::Reference {
+                        name: ast::CallName { text: name.value.clone(), parts: name.value.split(' ').map(|text| NamePart::Word { text: text.into(), span: name.span }).collect(), span: name.span },
+                        arguments: Vec::new(), span: name.span,
+                    };
+                    parameters.push(ast::Parameter { name: name.clone(), r#type: ast::Type::Named(reference), span: name.span });
+                }
             }
         }
         let mut name = variant.name.clone();
@@ -1797,7 +1805,7 @@ impl<'a> Checker<'a> {
 
     /// A generic type that uses itself, directly or through other generic
     /// types, must pass its own parameters as they are: `nest of (item)`
-    /// within `nest of (item: TYPE)`. With other arguments, such as
+    /// within `nest of (item: Type)`. With other arguments, such as
     /// `nest of (LIST: item)`, each use would need another, without end.
     fn check_generic_recursion(&mut self, schema: &Schema) {
         /// The generic types `type` uses, anywhere in it, with their

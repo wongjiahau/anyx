@@ -1,6 +1,6 @@
 == an unknown type
 PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
-schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Boolean`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
                                      ^^^^^
 
@@ -48,13 +48,13 @@ schema:1:28: found `TYPE Money` without a type; expected the type it names after
 
 == an unnamed return
 PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
-schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: TYPE)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is
+schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is
   PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
                                               ^
 
 == a bad error after RETURNS NOTHING, which is not an unnamed return
 PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],
-schema:1:61: found the number `3`; expected the call `… _`, a `#` line string or the end of the call
+schema:1:61: found the number `3`; expected the call `… _`, `…`, a `#` line string or the end of the call
   PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],
                                                               ^
 
@@ -107,16 +107,16 @@ schema:1:30: found the type `node` holding itself; expected a type that holds it
                                ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },
+PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },
 schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD node { next: OPTIONAL: node }, RECORD tree { children: MAP: tree },
+  PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },
                                ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: Integer DEFAULT [] },
-schema:1:68: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
-  PROTOCOL a VERSION 1, RECORD x { a: OPTIONAL: MAP: Integer DEFAULT [] },
-                                                                     ^^
+PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },
+schema:1:58: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },
+                                                           ^^
 
 == a cycle through a choice
 PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },

@@ -23,6 +23,16 @@ export interface Diagnostic {
   message: string;
 }
 
+/** `true` or `false`. */
+export type Boolean =
+  | { kind: "false" }
+  | { kind: "true" };
+
+/** A nullable item: `null`, or `value (item)` containing a value. */
+export type Nullable<Item> =
+  | { kind: "null" }
+  | { kind: "value"; item: Item };
+
 /** The errors of `read _`. */
 export type ReadError =
   /** The owner moved this file to the trash. Ask them to restore it. */
@@ -73,7 +83,7 @@ export type ExportMidiError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; optional: boolean; defaultValue?: () => unknown };
+type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; defaultValue?: () => unknown };
 type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
@@ -134,7 +144,6 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "bytes": if (value instanceof Uint8Array) return quoted(encodeBytes(value)); break;
     case "integer": if (typeof value === "bigint" && value >= -(1n << 63n) && value < (1n << 63n)) return String(value); break;
     case "float": if (typeof value === "number" && Number.isFinite(value)) { const s = Object.is(value, -0) ? "-0" : String(value); return /[.eE]/.test(s) ? s : `${s}.0`; } break;
-    case "boolean": if (typeof value === "boolean") return String(value); break;
     case "instant": if (value instanceof Date && Number.isFinite(value.valueOf())) { const text = value.toISOString(); if (/^\d{4}-/.test(text)) return quoted(text); } break;
     case "duration": if (typeof value === "bigint" && value >= 0n && value <= (1n << 64n) - 1n) {
       let rest = value; const output: string[] = [];
@@ -153,7 +162,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       if (def.kind === "record") {
         const fields = def.fields!;
         for (const key of Object.keys(obj)) if (!fields.some(f => f.name === key)) return fail(`unknown field ${key}`);
-        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.optional ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
+        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.defaultValue ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
       }
       const variant = def.variants!.find(v => v.kind === obj.kind);
       if (!variant) return fail("unknown choice variant");
@@ -382,7 +391,6 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       break;
     } break;
     case "float": if (node.tag === "number" && /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text) && /[.eE]/.test(node.text)) { const n = Number(node.text.replace(/_/g, "")); if (Number.isFinite(n)) return n; } break;
-    case "boolean": if (word(node, "true")) return true; if (word(node, "false")) return false; break;
     case "instant": if (node.tag === "text" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(node.text)) { const date = new Date(node.text); const canonical = node.text.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction || "").padEnd(3, "0")}Z`); if (Number.isFinite(date.valueOf()) && date.toISOString() === canonical) return date; } break;
     case "duration": { const p = parts(node); if (!p.length || p.length % 2) break; let total = 0n, previous = -1;
       for (let i = 0; i < p.length; i += 2) { const count = p[i], unit = p[i + 1]; if (count.tag !== "number" || !/^\d+$/.test(count.text) || unit.tag !== "word") return fail("invalid duration");
@@ -417,7 +425,7 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
           Object.defineProperty(out, field.name, { value: decodeValue(field.type, fromParts(p.slice(field.wire.split(" ").length)), env), enumerable: true, writable: true, configurable: true });
         }
-        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else if (!f.optional) return fail(`missing field ${f.wire}`); }
+        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
         return out;
       }
       if (def.kind === "choice") {
@@ -465,9 +473,11 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}, optional:false},{wire:"revision", name:"revision", type:{k:'integer'}, optional:false}]},
-{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}, optional:false},{wire:"revision", name:"revision", type:{k:'integer'}, optional:false},{wire:"content", name:"content", type:{k:'text'}, optional:false}]},
-{parameters:[],kind:'record', fields:[{wire:"line", name:"line", type:{k:'integer'}, optional:false},{wire:"column", name:"column", type:{k:'integer'}, optional:false},{wire:"code", name:"code", type:{k:'text'}, optional:false},{wire:"message", name:"message", type:{k:'text'}, optional:false}]}];
+const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"revision", name:"revision", type:{k:'integer'}}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"revision", name:"revision", type:{k:'integer'}},{wire:"content", name:"content", type:{k:'text'}}]},
+{parameters:[],kind:'record', fields:[{wire:"line", name:"line", type:{k:'integer'}},{wire:"column", name:"column", type:{k:'integer'}},{wire:"code", name:"code", type:{k:'text'}},{wire:"message", name:"message", type:{k:'text'}}]},
+{parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list files"]:{shape:{text:"list files", kind:"listFiles", params:[]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:1, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'integer'}, errors:[{text:"conflict at revision _ content _", kind:"conflictAtRevisionContent", params:[{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]},{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},

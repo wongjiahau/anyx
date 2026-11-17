@@ -15,11 +15,11 @@ PROTOCOL types VERSION 1,
 RECORD Reminder {
     note: Text,
     at: Instant,
-    every: OPTIONAL Duration,
+    every: Duration? DEFAULT null,
     # How many times to remind before giving up.
-    times: OPTIONAL: Integer DEFAULT 3,
+    times: Integer DEFAULT 3,
     # When each person last saw it, by their name.
-    seen: OPTIONAL: MAP: Instant DEFAULT {},
+    seen: MAP: Instant DEFAULT {},
 },
 
 CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },
@@ -58,7 +58,7 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 pub struct Reminder {
     pub note: String,
     pub at: ::std::time::SystemTime,
-    pub every: Option<::std::time::Duration>,
+    pub every: Nullable<::std::time::Duration>,
     /// How many times to remind before giving up.
     pub times: i64,
     /// When each person last saw it, by their name.
@@ -71,7 +71,7 @@ impl IntoValue for Reminder {
             FieldsBuilder::new()
                 .field("note", self.note)
                 .field("at", self.at)
-                .optional("every", self.every)
+                .field("every", self.every)
                 .field("times", self.times)
                 .field("seen", self.seen)
                 .build(),
@@ -88,7 +88,7 @@ impl FromValue for Reminder {
         Some(Self {
             note: fields.field("note")?,
             at: fields.field("at")?,
-            every: fields.optional("every")?,
+            every: fields.field("every")?,
             times: fields.field("times")?,
             seen: fields.field("seen")?,
         })
@@ -134,6 +134,80 @@ impl FromValue for Schedule {
             },
             "every _" => Schedule::Every {
                 period: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
+        })
+    }
+}
+
+/// `true` or `false`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Boolean {
+    False,
+    True,
+}
+
+impl IntoValue for Boolean {
+    fn into_value(self) -> Value {
+        match self {
+            Boolean::False => Value::Variant {
+                shape: "false".to_string(),
+                arguments: vec![],
+            },
+            Boolean::True => Value::Variant {
+                shape: "true".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for Boolean {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "false" => Boolean::False,
+            "true" => Boolean::True,
+            _ => return None,
+        })
+    }
+}
+
+/// A nullable item: `null`, or `value (item)` containing a value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Nullable<Item> {
+    Null,
+    Value { item: Item },
+}
+
+impl<Item: IntoValue> IntoValue for Nullable<Item> {
+    fn into_value(self) -> Value {
+        match self {
+            Nullable::Null => Value::Variant {
+                shape: "null".to_string(),
+                arguments: vec![],
+            },
+            Nullable::Value { item } => Value::Variant {
+                shape: "value _".to_string(),
+                arguments: vec![item.into_value()],
+            },
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for Nullable<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "null" => Nullable::Null,
+            "value _" => Nullable::Value {
+                item: FromValue::from_value(arguments.next()?)?,
             },
             _ => return None,
         })

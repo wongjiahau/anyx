@@ -273,7 +273,6 @@ fn placeholder(r#type: &Type, name: &str) -> (String, Range<usize>) {
         Type::Bytes => "\"\"".into(),
         Type::Integer => "0".into(),
         Type::Float => "0.0".into(),
-        Type::Boolean => "false".into(),
         Type::Instant => "\"2000-01-01T00:00:00.000Z\"".into(),
         Type::Duration => "0 seconds".into(),
         Type::List(_) => "[]".into(),

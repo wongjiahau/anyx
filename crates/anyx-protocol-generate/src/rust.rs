@@ -92,7 +92,6 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
         Type::Bytes => "Vec<u8>".to_string(),
         Type::Integer => "i64".to_string(),
         Type::Float => "f64".to_string(),
-        Type::Boolean => "bool".to_string(),
         Type::Instant => "::std::time::SystemTime".to_string(),
         Type::Duration => "::std::time::Duration".to_string(),
         Type::Refined(base, _) => rust_type(schema, base),
@@ -162,19 +161,6 @@ impl Generics {
     }
 }
 
-/// Whether a field may be missing from a record: `OPTIONAL` without a
-/// `DEFAULT`, which the codec fills in.
-pub fn may_be_missing(field: &Field) -> bool {
-    field.optional && field.default.is_none()
-}
-
-fn field_type(schema: &Schema, field: &Field) -> String {
-    match may_be_missing(field) {
-        true => format!("Option<{}>", rust_type(schema, &field.r#type)),
-        false => rust_type(schema, &field.r#type),
-    }
-}
-
 fn record(
     out: &mut String,
     schema: &Schema,
@@ -190,35 +176,19 @@ fn record(
                 "{}    pub {}: {},\n",
                 doc_comment(&field.doc, "    ///"),
                 snake_case(&field.name),
-                field_type(schema, field)
+                rust_type(schema, &field.r#type)
             )
         })
         .collect();
     let built: String = fields
         .iter()
-        .map(|field| {
-            let method = if may_be_missing(field) {
-                "optional"
-            } else {
-                "field"
-            };
-            format!(
-                ".{method}({:?}, self.{})",
-                field.name,
-                snake_case(&field.name)
-            )
-        })
+        .map(|field| format!(".field({:?}, self.{})", field.name, snake_case(&field.name)))
         .collect();
     let read: String = fields
         .iter()
         .map(|field| {
-            let method = if may_be_missing(field) {
-                "optional"
-            } else {
-                "field"
-            };
             format!(
-                "{}: fields.{method}({:?})?, ",
+                "{}: fields.field({:?})?, ",
                 snake_case(&field.name),
                 field.name
             )

@@ -2,7 +2,7 @@ apply { mode: dim }
 => 1:15: in `options` of `apply _`: in `mode`: found the call `dim`; expected a variant of `mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
 
 apply { strict: true }
-=> 1:7: in `options` of `apply _`: found no `mode`; expected every field that is not `OPTIONAL`
+=> 1:7: in `options` of `apply _`: found no `mode`; expected every field without a `DEFAULT`
 
 apply { mode: dark, mode: dark }
 => 1:21: in `options` of `apply _`: found the field `mode` twice; expected each field once
@@ -23,7 +23,7 @@ apply { mode dark }
 => 1:18: found the end of the call; expected a value
 
 apply { mode: dark, strict: yes }
-=> 1:29: in `options` of `apply _`: in `strict`: found the call `yes`; expected `true` or `false`
+=> 1:29: in `options` of `apply _`: in `strict`: found the call `yes`; expected a variant of `Boolean`: `false`, `true`
 
 set dark strict (true)
 => 1:1: found the call `set dark strict _`; expected one of the methods `set _ strict _`, `apply _`; a word in a slot, such as a choice's variant or `true`, goes in parentheses

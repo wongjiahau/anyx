@@ -90,11 +90,21 @@ export interface BoxOf<Item> {
   value: Item;
 }
 
+/** `true` or `false`. */
+export type Boolean =
+  | { kind: "false" }
+  | { kind: "true" };
+
+/** A nullable item: `null`, or `value (item)` containing a value. */
+export type Nullable<Item> =
+  | { kind: "null" }
+  | { kind: "value"; item: Item };
+
 // Runtime descriptors are emitted from the same checked schema as the API.
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; optional: boolean; defaultValue?: () => unknown };
+type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; defaultValue?: () => unknown };
 type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
@@ -155,7 +165,6 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "bytes": if (value instanceof Uint8Array) return quoted(encodeBytes(value)); break;
     case "integer": if (typeof value === "bigint" && value >= -(1n << 63n) && value < (1n << 63n)) return String(value); break;
     case "float": if (typeof value === "number" && Number.isFinite(value)) { const s = Object.is(value, -0) ? "-0" : String(value); return /[.eE]/.test(s) ? s : `${s}.0`; } break;
-    case "boolean": if (typeof value === "boolean") return String(value); break;
     case "instant": if (value instanceof Date && Number.isFinite(value.valueOf())) { const text = value.toISOString(); if (/^\d{4}-/.test(text)) return quoted(text); } break;
     case "duration": if (typeof value === "bigint" && value >= 0n && value <= (1n << 64n) - 1n) {
       let rest = value; const output: string[] = [];
@@ -174,7 +183,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       if (def.kind === "record") {
         const fields = def.fields!;
         for (const key of Object.keys(obj)) if (!fields.some(f => f.name === key)) return fail(`unknown field ${key}`);
-        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.optional ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
+        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.defaultValue ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
       }
       const variant = def.variants!.find(v => v.kind === obj.kind);
       if (!variant) return fail("unknown choice variant");
@@ -403,7 +412,6 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       break;
     } break;
     case "float": if (node.tag === "number" && /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text) && /[.eE]/.test(node.text)) { const n = Number(node.text.replace(/_/g, "")); if (Number.isFinite(n)) return n; } break;
-    case "boolean": if (word(node, "true")) return true; if (word(node, "false")) return false; break;
     case "instant": if (node.tag === "text" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(node.text)) { const date = new Date(node.text); const canonical = node.text.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction || "").padEnd(3, "0")}Z`); if (Number.isFinite(date.valueOf()) && date.toISOString() === canonical) return date; } break;
     case "duration": { const p = parts(node); if (!p.length || p.length % 2) break; let total = 0n, previous = -1;
       for (let i = 0; i < p.length; i += 2) { const count = p[i], unit = p[i + 1]; if (count.tag !== "number" || !/^\d+$/.test(count.text) || unit.tag !== "word") return fail("invalid duration");
@@ -438,7 +446,7 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
           Object.defineProperty(out, field.name, { value: decodeValue(field.type, fromParts(p.slice(field.wire.split(" ").length)), env), enumerable: true, writable: true, configurable: true });
         }
-        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else if (!f.optional) return fail(`missing field ${f.wire}`); }
+        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
         return out;
       }
       if (def.kind === "choice") {
@@ -496,8 +504,10 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', name:"Revisio
 {parameters:[],kind:'distinct', name:"Wide", type:{k:'refined', item:{k:'integer'}, checks:[{source:"0 < ((_ * 9223372036854775807) * 9223372036854775807)", words:"((_ * 9223372036854775807) * 9223372036854775807) greater than 0", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (0); const b = ((n*(9223372036854775807))*(9223372036854775807)); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = (0n); const b = refinementInteger("*", refinementInteger("*", n, (9223372036854775807n)), (9223372036854775807n)); return a !== null && b !== null && a < b; } }]}},
 {parameters:[],kind:'distinct', name:"Contains Zero", type:{k:'refined', item:{k:'text'}, checks:[{source:"_ contains \"\\u00001\"", words:"contains \"\\01\"", test:(value: unknown): boolean => { return typeof value === 'string' && value.includes("\u00001"); } }]}},
 {parameters:[],kind:'distinct', name:"Names", type:{k:'refined', item:{k:'list', item:{k:'text'}}, checks:[{source:"1 <= (_ length) <= 3", words:"length at least 1", test:(value: unknown): boolean => { const n = typeof value === 'string' ? BigInt(Array.from(value).length) : value instanceof Uint8Array || Array.isArray(value) ? BigInt(value.length) : value !== null && typeof value === 'object' ? BigInt(Object.keys(value).length) : null; if (n === null) return false; const a = (1n); const b = n; return a !== null && b !== null && a <= b; } },{source:"1 <= (_ length) <= 3", words:"length at most 3", test:(value: unknown): boolean => { const n = typeof value === 'string' ? BigInt(Array.from(value).length) : value instanceof Uint8Array || Array.isArray(value) ? BigInt(value.length) : value !== null && typeof value === 'object' ? BigInt(Object.keys(value).length) : null; if (n === null) return false; const a = n; const b = (3n); return a !== null && b !== null && a <= b; } }]}},
-{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'named', index:3, args:[]}, optional:false},{wire:"revision", name:"revision", type:{k:'named', index:0, args:[]}, optional:false},{wire:"limit", name:"limit", type:{k:'named', index:1, args:[]}, optional:true, defaultValue:()=>10n}]},
-{parameters:["item"],kind:'record', fields:[{wire:"value", name:"value", type:{k:'parameter', name:"item"}, optional:false}]}];
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'named', index:3, args:[]}},{wire:"revision", name:"revision", type:{k:'named', index:0, args:[]}},{wire:"limit", name:"limit", type:{k:'named', index:1, args:[]}, defaultValue:()=>10n}]},
+{parameters:["item"],kind:'record', fields:[{wire:"value", name:"value", type:{k:'parameter', name:"item"}}]},
+{parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
 const methods: Record<string, MethodDescriptor> = {["write _ at _"]:{shape:{text:"write _ at _", kind:"writeAt", params:[{name:"path", type:{k:'named', index:3, args:[]}, annotation:"Score Path"},{name:"revision", type:{k:'named', index:0, args:[]}, annotation:"Revision"}]}, returns:{k:'named', index:0, args:[]}, errors:[]},
 ["limit _"]:{shape:{text:"limit _", kind:"limit", params:[{name:"value", type:{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}, annotation:"(Integer) WHERE [10 <= _ < 30]"}]}, returns:{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}, errors:[]},
 ["summary _"]:{shape:{text:"summary _", kind:"summary", params:[{name:"value", type:{k:'named', index:10, args:[]}, annotation:"Summary"}]}, returns:{k:'named', index:10, args:[]}, errors:[]},

@@ -12,6 +12,16 @@ export type Shade =
   | { kind: "dark" }
   | { kind: "light" };
 
+/** `true` or `false`. */
+export type Boolean =
+  | { kind: "false" }
+  | { kind: "true" };
+
+/** A nullable item: `null`, or `value (item)` containing a value. */
+export type Nullable<Item> =
+  | { kind: "null" }
+  | { kind: "value"; item: Item };
+
 /** The errors of `tag (LIST Text)`. */
 export type TagWithListOfTextError =
   | { kind: "missing"; path: string };
@@ -24,7 +34,7 @@ export type TagWithListOfFileIdError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; optional: boolean; defaultValue?: () => unknown };
+type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; defaultValue?: () => unknown };
 type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
@@ -85,7 +95,6 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "bytes": if (value instanceof Uint8Array) return quoted(encodeBytes(value)); break;
     case "integer": if (typeof value === "bigint" && value >= -(1n << 63n) && value < (1n << 63n)) return String(value); break;
     case "float": if (typeof value === "number" && Number.isFinite(value)) { const s = Object.is(value, -0) ? "-0" : String(value); return /[.eE]/.test(s) ? s : `${s}.0`; } break;
-    case "boolean": if (typeof value === "boolean") return String(value); break;
     case "instant": if (value instanceof Date && Number.isFinite(value.valueOf())) { const text = value.toISOString(); if (/^\d{4}-/.test(text)) return quoted(text); } break;
     case "duration": if (typeof value === "bigint" && value >= 0n && value <= (1n << 64n) - 1n) {
       let rest = value; const output: string[] = [];
@@ -104,7 +113,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       if (def.kind === "record") {
         const fields = def.fields!;
         for (const key of Object.keys(obj)) if (!fields.some(f => f.name === key)) return fail(`unknown field ${key}`);
-        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.optional ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
+        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.defaultValue ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
       }
       const variant = def.variants!.find(v => v.kind === obj.kind);
       if (!variant) return fail("unknown choice variant");
@@ -333,7 +342,6 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       break;
     } break;
     case "float": if (node.tag === "number" && /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text) && /[.eE]/.test(node.text)) { const n = Number(node.text.replace(/_/g, "")); if (Number.isFinite(n)) return n; } break;
-    case "boolean": if (word(node, "true")) return true; if (word(node, "false")) return false; break;
     case "instant": if (node.tag === "text" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(node.text)) { const date = new Date(node.text); const canonical = node.text.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction || "").padEnd(3, "0")}Z`); if (Number.isFinite(date.valueOf()) && date.toISOString() === canonical) return date; } break;
     case "duration": { const p = parts(node); if (!p.length || p.length % 2) break; let total = 0n, previous = -1;
       for (let i = 0; i < p.length; i += 2) { const count = p[i], unit = p[i + 1]; if (count.tag !== "number" || !/^\d+$/.test(count.text) || unit.tag !== "word") return fail("invalid duration");
@@ -368,7 +376,7 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
           Object.defineProperty(out, field.name, { value: decodeValue(field.type, fromParts(p.slice(field.wire.split(" ").length)), env), enumerable: true, writable: true, configurable: true });
         }
-        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else if (!f.optional) return fail(`missing field ${f.wire}`); }
+        for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
         return out;
       }
       if (def.kind === "choice") {
@@ -417,7 +425,9 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
 const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text'}},
-{parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]}];
+{parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
+{parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
 const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
 ["tag (LIST File Id)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["scale (Float)"]:{shape:{text:"scale _", kind:"scale", params:[{name:"factor", type:{k:'float'}, annotation:"Float"}]}, returns:{k:'float'}, errors:[]},

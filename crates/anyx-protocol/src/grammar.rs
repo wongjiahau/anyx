@@ -80,13 +80,6 @@ pub struct Field {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldType {
-    Optional { r#type: OptionalType, span: Span },
-    RequiredWithDefault(Defaulted),
-    Type(Type),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum OptionalType {
     Defaulted(Defaulted),
     Type(Type),
 }
@@ -173,6 +166,7 @@ pub struct Variant {
 pub enum VariantSlot {
     Doc(Spanned<StringLiteral>),
     Parameter(Parameter),
+    Unnamed { name: Spanned<String>, span: Span },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -313,18 +307,8 @@ impl TypeMarker {
 impl FieldType {
     pub fn span(&self) -> Span {
         match self {
-            FieldType::Optional { span, .. } => *span,
-            FieldType::RequiredWithDefault(value) => value.span(),
+            FieldType::Defaulted(value) => value.span(),
             FieldType::Type(value) => value.span(),
-        }
-    }
-}
-
-impl OptionalType {
-    pub fn span(&self) -> Span {
-        match self {
-            OptionalType::Defaulted(value) => value.span(),
-            OptionalType::Type(value) => value.span(),
         }
     }
 }
@@ -361,6 +345,7 @@ impl NamedTypeBody {
 impl VariantSlot {
     pub fn span(&self) -> Span {
         match self {
+            VariantSlot::Unnamed { span, .. } => *span,
             VariantSlot::Doc(value) => value.span,
             VariantSlot::Parameter(value) => value.span,
         }
@@ -489,20 +474,8 @@ impl support::Errors for Field {
 impl support::Errors for FieldType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            FieldType::Optional { r#type, .. } => {
-                support::Errors::errors(r#type, found);
-            }
-            FieldType::RequiredWithDefault(value) => support::Errors::errors(value, found),
+            FieldType::Defaulted(value) => support::Errors::errors(value, found),
             FieldType::Type(value) => support::Errors::errors(value, found),
-        }
-    }
-}
-
-impl support::Errors for OptionalType {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            OptionalType::Defaulted(value) => support::Errors::errors(value, found),
-            OptionalType::Type(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -594,6 +567,9 @@ impl support::Errors for VariantSlot {
         match self {
             VariantSlot::Doc(value) => support::Errors::errors(value, found),
             VariantSlot::Parameter(value) => support::Errors::errors(value, found),
+            VariantSlot::Unnamed { name, .. } => {
+                support::Errors::errors(name, found);
+            }
         }
     }
 }
@@ -850,7 +826,7 @@ pub fn decode_type_parameter(node: &Node) -> Result<TypeParameter, DecodeError> 
 }
 
 pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
-    support::word(node, "TYPE").map(TypeMarker::Type)
+    support::word(node, "Type").map(TypeMarker::Type)
 }
 
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
@@ -869,27 +845,9 @@ pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
 }
 
 pub fn decode_field_type(node: &Node) -> Result<FieldType, DecodeError> {
-    decode_field_type_optional(node)
-        .or_else(|error| error.or(decode_defaulted(node).map(FieldType::RequiredWithDefault)))
-        .or_else(|error| error.or(decode_type(node).map(FieldType::Type)))
-}
-
-fn decode_field_type_optional(node: &Node) -> Result<FieldType, DecodeError> {
-    let mut parts = support::call(node, "the call `OPTIONAL _`")?;
-    let decoded = FieldType::Optional {
-        r#type: parts
-            .word("OPTIONAL")?
-            .one(decode_optional_type, "an optional type")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_optional_type(node: &Node) -> Result<OptionalType, DecodeError> {
     decode_defaulted(node)
-        .map(OptionalType::Defaulted)
-        .or_else(|error| error.or(decode_type(node).map(OptionalType::Type)))
+        .map(FieldType::Defaulted)
+        .or_else(|error| error.or(decode_type(node).map(FieldType::Type)))
 }
 
 pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
@@ -1098,6 +1056,20 @@ pub fn decode_variant_slot(node: &Node) -> Result<VariantSlot, DecodeError> {
     support::line_string(node, |_| true, "a `#` line string")
         .map(VariantSlot::Doc)
         .or_else(|error| error.or(decode_parameter(node).map(VariantSlot::Parameter)))
+        .or_else(|error| error.or(decode_variant_slot_unnamed(node)))
+}
+
+fn decode_variant_slot_unnamed(node: &Node) -> Result<VariantSlot, DecodeError> {
+    let mut parts = support::call(node, "the call `…`")?;
+    let decoded = VariantSlot::Unnamed {
+        name: parts.words(
+            |text| !text.split(' ').any(anyx::is_keyword),
+            "words whose text has no keyword",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_errors(node: &Node) -> Result<Errors, DecodeError> {

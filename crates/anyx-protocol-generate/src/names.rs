@@ -9,7 +9,9 @@ const RUST_KEYWORDS: [&str; 51] = [
 ];
 
 fn words(name: &str) -> impl Iterator<Item = &str> {
-    name.split(' ').filter(|word| *word != "_")
+    name.split(' ')
+        .filter(|word| *word != "_")
+        .map(|word| if word == "?" { "nullable" } else { word })
 }
 
 fn capitalized(word: &str) -> String {
