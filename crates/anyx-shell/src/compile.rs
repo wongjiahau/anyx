@@ -517,6 +517,10 @@ fn transfer(
         return Some(r#type.clone());
     }
     Some(match r#type {
+        Type::Refined(base, predicate) => Type::Refined(
+            Box::new(transfer(origin, target, base, visited)?),
+            predicate.clone(),
+        ),
         Type::List(item) => Type::List(Box::new(transfer(origin, target, item, visited)?)),
         Type::Map(item) => Type::Map(Box::new(transfer(origin, target, item, visited)?)),
         Type::Named(index) | Type::Generic(index, _) => {

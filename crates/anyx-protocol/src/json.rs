@@ -389,6 +389,12 @@ fn fields_to_json(
 
 /// Reads JSON as a value of `type`, checking it against the schema.
 pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, String> {
+    let value = from_json_raw(schema, r#type, json)?;
+    crate::refinement::validate(schema, r#type, &value)?;
+    Ok(value)
+}
+
+fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, String> {
     let r#type = schema.underlying(r#type);
     let mismatch = |expected: &str| Err(format!("found {json}; expected {expected}"));
     match r#type {
@@ -464,6 +470,7 @@ pub fn from_json(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
         }
         // The checker replaces each parameter by its argument wherever a
         // value is read.
+        Type::Refined(..) => unreachable!("underlying removes refinements"),
         Type::Parameter(name) => mismatch(&format!(
             "a value of a type in place of the type parameter `{name}`"
         )),

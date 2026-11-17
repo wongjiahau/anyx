@@ -187,6 +187,79 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   overload.
 - A parameter can't be named `kind`, which JSON uses for a variant's name.
 
+### Refinements
+
+`WHERE` narrows a type with a predicate. It is a type expression, the call
+`_ WHERE _`, so it works anywhere a type does: a named `TYPE`, a field, a
+parameter, a return, or an argument of a generic type.
+
+```anyx
+TYPE Revision: Integer . WHERE [1 <= _],
+TYPE Probability: Float . WHERE [0 <= _ <= 1],
+TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
+TYPE Limit: (Integer) WHERE [10 <= _ < 30],
+RECORD Settings { limit: OPTIONAL: Limit DEFAULT 10 },
+METHOD limit (value: Integer . WHERE [10 <= _ < 30])
+    RETURNS (value: Integer . WHERE [10 <= _ < 30]),
+```
+
+The dot supplies the base type as the first argument; parentheses around the
+base type work too. The predicate stays inside square brackets so that its
+`_` is not consumed by dot or colon sugar. `Integer WHERE […]` also has the
+right shape because `Integer` is a name, unlike the old keyword `INTEGER`:
+`INTEGER WHERE […]` is the different call `INTEGER WHERE _`. Use dot or
+parentheses to make the intended grouping explicit, especially with `LIST`
+and `MAP`.
+
+Supported predicates are deliberately small and checked when loading the
+schema:
+
+- Comparisons `<`, `<=`, `>`, `>=`, `=`, `!=`, including chains with mixed
+  bounds, such as `10 <= _ < 30`. Each adjacent pair must hold.
+- Numeric `_` for `Integer` or `Float`, with numeric constants. Integer
+  predicates use whole-number constants and exact checked signed 128-bit
+  arithmetic; overflow fails the predicate. Float predicates use finite
+  64-bit arithmetic, and overflow fails too.
+- Parenthesized linear arithmetic: `(_ + 1) <= 30`, `(_ * 2) > 0`.
+  Multiplication needs a constant operand; multiplication of two expressions
+  that depend on the value, division, and other operations are rejected.
+  Symbol words have no precedence: `_ + 1 <= 30` is one unrecognized call,
+  so it needs parentheses around the addition.
+- `(_ length)` for `Text`, `Bytes`, `LIST`, and `MAP`. Text length counts
+  Unicode scalar values, bytes count bytes, lists count items, and maps
+  count entries. Length bounds are whole numbers.
+- Text tests `_ starts with "prefix"`, `_ ends with "suffix"`, and
+  `_ contains "part"`, matched exactly and case-sensitively.
+- Several predicates separated by commas mean all of them must hold:
+  `Text . WHERE [1 <= (_ length), _ ends with ".poentaro"]`.
+
+A predicate must mention `_`. The base type must be concrete enough to check
+its operations; an unconstrained type parameter cannot itself be compared
+numerically. Refined types can still be passed as generic arguments, or
+used in a generic declaration's `LIST` length constraint. Type annotations
+compare the predicate's structure, ignoring its whitespace and source spans.
+Overloads cannot be distinguished solely by refinements of the same type;
+use distinct named `TYPE`s to identify them. Satisfiability, compatibility
+checking, and relations between several method arguments or results are
+outside this feature.
+
+The wire and JSON keep the base type's representation. A named refined type
+still needs its annotation on a request argument, as any named type does:
+`write ("a.poentaro" AS: Score Path) at revision (1 AS: Revision)`. An inline
+refinement uses that whole type in `AS:` too. Generated clients write these
+annotations.
+
+A failed argument, including a nested field or item, rejects the whole
+request as `INVALID REQUEST` before any call runs. The diagnostic identifies
+the call and argument, source location, value, type, written predicate, its
+meaning in words, and which bound or text test failed. Defaults and method
+examples are checked while loading the schema. JSON input uses the same
+validation through its existing error result, with field and argument context.
+A returned value or declared error payload that breaks its refinement is
+an encoding error; generated servers turn it into `INTERNAL ERROR` and stop
+before running the next call. A client rejects an invalid returned value.
+The generated guide explains both the predicate and its bounds in words.
+
 ### Writing shapes
 
 A shape is read as a sentence: in a call, an error and the guide. Write it

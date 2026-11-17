@@ -291,3 +291,21 @@ fn argument_failure_keeps_effects_of_preceding_arguments() {
     assert_eq!(*calls.borrow(), ["text"]);
     assert!(execution.output.is_empty());
 }
+
+#[test]
+fn refined_types_translate_their_base_type_indices_across_protocols() {
+    let (mut interpreter, _) = interpreter();
+    interpreter.register("source",Identity(Schema::parse("PROTOCOL source VERSION 1, TYPE Count: Integer, TYPE Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, RECORD Earlier { value: Text }, TYPE Count: Integer, TYPE Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    let result = interpreter
+        .execute("target / identity (source / identity (1 AS: Positive))")
+        .unwrap();
+    assert!(result.error.is_none());
+    assert_eq!(result.values, vec![Value::Integer(1)]);
+    interpreter.register("different",Identity(Schema::parse("PROTOCOL different VERSION 1, TYPE Count: Integer, TYPE Positive: Count . WHERE [10 < _], METHOD identity (value: Positive) RETURNS (value: Positive)").unwrap())).unwrap();
+    assert!(
+        interpreter
+            .execute("different / identity (source / identity (1 AS: Positive))")
+            .is_err()
+    );
+}

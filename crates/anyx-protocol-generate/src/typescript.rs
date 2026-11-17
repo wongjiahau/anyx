@@ -198,6 +198,7 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
         Type::Instant => "Date".to_string(),
         // Whole milliseconds, preserving the protocol's unsigned 64-bit range.
         Type::Duration => "bigint".to_string(),
+        Type::Refined(base, _) => ts_type(schema, base),
         Type::List(item) => format!("{}[]", ts_type(schema, item)),
         Type::Map(value) => format!("Record<string, {}>", ts_type(schema, value)),
         Type::Named(index) => {
@@ -339,6 +340,16 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
 /// function of the same name that brands a value. The JSON is the value
 /// underneath.
 fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, underlying: &Type) {
+    let validation = if anyx_protocol::refinement::has_refinements(schema, underlying) {
+        let index = schema
+            .types
+            .iter()
+            .position(|definition| definition.name == full_name)
+            .unwrap();
+        format!("  encodeValue({{k:'named', index:{index}, args:[]}}, value);\n")
+    } else {
+        String::new()
+    };
     let underlying = ts_type(schema, underlying);
     writeln!(
         out,
@@ -347,7 +358,7 @@ fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, under
     .unwrap();
     writeln!(
         out,
-        "/** Makes a `{name}` of a value, which the schema writes as its own. */\nexport function {name}(value: {underlying}): {name} {{\n  return value as {name};\n}}\n"
+        "/** Makes a `{name}` of a value, which the schema writes as its own. */\nexport function {name}(value: {underlying}): {name} {{\n{validation}  return value as {name};\n}}\n"
     )
     .unwrap();
 }
@@ -383,6 +394,11 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 // Compact, schema-specific descriptors consumed by the native runtime.
 fn native_type(ty: &Type) -> String {
     match ty {
+        Type::Refined(base, predicate) => format!(
+            "{{k:'refined', item:{}, checks:{}}}",
+            native_type(base),
+            crate::refinement::checks(predicate)
+        ),
         Type::Text => "{k:'text'}".into(),
         Type::Bytes => "{k:'bytes'}".into(),
         Type::Integer => "{k:'integer'}".into(),
@@ -433,7 +449,15 @@ fn native_schema(schema: &Schema) -> String {
                 .join(",");
             let kind = match &d.kind {
                 TypeKind::Distinct(t) => {
-                    format!("kind:'distinct', type:{}", native_type(t))
+                    if anyx_protocol::refinement::has_refinements(schema, t) {
+                        format!(
+                            "kind:'distinct', name:{:?}, type:{}",
+                            d.name,
+                            native_type(t)
+                        )
+                    } else {
+                        format!("kind:'distinct', type:{}", native_type(t))
+                    }
                 }
                 TypeKind::Record(fields) => format!(
                     "kind:'record', fields:[{}]",

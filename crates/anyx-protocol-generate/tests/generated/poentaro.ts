@@ -70,11 +70,11 @@ export type ExportMidiError =
   | { kind: "missing" };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
-type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string };
+type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
 type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; optional: boolean; defaultValue?: () => unknown };
-type Definition = { parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
 
@@ -125,6 +125,11 @@ const durationUnits: [string, bigint][] = [["day",86400000n], ["hour",3600000n],
 function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = {}): string {
   type = resolved(type, bindings);
   switch (type.k) {
+    case "refined": {
+      const encoded = encodeValue(type.item!, value, bindings);
+      for (const check of type.checks!) if (!check.test(value)) fail(`value ${encoded} breaks predicate ${check.source}; expected ${check.words}`);
+      return encoded;
+    }
     case "text": if (typeof value === "string") return quoted(value); break;
     case "bytes": if (value instanceof Uint8Array) return quoted(encodeBytes(value)); break;
     case "integer": if (typeof value === "bigint" && value >= -(1n << 63n) && value < (1n << 63n)) return String(value); break;
@@ -140,7 +145,10 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
     case "named": {
       const [def, env] = instance(type, bindings);
-      if (def.kind === "distinct") return encodeValue(def.type!, value, env);
+      if (def.kind === "distinct") {
+        try { return encodeValue(def.type!, value, env); }
+        catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
+      }
       const obj = object(value);
       if (def.kind === "record") {
         const fields = def.fields!;
@@ -356,6 +364,11 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
   type = resolved(type, bindings);
   node = ungroup(node);
   switch (type.k) {
+    case "refined": {
+      const value = decodeValue(type.item!, node, bindings);
+      for (const check of type.checks!) if (!check.test(value)) fail(`value ${encodeValue(type.item!, value, bindings)} breaks predicate ${check.source}; expected ${check.words}`);
+      return value;
+    }
     case "text": if (node.tag === "text") return node.text; break;
     case "bytes": if (node.tag === "text") return decodeBytes(node.text); break;
     case "integer": if (node.tag === "number" && /^-?\d+$/.test(node.text)) {
@@ -389,7 +402,10 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
     } break;
     case "named": {
       const [def, env] = instance(type, bindings);
-      if (def.kind === "distinct") return decodeValue(def.type!, node, env);
+      if (def.kind === "distinct") {
+        try { return decodeValue(def.type!, node, env); }
+        catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
+      }
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
         for (const entry of node.items) {
@@ -441,6 +457,13 @@ function decodeResponses(descriptors: MethodDescriptor[], response: string): Out
     }
     return fail("invalid outcome");
   });
+}
+
+// Match Rust's checked i128 intermediates, without rounding Integer values.
+function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigint | null {
+  if (a === null || b === null) return null;
+  const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
+  return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}, optional:false},{wire:"revision", name:"revision", type:{k:'integer'}, optional:false}]},
 {parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}, optional:false},{wire:"revision", name:"revision", type:{k:'integer'}, optional:false},{wire:"content", name:"content", type:{k:'text'}, optional:false}]},

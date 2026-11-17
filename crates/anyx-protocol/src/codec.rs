@@ -246,7 +246,9 @@ fn decode_arguments(
         .enumerate()
         .map(|(index, (parameter, argument))| {
             let in_parameter = |mismatch: Mismatch| Mismatch {
-                message: format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message),
+                message: if crate::refinement::has_refinements(schema, &parameter.r#type) {
+                    format!("in `{}` of `{}` (`{text}`): {}", parameter.name, &source[call.span.start..call.span.end], mismatch.message)
+                } else { format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message) },
                 ..mismatch
             };
             if let Some(annotated) = argument
@@ -690,6 +692,8 @@ pub(crate) fn write(
     value: &Value,
     out: &mut String,
 ) -> Result<(), EncodeError> {
+    crate::refinement::validate(schema, r#type, value)
+        .map_err(|message| EncodeError { message })?;
     let r#type = schema.underlying(r#type);
     match value {
         Value::Text(text) => write_text(text, out),

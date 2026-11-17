@@ -426,11 +426,17 @@ pub async fn handle<S: Server>(
             7 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
             _ => unreachable!("the codec read a method of the schema"),
         };
-        outcomes.push(outcome.unwrap_or_else(|error| {
+        let outcome = outcome.unwrap_or_else(|error| {
             on_internal_error(error);
             stopped = true;
             anyx_protocol::Outcome::InternalError
-        }));
+        });
+        if anyx_protocol::server::validate_outcome(schema, call, &outcome).is_err() {
+            stopped = true;
+            outcomes.push(anyx_protocol::Outcome::InternalError);
+        } else {
+            outcomes.push(outcome);
+        }
     }
     anyx_protocol::server::respond(schema, &calls, outcomes)
 }
