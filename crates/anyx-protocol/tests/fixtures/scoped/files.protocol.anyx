@@ -1,4 +1,4 @@
-USE "./common.anyx",
+USE "./common.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 

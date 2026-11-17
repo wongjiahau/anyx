@@ -320,23 +320,23 @@ starts with `PROTOCOL`; its filename is arbitrary. It can contain declarations
 alongside explicit imports:
 
 ```anyx
-## notes/protocol.anyx
+## notes/protocol.protocol.anyx
 PROTOCOL notes VERSION 1,
-USE "./files.anyx",
-USE "./files/export.anyx",
+USE "./files.protocol.anyx",
+USE "./files/export.protocol.anyx",
 
-## notes/common.anyx
+## notes/common.protocol.anyx
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 PUBLIC ERRORS common errors [missing],
 
-## notes/files.anyx
-USE "./common.anyx",
+## notes/files.protocol.anyx
+USE "./common.protocol.anyx",
 PUBLIC ERRORS file errors [trashed] + common errors,
 METHOD read (path: Text) RETURNS (text: Text) ERRORS file errors,
 
-## notes/files/export.anyx
-USE "../common.anyx",
-USE "../files.anyx",
+## notes/files/export.protocol.anyx
+USE "../common.protocol.anyx",
+USE "../files.protocol.anyx",
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [unreadable (diagnostics: LIST Diagnostic)] + file errors,
 ```
@@ -345,7 +345,7 @@ METHOD pdf (path: Text) RETURNS (pdf: Bytes)
   the protocol and makes its `PUBLIC` types and error groups visible in the
   importing file, by their plain names. Private declarations are visible only
   in their own file. All methods in included files join the protocol.
-- There is no re-export: importing `files.anyx` does not make its imports
+- There is no re-export: importing `files.protocol.anyx` does not make its imports
   visible. Each file must directly import the declarations it uses.
 - Every type and error-group name must be unique across the entire protocol,
   including private declarations. Duplicate diagnostics name both files.
@@ -362,7 +362,8 @@ METHOD pdf (path: Text) RETURNS (pdf: Bytes)
   methods into separate files if callers need only the types.
 - Checking can start from any file, including a library. Code generation needs
   an entry file with a `PROTOCOL` header; a library has no endpoint. Folder
-  input is not supported, and `protocol.anyx` is only a naming convention.
+  input is not supported. The generator requires `.protocol.anyx` for the entry
+  and its imports; the basename `protocol` is only a naming convention.
 
 Generated Rust uses a single module, and TypeScript a single file, with plain
 names. Shared types are copied into each protocol's generated code, so outputs
@@ -375,7 +376,7 @@ Checker diagnostics identify missing imports, private names and collisions.
 ### The prelude
 
 The built-in types are declared in the prelude,
-[`prelude.anyx`](prelude.anyx), written in the schema language with a `#`
+[`prelude.protocol.anyx`](prelude.protocol.anyx), written in the schema language with a `#`
 doc on each. It is read and checked before every schema, and its names are
 visible in every file, so a schema can't declare a type of the same name:
 `RECORD Integer { … }` is an error.
@@ -429,6 +430,11 @@ SCHEMA,
 ```
 
 ## Values
+
+[`request.grammar.anyx`](request.grammar.anyx) is the fixed grammar for request syntax,
+including values, annotations and type names. The checker gives that syntax
+its meaning against the schema; duration order and overflow, instant text,
+and base64 are checked in Rust.
 
 | Type | Written |
 | --- | --- |

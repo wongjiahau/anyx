@@ -34,7 +34,7 @@ array: SQUARE BRACKET: ZERO OR MORE: value,
 
 ## The grammar language
 
-The grammar language describes itself in [`grammar.anyx`](grammar.anyx).
+The grammar language describes itself in [`grammar.grammar.anyx`](grammar.grammar.anyx).
 
 Two rules of thumb cover most of it:
 
@@ -363,9 +363,16 @@ NUMBER                                    ## any number
 NUMBER 2                                  ## exactly this number
 NUMBER [INTEGER, AT LEAST 0, AT MOST 255] ## an integer from 0 to 255
 NUMBER [INTEGER, SIGNED]                  ## also `+ 4` and `- 4`
+NUMBER [WRITTEN INTEGER]                  ## `3`, `-1`, `0xFE`; preserves text
+NUMBER [WRITTEN FLOAT]                    ## `3.0`, `1e3`; preserves text
 ```
 
-The conditions are on the number's value, not its text: `0xFF`, `255`,
+`WRITTEN INTEGER` and `WRITTEN FLOAT` classify a number's spelling and
+return `Spanned<String>`, preserving its text without floating point rounding.
+A float spelling contains a point or an exponent; a based literal such as
+`0xdead` is an integer. These conditions describe one number token.
+
+The other conditions are on the number's value, not its text: `0xFF`, `255`,
 `2.55e2` and `25_5` are all the integer 255. A number that breaks a
 condition is a decode error at that number.
 
@@ -412,8 +419,11 @@ name.
 ## Running the generator
 
 ```sh
-anyx-generate grammar.anyx > src/parser.rs
+anyx-generate grammar.grammar.anyx > src/parser.rs
 ```
+
+The input filename must end in `.grammar.anyx` (case-sensitive).
+`--tree` accepts any source filename.
 
 The output is one Rust file, which builds on Rust edition 2021 and later. It
 needs `anyx` as a dependency, and `regex` when the grammar uses
@@ -427,7 +437,7 @@ Errors and warnings about the grammar go to the terminal, with the line
 they are about. An error stops the output; a warning does not:
 
 ```text
-grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
+grammar.grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
   value: ONE OF [text: STRING, lsit],
                                ^^^^
 ```

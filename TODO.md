@@ -12,8 +12,8 @@ the tree from `SyntaxTree::nodes()` into that AST.
 
 ## 2. The grammar language
 
-- [x] Put the grammar of grammars in `crates/anyx-generator/grammar.anyx`
-- [x] Put the JSON grammar in `crates/anyx-generator/tests/fixtures/json.anyx`
+- [x] Put the grammar of grammars in `crates/anyx-generator/grammar.grammar.anyx`
+- [x] Put the JSON grammar in `crates/anyx-generator/tests/fixtures/json.grammar.anyx`
 - [x] Write the grammar language reference (README), covering:
   - [x] `ENTRY` first, then rules: `name: pattern`, lowercase names
   - [x] Rule references: bare lowercase words
@@ -29,10 +29,10 @@ the tree from `SyntaxTree::nodes()` into that AST.
 
 ## 3. Handwritten decoder for the grammar language
 
-- [x] Typed AST for `grammar.anyx`, with a span on every node
+- [x] Typed AST for `grammar.grammar.anyx`, with a span on every node
 - [x] Decoder from `anyx::Node` to that AST
 - [x] Decode errors with spans: "expected `ONE OF [...]`, found ..."
-- [x] Tests: `grammar.anyx` and `json.anyx` decode, and bad grammars give good errors
+- [x] Tests: `grammar.grammar.anyx` and `json.anyx` decode, and bad grammars give good errors
 
 ## 4. Checking a grammar
 
@@ -55,15 +55,15 @@ the tree from `SyntaxTree::nodes()` into that AST.
 
 ## 6. Command line
 
-- [x] `anyx-generate grammar.anyx > src/parser.rs`
+- [x] `anyx-generate grammar.grammar.anyx > src/parser.rs`
 - [x] Errors and warnings show line:column and the source line
 - [x] Output is deterministic, so committed files diff cleanly
 
 ## 7. Bootstrapping
 
-- [x] Generate the grammar language's decoder from `grammar.anyx`
+- [x] Generate the grammar language's decoder from `grammar.grammar.anyx`
 - [x] Replace the handwritten decoder (step 3) with the generated one
-- [x] Test: regenerating from `grammar.anyx` gives the committed file byte for byte
+- [x] Test: regenerating from `grammar.grammar.anyx` gives the committed file byte for byte
 
 ## 8. Examples and tests
 

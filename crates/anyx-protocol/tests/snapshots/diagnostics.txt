@@ -60,7 +60,7 @@ schema:1:61: found the number `3`; expected the call `… _`, a `#` line string 
 
 == a type defined twice
 PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
-schema:1:52: duplicate declaration `x` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
+schema:1:52: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
                                                      ^
 
@@ -192,7 +192,7 @@ schema:1:30: found an `ERRORS` without a name before its errors; expected a grou
 
 == a group defined twice
 PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
-schema:1:44: duplicate declaration `x` in `schema.anyx` and `schema.anyx`; every type and error group must have a unique name in the protocol
+schema:1:44: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
   PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
                                              ^
 

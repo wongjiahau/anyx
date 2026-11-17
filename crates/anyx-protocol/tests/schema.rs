@@ -8,18 +8,18 @@ use common::{assert_snapshot, diagnostics, poentaro, read, schema};
 
 #[test]
 fn the_schema_decoder_is_what_its_grammar_generates() {
-    let grammar = read("protocol.anyx");
+    let grammar = read("protocol.grammar.anyx");
     let output = anyx_generator::generate(&grammar).unwrap_or_else(|errors| {
         let errors: Vec<String> = errors
             .iter()
-            .map(|error| error.render(&grammar, "protocol.anyx"))
+            .map(|error| error.render(&grammar, "protocol.grammar.anyx"))
             .collect();
         panic!("{}", errors.join("\n"))
     });
     let warnings: Vec<String> = output
         .warnings
         .iter()
-        .map(|warning| warning.render(&grammar, "protocol.anyx"))
+        .map(|warning| warning.render(&grammar, "protocol.grammar.anyx"))
         .collect();
     assert_eq!(warnings, Vec::<String>::new());
     let code = anyx_generator::format(&output.code).expect("rustfmt is installed");
@@ -573,4 +573,15 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
         schema.methods[0].shape.parameters[0].r#type,
         Type::Map(Box::new(Type::Float))
     );
+}
+
+#[test]
+fn the_request_decoder_is_what_its_grammar_generates() {
+    let grammar = read("request.grammar.anyx");
+    let output = anyx_generator::generate(&grammar).unwrap();
+    // A duration also has a neutral choice-call reading. The first wins.
+    assert_eq!(output.warnings.len(), 1);
+    assert!(output.warnings[0].message.contains("`duration` and `call`"));
+    let code = anyx_generator::format(&output.code).expect("rustfmt is installed");
+    assert_snapshot("src/request_grammar.rs", &code);
 }

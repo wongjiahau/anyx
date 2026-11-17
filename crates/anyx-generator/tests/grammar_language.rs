@@ -45,7 +45,7 @@ fn rule_names(document: &Document) -> Vec<&str> {
 
 #[test]
 fn the_grammar_of_grammars_decodes() {
-    let document = decode(&fixture("grammar.anyx")).unwrap();
+    let document = decode(&fixture("grammar.grammar.anyx")).unwrap();
     let Contents::List(entry) = &document.entry.contents else {
         panic!("the entry is a list");
     };
@@ -87,7 +87,7 @@ fn the_grammar_of_grammars_decodes() {
 
 #[test]
 fn the_json_grammar_decodes() {
-    let document = decode(&fixture("tests/fixtures/json.anyx")).unwrap();
+    let document = decode(&fixture("tests/fixtures/json.grammar.anyx")).unwrap();
     assert_eq!(
         rule_names(&document),
         ["value _", "object _", "member _", "array _"]

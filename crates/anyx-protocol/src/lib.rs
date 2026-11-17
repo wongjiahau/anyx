@@ -8,7 +8,7 @@ mod check;
 pub mod client;
 pub mod codec;
 mod error_terms;
-// Generated from `protocol.anyx`; its definitions are as big as they come.
+// Generated from `protocol.grammar.anyx`; its definitions are as big as they come.
 #[allow(clippy::large_enum_variant)]
 mod grammar;
 mod guide;
@@ -32,3 +32,6 @@ pub fn format_schema(source: &str) -> Result<String, Vec<anyx::Error>> {
 }
 pub use schema::{Diagnostic, Schema, SchemaFile};
 pub use value::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
+
+mod request;
+mod request_grammar;

@@ -3,14 +3,18 @@
 Writes the code of an [anyx-protocol](../anyx-protocol) schema:
 
 ```sh
-anyx-protocol-generate rust schema.anyx > src/protocol.rs
-anyx-protocol-generate wasm schema.anyx > src/protocol_wasm.rs
-anyx-protocol-generate typescript schema.anyx > web/src/protocol.ts
+anyx-protocol-generate rust schema.protocol.anyx > src/protocol.rs
+anyx-protocol-generate wasm schema.protocol.anyx > src/protocol_wasm.rs
+anyx-protocol-generate typescript schema.protocol.anyx > web/src/protocol.ts
 ```
 
 Pass an entry file with a `PROTOCOL` header. Its `USE "relative path"`
 imports are followed explicitly; folder input is rejected. See
 [`PROTOCOL.md`](../anyx-protocol/PROTOCOL.md#files-and-use).
+
+Input filenames, including every explicitly imported file, must end in
+`.protocol.anyx` (case-sensitive). Other suffixes are rejected before reading
+the file.
 
 ## Rust
 

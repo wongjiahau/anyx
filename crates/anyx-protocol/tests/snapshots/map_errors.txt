@@ -2,7 +2,7 @@ count { counts [1, 2] }
 => 1:16: in `tally` of `count _`: in `counts`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
 
 count { counts { hymn 3 } }
-=> 1:18: in `tally` of `count _`: in `counts`: found the call `hymn _`; expected an entry written as a string key and its value, as in `"key" …`; put a `:` after the key when the value is words, as in `"key": done`
+=> 1:18: in `tally` of `count _`: in `counts`: found a record field; expected a map entry with a string key, as in `"key": …`
 
 count { counts { "hymn" 3, "hymn" 4 } }
 => 1:28: in `tally` of `count _`: in `counts`: found the key `"hymn"` twice; expected each key once
@@ -11,7 +11,7 @@ count { counts { "hymn" "three" } }
 => 1:25: in `tally` of `count _`: in `counts`: in `"hymn"`: found a string; expected a whole number, as in `3`
 
 count { counts { "hymn" } }
-=> 1:18: in `tally` of `count _`: in `counts`: found a string; expected an entry written as a string key and its value, as in `"key" …`; put a `:` after the key when the value is words, as in `"key": done`
+=> 1:18: found the string "hymn"; expected the call `_ _`, `… _` or the closing `}`
 
 wait { "tea" 5 minutes }
-=> 1:8: in `waits` of `wait _`: found the call `_ _ minutes`; expected an entry written as a string key and its value, as in `"key" …`; put a `:` after the key when the value is words, as in `"key": done`
+=> 1:16: found the word `minutes`; expected the end of the call

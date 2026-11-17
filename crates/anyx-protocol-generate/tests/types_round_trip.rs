@@ -1,4 +1,4 @@
-//! The Rust module generated from `tests/fixtures/types.anyx`, compiled: a
+//! The Rust module generated from `tests/fixtures/types.protocol.anyx`, compiled: a
 //! client calls a server in the same process with every kind of type.
 
 #[path = "generated/types.rs"]

@@ -135,8 +135,8 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
 
 #[test]
 fn own_declarations_and_direct_public_imports_are_visible() {
-    let schema = load("entry.anyx", &[
-        ("entry.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
+    let schema = load("entry.protocol.anyx", &[
+        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
         ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [gone],"),
     ]).unwrap();
     assert_eq!(schema.types.len(), 2);
@@ -150,10 +150,10 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
         "RECORD Item { value: Text },",
     ] {
         let diagnostics = load(
-            "entry.anyx",
+            "entry.protocol.anyx",
             &[
                 (
-                    "entry.anyx",
+                    "entry.protocol.anyx",
                     "PROTOCOL p VERSION 1, USE \"./middle.anyx\", RECORD Local { value: Item },",
                 ),
                 ("middle.anyx", "USE \"./lib.anyx\","),
@@ -168,10 +168,10 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
         );
     }
     let errors = load(
-        "entry.anyx",
+        "entry.protocol.anyx",
         &[
             (
-                "entry.anyx",
+                "entry.protocol.anyx",
                 "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS failures,",
             ),
             ("lib.anyx", "ERRORS failures [gone],"),
@@ -189,9 +189,9 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
 fn duplicate_names_include_both_files_even_when_private() {
     for second in ["RECORD Item { value: Text },", "ERRORS Item [gone],"] {
         let diagnostics = load(
-            "entry.anyx",
+            "entry.protocol.anyx",
             &[
-                ("entry.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
+                ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
                 ("a.anyx", "RECORD Item { value: Text },"),
                 ("b.anyx", second),
             ],
@@ -210,9 +210,9 @@ fn duplicate_names_include_both_files_even_when_private() {
 fn duplicate_methods_across_files_are_rejected() {
     assert!(
         load(
-            "entry.anyx",
+            "entry.protocol.anyx",
             &[
-                ("entry.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
+                ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
                 ("a.anyx", "METHOD f RETURNS (x: Text),"),
                 ("b.anyx", "METHOD f RETURNS (x: Text),"),
             ]
@@ -252,26 +252,26 @@ fn cycles_point_at_the_closing_use_and_show_the_cycle() {
 #[test]
 fn invalid_imports_are_reported_at_the_use() {
     for path in [
-        "/common.anyx",
+        "/common.protocol.anyx",
         "",
         "accounts:session.anyx",
         "./missing.anyx",
     ] {
         let source = format!("PROTOCOL p VERSION 1, USE {path:?},");
-        let errors = load("entry.anyx", &[("entry.anyx", &source)]).unwrap_err();
-        assert_eq!(errors[0].path, "entry.anyx");
+        let errors = load("entry.protocol.anyx", &[("entry.protocol.anyx", &source)]).unwrap_err();
+        assert_eq!(errors[0].path, "entry.protocol.anyx");
         assert_eq!(errors[0].span.start, 22);
     }
     let errors = load(
-        "entry.anyx",
+        "entry.protocol.anyx",
         &[
-            ("entry.anyx", "USE \"./other.anyx\","),
+            ("entry.protocol.anyx", "USE \"./other.anyx\","),
             ("other.anyx", "PROTOCOL other VERSION 1,"),
         ],
     )
     .unwrap_err();
     assert!(errors[0].message.contains("`PROTOCOL` header"));
-    assert_eq!(errors[0].path, "entry.anyx");
+    assert_eq!(errors[0].path, "entry.protocol.anyx");
 }
 
 #[test]
@@ -287,10 +287,10 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
         &[
             (
                 "notes.anyx",
-                "PROTOCOL notes VERSION 1, USE \"./files.anyx\", USE \"./shares.anyx\",",
+                "PROTOCOL notes VERSION 1, USE \"./files.protocol.anyx\", USE \"./shares.anyx\",",
             ),
             (
-                "files.anyx",
+                "files.protocol.anyx",
                 "TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),",
             ),
             (
@@ -323,18 +323,21 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
 fn moving_an_imported_file_does_not_change_wire_names() {
     let declaration = "PUBLIC TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),";
     let before = load(
-        "entry.anyx",
+        "entry.protocol.anyx",
         &[
-            ("entry.anyx", "PROTOCOL p VERSION 1, USE \"./files.anyx\","),
-            ("files.anyx", declaration),
+            (
+                "entry.protocol.anyx",
+                "PROTOCOL p VERSION 1, USE \"./files.protocol.anyx\",",
+            ),
+            ("files.protocol.anyx", declaration),
         ],
     )
     .unwrap();
     let after = load(
-        "entry.anyx",
+        "entry.protocol.anyx",
         &[
             (
-                "entry.anyx",
+                "entry.protocol.anyx",
                 "PROTOCOL p VERSION 1, USE \"./Draft Folder/renamed.anyx\",",
             ),
             ("Draft Folder/renamed.anyx", declaration),
@@ -355,10 +358,10 @@ fn moving_an_imported_file_does_not_change_wire_names() {
 #[test]
 fn absolute_entry_at_filesystem_root_keeps_relative_imports_absolute() {
     let schema = load(
-        "/entry.anyx",
+        "/entry.protocol.anyx",
         &[
             (
-                "/entry.anyx",
+                "/entry.protocol.anyx",
                 "USE \"./shared.anyx\", USE \"./sub/../shared.anyx\",",
             ),
             ("/shared.anyx", "RECORD Shared { value: Text },"),

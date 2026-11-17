@@ -95,11 +95,11 @@ METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
 fn an_imported_method_example_uses_its_flat_name() {
     let files = [
         (
-            "protocol.anyx",
-            "PROTOCOL notes VERSION 1, USE \"./files.anyx\",",
+            "protocol.protocol.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./files.protocol.anyx\",",
         ),
         (
-            "files.anyx",
+            "files.protocol.anyx",
             "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [
     # Reading a file.
     read \"a\" RETURNS \"x\",
@@ -113,11 +113,11 @@ fn an_imported_method_example_uses_its_flat_name() {
     assert_eq!(example.call, "read \"a\"");
     let files = [
         (
-            "protocol.anyx",
-            "PROTOCOL notes VERSION 1, USE \"./files.anyx\",",
+            "protocol.protocol.anyx",
+            "PROTOCOL notes VERSION 1, USE \"./files.protocol.anyx\",",
         ),
         (
-            "files.anyx",
+            "files.protocol.anyx",
             "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [files/read \"a\" RETURNS \"x\"],",
         ),
     ];

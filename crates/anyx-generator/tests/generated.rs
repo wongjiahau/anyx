@@ -49,13 +49,13 @@ fn assert_generated(grammar: &str, generated: &str) -> Vec<String> {
 
 #[test]
 fn the_generator_generates_its_own_decoder() {
-    let warnings = assert_generated("grammar.anyx", "src/grammar.rs");
+    let warnings = assert_generated("grammar.grammar.anyx", "src/grammar.rs");
     assert_eq!(warnings, Vec::<String>::new());
 }
 
 #[test]
 fn generating_twice_gives_the_same_text() {
-    let source = fixture("grammar.anyx");
+    let source = fixture("grammar.grammar.anyx");
     let first = anyx_generator::generate(&source).unwrap();
     let second = anyx_generator::generate(&source).unwrap();
     assert!(first == second);
@@ -63,20 +63,26 @@ fn generating_twice_gives_the_same_text() {
 
 #[test]
 fn groups_are_generated() {
-    let warnings = assert_generated("tests/fixtures/groups.anyx", "tests/generated/groups.rs");
+    let warnings = assert_generated(
+        "tests/fixtures/groups.grammar.anyx",
+        "tests/generated/groups.rs",
+    );
     assert_eq!(warnings, Vec::<String>::new());
 }
 
 #[test]
 fn json_is_generated() {
-    let warnings = assert_generated("tests/fixtures/json.anyx", "tests/generated/json.rs");
+    let warnings = assert_generated(
+        "tests/fixtures/json.grammar.anyx",
+        "tests/generated/json.rs",
+    );
     assert_eq!(warnings, Vec::<String>::new());
 }
 
 #[test]
 fn the_keyword_language_is_generated() {
     let warnings = assert_generated(
-        "tests/fixtures/language.anyx",
+        "tests/fixtures/language.grammar.anyx",
         "tests/generated/language.rs",
     );
     assert_eq!(warnings, Vec::<String>::new());
@@ -84,7 +90,10 @@ fn the_keyword_language_is_generated() {
 
 #[test]
 fn the_config_format_is_generated() {
-    let warnings = assert_generated("tests/fixtures/config.anyx", "tests/generated/config.rs");
+    let warnings = assert_generated(
+        "tests/fixtures/config.grammar.anyx",
+        "tests/generated/config.rs",
+    );
     assert_eq!(warnings, Vec::<String>::new());
 }
 
@@ -169,8 +178,10 @@ fn each_keeps_a_setting_that_does_not_fit_as_its_error() {
 fn the_examples_of_the_skill_are_the_tested_grammars() {
     for name in ["json", "config", "language"] {
         assert_eq!(
-            fixture(&format!("../../skills/anyx-grammar/examples/{name}.anyx")),
-            fixture(&format!("tests/fixtures/{name}.anyx")),
+            fixture(&format!(
+                "../../skills/anyx-grammar/examples/{name}.grammar.anyx"
+            )),
+            fixture(&format!("tests/fixtures/{name}.grammar.anyx")),
             "{name}"
         );
     }
@@ -178,7 +189,10 @@ fn the_examples_of_the_skill_are_the_tested_grammars() {
 
 #[test]
 fn the_corners_are_generated() {
-    assert_generated("tests/fixtures/corners.anyx", "tests/generated/corners.rs");
+    assert_generated(
+        "tests/fixtures/corners.grammar.anyx",
+        "tests/generated/corners.rs",
+    );
 }
 
 fn parse(source: &str) -> Vec<anyx::Node> {
@@ -668,7 +682,7 @@ fn a_call_name_gives_its_words_and_the_call_written_out_flat() {
 #[test]
 fn the_manifest_is_generated() {
     let warnings = assert_generated(
-        "tests/fixtures/manifest.anyx",
+        "tests/fixtures/manifest.grammar.anyx",
         "tests/generated/manifest.rs",
     );
     assert_eq!(warnings, Vec::<String>::new());
@@ -778,4 +792,52 @@ setting: ONE OF [
         ),
         "{generated}"
     );
+}
+
+#[path = "generated/literals.rs"]
+mod literals;
+
+#[test]
+fn literal_spelling_classifies_numbers_without_rounding_their_text() {
+    assert_eq!(
+        assert_generated(
+            "tests/fixtures/literals.grammar.anyx",
+            "tests/generated/literals.rs"
+        ),
+        Vec::<String>::new()
+    );
+    for text in [
+        "3",
+        "-1",
+        "9007199254740993",
+        "9223372036854775807",
+        "0xdead",
+        "0XFE",
+        "0b101",
+        "1_000",
+    ] {
+        let nodes = anyx::parse(text).syntax.nodes();
+        match literals::decode_literal(&nodes[0]).unwrap() {
+            literals::Literal::Integer(value) => assert_eq!(value.value, text),
+            other => panic!("{text}: {other:?}"),
+        }
+    }
+    for text in ["3.0", "-1.5", "1e3", "3E0", "1e-3"] {
+        let nodes = anyx::parse(text).syntax.nodes();
+        match literals::decode_literal(&nodes[0]).unwrap() {
+            literals::Literal::Float(value) => assert_eq!(value.value, text),
+            other => panic!("{text}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn spelling_conditions_are_unique_and_describe_one_number_token() {
+    for source in [
+        "ENTRY [NUMBER [WRITTEN INTEGER, WRITTEN FLOAT]]",
+        "ENTRY [NUMBER [WRITTEN INTEGER, SIGNED]]",
+        "ENTRY [NUMBER [WRITTEN FLOAT, SIGNED]]",
+    ] {
+        assert!(anyx_generator::generate(source).is_err(), "{source}");
+    }
 }

@@ -1415,4 +1415,28 @@ pub mod support {
             }
         }
     }
+
+    /// A number classified by its spelling, retaining its text exactly. A based
+    /// integer's hexadecimal `e` is a digit, never an exponent.
+    pub fn number_literal(
+        node: &Node,
+        float: bool,
+        expected: &str,
+    ) -> Result<Spanned<String>, DecodeError> {
+        let NodeKind::Number(text) = &node.kind else {
+            return Err(mismatch(node, expected));
+        };
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
+            .iter()
+            .any(|prefix| digits.starts_with(prefix));
+        let is_float = !based && digits.contains(['.', 'e', 'E']);
+        if is_float != float {
+            return Err(mismatch(node, expected));
+        }
+        Ok(Spanned {
+            value: text.clone(),
+            span: node.span,
+        })
+    }
 }

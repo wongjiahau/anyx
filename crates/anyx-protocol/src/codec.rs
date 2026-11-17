@@ -6,9 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use anyx::{NamePart, Node, NodeKind, Span, line_column};
+use anyx::{Node, NodeKind, Span, line_column};
 
-use crate::annotation::{annotated_type, annotation, own_type};
+use crate::annotation::{own_syntax_type, own_type, request_type};
+use crate::request_grammar as request;
 use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind};
 use crate::value::Value;
 
@@ -94,13 +95,6 @@ pub(crate) fn parse(source: &str) -> Result<Vec<Node>, Problem> {
     }
 }
 
-fn quoted_shapes<'a>(shapes: impl Iterator<Item = &'a Shape>) -> String {
-    shapes
-        .map(|shape| format!("`{}`", shape.text))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// Reads a request: every call must name a method and fit its parameters.
 pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Problem> {
     let nodes = parse(source)?;
@@ -117,16 +111,34 @@ pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Proble
             ),
         ));
     }
-    nodes
+    let syntax =
+        request::decode_document(&nodes).map_err(|error| request_syntax_problem(source, error))?;
+    syntax
+        .call
         .iter()
-        .map(|node| decode_call(schema, source, node))
+        .map(|syntax| decode_call(schema, source, syntax))
         .collect::<Result<Vec<_>, Mismatch>>()
         .map_err(|mismatch| problem(source, mismatch.span, mismatch.message))
 }
 
+fn request_syntax_problem(source: &str, error: request::DecodeError) -> Problem {
+    let mut message = error.message();
+    if error.found.contains(" AS ") {
+        message = "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".into();
+    }
+    if let Some(intrinsic) = crate::prelude::renamed(&source[error.span.start..error.span.end]) {
+        message.push_str(&format!(
+            "; the built-in type `{}` is written in Title Case",
+            intrinsic.name
+        ));
+    }
+    problem(source, error.span, message)
+}
+
 /// Reads a flat method shape, choosing an overload by its argument types.
-fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Mismatch> {
-    let call = node;
+fn decode_call(schema: &Schema, source: &str, syntax: &request::Call) -> Result<Call, Mismatch> {
+    let span = syntax.span;
+    let call = syntax;
     let methods: Vec<usize> = (0..=schema.introspection()).collect();
     let all_methods = || {
         let mut names: Vec<String> = Vec::new();
@@ -138,24 +150,14 @@ fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Misma
         }
         names.join(", ")
     };
-    let NodeKind::Call(found) = &call.kind else {
-        return Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found {}; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses",
-                describe(call),
-                all_methods()
-            ),
-        });
-    };
-    let text = found.name_text();
+    let text = &call.name.text;
     let candidates: Vec<usize> = methods
         .into_iter()
-        .filter(|index| schema.method_at(*index).shape.text == text)
+        .filter(|index| schema.method_at(*index).shape.text == *text)
         .collect();
     if candidates.is_empty() {
         return Err(Mismatch {
-            span: node.span,
+            span,
             message: format!(
                 "found the call `{}`; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses",
                 text,
@@ -167,7 +169,7 @@ fn decode_call(schema: &Schema, source: &str, node: &Node) -> Result<Call, Misma
         .iter()
         .map(|index| schema.method_at(*index))
         .collect();
-    let (chosen, arguments) = decode_arguments(schema, source, &methods, node, found)?;
+    let (chosen, arguments) = decode_arguments(schema, source, &methods, span, call)?;
     Ok(Call {
         method: candidates[chosen],
         arguments,
@@ -183,23 +185,19 @@ pub(crate) fn decode_call_of(
     method: &Method,
     node: &Node,
 ) -> Result<Vec<Value>, Mismatch> {
-    let call = node;
-    let found = match &call.kind {
-        NodeKind::Call(found) => format!("a call of `{}`", found.name_text()),
-        _ => describe(call),
-    };
-    let expected = method.full_name();
-    let mismatch = |found: String| Mismatch {
-        span: node.span,
-        message: format!(
-            "found {found}; expected a call of `{expected}`, the method the example is under, written by its full name as a request writes it"
-        ),
-    };
-    match &call.kind {
-        NodeKind::Call(call) if call.name_text() == method.shape.text => {
-            decode_arguments(schema, source, &[method], node, call).map(|(_, arguments)| arguments)
-        }
-        _ => Err(mismatch(found)),
+    let syntax = request::decode_call(node).map_err(syntax_mismatch)?;
+    let call = &syntax;
+    if call.name.text == method.shape.text {
+        decode_arguments(schema, source, &[method], node.span, call).map(|(_, arguments)| arguments)
+    } else {
+        Err(Mismatch {
+            span: node.span,
+            message: format!(
+                "found a call of `{}`; expected a call of `{}`, the method the example is under, written by its full name as a request writes it",
+                call.name.text,
+                method.full_name()
+            ),
+        })
     }
 }
 
@@ -207,8 +205,8 @@ pub(crate) fn decode_call_of(
 /// claims for it, and the type it has of its own.
 struct Argument<'n> {
     /// The whole argument, with its annotation.
-    node: &'n Node,
-    value: &'n Node,
+    span: Span,
+    value: &'n request::Value,
     annotated: Option<Type>,
     own: Option<Type>,
 }
@@ -226,10 +224,10 @@ fn decode_arguments(
     schema: &Schema,
     source: &str,
     methods: &[&Method],
-    node: &Node,
-    call: &anyx::Call,
+    span: Span,
+    call: &request::Call,
 ) -> Result<(usize, Vec<Value>), Mismatch> {
-    let text = call.name_text();
+    let text = &call.name.text;
     let arguments = call
         .arguments
         .iter()
@@ -237,7 +235,7 @@ fn decode_arguments(
         .collect::<Result<Vec<_>, _>>()?;
     let chosen = match methods {
         [_] => 0,
-        _ => choose(schema, source, methods, node, call, &arguments)?,
+        _ => choose(schema, source, methods, span, call, &arguments)?,
     };
     let method = methods[chosen];
     let values = method
@@ -257,7 +255,7 @@ fn decode_arguments(
                 .filter(|annotated| **annotated != parameter.r#type)
             {
                 return Err(in_parameter(Mismatch {
-                    span: argument.node.span,
+                    span: argument.span,
                     message: format!(
                         "found `AS: {}`; expected `AS: {}`, the type of `{}`",
                         schema.type_name(annotated),
@@ -266,10 +264,11 @@ fn decode_arguments(
                     ),
                 }));
             }
-            let value = decode(schema, &parameter.r#type, argument.value).map_err(in_parameter)?;
+            let value = crate::request::decode(schema, &parameter.r#type, argument.value)
+                .map_err(in_parameter)?;
             if argument.stated() != Some(&parameter.r#type) {
                 let fix = fix(schema, source, method, call, index);
-                let written = written(source, argument.value);
+                let written = written(source, argument.value.span());
                 let message = match &argument.own {
                     None => format!("`{written}` has no type of its own; annotate it, as in `{fix}`"),
                     Some(own) => format!(
@@ -279,7 +278,7 @@ fn decode_arguments(
                     ),
                 };
                 return Err(in_parameter(Mismatch {
-                    span: argument.node.span,
+                    span: argument.span,
                     message,
                 }));
             }
@@ -293,64 +292,27 @@ fn decode_arguments(
 fn read_argument<'n>(
     schema: &Schema,
     source: &str,
-    node: &'n Node,
+    argument: &'n request::Argument,
 ) -> Result<Argument<'n>, Mismatch> {
-    let (value, written_type) = match annotation(node) {
-        Some((value, written_type)) => (value, Some(written_type)),
-        None => (node, None),
+    let (value, written_type) = match argument {
+        request::Argument::Annotated { value, r#type, .. } => (value, Some(r#type)),
+        request::Argument::Value(value) => (value, None),
     };
-    if let Some(inner) = inner_annotation(value) {
-        return Err(Mismatch {
-            span: inner.span,
-            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".to_string(),
-        });
-    }
-    let Some(written_type) = written_type else {
-        return Ok(Argument {
-            node,
-            value: node,
-            annotated: None,
-            own: own_type(schema, node),
-        });
-    };
-    let annotated = annotated_type(schema, written_type).ok_or_else(|| {
-        let text = written(source, written_type);
-        let renamed = text
-            .split(|c: char| !c.is_alphanumeric())
-            .find_map(crate::prelude::renamed)
-            .map_or(String::new(), |intrinsic| {
-                format!(
-                    "; the built-in type `{}` is written in Title Case",
-                    intrinsic.name
-                )
-            });
-        Mismatch {
-            span: written_type.span,
-            message: format!(
-                "found `{text}` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`{renamed}"
-            ),
-        }
-    })?;
+    let annotated = written_type.map(|written_type| {
+        request_type(schema, written_type).ok_or_else(|| {
+            let text = written(source, written_type.span());
+            Mismatch {
+                span: written_type.span(),
+                message: format!("found `{text}` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`"),
+            }
+        })
+    }).transpose()?;
     Ok(Argument {
-        node,
+        span: argument.span(),
         value,
-        annotated: Some(annotated),
-        own: own_type(schema, value),
+        annotated,
+        own: own_syntax_type(schema, value),
     })
-}
-
-/// The first annotation inside `node`, or `node` itself if it is one.
-fn inner_annotation(node: &Node) -> Option<&Node> {
-    if annotation(node).is_some() {
-        return Some(node);
-    }
-    match &node.kind {
-        NodeKind::Call(call) => call.arguments.iter().find_map(inner_annotation),
-        NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
-            nodes.iter().find_map(inner_annotation)
-        }
-        _ => None,
-    }
 }
 
 /// Which of `methods`, overloads of one shape, a call is of: the one whose
@@ -359,11 +321,11 @@ fn choose(
     schema: &Schema,
     source: &str,
     methods: &[&Method],
-    node: &Node,
-    call: &anyx::Call,
+    span: Span,
+    call: &request::Call,
     arguments: &[Argument],
 ) -> Result<usize, Mismatch> {
-    let text = call.name_text();
+    let text = &call.name.text;
     let fits = |method: &Method, except: Option<usize>| {
         method
             .shape
@@ -390,7 +352,7 @@ fn choose(
     let all = overloads(&mut (0..methods.len()));
     if !fitting.is_empty() {
         return Err(Mismatch {
-            span: node.span,
+            span,
             message: format!(
                 "found `{text}` with arguments that fit several of its overloads, {}; expected them to fit one; annotate each argument with its parameter's type, as in `value AS: type`",
                 overloads(&mut fitting.into_iter())
@@ -406,10 +368,10 @@ fn choose(
             .find(|method| fits(method, Some(index)))
             .unwrap_or(&methods[0]);
         return Err(Mismatch {
-            span: arguments[index].node.span,
+            span: arguments[index].span,
             message: format!(
                 "in `{text}`: `{}` has no type of its own, so no overload of `{text}` can be chosen by it; annotate it with the type of the one to call, as in `{}`; the overloads are {all}",
-                written(source, arguments[index].value),
+                written(source, arguments[index].value.span()),
                 fix(schema, source, example, call, index)
             ),
         });
@@ -420,7 +382,7 @@ fn choose(
         .map(|stated| format!("`{}`", schema.type_name(stated)))
         .collect();
     Err(Mismatch {
-        span: node.span,
+        span,
         message: format!(
             "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of a named type, or of `Bytes` or `Instant`, is written like another type's, so annotate it, as in `(\"abc\" AS: File Id)`",
             match types.len() {
@@ -433,22 +395,28 @@ fn choose(
 }
 
 /// A value as written in `source`, shortened when it is long: `[…]`.
-fn written(source: &str, node: &Node) -> String {
-    let text = &source[node.span.start..node.span.end];
+fn written(source: &str, span: Span) -> String {
+    let text = &source[span.start..span.end];
     if text.chars().count() <= 40 && !text.contains('\n') {
         return text.to_string();
     }
-    match &node.kind {
-        NodeKind::Brackets(_) => "[…]".to_string(),
-        NodeKind::Braces(_) => "{…}".to_string(),
-        NodeKind::String(_) => "\"…\"".to_string(),
+    match text.trim_start().chars().next() {
+        Some('[') => "[…]".to_string(),
+        Some('{') => "{…}".to_string(),
+        Some('"') => "\"…\"".to_string(),
         _ => "…".to_string(),
     }
 }
 
 /// `call` as a call of `method`, with its argument at `index` annotated
 /// with its parameter's type: `tag ([] AS: LIST Text)`.
-fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index: usize) -> String {
+fn fix(
+    schema: &Schema,
+    source: &str,
+    method: &Method,
+    call: &request::Call,
+    index: usize,
+) -> String {
     let mut slots = call.arguments.iter().enumerate().peekable();
     method
         .shape
@@ -456,55 +424,29 @@ fn fix(schema: &Schema, source: &str, method: &Method, call: &anyx::Call, index:
         .split(' ')
         .map(|word| match (word, slots.next_if(|_| word == "_")) {
             (_, Some((slot, argument))) if slot == index => {
-                let value = annotation(argument).map_or(argument, |(value, _)| value);
+                let value = match argument {
+                    request::Argument::Annotated { value, .. }
+                    | request::Argument::Value(value) => value,
+                };
                 format!(
                     "({} AS: {})",
-                    written(source, value),
+                    written(source, value.span()),
                     schema.type_name(&method.shape.parameters[slot].r#type)
                 )
             }
-            (_, Some((_, argument))) => match &argument.kind {
-                NodeKind::Call(_) => format!("({})", written(source, argument)),
-                _ => written(source, argument),
+            (_, Some((_, argument))) => match argument {
+                request::Argument::Annotated { .. }
+                | request::Argument::Value(
+                    request::Value::Call(_)
+                    | request::Value::Duration(_)
+                    | request::Value::Boolean(_),
+                ) => format!("({})", written(source, argument.span())),
+                _ => written(source, argument.span()),
             },
             (word, None) => word.to_string(),
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-enum ShapeMismatch {
-    /// The node is no call of any of the shapes; holds what it is.
-    NoShape(String),
-    Argument(Mismatch),
-}
-
-/// Reads `node` as a call of one of `shapes`: which one, and its arguments.
-fn decode_shape(
-    schema: &Schema,
-    shapes: &[&Shape],
-    node: &Node,
-) -> Result<(usize, Vec<Value>), ShapeMismatch> {
-    let NodeKind::Call(call) = &node.kind else {
-        return Err(ShapeMismatch::NoShape(describe(node)));
-    };
-    let text = call.name_text();
-    let Some(index) = shapes.iter().position(|shape| shape.text == text) else {
-        return Err(ShapeMismatch::NoShape(format!("the call `{text}`")));
-    };
-    let arguments = shapes[index]
-        .parameters
-        .iter()
-        .zip(&call.arguments)
-        .map(|(parameter, argument)| {
-            decode(schema, &parameter.r#type, argument).map_err(|mismatch| Mismatch {
-                message: format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message),
-                ..mismatch
-            })
-        })
-        .collect::<Result<_, _>>()
-        .map_err(ShapeMismatch::Argument)?;
-    Ok((index, arguments))
 }
 
 pub(crate) fn describe(node: &Node) -> String {
@@ -522,178 +464,19 @@ pub(crate) fn describe(node: &Node) -> String {
 
 /// Reads `node` as a value of `type`.
 pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Value, Mismatch> {
-    if annotation(node).is_some() {
-        return Err(Mismatch {
-            span: node.span,
-            message: "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".to_string(),
-        });
-    }
-    let r#type = schema.underlying(r#type);
-    let mismatch = |expected: String| Mismatch {
-        span: node.span,
-        message: format!("found {}; expected {expected}", describe(node)),
-    };
-    match (r#type, &node.kind) {
-        (Type::Text, NodeKind::String(literal)) => Ok(Value::Text(literal.value.clone())),
-        (Type::Text, _) => Err(mismatch("a string, as in `\"text\"`".to_string())),
-        (Type::Bytes, NodeKind::String(literal)) => crate::bytes::decode(&literal.value)
-            .map(Value::Bytes)
-            .ok_or_else(|| mismatch("base64 in the string, as in `\"TVRoZA==\"`".to_string())),
-        (Type::Bytes, _) => Err(mismatch(
-            "base64 in a string, as in `\"TVRoZA==\"`".to_string(),
-        )),
-        (Type::Integer, NodeKind::Number(text)) if is_float_text(text) => Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found the Float `{text}`; expected an Integer, a whole number written without a point, such as `3`"
-            ),
-        }),
-        (Type::Integer, NodeKind::Number(text)) => text
-            .parse()
-            .map(Value::Integer)
-            .map_err(|_| mismatch("a whole number that fits in 64 bits".to_string())),
-        (Type::Integer, _) => Err(mismatch("a whole number, as in `3`".to_string())),
-        (Type::Float, NodeKind::Number(text)) if !is_float_text(text) => Err(Mismatch {
-            span: node.span,
-            message: format!("found the Integer `{text}`; expected a Float, such as `{text}.0`"),
-        }),
-        (Type::Float, NodeKind::Number(text)) => text
-            .parse()
-            .ok()
-            .filter(|number: &f64| number.is_finite())
-            .map(Value::Float)
-            .ok_or_else(|| mismatch("a finite Float, as in `1.5`".to_string())),
-        (Type::Float, _) => Err(mismatch("a Float, as in `1.5`".to_string())),
-        (Type::Boolean, NodeKind::Call(call)) if call.arguments.is_empty() => {
-            match call.name_text().as_str() {
-                "true" => Ok(Value::Boolean(true)),
-                "false" => Ok(Value::Boolean(false)),
-                _ => Err(mismatch("`true` or `false`".to_string())),
-            }
-        }
-        (Type::Boolean, _) => Err(mismatch("`true` or `false`".to_string())),
-        (Type::Instant, NodeKind::String(literal)) => crate::time::parse_instant(&literal.value)
-            .map(Value::Instant)
-            .ok_or_else(|| {
-                mismatch(format!(
-                    "an instant in UTC in the string, as in `\"{INSTANT_EXAMPLE}\"`"
-                ))
-            }),
-        (Type::Instant, _) => Err(mismatch(format!(
-            "an instant in UTC in a string, as in `\"{INSTANT_EXAMPLE}\"`"
-        ))),
-        (Type::Duration, NodeKind::Call(call)) => {
-            let pairs = duration_pairs(call).ok_or_else(|| {
-                mismatch(format!(
-                    "a duration, whole numbers each with a unit, as in `{DURATION_EXAMPLE}`"
-                ))
-            })?;
-            crate::time::parse_duration(&pairs)
-                .map(Value::Duration)
-                .map_err(|found| Mismatch {
-                    span: node.span,
-                    message: format!(
-                        "found {found}; expected a duration, whole numbers each with a unit, the largest first, as in `{DURATION_EXAMPLE}`; the units are {}",
-                        duration_units()
-                    ),
-                })
-        }
-        (Type::Duration, _) => Err(mismatch(format!(
-            "a duration, as in `{DURATION_EXAMPLE}`, which goes in parentheses in a slot"
-        ))),
-        (Type::List(item), NodeKind::Brackets(items)) => items
-            .iter()
-            .map(|node| decode(schema, item, node))
-            .collect::<Result<_, _>>()
-            .map(Value::List),
-        (Type::List(item), _) => Err(mismatch(format!(
-            "a list of {}, as in `[…]`",
-            schema.type_name(item)
-        ))),
-        (Type::Map(value), NodeKind::Braces(nodes)) => {
-            decode_entries(schema, value, nodes).map(Value::Map)
-        }
-        (Type::Map(value), _) => Err(mismatch(format!(
-            "a map of {}, as in `{{ \"key\" … }}`",
-            schema.type_name(value)
-        ))),
-        (Type::Named(_) | Type::Generic(..), _) => {
-            let Some((definition, kind)) = schema.instance(r#type) else {
-                unreachable!("a named or generic type is a record or a choice underneath")
-            };
-            match kind.as_ref() {
-                TypeKind::Record(fields) => match &node.kind {
-                    NodeKind::Braces(nodes) => {
-                        decode_fields(schema, fields, nodes, node.span).map(Value::Record)
-                    }
-                    _ => Err(mismatch(format!(
-                        "the record `{}`, as in `{{ {} }}`",
-                        definition.shape(),
-                        example_fields(fields)
-                    ))),
-                },
-                TypeKind::Choice(variants) => {
-                    let shapes: Vec<&Shape> =
-                        variants.iter().map(|variant| &variant.shape).collect();
-                    decode_variant(
-                        schema,
-                        &shapes,
-                        node,
-                        &format!("a variant of `{}`", definition.shape()),
-                    )
-                }
-                TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
-            }
-        }
-        // The checker replaces each parameter by its argument wherever a
-        // value is read.
-        (Type::Parameter(name), _) => Err(mismatch(format!(
-            "a value of a type in place of the type parameter `{name}`"
-        ))),
-    }
+    let syntax = request::decode_value(node).map_err(syntax_mismatch)?;
+    crate::request::decode(schema, r#type, &syntax)
 }
 
-/// Whether a number is written as a `Float`, with a point or an exponent:
-/// `1.5`, `3.0`, `1e3`. Any other number, such as `3` or `-1`, is an
-/// `Integer`, so every number literal states its own type.
-pub(crate) fn is_float_text(text: &str) -> bool {
-    let digits = text.strip_prefix('-').unwrap_or(text);
-    let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
-        .iter()
-        .any(|prefix| digits.starts_with(prefix));
-    !based && digits.contains(['.', 'e', 'E'])
+fn syntax_mismatch(error: request::DecodeError) -> Mismatch {
+    Mismatch {
+        span: error.span,
+        message: error.message(),
+    }
 }
 
 pub(crate) const INSTANT_EXAMPLE: &str = "2026-11-14T06:00:08.000Z";
 pub(crate) const DURATION_EXAMPLE: &str = "1 hour 30 minutes";
-
-/// The units of a duration, as a message lists them.
-fn duration_units() -> String {
-    crate::time::units()
-        .iter()
-        .map(|unit| format!("`{}`", unit.plural))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// A duration's numbers and units, `[("1", "hour"), ("30", "minutes")]`,
-/// if `call` alternates a number and a word: `1 hour 30 minutes` is the
-/// call `_ hour _ minutes` of `1` and `30`.
-pub(crate) fn duration_pairs(call: &anyx::Call) -> Option<Vec<(&str, &str)>> {
-    if call.name.len() != call.arguments.len() * 2 {
-        return None;
-    }
-    call.name
-        .chunks(2)
-        .zip(&call.arguments)
-        .map(|(parts, argument)| match (parts, &argument.kind) {
-            ([NamePart::Slot, NamePart::Word { text, .. }], NodeKind::Number(count)) => {
-                Some((count.as_str(), text.as_str()))
-            }
-            _ => None,
-        })
-        .collect()
-}
 
 /// Reads `node` as one of `shapes`, written as a variant: `missing`,
 /// `conflict at revision 4`.
@@ -703,154 +486,11 @@ pub(crate) fn decode_variant(
     node: &Node,
     what: &str,
 ) -> Result<Value, Mismatch> {
-    match decode_shape(schema, shapes, node) {
-        Ok((index, arguments)) => Ok(Value::Variant {
-            shape: shapes[index].text.clone(),
-            arguments,
-        }),
-        Err(ShapeMismatch::NoShape(found)) => Err(Mismatch {
-            span: node.span,
-            message: format!(
-                "found {found}; expected {what}: {}",
-                quoted_shapes(shapes.iter().copied())
-            ),
-        }),
-        Err(ShapeMismatch::Argument(mismatch)) => Err(mismatch),
-    }
+    let syntax = request::decode_value(node).map_err(syntax_mismatch)?;
+    crate::request::variant(schema, shapes, &syntax, what)
 }
 
-fn example_fields(fields: &[Field]) -> String {
-    fields
-        .iter()
-        .map(|field| format!("{} …", field.name))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// Reads a map's entries, each a string key and its value: `"hymn" 3`, or
-/// `"hymn": done` when the value is words.
-fn decode_entries(
-    schema: &Schema,
-    r#type: &Type,
-    nodes: &[Node],
-) -> Result<BTreeMap<String, Value>, Mismatch> {
-    let mut entries = BTreeMap::new();
-    for node in nodes {
-        let entry = match &node.kind {
-            NodeKind::Call(call) => match (&call.name[..], &call.arguments[..]) {
-                ([NamePart::Slot, NamePart::Slot], [key, value]) => match &key.kind {
-                    NodeKind::String(key) => Some((&key.value, value)),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
-        };
-        let Some((key, value)) = entry else {
-            let found = match &node.kind {
-                NodeKind::Call(call) => format!("the call `{}`", call.name_text()),
-                _ => describe(node),
-            };
-            return Err(Mismatch {
-                span: node.span,
-                message: format!(
-                    "found {found}; expected an entry written as a string key and its value, as in `\"key\" …`; put a `:` after the key when the value is words, as in `\"key\": done`"
-                ),
-            });
-        };
-        if entries.contains_key(key) {
-            return Err(Mismatch {
-                span: node.span,
-                message: format!("found the key `\"{key}\"` twice; expected each key once"),
-            });
-        }
-        let value = decode(schema, r#type, value).map_err(|mismatch| Mismatch {
-            message: format!("in `\"{key}\"`: {}", mismatch.message),
-            ..mismatch
-        })?;
-        entries.insert(key.clone(), value);
-    }
-    Ok(entries)
-}
-
-fn decode_fields(
-    schema: &Schema,
-    fields: &[Field],
-    nodes: &[Node],
-    span: Span,
-) -> Result<BTreeMap<String, Value>, Mismatch> {
-    let mut values = BTreeMap::new();
-    let names = || {
-        fields
-            .iter()
-            .map(|field| format!("`{}`", field.name))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    for node in nodes {
-        let NodeKind::Call(call) = &node.kind else {
-            return Err(Mismatch {
-                span: node.span,
-                message: format!(
-                    "found {}; expected a field written as its name and value, as in `{} …`",
-                    describe(node),
-                    fields.first().map_or("name", |field| field.name.as_str())
-                ),
-            });
-        };
-        let name = call.name_text();
-        let (Some(words), [value]) = (name.strip_suffix(" _"), &call.arguments[..]) else {
-            return Err(Mismatch {
-                span: node.span,
-                message: format!(
-                    "found the call `{name}`; expected a field written as its name and value, as in `{} …`; put a `:` after the name when the value is a word, as in `status: done`",
-                    fields.first().map_or("name", |field| field.name.as_str())
-                ),
-            });
-        };
-        let Some(field) = fields.iter().find(|field| field.name == words) else {
-            return Err(Mismatch {
-                span: node.span,
-                message: format!("found the field `{words}`; expected one of {}", names()),
-            });
-        };
-        if values.contains_key(words) {
-            return Err(Mismatch {
-                span: node.span,
-                message: format!("found the field `{words}` twice; expected each field once"),
-            });
-        }
-        let value = decode(schema, &field.r#type, value).map_err(|mismatch| Mismatch {
-            message: format!("in `{words}`: {}", mismatch.message),
-            ..mismatch
-        })?;
-        values.insert(words.to_string(), value);
-    }
-    for field in fields {
-        if let (Some(default), false) = (&field.default, values.contains_key(&field.name)) {
-            values.insert(field.name.clone(), default.clone());
-        }
-    }
-    let missing: Vec<String> = fields
-        .iter()
-        .filter(|field| !field.optional && !values.contains_key(&field.name))
-        .map(|field| format!("`{}`", field.name))
-        .collect();
-    if !missing.is_empty() {
-        return Err(Mismatch {
-            span,
-            message: format!(
-                "found no {}; expected every field that is not `OPTIONAL`",
-                missing.join(", ")
-            ),
-        });
-    }
-    Ok(values)
-}
-
-/// Writes calls as a request, each call laid out the way `anyx::format`
-/// lays it out in its method shape: `export midi "a"`. The
-/// formatter would space the `/`s, which reads less like a name.
+/// Writes calls as a request, laid out the way `anyx::format` lays them out.
 pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeError> {
     let written = calls
         .iter()

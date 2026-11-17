@@ -391,8 +391,8 @@ impl Schema {
     /// Checks a single source, including a headerless library. Imports require
     /// [`Schema::load`], which supplies the file reader.
     pub fn parse(source: &str) -> Result<Schema, Vec<Diagnostic>> {
-        Self::load("schema.anyx", |path| {
-            if path == "schema.anyx" {
+        Self::load("schema.protocol.anyx", |path| {
+            if path == "schema.protocol.anyx" {
                 Ok(source.to_string())
             } else {
                 Err(format!("no reader supplied for `{path}`; use Schema::load"))

@@ -3,7 +3,7 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
 const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
-    path: "schema.anyx",
+    path: "schema.protocol.anyx",
     source: r#"# Poentaro turns `.poentaro` text into numbered musical notation (jianpu) and
 # keeps the account owner's scores in the cloud. When you save, anyone who
 # has the score open sees the change.
