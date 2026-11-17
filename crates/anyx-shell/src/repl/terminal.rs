@@ -148,6 +148,28 @@ fn render(frame: &mut Frame<'_>, editor: &Editor) {
             .min(area.bottom().saturating_sub(1)),
     ));
 
+    if editor.menu.is_none() && !editor.argument_info.is_empty() {
+        let details = editor
+            .argument_info
+            .iter()
+            .map(|info| {
+                format!(
+                    "{}\n{}\n{}",
+                    info.label,
+                    info.signature,
+                    info.documentation.as_deref().unwrap_or("")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        frame.render_widget(
+            Paragraph::new(clean(&details))
+                .block(Block::bordered().title(" Argument "))
+                .wrap(Wrap { trim: false }),
+            menu_area,
+        );
+    }
+
     let footer = if let Some(menu) = &editor.menu {
         render_menu(frame, menu_area, menu);
         "↑↓ choose · Enter/Tab insert · Esc close".into()
@@ -262,6 +284,30 @@ mod tests {
                     .contains(Modifier::REVERSED)
             );
         }
+    }
+
+    #[test]
+    fn argument_panel_follows_cursor_without_a_snippet_and_yields_to_completion() {
+        let mut shell = Interpreter::new();
+        shell.register("environment", Environment::new()).unwrap();
+        let mut editor = Editor::default();
+        editor.paste("environment / set variable \"A\" to \"value\"");
+        editor.argument_info = shell.argument_info(&editor.text, editor.cursor);
+        let text = content(&screen(&editor, 120, 12));
+        assert!(text.contains("Argument"));
+        assert!(text.contains("value: Text"));
+        assert!(text.contains("Values may be empty"));
+        editor.key(
+            KeyEvent::new(KeyCode::Home, KeyModifiers::NONE),
+            &shell,
+            &[],
+        );
+        editor.argument_info = shell.argument_info(&editor.text, editor.cursor);
+        assert!(!content(&screen(&editor, 120, 12)).contains("Argument"));
+        editor.refresh(&shell, true);
+        let text = content(&screen(&editor, 120, 12));
+        assert!(text.contains("Completions"));
+        assert!(!text.contains("Argument"));
     }
 
     #[test]

@@ -288,7 +288,7 @@ fn placeholder(r#type: &Type, name: &str) -> (String, Range<usize>) {
     (text, range)
 }
 
-fn sequence_tokens<'a>(sequence: &'a Sequence, tokens: &mut Vec<&'a Token>) {
+pub(crate) fn sequence_tokens<'a>(sequence: &'a Sequence, tokens: &mut Vec<&'a Token>) {
     for element in &sequence.elements {
         expression_tokens(&element.expression, tokens);
         if let Some(comma) = &element.comma {
@@ -297,7 +297,7 @@ fn sequence_tokens<'a>(sequence: &'a Sequence, tokens: &mut Vec<&'a Token>) {
     }
 }
 
-fn expression_tokens<'a>(expression: &'a Expression, tokens: &mut Vec<&'a Token>) {
+pub(crate) fn expression_tokens<'a>(expression: &'a Expression, tokens: &mut Vec<&'a Token>) {
     match expression {
         Expression::Run(run) => {
             for item in &run.items {
