@@ -386,10 +386,10 @@ mod tests {
 
     #[test]
     fn durations_keep_their_choice_reading_with_imported_types() {
-        let schema = Schema::load("protocol.anyx", |path| -> Result<String, String> {
+        let schema = Schema::load("protocol.protocol.anyx", |path| -> Result<String, String> {
             match path {
-                "protocol.anyx" => Ok("PROTOCOL a VERSION 1, USE \"./files.anyx\"".into()),
-                "files.anyx" => Ok("PUBLIC CHOICE Count { (count: Integer) minutes }, METHOD count (count: Count) RETURNS NOTHING".into()),
+                "protocol.protocol.anyx" => Ok("PROTOCOL a VERSION 1, USE \"./files.protocol.anyx\"".into()),
+                "files.protocol.anyx" => Ok("PUBLIC CHOICE Count { (count: Integer) minutes }, METHOD count (count: Count) RETURNS NOTHING".into()),
                 _ => Err(format!("missing {path}")),
             }
         }).unwrap();

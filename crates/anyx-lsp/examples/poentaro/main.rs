@@ -1,6 +1,6 @@
 //! A language server for `.poentaro` scores, from nothing but their grammar.
 //!
-//! `generated.rs` is what `anyx-generate poentaro.anyx` writes; the grammar
+//! `generated.rs` is what `anyx-generate poentaro.grammar.anyx` writes; the grammar
 //! is copied from the poentaro repository.
 
 #[rustfmt::skip]

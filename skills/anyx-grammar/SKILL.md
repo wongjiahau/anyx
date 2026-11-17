@@ -1,6 +1,6 @@
 ---
 name: anyx-grammar
-description: Write an anyx grammar (a `.anyx` file) for a data format or a small language, and run `anyx-generate` to turn it into a typed Rust parser. Use when asked to parse a config format, a DSL or a keyword language with anyx, to write or fix a `.anyx` grammar, or to read the generator's errors and warnings.
+description: Write an anyx grammar (a `.grammar.anyx` file) for a data format or a small language, and run `anyx-generate` to turn it into a typed Rust parser. Use when asked to parse a config format, a DSL or a keyword language with anyx, to write or fix a `.grammar.anyx` grammar, or to read the generator's errors and warnings.
 ---
 
 # Writing an anyx grammar
@@ -38,7 +38,7 @@ way of working, the examples and the mistakes to avoid.
 4. **Generate**, and fix every error and warning:
 
    ```sh
-   cargo run -p anyx-generator --bin anyx-generate -- grammar.anyx > src/parser.rs
+   cargo run -p anyx-generator --bin anyx-generate -- grammar.grammar.anyx > src/parser.rs
    ```
 
    An error stops the output. A warning does not, but each one is a real
@@ -125,7 +125,7 @@ Regexes are written in a normal string, so each backslash is written twice:
 Each one is in `examples/`, generates with no warnings, and is tested in
 `crates/anyx-generator/tests/generated.rs`.
 
-### JSON (`examples/json.anyx`)
+### JSON (`examples/json.grammar.anyx`)
 
 ```anyx
 ENTRY: value,
@@ -150,7 +150,7 @@ array: SQUARE BRACKET: ZERO OR MORE: value,
 
 What to notice: `:` disappears, so a member is just two nodes side by side.
 
-### A config format (`examples/config.anyx`)
+### A config format (`examples/config.grammar.anyx`)
 
 For sources like:
 
@@ -203,7 +203,7 @@ When the keys *are* known, prefer one
 `ANYFIX CALL [WORD "port", port: NUMBER [INTEGER, AT LEAST 1, AT MOST 65535]]`
 per key: the types and the errors get better.
 
-### A keyword language (`examples/language.anyx`)
+### A keyword language (`examples/language.grammar.anyx`)
 
 ```anyx
 ENTRY [ZERO OR MORE: statement],
@@ -268,7 +268,7 @@ Every message has the same shape: what was found; what was expected; how to
 fix it, with the line and column. Do what the last part says.
 
 ```text
-grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
+grammar.grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
 ```
 
 The warnings, and what they mean in practice:

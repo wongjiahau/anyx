@@ -11,7 +11,7 @@ ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 
 ## `INTRINSIC` before a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` says that its
 ## shape is written here and the implementation supplies its meaning, as
-## for the built-in types of `prelude.anyx`. The schema checker lets only
+## for the built-in types of `prelude.protocol.anyx`. The schema checker lets only
 ## the prelude use it.
 
 protocol: ANYFIX CALL [

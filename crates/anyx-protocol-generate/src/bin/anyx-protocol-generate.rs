@@ -7,11 +7,21 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let [target, path] = arguments.as_slice() else {
-        eprintln!("usage: anyx-protocol-generate <rust|wasm|typescript> <entry.anyx>");
+        eprintln!("usage: anyx-protocol-generate <rust|wasm|typescript> <entry.protocol.anyx>");
         return ExitCode::FAILURE;
     };
+    if !is_protocol_file(path) {
+        eprintln!("{path}: expected a protocol definition file ending in `.protocol.anyx`");
+        return ExitCode::FAILURE;
+    }
     let mut sources = std::collections::BTreeMap::new();
     let schema = match Schema::load(path, |file| {
+        if !is_protocol_file(file) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "expected an imported protocol definition file ending in `.protocol.anyx`",
+            ));
+        }
         let source = std::fs::read_to_string(file)?;
         sources.insert(file.to_string(), source.clone());
         Ok::<_, std::io::Error>(source)
@@ -55,4 +65,11 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn is_protocol_file(path: &str) -> bool {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".protocol.anyx"))
 }

@@ -29,7 +29,7 @@ fn open(server: &mut Server<'_>, uri: &str, text: &str) -> Vec<Value> {
 #[test]
 fn imports_use_open_buffers_and_recheck_dependents_on_change_and_close() {
     let mut server = Server::new(&Protocol);
-    let entry = "file:///notes/protocol.anyx";
+    let entry = "file:///notes/protocol.protocol.anyx";
     let library = "file:///shared.anyx";
     let messages = open(
         &mut server,
@@ -94,7 +94,7 @@ fn diagnostics_in_imported_libraries_are_published_at_their_own_locations() {
     let mut server = Server::new(&Protocol);
     open(
         &mut server,
-        "file:///notes/entry.anyx",
+        "file:///notes/entry.protocol.anyx",
         "PROTOCOL p VERSION 1, USE \"../shared.anyx\",",
     );
     let messages = open(
@@ -135,7 +135,7 @@ fn filenames_with_spaces_resolve_and_self_imports_are_read_once() {
     open(
         &mut server,
         entry,
-        "PROTOCOL notes VERSION 1, USE \"../shared types.anyx\",",
+        "PROTOCOL notes VERSION 1, USE \"../shared types.protocol.anyx\",",
     );
     let messages = open(&mut server, library, "PUBLIC RECORD Item { value: Text },");
     assert!(
@@ -146,7 +146,7 @@ fn filenames_with_spaces_resolve_and_self_imports_are_read_once() {
     let messages = notify(
         &mut server,
         "textDocument/didChange",
-        json!({"textDocument": {"uri": library, "version": 2}, "contentChanges": [{"text": "USE \"./shared types.anyx\","}]}),
+        json!({"textDocument": {"uri": library, "version": 2}, "contentChanges": [{"text": "USE \"./shared types.protocol.anyx\","}]}),
     );
     let diagnostics = &messages
         .iter()
@@ -157,6 +157,6 @@ fn filenames_with_spaces_resolve_and_self_imports_are_read_once() {
         diagnostics[0]["message"]
             .as_str()
             .unwrap()
-            .contains("/shared types.anyx → /shared types.anyx")
+            .contains("/shared types.protocol.anyx → /shared types.protocol.anyx")
     );
 }

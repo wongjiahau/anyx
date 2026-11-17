@@ -7,7 +7,7 @@ easily, checked against the schema.
 ```rust
 let schema = anyx_protocol::Schema::parse(source)?;
 // Or follow explicit imports through a reader:
-// Schema::load("notes/protocol.anyx", |path| std::fs::read_to_string(path))
+// Schema::load("notes/protocol.protocol.anyx", |path| std::fs::read_to_string(path))
 let calls = anyx_protocol::decode_request(&schema, request)?;
 // Run each call, then:
 let response = anyx_protocol::encode_response(&schema, &calls, &outcomes)?;

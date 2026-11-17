@@ -123,17 +123,17 @@ makes its `PUBLIC` types and error groups visible to the importing file.
 Imports are direct, with no re-export. File paths never appear in calls or
 type names.
 
-### `protocol.anyx`
+### `protocol.protocol.anyx`
 
 # Notes keeps a person's notes, a file each.
 PROTOCOL notes VERSION 1,
 
-USE "./files.anyx",
-USE "./files/export.anyx",
+USE "./files.protocol.anyx",
+USE "./files/export.protocol.anyx",
 
-### `files.anyx`
+### `files.protocol.anyx`
 
-USE "./common.anyx",
+USE "./common.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 
@@ -160,7 +160,7 @@ IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING,
 
-### `common.anyx`
+### `common.protocol.anyx`
 
 # One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
@@ -170,10 +170,10 @@ PUBLIC ERRORS common errors [
     missing,
 ],
 
-### `files/export.anyx`
+### `files/export.protocol.anyx`
 
-USE "../common.anyx",
-USE "../files.anyx",
+USE "../common.protocol.anyx",
+USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
 RECORD Page { html: Text, problem: OPTIONAL Diagnostic },

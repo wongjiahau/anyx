@@ -1,14 +1,14 @@
-//! `anyx-generate grammar.anyx > src/parser.rs`
+//! `anyx-generate grammar.grammar.anyx > src/parser.rs`
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: anyx-generate [--unformatted] <grammar.anyx>
+const USAGE: &str = "usage: anyx-generate [--unformatted] <grammar.grammar.anyx>
        anyx-generate --tree <source.anyx>
 
 Reads a grammar written in anyx and prints Rust: a type for every rule,
 and a decoder from an anyx syntax tree into those types.
 
-    anyx-generate grammar.anyx > src/parser.rs
+    anyx-generate grammar.grammar.anyx > src/parser.rs
 
 The output is laid out with rustfmt. With --unformatted it is printed as
 generated, which needs no rustfmt.
@@ -39,6 +39,15 @@ fn main() -> ExitCode {
         eprintln!("found no grammar file; expected its path\n\n{USAGE}");
         return ExitCode::from(2);
     };
+    if !tree
+        && !std::path::Path::new(&path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".grammar.anyx"))
+    {
+        eprintln!("{path}: expected a grammar file ending in `.grammar.anyx`");
+        return ExitCode::from(2);
+    }
     let source = match std::fs::read_to_string(&path) {
         Ok(source) => source,
         Err(error) => {

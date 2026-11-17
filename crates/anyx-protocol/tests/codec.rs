@@ -60,7 +60,7 @@ fn a_request_reads_back_as_it_was_written() {
         },
     ];
     let request = encode_request(&schema, &calls).unwrap();
-    assert_snapshot("tests/snapshots/request.anyx", &request);
+    assert_snapshot("tests/snapshots/request.request.anyx", &request);
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
 }
 
@@ -117,7 +117,7 @@ fn a_response_reads_back_as_it_was_written() {
         Outcome::NotRun,
     ]);
     let text = encode_response(&schema, &calls, &response).unwrap();
-    assert_snapshot("tests/snapshots/response.anyx", &text);
+    assert_snapshot("tests/snapshots/response.response.anyx", &text);
     assert_eq!(decode_response(&schema, &methods, &text).unwrap(), response);
 }
 

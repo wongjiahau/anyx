@@ -1,4 +1,4 @@
-//! The Rust module generated from `tests/fixtures/generic.anyx`, compiled: a
+//! The Rust module generated from `tests/fixtures/generic.protocol.anyx`, compiled: a
 //! client calls a server in the same process with generic records and
 //! choices, with a slot at the end, at the start, at both ends and between
 //! words, nested uses of them and a named type over one.

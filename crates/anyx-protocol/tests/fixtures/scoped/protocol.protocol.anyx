@@ -1,5 +1,5 @@
 # Notes keeps a person's notes, a file each.
 PROTOCOL notes VERSION 1,
 
-USE "./files.anyx",
-USE "./files/export.anyx",
+USE "./files.protocol.anyx",
+USE "./files/export.protocol.anyx",

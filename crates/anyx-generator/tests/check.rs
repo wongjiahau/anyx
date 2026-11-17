@@ -30,10 +30,10 @@ fn reports(sources: &[&str]) -> String {
 #[test]
 fn the_shipped_grammars_have_nothing_to_report() {
     for path in [
-        "grammar.anyx",
-        "tests/fixtures/json.anyx",
-        "tests/fixtures/manifest.anyx",
-        "tests/fixtures/groups.anyx",
+        "grammar.grammar.anyx",
+        "tests/fixtures/json.grammar.anyx",
+        "tests/fixtures/manifest.grammar.anyx",
+        "tests/fixtures/groups.grammar.anyx",
     ] {
         assert_eq!(report(&fixture(path)), "nothing to report\n", "{path}");
     }
