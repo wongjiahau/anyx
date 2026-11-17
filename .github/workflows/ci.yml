@@ -31,6 +31,15 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Lint all targets and features
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: editors/lsp-demo/package-lock.json
+      - name: Install TypeScript integration test dependencies
+        run: |
+          npm ci --prefix editors/lsp-demo
+          echo "$GITHUB_WORKSPACE/editors/lsp-demo/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Test all crates and features
         run: cargo test --workspace --all-features --locked
 
