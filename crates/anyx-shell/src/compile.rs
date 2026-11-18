@@ -15,6 +15,8 @@ pub(crate) struct Call {
     pub scope: String,
     pub method: usize,
     pub arguments: Vec<Argument>,
+    /// Where the call is written, for a precondition that fails.
+    pub span: Span,
 }
 
 pub(crate) struct Argument {
@@ -31,6 +33,52 @@ pub(crate) enum ExpressionValue {
     Variant(String, Vec<Argument>),
 }
 
+impl Argument {
+    /// Its value, when it is written out with no call in it.
+    pub fn literal(&self) -> Option<Value> {
+        Some(match &self.value {
+            ExpressionValue::Literal(value) => value.clone(),
+            ExpressionValue::Call(_) => return None,
+            ExpressionValue::List(items) => {
+                Value::List(items.iter().map(Self::literal).collect::<Option<_>>()?)
+            }
+            ExpressionValue::Record(fields) => Value::Record(
+                fields
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), value.literal()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            ExpressionValue::Map(fields) => Value::Map(
+                fields
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), value.literal()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            ExpressionValue::Variant(shape, arguments) => Value::Variant {
+                shape: shape.clone(),
+                arguments: arguments.iter().map(Self::literal).collect::<Option<_>>()?,
+            },
+        })
+    }
+
+    /// Runs `check` on each call in it, outermost first.
+    fn each_call(
+        &self,
+        check: &mut impl FnMut(&Call) -> Result<(), Problem>,
+    ) -> Result<(), Problem> {
+        match &self.value {
+            ExpressionValue::Literal(_) => Ok(()),
+            ExpressionValue::Call(call) => check(call),
+            ExpressionValue::List(items) | ExpressionValue::Variant(_, items) => {
+                items.iter().try_for_each(|item| item.each_call(check))
+            }
+            ExpressionValue::Record(fields) | ExpressionValue::Map(fields) => fields
+                .iter()
+                .try_for_each(|(_, value)| value.each_call(check)),
+        }
+    }
+}
+
 pub(crate) struct Compiler<'a> {
     pub interpreter: &'a Interpreter,
     pub source: &'a str,
@@ -39,12 +87,39 @@ pub(crate) struct Compiler<'a> {
 
 impl Compiler<'_> {
     pub fn element(&self, node: &Node) -> Result<Call, Problem> {
-        if self.is_scoped(node) {
-            return self.call(node.span);
+        let call = if self.is_scoped(node) {
+            self.call(node.span)?
+        } else {
+            self.opened_call(node, None).unwrap_or_else(|| {
+                Err(self.error(node.span, "expected a scoped call, such as `environment / list variables`, or a method from an opened tool"))
+            })?
+        };
+        self.check_preconditions(&call)?;
+        Ok(call)
+    }
+
+    /// Checks the `REQUIRES` of `call` and of each call in its arguments
+    /// whose arguments are all written out. The rest are checked when their
+    /// arguments have been computed, just before the call runs.
+    fn check_preconditions(&self, call: &Call) -> Result<(), Problem> {
+        for argument in &call.arguments {
+            argument.each_call(&mut |nested| self.check_preconditions(nested))?;
         }
-        self.opened_call(node, None).unwrap_or_else(|| {
-            Err(self.error(node.span, "expected a scoped call, such as `environment / list variables`, or a method from an opened tool"))
-        })
+        let Some(values) = call
+            .arguments
+            .iter()
+            .map(Argument::literal)
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Ok(());
+        };
+        let schema = self.interpreter.tools[&call.scope].schema();
+        anyx_protocol::refinement::check_precondition(
+            schema,
+            schema.method_at(call.method),
+            &values,
+        )
+        .map_err(|message| self.error(call.span, message))
     }
 
     fn opened_call(
@@ -87,6 +162,7 @@ impl Compiler<'_> {
                         scope: scope.clone(),
                         method: index,
                         arguments,
+                        span: node.span,
                     }),
                     Err(error) => {
                         failure.get_or_insert(error);
@@ -215,6 +291,7 @@ impl Compiler<'_> {
                         scope: scope.text.clone(),
                         method,
                         arguments,
+                        span,
                     })
                 });
                 match (contextual.next(), contextual.next()) {
@@ -294,6 +371,7 @@ impl Compiler<'_> {
             scope: scope.text.clone(),
             method: *method,
             arguments,
+            span,
         })
     }
 

@@ -177,7 +177,9 @@ impl Interpreter {
                 if node.span.end >= frame.start.unwrap_or(replace.start) {
                     break;
                 }
-                if let Ok(opening) = shell_grammar::decode_opening(&node) {
+                if let Ok(shell_grammar::Directive::Opening(opening)) =
+                    shell_grammar::decode_directive(&node)
+                {
                     let scope = opening.scope.name.text;
                     if self.tools.contains_key(&scope) {
                         opened.insert(scope);

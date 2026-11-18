@@ -240,3 +240,71 @@ fn tool_bodies_keep_protocol_records_lists_and_nothing_returns() {
     assert_eq!(execution.values.len(), 2);
     assert_eq!(execution.output, "{ names [\"a/b\", \"c,d\"] },\n[],\n");
 }
+
+#[test]
+fn preconditions_are_checked_before_a_call_runs() {
+    struct SettingsTool(Schema);
+    impl Tool for SettingsTool {
+        fn schema(&self) -> &Schema {
+            &self.0
+        }
+        fn invoke(&mut self, call: &Call) -> Outcome {
+            let setting = |shape: &str| Value::Variant {
+                shape: shape.into(),
+                arguments: vec![],
+            };
+            Outcome::Value(
+                call.arguments.first().cloned().unwrap_or_else(|| {
+                    Value::List(vec![setting("any case"), setting("exact case")])
+                }),
+            )
+        }
+    }
+    let mut interpreter = interpreter();
+    interpreter
+        .register(
+            "example",
+            SettingsTool(
+                Schema::parse(
+                    r#"PROTOCOL example VERSION 1,
+                    CHOICE Setting { any case, exact case, hidden },
+                    METHOD echo (settings: LIST Setting)
+                        REQUIRES [settings . has at most one of [any case, exact case]]
+                        RETURNS (settings: LIST Setting),
+                    METHOD both RETURNS (settings: LIST Setting),"#,
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+    // Written out, the arguments are checked with the rest of the document,
+    // so nothing runs.
+    let problem = interpreter
+        .execute(
+            "environment / set variable \"x\" to \"1\",\nexample / echo [any case, exact case]",
+        )
+        .unwrap_err();
+    assert_eq!(problem.line, 2);
+    assert!(
+        problem
+            .message
+            .contains("expected settings has at most one of"),
+        "{}",
+        problem.message
+    );
+    assert_eq!(
+        run(&mut interpreter, "environment / list variables"),
+        vec![Value::List(vec![])]
+    );
+    // Computed, they are checked just before the call.
+    let execution = interpreter
+        .execute("example / echo [hidden], example / echo (example / both)")
+        .unwrap();
+    assert_eq!(execution.values.len(), 1);
+    let error = execution.error.unwrap();
+    assert!(error.starts_with("INVALID REQUEST"), "{error}");
+    assert!(
+        error.contains("expected settings has at most one of"),
+        "{error}"
+    );
+}
