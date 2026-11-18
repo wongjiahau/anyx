@@ -40,6 +40,24 @@ An empty collection is a list `[]`; an empty document or a
 method that returns nothing produces no output. Multiple results form one
 comma-separated anyx document.
 
+## Open a tool
+
+`USE ALL FROM boolean` makes the methods of the registered `boolean` tool
+available without a qualifier, including inside nested arguments.
+
+```anyx
+USE ALL FROM boolean,
+true .and (false .and (true)),
+boolean / not (true),
+```
+
+Both calls return `false`. An opening takes effect for subsequent calls and
+persists for the rest of an interactive session. A standalone invocation starts
+with its own set of openings. A submission that fails validation applies none
+of its openings. If multiple opened methods fit, qualify the call with
+`tool / …`. Completion displays the source scope for opened methods and inserts
+qualification when different open tools expose the same method shape.
+
 ## Interactive shell
 
 ```sh

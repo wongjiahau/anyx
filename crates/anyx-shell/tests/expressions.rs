@@ -396,3 +396,149 @@ METHOD use (value: Integer . WHERE [0 < _]) RETURNS (value: Integer),
         );
     }
 }
+
+fn register_example(interpreter: &mut Interpreter, scope: &str, methods: &str) {
+    interpreter
+        .register(
+            scope,
+            Example {
+                schema: Schema::parse(&format!("PROTOCOL {scope} VERSION 1, {methods}")).unwrap(),
+                calls: Rc::default(),
+            },
+        )
+        .unwrap();
+}
+
+#[test]
+fn opening_a_tool_is_sequential_and_persists_after_a_valid_submission() {
+    let (mut interpreter, calls) = interpreter();
+    assert!(interpreter.execute("text, USE ALL FROM example").is_err());
+    assert!(
+        interpreter
+            .execute("USE ALL FROM example, missing")
+            .is_err()
+    );
+    assert!(interpreter.execute("text").is_err());
+    assert!(
+        interpreter
+            .execute("USE ALL FROM unknown")
+            .unwrap_err()
+            .message
+            .contains("unknown tool scope")
+    );
+    assert!(
+        interpreter
+            .execute(r#"USE ALL FROM "./example.protocol.anyx""#)
+            .is_err()
+    );
+    assert!(calls.borrow().is_empty());
+
+    let values = interpreter
+        .execute(
+            "USE ALL FROM example, USE ALL FROM example, handle (text), example / handle (integer)",
+        )
+        .unwrap()
+        .values;
+    assert_eq!(
+        values,
+        [Value::Text("Text".into()), Value::Text("Integer".into())]
+    );
+    assert_eq!(
+        interpreter.execute("integer").unwrap().values,
+        [Value::Integer(42)]
+    );
+}
+
+#[test]
+fn opened_calls_use_argument_and_expected_return_types() {
+    let (mut interpreter, _) = interpreter();
+    register_example(
+        &mut interpreter,
+        "first",
+        "METHOD pick (x: Text) RETURNS (value: Text), METHOD text RETURNS (value: Text)",
+    );
+    register_example(
+        &mut interpreter,
+        "second",
+        "METHOD pick (x: Integer) RETURNS (value: Integer), METHOD text RETURNS (value: Integer)",
+    );
+    interpreter
+        .execute("USE ALL FROM first, USE ALL FROM second")
+        .unwrap();
+
+    assert_eq!(
+        interpreter
+            .execute(r#"pick 42, pick "hi", first / pick (text)"#)
+            .unwrap()
+            .values,
+        [
+            Value::Integer(42),
+            Value::Text("hi".into()),
+            Value::Text("hello".into())
+        ]
+    );
+    let error = interpreter.execute("text").unwrap_err().message;
+    assert!(error.contains("ambiguous call"), "{error}");
+    assert!(
+        error.contains("first / text") && error.contains("second / text"),
+        "{error}"
+    );
+}
+
+#[test]
+fn opened_mixfix_calls_follow_anyx_grouping() {
+    let mut interpreter = Interpreter::new();
+    interpreter
+        .register("boolean", anyx_shell::boolean::Boolean)
+        .unwrap();
+    let execution = interpreter
+        .execute("USE ALL FROM boolean, true .and (false .and (true))")
+        .unwrap();
+    assert_eq!(execution.output, "false\n");
+    let source = "true .an";
+    assert!(
+        interpreter
+            .completions(source, source.len())
+            .items
+            .iter()
+            .any(|item| item.insert_text.starts_with("and ")
+                && item.detail.starts_with("boolean / "))
+    );
+
+    assert!(interpreter.execute("true and (false) and (true)").is_err());
+}
+
+#[test]
+fn completion_suggests_opened_methods_and_qualifies_collisions() {
+    let (mut interpreter, _) = interpreter();
+    register_example(
+        &mut interpreter,
+        "other",
+        "METHOD text RETURNS (value: Text)",
+    );
+    let source = "USE ALL FROM example, example / handle (te";
+    let completions = interpreter.completions(source, source.len());
+    assert!(
+        completions
+            .items
+            .iter()
+            .any(|item| item.insert_text == "text")
+    );
+
+    interpreter
+        .execute("USE ALL FROM example, USE ALL FROM other")
+        .unwrap();
+    let completions = interpreter.completions("te", 2);
+    assert!(
+        completions
+            .items
+            .iter()
+            .any(|item| item.insert_text == "example / text")
+    );
+    assert!(
+        completions
+            .items
+            .iter()
+            .any(|item| item.insert_text == "other / text")
+    );
+}

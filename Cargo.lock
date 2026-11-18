@@ -72,6 +72,7 @@ dependencies = [
  "anyx-protocol",
  "crossterm",
  "ratatui",
+ "regex",
  "unicode-segmentation",
  "unicode-width",
 ]
