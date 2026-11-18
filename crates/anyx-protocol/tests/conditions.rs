@@ -21,7 +21,7 @@ fn preconditions_reject_the_entire_request() {
     assert_eq!((problem.line, problem.column), (2, 1));
     for text in [
         "write \"a.txt\" at revision 4 before 4",
-        "REQUIRES [0 < revision < limit",
+        "REQUIRES failed for `write (path: Text) at revision (revision: Integer) before (limit: Integer)`",
         "`revision` (Integer) = `4`",
         "`limit` (Integer) = `4`",
         "expected revision less than limit",

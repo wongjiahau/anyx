@@ -234,19 +234,29 @@ impl Predicate<usize> {
                     .filter(|(index, _)| failed.references(|used| used == index))
                     .filter_map(|(index, parameter)| {
                         value(&index).map(|value| {
+                            let written =
+                                crate::codec::encode_value(schema, &parameter.r#type, value)
+                                    .map_or_else(
+                                        |_| value_text(value),
+                                        |text| text.trim_end().to_string(),
+                                    );
                             format!(
-                                "`{}` ({}) = `{}`",
+                                "`{}` ({}) = `{written}`",
                                 parameter.name,
                                 schema.type_name(&parameter.r#type),
-                                value_text(value)
                             )
                         })
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
+                // Quote the whole condition only when it is one test; the
+                // failed one is named after `expected` either way.
+                let quoted = match self.tests.len() {
+                    1 => format!(" [{}]", self.source),
+                    _ => String::new(),
+                };
                 return Err(format!(
-                    "{clause} [{}] failed for `{}` with {sent}; expected {}",
-                    self.source,
+                    "{clause}{quoted} failed for `{}` with {sent}; expected {}",
                     schema.typed_shape(&method.shape),
                     failed.describe(&name),
                 ));
@@ -256,7 +266,10 @@ impl Predicate<usize> {
     }
 }
 
-pub(crate) fn check_precondition(
+/// Checks `method`'s `REQUIRES` against a call's `arguments`, as the decoder
+/// does before dispatch. A client that builds calls from values it computed,
+/// such as the anyx shell, checks them with it before sending.
+pub fn check_precondition(
     schema: &Schema,
     method: &crate::schema::Method,
     arguments: &[Value],
