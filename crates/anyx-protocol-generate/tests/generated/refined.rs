@@ -18,10 +18,15 @@ TYPE Large: Integer . WHERE [9007199254740992 < _],
 TYPE Linear: Integer . WHERE [0 < (_ * 2), (_ + 1) <= 30],
 TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)],
 TYPE Contains Zero: Text . WHERE [_ contains "\u00001"],
+TYPE Outside Range: Integer . WHERE [not: 1 <= _ <= 3],
+TYPE True Only: Boolean . WHERE [_ and (true)],
 TYPE Names: (LIST Text) WHERE [1 <= (_ length) <= 3],
 RECORD Summary { path: Score Path, revision: Revision, limit: Limit DEFAULT 10 },
 RECORD Box of (item: Type) { value: item },
-METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
+METHOD write (path: Score Path) at (revision: Revision)
+    REQUIRES [revision < 10]
+    RETURNS (saved revision: Revision)
+    ENSURES [saved revision = revision],
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
 METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS (value: Box of (Limit)),
@@ -515,6 +520,110 @@ impl FromValue for ContainsZero {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct OutsideRange(i64);
+
+impl OutsideRange {
+    pub fn new(value: i64) -> Result<Self, String> {
+        let wire = value.clone().into_value();
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(9),
+            &wire,
+        )?;
+        Ok(Self(value))
+    }
+    pub fn get(&self) -> &i64 {
+        &self.0
+    }
+    pub fn into_inner(self) -> i64 {
+        self.0
+    }
+}
+
+impl TryFrom<i64> for OutsideRange {
+    type Error = String;
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl From<OutsideRange> for i64 {
+    fn from(value: OutsideRange) -> Self {
+        value.0
+    }
+}
+
+impl IntoValue for OutsideRange {
+    fn into_value(self) -> Value {
+        self.0.into_value()
+    }
+}
+
+impl FromValue for OutsideRange {
+    fn from_value(value: Value) -> Option<Self> {
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(9),
+            &value,
+        )
+        .ok()?;
+        FromValue::from_value(value).map(Self)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrueOnly(Boolean);
+
+impl TrueOnly {
+    pub fn new(value: Boolean) -> Result<Self, String> {
+        let wire = value.clone().into_value();
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(10),
+            &wire,
+        )?;
+        Ok(Self(value))
+    }
+    pub fn get(&self) -> &Boolean {
+        &self.0
+    }
+    pub fn into_inner(self) -> Boolean {
+        self.0
+    }
+}
+
+impl TryFrom<Boolean> for TrueOnly {
+    type Error = String;
+    fn try_from(value: Boolean) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl From<TrueOnly> for Boolean {
+    fn from(value: TrueOnly) -> Self {
+        value.0
+    }
+}
+
+impl IntoValue for TrueOnly {
+    fn into_value(self) -> Value {
+        self.0.into_value()
+    }
+}
+
+impl FromValue for TrueOnly {
+    fn from_value(value: Value) -> Option<Self> {
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(10),
+            &value,
+        )
+        .ok()?;
+        FromValue::from_value(value).map(Self)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Names(Vec<String>);
 
 impl Names {
@@ -522,7 +631,7 @@ impl Names {
         let wire = value.clone().into_value();
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(9),
+            &anyx_protocol::schema::Type::Named(11),
             &wire,
         )?;
         Ok(Self(value))
@@ -558,7 +667,7 @@ impl FromValue for Names {
     fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(9),
+            &anyx_protocol::schema::Type::Named(11),
             &value,
         )
         .ok()?;
@@ -702,7 +811,7 @@ impl<Item: FromValue> FromValue for Nullable<Item> {
 pub trait Server {
     type Error;
 
-    /// `write _ at _`, returning `revision`.
+    /// `write _ at _`, returning `saved revision`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn write_at(&self, path: ScorePath, revision: Revision) -> Result<Revision, Self::Error>;
@@ -827,7 +936,7 @@ impl<T: Transport> Client<T> {
         Self { transport }
     }
 
-    /// `write _ at _`, returning `revision`.
+    /// `write _ at _`, returning `saved revision`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn write_at(

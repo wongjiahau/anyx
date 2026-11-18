@@ -43,7 +43,14 @@ pub fn encode_response(
     let written = calls
         .iter()
         .zip(outcomes)
-        .map(|(call, outcome)| encode_outcome(schema, schema.method_at(call.method), outcome))
+        .map(|(call, outcome)| {
+            let method = schema.method_at(call.method);
+            let written = encode_outcome(schema, method, outcome)?;
+            match check_postcondition(schema, call, outcome) {
+                Ok(()) => Ok(written),
+                Err(_) => Ok("INTERNAL ERROR".into()),
+            }
+        })
         .collect::<Result<Vec<_>, EncodeError>>()?;
     Ok(match written.as_slice() {
         [outcome] => format!("{outcome}\n"),
@@ -51,6 +58,28 @@ pub fn encode_response(
             .iter()
             .map(|outcome| format!("{outcome},\n"))
             .collect(),
+    })
+}
+
+pub(crate) fn validate_outcome(
+    schema: &Schema,
+    call: &Call,
+    outcome: &Outcome,
+) -> Result<(), EncodeError> {
+    encode_outcome(schema, schema.method_at(call.method), outcome)?;
+    check_postcondition(schema, call, outcome)
+}
+
+fn check_postcondition(schema: &Schema, call: &Call, outcome: &Outcome) -> Result<(), EncodeError> {
+    crate::refinement::check_postcondition(
+        schema,
+        schema.method_at(call.method),
+        &call.arguments,
+        outcome,
+    )
+    .map_err(|message| {
+        eprintln!("{message}");
+        EncodeError { message }
     })
 }
 

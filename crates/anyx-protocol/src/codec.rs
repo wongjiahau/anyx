@@ -238,7 +238,7 @@ fn decode_arguments(
         _ => choose(schema, source, methods, span, call, &arguments)?,
     };
     let method = methods[chosen];
-    let values = method
+    let values: Vec<_> = method
         .shape
         .parameters
         .iter()
@@ -287,6 +287,10 @@ fn decode_arguments(
             Ok(value)
         })
         .collect::<Result<_, _>>()?;
+    crate::refinement::check_precondition(schema, method, &values).map_err(|message| Mismatch {
+        span,
+        message: format!("in `{}`: {message}", written(source, span)),
+    })?;
     Ok((chosen, values))
 }
 
@@ -507,6 +511,8 @@ pub fn encode_request(schema: &Schema, calls: &[Call]) -> Result<String, EncodeE
             let method = schema.method_at(call.method);
             let mut shape = String::new();
             write_call(schema, method, &call.arguments, &mut shape)?;
+            crate::refinement::check_precondition(schema, method, &call.arguments)
+                .map_err(|message| EncodeError { message })?;
             Ok(layout(shape).trim_end().to_string())
         })
         .collect::<Result<Vec<_>, EncodeError>>()?;

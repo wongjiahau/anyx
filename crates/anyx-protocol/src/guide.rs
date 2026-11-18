@@ -31,7 +31,7 @@ shape of one of the methods below, with a value in each `(name: Type)` slot:
     {example}
 {overloads}
 Every call runs, in order, and the response has one result per call.
-
+{conditions}
 `SCHEMA` is a call every server answers, with this guide.
 
 ## Effects
@@ -130,6 +130,11 @@ is a group of errors that methods share by joining it with `+`.{examples}{import
         },
         source = sources(schema),
         overloads = overloads(schema),
+        conditions = if schema.methods.iter().any(|method| method.requires.is_some() || method.ensures.is_some()) {
+            "\n`REQUIRES` clauses below must hold for each call's arguments. If one fails,\nthe whole request gets `INVALID REQUEST`. `ENSURES` clauses describe what\nmust hold for a successful result and its call's arguments. A violation\ngets `INTERNAL ERROR`.\n"
+        } else {
+            ""
+        },
         named_types = named_types(schema),
         built_in = built_in_types(),
         prelude = prelude_choices(),
@@ -357,7 +362,14 @@ fn sources(schema: &Schema) -> String {
 fn call_of(schema: &Schema, method: &Method) -> String {
     match method.examples.first() {
         Some(example) => example.call.clone(),
-        None => sample_call(schema, method),
+        None => {
+            let call = sample_call(schema, method);
+            if method.requires.is_some() && crate::decode_request(schema, &call).is_err() {
+                schema.typed_shape(&method.shape)
+            } else {
+                call
+            }
+        }
     }
 }
 

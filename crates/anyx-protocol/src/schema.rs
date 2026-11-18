@@ -141,6 +141,10 @@ pub struct Method {
     /// What a call returns when it succeeds, named, or `None` for a
     /// method that `RETURNS NOTHING`.
     pub returns: Option<Parameter>,
+    /// Conditions checked on the whole request before any handler runs.
+    pub requires: Option<crate::refinement::Predicate<usize>>,
+    /// Conditions checked before sending a successful method result.
+    pub ensures: Option<crate::refinement::Predicate<usize>>,
     /// Indices into [`Schema::errors`], with aliases expanded, in the order
     /// written.
     pub errors: Vec<usize>,
@@ -380,6 +384,8 @@ pub fn introspection() -> &'static Method {
             name: "guide".to_string(),
             r#type: Type::Text,
         }),
+        requires: None,
+        ensures: None,
         errors: Vec::new(),
         examples: Vec::new(),
         effect: Effect::ReadOnly,
