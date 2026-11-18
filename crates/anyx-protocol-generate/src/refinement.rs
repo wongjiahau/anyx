@@ -41,7 +41,7 @@ impl ExpressionJavascript for Expr {
             }
         }
         match self {
-            Self::Value | Self::Length => "n".into(),
+            Self::Value(()) | Self::Length(()) => "n".into(),
             Self::Integer(n) => format!("({n}{})", if float { "" } else { "n" }),
             Self::Float(n) => format!("({n:?})"),
             Self::Add(a, b) => format!("({}+{})", a.javascript(float), b.javascript(float)),
@@ -56,7 +56,7 @@ trait TestJavascript {
 impl TestJavascript for Test {
     fn javascript(&self) -> String {
         match self {
-            Self::Text(op, text) => format!(
+            Self::Text((), op, text) => format!(
                 "return typeof value === 'string' && value.{}({});",
                 match op.as_str() {
                     "starts with" => "startsWith",

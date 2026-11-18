@@ -34,7 +34,11 @@ impl Server for Handler {
     type Error = std::convert::Infallible;
     async fn write_at(&self, _: ScorePath, revision: Revision) -> Result<Revision, Self::Error> {
         self.calls.set(self.calls.get() + 1);
-        Ok(revision)
+        Ok(if self.bad_return {
+            Revision::new(9).unwrap()
+        } else {
+            revision
+        })
     }
     async fn limit(&self, value: i64) -> Result<i64, Self::Error> {
         self.calls.set(self.calls.get() + 1);
@@ -85,6 +89,34 @@ fn a_broken_returned_refinement_stops_the_generated_server() {
     let response = run(refined::handle(&server, request, |e| match e {}));
     assert_eq!(
         anyx_protocol::decode_response(refined::schema(), &[1, 0], &response).unwrap(),
+        Response::Outcomes(vec![Outcome::InternalError, Outcome::NotRun])
+    );
+    assert_eq!(server.calls.get(), 1);
+}
+#[test]
+fn method_contracts_gate_generated_handler_execution() {
+    let server = Handler {
+        calls: Cell::new(0),
+        bad_return: true,
+    };
+    let valid = "write (\"a.poentaro\" AS: Score Path) at (1 AS: Revision)";
+    let invalid = "write (\"a.poentaro\" AS: Score Path) at (10 AS: Revision)";
+    let rejected = run(refined::handle(
+        &server,
+        &format!("{valid}, {invalid}"),
+        |e| match e {},
+    ));
+    assert!(rejected.starts_with("INVALID REQUEST"), "{rejected}");
+    assert!(rejected.contains("REQUIRES"), "{rejected}");
+    assert_eq!(server.calls.get(), 0);
+
+    let response = run(refined::handle(
+        &server,
+        &format!("{valid}, {valid}"),
+        |e| match e {},
+    ));
+    assert_eq!(
+        anyx_protocol::decode_response(refined::schema(), &[0, 0], &response).unwrap(),
         Response::Outcomes(vec![Outcome::InternalError, Outcome::NotRun])
     );
     assert_eq!(server.calls.get(), 1);

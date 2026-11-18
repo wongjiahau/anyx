@@ -184,7 +184,9 @@ pub struct Method {
     pub read_only: Option<Span>,
     pub idempotent: Option<Span>,
     pub shape: Shape,
+    pub requires: Option<Condition>,
     pub returns: MethodReturns,
+    pub ensures: Option<Condition>,
     pub errors: Option<ErrorList>,
     pub undone_by: Option<Undo>,
     pub examples: Option<Examples>,
@@ -195,6 +197,12 @@ pub struct Method {
 pub enum MethodReturns {
     Value(Returns),
     Nothing(Span),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Condition {
+    pub predicate: Vec<Node>,
+    pub span: Span,
 }
 
 pub type Undo = Shape;
@@ -589,7 +597,9 @@ impl support::Errors for Method {
         support::Errors::errors(&self.read_only, found);
         support::Errors::errors(&self.idempotent, found);
         support::Errors::errors(&self.shape, found);
+        support::Errors::errors(&self.requires, found);
         support::Errors::errors(&self.returns, found);
+        support::Errors::errors(&self.ensures, found);
         support::Errors::errors(&self.errors, found);
         support::Errors::errors(&self.undone_by, found);
         support::Errors::errors(&self.examples, found);
@@ -602,6 +612,12 @@ impl support::Errors for MethodReturns {
             MethodReturns::Value(value) => support::Errors::errors(value, found),
             MethodReturns::Nothing(_) => {}
         }
+    }
+}
+
+impl support::Errors for Condition {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.predicate, found);
     }
 }
 
@@ -1128,6 +1144,18 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
             None
         },
         shape: parts.word("METHOD")?.one(decode_shape, "a shape")?,
+        requires: if parts
+            .choose(&["REQUIRES"], false, true, &["the word `REQUIRES`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("REQUIRES")?
+                    .one(decode_condition, "a condition")?,
+            )
+        } else {
+            None
+        },
         returns: {
             parts.word("RETURNS")?;
             match parts.choose(
@@ -1139,6 +1167,18 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
                 Some(0) => MethodReturns::Nothing(parts.word_span("NOTHING")?),
                 _ => MethodReturns::Value(parts.one(decode_returns, "returns")?),
             }
+        },
+        ensures: if parts
+            .choose(&["ENSURES"], false, true, &["the word `ENSURES`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("ENSURES")?
+                    .one(decode_condition, "a condition")?,
+            )
+        } else {
+            None
         },
         errors: if parts
             .choose(&["ERRORS"], false, true, &["the word `ERRORS`"])?
@@ -1176,6 +1216,16 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
         span: node.span,
     };
     parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_condition(node: &Node) -> Result<Condition, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let decoded = Condition {
+        predicate: elements.one_or_more(support::any_node, "a node")?,
+        span: node.span,
+    };
+    elements.finish()?;
     Ok(decoded)
 }
 
@@ -1401,7 +1451,9 @@ pub const DOCUMENTATION: &[(&str, &str)] = &[];
 /// How [`format`] lays out calls, from the grammar's `FORMAT`s.
 pub const LAYOUT: &[support::LayoutRule] = &[support::LayoutRule {
     words: &["METHOD", "RETURNS"],
-    break_before: &["RETURNS", "ERRORS", "UNDONE", "EXAMPLES"],
+    break_before: &[
+        "REQUIRES", "RETURNS", "ENSURES", "ERRORS", "UNDONE", "EXAMPLES",
+    ],
 }];
 
 /// Formats `source` canonically, laying calls out as the grammar says.

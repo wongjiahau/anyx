@@ -262,6 +262,34 @@ an encoding error; generated servers turn it into `INTERNAL ERROR` and stop
 before running the next call. A client rejects an invalid returned value.
 The generated guide explains both the predicate and its bounds in words.
 
+### Method conditions
+
+A method can declare a `REQUIRES` clause before `RETURNS` and an
+`ENSURES` clause after it.
+
+```anyx
+METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer)
+    REQUIRES [1 <= revision < limit]
+    RETURNS (new revision: Integer)
+    ENSURES [new revision = revision + 1],
+```
+
+Conditions share the refinement predicate language. They refer to the
+method's named arguments, and `ENSURES` may also refer to the named result.
+They can compare numbers or lengths, use comparison chains and arithmetic,
+and apply the same text tests as refinements. Each test in the brackets must
+hold. Use refinement types for restrictions on individual values that apply
+wherever those types are used.
+
+The decoder checks every call's preconditions before dispatch. A failure
+returns one `INVALID REQUEST` for the whole batch, with the call's location,
+the values involved and the failed condition. The producer checks
+postconditions on successful outcomes. A violation is logged and that
+outcome becomes `INTERNAL ERROR`. Generated servers stop the batch there.
+The JSON bridge uses the existing outcome format with `"kind": "internalError"`
+for that result. The guide includes the clauses, and example calls and
+successful outcomes are checked when the schema loads.
+
 ### Writing shapes
 
 A shape is read as a sentence: in a call, an error and the guide. Write it
@@ -317,8 +345,7 @@ METHOD close (account: Text) RETURNS NOTHING
   as intents.
 
 Schemas are formatted with `anyx_protocol::format_schema`, which puts a long
-`METHOD`'s `RETURNS`, `ERRORS`, `UNDONE BY` and `EXAMPLES` on lines of their
-own.
+`METHOD`'s clauses on lines of their own.
 
 ### Effects
 

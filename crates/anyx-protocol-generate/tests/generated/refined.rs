@@ -21,7 +21,10 @@ TYPE Contains Zero: Text . WHERE [_ contains "\u00001"],
 TYPE Names: (LIST Text) WHERE [1 <= (_ length) <= 3],
 RECORD Summary { path: Score Path, revision: Revision, limit: Limit DEFAULT 10 },
 RECORD Box of (item: Type) { value: item },
-METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
+METHOD write (path: Score Path) at (revision: Revision)
+    REQUIRES [revision < 10]
+    RETURNS (saved revision: Revision)
+    ENSURES [saved revision = revision],
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
 METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS (value: Box of (Limit)),
@@ -702,7 +705,7 @@ impl<Item: FromValue> FromValue for Nullable<Item> {
 pub trait Server {
     type Error;
 
-    /// `write _ at _`, returning `revision`.
+    /// `write _ at _`, returning `saved revision`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn write_at(&self, path: ScorePath, revision: Revision) -> Result<Revision, Self::Error>;
@@ -827,7 +830,7 @@ impl<T: Transport> Client<T> {
         Self { transport }
     }
 
-    /// `write _ at _`, returning `revision`.
+    /// `write _ at _`, returning `saved revision`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn write_at(

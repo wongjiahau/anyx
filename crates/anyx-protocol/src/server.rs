@@ -51,16 +51,12 @@ pub fn respond(schema: &Schema, calls: &[Call], outcomes: Vec<Outcome>) -> Strin
     let outcomes: Vec<Outcome> = calls
         .iter()
         .zip(outcomes)
-        .map(|(call, outcome)| {
-            let single = Response::Outcomes(vec![outcome]);
-            match encode_response(schema, std::slice::from_ref(call), &single) {
-                Ok(_) => match single {
-                    Response::Outcomes(mut outcomes) => outcomes.remove(0),
-                    Response::InvalidRequest(_) => unreachable!(),
-                },
+        .map(
+            |(call, outcome)| match validate_outcome(schema, call, &outcome) {
+                Ok(()) => outcome,
                 Err(_) => Outcome::InternalError,
-            }
-        })
+            },
+        )
         .collect();
     encode_response(schema, calls, &Response::Outcomes(outcomes))
         .expect("every outcome was checked to have a form")
@@ -73,10 +69,5 @@ pub fn validate_outcome(
     call: &Call,
     outcome: &Outcome,
 ) -> Result<(), crate::EncodeError> {
-    encode_response(
-        schema,
-        std::slice::from_ref(call),
-        &Response::Outcomes(vec![outcome.clone()]),
-    )
-    .map(|_| ())
+    crate::response::validate_outcome(schema, call, outcome)
 }

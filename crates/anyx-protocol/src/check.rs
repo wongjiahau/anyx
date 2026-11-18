@@ -499,9 +499,10 @@ impl<'a> Checker<'a> {
         }
         self.check_recursion(&schema);
         if self.diagnostics.is_empty() {
-            for diagnostic in crate::refinement::check_schema(&schema) {
-                self.diagnostics.push(diagnostic);
-            }
+            self.diagnostics
+                .extend(crate::refinement::check_schema(&schema));
+            self.diagnostics
+                .extend(crate::refinement::check_methods(&schema));
         }
         if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
@@ -598,8 +599,12 @@ impl<'a> Checker<'a> {
                 let (doc, call) = Self::without_doc(call);
                 let read = codec::decode_call_of(schema, &self.sources[self.file], method, &call)
                     .and_then(|arguments| {
-                        response::read_outcome(schema, method, written, span)
-                            .map(|outcome| (arguments, outcome))
+                        let outcome = response::read_outcome(schema, method, written, span)?;
+                        crate::refinement::check_postcondition(
+                            schema, method, &arguments, &outcome,
+                        )
+                        .map_err(|message| codec::Mismatch { span, message })?;
+                        Ok((arguments, outcome))
                     });
                 match read {
                     Ok((arguments, outcome)) => Some(Example {
@@ -1430,14 +1435,49 @@ impl<'a> Checker<'a> {
                 errors.push(index);
             }
         }
+        let returns = returns.map(|returns| self.parameter(returns));
+        let requires = method
+            .requires
+            .as_ref()
+            .and_then(|condition| self.condition(condition, &checked_shape, None, "REQUIRES"));
+        let ensures = method.ensures.as_ref().and_then(|condition| {
+            self.condition(condition, &checked_shape, returns.as_ref(), "ENSURES")
+        });
         Method {
             doc: doc(doc_string),
             shape: checked_shape,
-            returns: returns.map(|returns| self.parameter(returns)),
+            returns,
+            requires,
+            ensures,
             errors,
             examples: Vec::new(),
             effect,
             undone_by: None,
+        }
+    }
+
+    fn condition(
+        &mut self,
+        condition: &ast::Condition,
+        shape: &Shape,
+        returns: Option<&Parameter>,
+        clause: &str,
+    ) -> Option<crate::refinement::Predicate<usize>> {
+        let source = self.written(condition.span);
+        match crate::refinement::Predicate::method(
+            &condition.predicate,
+            &source[1..source.len() - 1],
+            &shape.parameters,
+            returns,
+        ) {
+            Ok(mut predicate) => {
+                predicate.path = self.paths[self.file].clone();
+                Some(predicate)
+            }
+            Err(message) => {
+                self.error(condition.span, format!("invalid {clause}: {message}"));
+                None
+            }
         }
     }
 
