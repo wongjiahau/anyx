@@ -161,3 +161,16 @@ fn interactive_session_keeps_state_and_recovers_after_errors() {
     assert!(stderr.contains("ERROR variable does not exist"), "{stderr}");
     assert!(stderr.contains("INVALID REQUEST"), "{stderr}");
 }
+
+#[test]
+fn boolean_operations_are_available_in_the_shell() {
+    let output = command()
+        .args([
+            "--expression",
+            "boolean / not (false), boolean / (true) and (false), boolean / (true) or (false), boolean / (true) xor (true)",
+        ])
+        .output()
+        .unwrap();
+    succeeds(&output);
+    assert_eq!(output.stdout, b"true,\nfalse,\ntrue,\nfalse,\n");
+}

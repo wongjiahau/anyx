@@ -21,33 +21,33 @@ schema:2:1: found the raw string "Moves a file."; expected the word `INTRINSIC`,
   ^^^
 
 == a quoted doc on a record
-PROTOCOL a VERSION 1, "A file." RECORD file { path: Text },
+PROTOCOL a VERSION 1, "A file." RECORD File { path: Text },
 schema:1:23: found the quoted string "A file."; expected the word `INTRINSIC`, `PUBLIC`, `RECORD`, `CHOICE`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD` or a `#` line string
-  PROTOCOL a VERSION 1, "A file." RECORD file { path: Text },
+  PROTOCOL a VERSION 1, "A file." RECORD File { path: Text },
                         ^^^^^^^^^
 
 == a quoted doc on a field
-PROTOCOL a VERSION 1, RECORD file { "Where it is." path: Text },
+PROTOCOL a VERSION 1, RECORD File { "Where it is." path: Text },
 schema:1:37: found the quoted string "Where it is."; expected a `#` line string or words whose text has no keyword
-  PROTOCOL a VERSION 1, RECORD file { "Where it is." path: Text },
+  PROTOCOL a VERSION 1, RECORD File { "Where it is." path: Text },
                                       ^^^^^^^^^^^^^^
 
 == a quoted doc on a choice
-PROTOCOL a VERSION 1, "A shade." CHOICE shade { dark, light },
+PROTOCOL a VERSION 1, "A shade." CHOICE Shade { dark, light },
 schema:1:23: found the quoted string "A shade."; expected the word `INTRINSIC`, `PUBLIC`, `RECORD`, `CHOICE`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD` or a `#` line string
-  PROTOCOL a VERSION 1, "A shade." CHOICE shade { dark, light },
+  PROTOCOL a VERSION 1, "A shade." CHOICE Shade { dark, light },
                         ^^^^^^^^^^
 
 == a quoted doc on a variant
-PROTOCOL a VERSION 1, CHOICE shade { "Dim." dark, light },
+PROTOCOL a VERSION 1, CHOICE Shade { "Dim." dark, light },
 schema:1:38: found the quoted string "Dim."; expected the call `… _`, `…`, a `#` line string or the end of the call
-  PROTOCOL a VERSION 1, CHOICE shade { "Dim." dark, light },
+  PROTOCOL a VERSION 1, CHOICE Shade { "Dim." dark, light },
                                        ^^^^^^
 
 == a quoted doc on a type
-PROTOCOL a VERSION 1, "A path." TYPE path: Text,
+PROTOCOL a VERSION 1, "A path." TYPE Path: Text,
 schema:1:23: found the quoted string "A path."; expected the word `INTRINSIC`, `PUBLIC`, `RECORD`, `CHOICE`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD` or a `#` line string
-  PROTOCOL a VERSION 1, "A path." TYPE path: Text,
+  PROTOCOL a VERSION 1, "A path." TYPE Path: Text,
                         ^^^^^^^^^
 
 == a quoted doc on a group of errors

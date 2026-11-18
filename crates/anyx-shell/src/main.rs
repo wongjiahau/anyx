@@ -4,7 +4,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::process::ExitCode;
 
 use anyx_protocol::Problem;
-use anyx_shell::{Interpreter, diagnostic, environment::Environment};
+use anyx_shell::{Interpreter, boolean::Boolean, diagnostic, environment::Environment};
 
 const USAGE: &str = "anyx-shell [--interactive | --expression SOURCE | FILE | -]\nWith no arguments, start a REPL on a terminal or read standard input when piped.\n--interactive starts a REPL explicitly; - always reads a batch document.\nCompletion opens while typing; Ctrl-Space opens it explicitly. Arrow keys choose; Enter accepts.\nTab and Shift-Tab move between snippet arguments; typing replaces the selected argument.\nEsc dismisses completion or ends snippet editing. History lasts for the session.\nCtrl-C cancels input; Ctrl-D exits. Open brackets and strings continue on the next line.\nCalls use scope / method arguments. Successful results are anyx values.\nExample: anyx-shell --expression 'environment / list variables'";
 
@@ -68,6 +68,7 @@ fn run() -> Result<bool, String> {
 fn interpreter() -> Result<Interpreter, String> {
     let mut interpreter = Interpreter::new();
     interpreter.register("environment", Environment::from_process()?)?;
+    interpreter.register("boolean", Boolean)?;
     Ok(interpreter)
 }
 

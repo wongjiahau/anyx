@@ -111,7 +111,7 @@ fn poentaros_schema_reads_with_its_docs_shapes_and_errors() {
 fn choice_variants_are_shapes_with_docs() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE mode {
+        CHOICE Mode {
             dark,
             # A colour of the wheel.
             custom hue (hue: Float) lightness (lightness: Float),
@@ -142,8 +142,8 @@ fn choice_variants_are_shapes_with_docs() {
 fn optional_fields_and_record_inputs_read() {
     let schema = schema(
         "PROTOCOL shop VERSION 2,
-        RECORD filter { name: Text DEFAULT \"\", limit: Integer DEFAULT 0 },
-        METHOD find (filter: filter) RETURNS (names: LIST Text),",
+        RECORD Filter { name: Text DEFAULT \"\", limit: Integer DEFAULT 0 },
+        METHOD find (filter: Filter) RETURNS (names: LIST Text),",
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
         panic!("filter is a record")
@@ -165,7 +165,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an old all-caps name inside a list",
-            "PROTOCOL a VERSION 1, RECORD x { tags: LIST: TEXT },",
+            "PROTOCOL a VERSION 1, RECORD Example { tags: LIST: TEXT },",
         ),
         (
             "INTRINSIC in a schema",
@@ -173,7 +173,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "INTRINSIC on a record in a schema",
-            "PROTOCOL a VERSION 1, INTRINSIC RECORD x { a: Text },",
+            "PROTOCOL a VERSION 1, INTRINSIC RECORD Example { a: Text },",
         ),
         (
             "INTRINSIC on a method",
@@ -197,15 +197,15 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type defined twice",
-            "PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },",
+            "PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },",
         ),
         (
             "a field twice",
-            "PROTOCOL a VERSION 1, RECORD x { a: Text, a: Integer },",
+            "PROTOCOL a VERSION 1, RECORD Example { a: Text, a: Integer },",
         ),
         (
             "a variant twice",
-            "PROTOCOL a VERSION 1, CHOICE x { a, a (b: Text) },",
+            "PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },",
         ),
         (
             "a parameter twice",
@@ -217,7 +217,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "overloads with the same parameter types",
-            "PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,",
         ),
         (
             "overloads that differ only in what they return",
@@ -225,31 +225,31 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type holding itself",
-            "PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },",
+            "PROTOCOL a VERSION 1, RECORD Node { next: Node }, RECORD Tree { children: LIST: Tree },",
         ),
         (
             "a type holding itself through an optional field",
-            "PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },",
+            "PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },",
         ),
         (
             "a map default that is not a map",
-            "PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },",
+            "PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },",
         ),
         (
             "a cycle through a choice",
-            "PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },",
+            "PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },",
         ),
         (
             "names that are not lowercase ASCII",
-            "PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },",
+            "PROTOCOL a VERSION 1, RECORD Example { Path: Text, café: Text },",
         ),
         (
             "a parameter named kind",
-            "PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },",
+            "PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },",
         ),
         (
             "a keyword in a name",
-            "PROTOCOL a VERSION 1, RECORD x { a Text b: Text },",
+            "PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },",
         ),
         (
             "an unknown group",
@@ -305,7 +305,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a string inside a variant",
-            "PROTOCOL a VERSION 1, CHOICE x { y (a: Text) # doc\n},",
+            "PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc\n},",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -332,23 +332,23 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a record",
-            "PROTOCOL a VERSION 1, \"A file.\" RECORD file { path: Text },",
+            "PROTOCOL a VERSION 1, \"A file.\" RECORD File { path: Text },",
         ),
         (
             "a quoted doc on a field",
-            "PROTOCOL a VERSION 1, RECORD file { \"Where it is.\" path: Text },",
+            "PROTOCOL a VERSION 1, RECORD File { \"Where it is.\" path: Text },",
         ),
         (
             "a quoted doc on a choice",
-            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE shade { dark, light },",
+            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE Shade { dark, light },",
         ),
         (
             "a quoted doc on a variant",
-            "PROTOCOL a VERSION 1, CHOICE shade { \"Dim.\" dark, light },",
+            "PROTOCOL a VERSION 1, CHOICE Shade { \"Dim.\" dark, light },",
         ),
         (
             "a quoted doc on a type",
-            "PROTOCOL a VERSION 1, \"A path.\" TYPE path: Text,",
+            "PROTOCOL a VERSION 1, \"A path.\" TYPE Path: Text,",
         ),
         (
             "a quoted doc on a group of errors",
@@ -406,18 +406,18 @@ fn a_method_may_return_nothing() {
 fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE shade { dark, light },
-        RECORD page { size: Integer DEFAULT 50, after: Text DEFAULT \"\" },
-        RECORD search {
+        CHOICE Shade { dark, light },
+        RECORD Page { size: Integer DEFAULT 50, after: Text DEFAULT \"\" },
+        RECORD Search {
             query: Text,
             limit: Integer DEFAULT 50,
             include trash: Boolean DEFAULT false,
-            shade: shade DEFAULT dark,
+            shade: Shade DEFAULT dark,
             tags: LIST: Text DEFAULT [\"new\"],
-            shades: LIST shade DEFAULT [light],
+            shades: LIST Shade DEFAULT [light],
             sizes: (LIST Integer) DEFAULT [],
             wait: Duration DEFAULT 5 minutes,
-            page: page DEFAULT { after \"a\" },
+            page: Page DEFAULT { after \"a\" },
             note: Text DEFAULT \"\",
         },",
     );
@@ -474,12 +474,12 @@ fn an_optional_field_may_have_a_default() {
             "Text",
             "Integer",
             "Boolean",
-            "shade",
+            "Shade",
             "LIST Text",
-            "LIST shade",
+            "LIST Shade",
             "LIST Integer",
             "Duration",
-            "page",
+            "Page",
             "Text"
         ]
     );
@@ -491,15 +491,15 @@ fn mistakes_in_a_default_are_diagnosed() {
     let cases = [
         (
             "a default of another type",
-            "PROTOCOL a VERSION 1, RECORD x { limit: Integer DEFAULT \"50\" },",
+            "PROTOCOL a VERSION 1, RECORD Example { limit: Integer DEFAULT \"50\" },",
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, CHOICE shade { dark }, RECORD x { shade: shade DEFAULT dim },",
+            "PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade: Shade DEFAULT dim },",
         ),
         (
             "the removed OPTIONAL keyword",
-            "PROTOCOL a VERSION 1, RECORD x { limit: OPTIONAL Integer },",
+            "PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },",
         ),
         (
             "a default on a parameter",
@@ -520,7 +520,7 @@ fn mistakes_in_a_default_are_diagnosed() {
 fn a_schema_with_defaults_is_formatted_as_written() {
     let source = "PROTOCOL a VERSION 1,
 
-RECORD search { limit: Integer DEFAULT 50, tags: LIST: Text DEFAULT [] },
+RECORD Search { limit: Integer DEFAULT 50, tags: LIST: Text DEFAULT [] },
 ";
     assert_eq!(anyx_protocol::format_schema(source).unwrap(), source);
 }
@@ -529,15 +529,15 @@ RECORD search { limit: Integer DEFAULT 50, tags: LIST: Text DEFAULT [] },
 fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE shade { dark, light },
-        RECORD folder {
+        CHOICE Shade { dark, light },
+        RECORD Folder {
             files: MAP Integer,
-            folders: MAP: folder,
-            shades: MAP: shade DEFAULT { \"a\": dark },
+            folders: MAP: Folder,
+            shades: MAP: Shade DEFAULT { \"a\": dark },
             names: MAP: LIST: Text DEFAULT { \"b\" [\"c\"] },
-            lights: MAP shade DEFAULT {},
+            lights: MAP Shade DEFAULT {},
         },
-        METHOD sizes (sizes: MAP Float) RETURNS (folder: folder),",
+        METHOD sizes (sizes: MAP Float) RETURNS (folder: Folder),",
     );
     let TypeKind::Record(fields) = &schema.types[1].kind else {
         panic!("folder is a record")
@@ -550,10 +550,10 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
         types,
         [
             "MAP Integer",
-            "MAP folder",
-            "MAP shade",
+            "MAP Folder",
+            "MAP Shade",
             "MAP: LIST Text",
-            "MAP shade"
+            "MAP Shade"
         ]
     );
     let variant = |shape: &str| Value::Variant {
@@ -590,4 +590,24 @@ fn the_request_decoder_is_what_its_grammar_generates() {
     assert!(output.warnings[0].message.contains("`duration` and `call`"));
     let code = anyx_generator::format(&output.code).expect("rustfmt is installed");
     assert_snapshot("src/request_grammar.rs", &code);
+}
+
+#[test]
+fn simple_type_names_use_title_case() {
+    schema(
+        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { pdf }, TYPE Some Format: File Format,",
+    );
+    for name in ["file summary", "FileSummary", "File summary"] {
+        for declaration in [
+            format!("RECORD {name} {{ path: Text }}"),
+            format!("CHOICE {name} {{ pdf }}"),
+            format!("TYPE {name}: Text"),
+        ] {
+            let message = diagnostics(&format!("PROTOCOL a VERSION 1, {declaration},"));
+            assert!(
+                message.contains("expected words in Title Case"),
+                "{message}"
+            );
+        }
+    }
 }

@@ -1,5 +1,5 @@
 apply { mode: dim }
-=> 1:15: in `options` of `apply _`: in `mode`: found the call `dim`; expected a variant of `mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
+=> 1:15: in `options` of `apply _`: in `mode`: found the call `dim`; expected a variant of `Mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
 
 apply { strict: true }
 => 1:7: in `options` of `apply _`: found no `mode`; expected every field without a `DEFAULT`
@@ -11,10 +11,10 @@ apply { mode: dark, colour: dark }
 => 1:21: in `options` of `apply _`: found the field `colour`; expected one of `mode`, `strict`
 
 apply { mode: custom hue }
-=> 1:15: in `options` of `apply _`: in `mode`: found the call `custom hue`; expected a variant of `mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
+=> 1:15: in `options` of `apply _`: in `mode`: found the call `custom hue`; expected a variant of `Mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
 
 apply { mode: dark hue 1 }
-=> 1:15: in `options` of `apply _`: in `mode`: found the call `dark hue _`; expected a variant of `mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
+=> 1:15: in `options` of `apply _`: in `mode`: found the call `dark hue _`; expected a variant of `Mode`: `dark`, `light`, `custom hue _`, `_ dimmed`
 
 apply { mode: custom hue "red" }
 => 1:26: in `options` of `apply _`: in `mode`: in `hue` of `custom hue _`: found a string; expected a Float, as in `1.5`

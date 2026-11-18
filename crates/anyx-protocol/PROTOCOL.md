@@ -56,8 +56,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Other names, of fields, parameters, methods, variants and errors, are
   lowercase words: `new revision`. All-caps words belong to the schema
   language, so a word with no lowercase letter is a keyword: write `Id`,
-  never `ID`. Title Case is a convention; the checker takes a type name of
-  any case. Keywords side by side join into one name, so write
+  never `ID`. Generic shapes can use lowercase connective words, as in
+  `Page of (item: Type)`. Keywords side by side join into one name, so write
   `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`

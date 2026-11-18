@@ -141,17 +141,17 @@ fn error(source: &str) -> String {
 fn names_that_become_the_same_name_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD read error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [gone]"
+            "PROTOCOL p VERSION 1, RECORD Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [gone]"
         ),
-        "found the errors of `read _`, which becomes the type `ReadError`, like the type `read error`; expected names that stay distinct in the generated code, so rename one"
+        "found the errors of `read _`, which becomes the type `ReadError`, like the type `Read Error`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, RECORD client { a: Text }"),
-        "found the type `client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
+        error("PROTOCOL p VERSION 1, RECORD Client { a: Text }"),
+        "found the type `Client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, CHOICE record { a }"),
-        "found the type `record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
+        error("PROTOCOL p VERSION 1, CHOICE Record { a }"),
+        "found the type `Record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
         error("PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean)"),
@@ -169,16 +169,16 @@ fn generic_types_whose_words_are_the_same_are_rejected() {
     );
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD page { a: Text }, RECORD page (item: Type) { item: item }"
+            "PROTOCOL p VERSION 1, RECORD Page { a: Text }, RECORD page (item: Type) { item: item }"
         ),
-        "found the type `page (item)`, which becomes the type `Page`, like the type `page`; expected names that stay distinct in the generated code, so rename one"
+        "found the type `page (item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
     );
 }
 
 #[test]
 fn a_keyword_becomes_a_raw_identifier() {
     let schema =
-        Schema::parse("PROTOCOL p VERSION 1, RECORD box { type: Text, loop: Integer }").unwrap();
+        Schema::parse("PROTOCOL p VERSION 1, RECORD Box { type: Text, loop: Integer }").unwrap();
     let code = anyx_protocol_generate::rust(&schema).unwrap();
     assert!(code.contains("pub r#type: String"), "{code}");
     assert!(code.contains("pub r#loop: i64"), "{code}");
