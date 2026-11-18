@@ -271,7 +271,7 @@ fn effects(out: &mut String, schema: &Schema) {
         )
         .unwrap();
     }
-    out.push_str("  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },\n};\n");
+    out.push_str("  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },\n} as const satisfies Record<string, Effects>;\n");
 }
 
 const EFFECTS: &str = r#"
@@ -292,7 +292,7 @@ export interface Effects {
 
 /** Each method's `Effects`, by the full name the client calls it by. Only a
  * method whose `idempotent` is true may be retried on its own. */
-export const EFFECTS: { readonly [method: string]: Effects } = {
+export const EFFECTS = {
 "#;
 
 fn doc(doc: &Option<String>, indent: &str) -> String {

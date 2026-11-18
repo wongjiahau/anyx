@@ -536,9 +536,9 @@ export interface Effects {
 
 /** Each method's `Effects`, by the full name the client calls it by. Only a
  * method whose `idempotent` is true may be retried on its own. */
-export const EFFECTS: { readonly [method: string]: Effects } = {
+export const EFFECTS = {
   "remind _": { readOnly: false, idempotent: false, undoneBy: null },
   "count _": { readOnly: false, idempotent: false, undoneBy: null },
   "snooze _ for _": { readOnly: false, idempotent: false, undoneBy: null },
   SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
-};
+} as const satisfies Record<string, Effects>;
