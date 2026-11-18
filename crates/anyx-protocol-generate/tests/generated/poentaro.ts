@@ -33,6 +33,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `read _`. */
 export type ReadError =
   /** The owner moved this file to the trash. Ask them to restore it. */
@@ -477,12 +486,15 @@ const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"
 {parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"revision", name:"revision", type:{k:'integer'}},{wire:"content", name:"content", type:{k:'text'}}]},
 {parameters:[],kind:'record', fields:[{wire:"line", name:"line", type:{k:'integer'}},{wire:"column", name:"column", type:{k:'integer'}},{wire:"code", name:"code", type:{k:'text'}},{wire:"message", name:"message", type:{k:'text'}}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["list files"]:{shape:{text:"list files", kind:"listFiles", params:[]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:1, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'integer'}, errors:[{text:"conflict at revision _ content _", kind:"conflictAtRevisionContent", params:[{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]},{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["create _ content _"]:{shape:{text:"create _ content _", kind:"createContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'integer'}, errors:[{text:"already exists at revision _", kind:"alreadyExistsAtRevision", params:[{name:"revision", type:{k:'integer'}, annotation:"Integer"}]},{text:"invalid path _", kind:"invalidPath", params:[{name:"message", type:{k:'text'}, annotation:"Text"}]},{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]}]},
-["export midi _"]:{shape:{text:"export midi _", kind:"exportMidi", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["export midi _"]:{shape:{text:"export midi _", kind:"exportMidi", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:5, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -603,6 +615,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -628,5 +645,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "write _ at revision _ content _": { readOnly: false, idempotent: false, undoneBy: null },
   "create _ content _": { readOnly: false, idempotent: false, undoneBy: null },
   "export midi _": { readOnly: true, idempotent: true, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

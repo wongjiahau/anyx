@@ -289,6 +289,27 @@ and `new revision = (revision + 1)` express the same condition. Each test
 in the brackets must hold. Use refinement types for restrictions on
 individual values that apply wherever those types are used.
 
+Two prelude functions test a whole list, so only conditions use them.
+They let a method take a list of settings, rather than optional words,
+and still rule out settings that contradict each other:
+
+```anyx
+CHOICE Setting { any case, smart case, hidden, (name: Text) encoding },
+
+READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
+    REQUIRES [
+        settings . has no repeats,
+        settings . has at most one of [any case, smart case],
+    ]
+    RETURNS (paths: LIST Text),
+```
+
+- `items . has no repeats` holds when no two items are equal.
+- `items . has at most one of [a, b]` holds when at most one item is a
+  variant of the shapes listed. `items` is a `LIST` of a `CHOICE`, and each
+  shape is one of its variants, written by its words with `_` in each slot:
+  `[_ encoding]` allows one `encoding` setting, whatever its text.
+
 The decoder checks every call's preconditions before dispatch. A failure
 returns one `INVALID REQUEST` for the whole batch, with the call's location,
 the values involved and the failed condition. The producer checks
@@ -549,6 +570,13 @@ learns everything else from it:
 ```anyx
 SCHEMA,
 ```
+
+`SCHEMA FILES` is the other built-in call. It returns the schema itself, as
+a `LIST Schema File`: the entry file first, then each file it imports, each
+with its `path` (as the `USE` lines reach it) and its `source`. The prelude
+declares `RECORD Schema File { path: Text, source: Text }`. A client that
+checks calls itself, such as the anyx shell, loads the schema from these
+files. Both built-ins are `READ ONLY`, and neither is in a scope.
 
 ## Values
 

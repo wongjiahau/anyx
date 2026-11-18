@@ -26,6 +26,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `snooze _ for _`. */
 export type SnoozeForError =
   /** Snoozed past its next time. */
@@ -428,10 +437,13 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note", name:"note", type:{k:'text'}},{wire:"at", name:"at", type:{k:'instant'}},{wire:"every", name:"every", type:{k:'named', index:3, args:[{k:'duration'}]}, defaultValue:()=>{kind:"null"}},{wire:"times", name:"times", type:{k:'integer'}, defaultValue:()=>3n},{wire:"seen", name:"seen", type:{k:'map', item:{k:'instant'}}, defaultValue:()=>Object.fromEntries([])}]},
 {parameters:[],kind:'choice', variants:[{text:"never", kind:"never", params:[]},{text:"once at _", kind:"onceAt", params:[{name:"at", type:{k:'instant'}, annotation:"Instant"}]},{text:"every _", kind:"every", params:[{name:"period", type:{k:'duration'}, annotation:"Duration"}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:1, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"reminders", type:{k:'map', item:{k:'named', index:0, args:[]}}, annotation:"MAP Reminder"}]}, returns:{k:'map', item:{k:'integer'}}, errors:[]},
-["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -517,6 +529,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -540,5 +557,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "remind _": { readOnly: false, idempotent: false, undoneBy: null },
   "count _": { readOnly: false, idempotent: false, undoneBy: null },
   "snooze _ for _": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

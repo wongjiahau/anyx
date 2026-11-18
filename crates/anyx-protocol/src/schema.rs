@@ -26,6 +26,9 @@ pub struct Schema {
     pub types: Vec<TypeDefinition>,
     pub errors: Vec<ErrorDefinition>,
     pub methods: Vec<Method>,
+    /// The calls every server answers, after its own methods: `SCHEMA`,
+    /// then `SCHEMA FILES`.
+    pub built_ins: Vec<Method>,
 }
 
 /// A file of a checked schema.
@@ -371,18 +374,52 @@ impl TypeKind {
 /// belong to the schema language, so no method of a schema is called that.
 pub const INTROSPECTION: &str = "SCHEMA";
 
+/// The words of the built-in call every server answers with the files of
+/// its schema, the entry first, so a caller can check the schema itself.
+pub const SCHEMA_FILES: &str = "SCHEMA FILES";
+
 /// The built-in `SCHEMA` method: no parameters, returning the guide as
 /// `Text`, with no errors.
 pub fn introspection() -> &'static Method {
-    static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| Method {
-        doc: Some("The guide to this protocol and its schema.".to_string()),
+    static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| {
+        built_in(
+            INTROSPECTION,
+            "The guide to this protocol and its schema.",
+            "guide",
+            Type::Text,
+        )
+    });
+    &METHOD
+}
+
+/// The calls every server answers, given the types of its schema, which
+/// hold the prelude's `Schema File`.
+pub(crate) fn built_ins(types: &[TypeDefinition]) -> Vec<Method> {
+    let schema_file = types
+        .iter()
+        .position(|definition| definition.name == "Schema File")
+        .expect("the prelude declares `Schema File`");
+    vec![
+        introspection().clone(),
+        built_in(
+            SCHEMA_FILES,
+            "The files of this protocol's schema, the entry first, then each file it imports.",
+            "files",
+            Type::List(Box::new(Type::Named(schema_file))),
+        ),
+    ]
+}
+
+fn built_in(words: &str, doc: &str, returns: &str, r#type: Type) -> Method {
+    Method {
+        doc: Some(doc.to_string()),
         shape: Shape {
-            text: INTROSPECTION.to_string(),
+            text: words.to_string(),
             parameters: Vec::new(),
         },
         returns: Some(Parameter {
-            name: "guide".to_string(),
-            r#type: Type::Text,
+            name: returns.to_string(),
+            r#type,
         }),
         requires: None,
         ensures: None,
@@ -390,8 +427,7 @@ pub fn introspection() -> &'static Method {
         examples: Vec::new(),
         effect: Effect::ReadOnly,
         undone_by: None,
-    });
-    &METHOD
+    }
 }
 
 /// `keyword` before the type `name`, as the formatter writes it: with a
@@ -601,7 +637,7 @@ impl Schema {
     pub fn method(&self, full_name: &str) -> Option<&Method> {
         self.methods
             .iter()
-            .chain([introspection()])
+            .chain(&self.built_ins)
             .find(|method| method.full_name() == full_name)
     }
 
@@ -643,13 +679,23 @@ impl Schema {
         self.methods.len()
     }
 
-    /// The method at `index`: one of the schema's own, or the built-in
-    /// `SCHEMA` one past them.
+    /// The index of the built-in `SCHEMA FILES` call, after `SCHEMA`.
+    pub fn schema_files(&self) -> usize {
+        self.methods.len() + 1
+    }
+
+    /// The index of every method a call may name: the schema's own, then
+    /// the built-in ones.
+    pub fn calls(&self) -> std::ops::Range<usize> {
+        0..self.methods.len() + self.built_ins.len()
+    }
+
+    /// The method at `index`: one of the schema's own, or a built-in one
+    /// past them.
     pub fn method_at(&self, index: usize) -> &Method {
-        match index == self.introspection() {
-            true => introspection(),
-            false => &self.methods[index],
-        }
+        self.methods
+            .get(index)
+            .unwrap_or_else(|| &self.built_ins[index - self.methods.len()])
     }
 
     /// The errors `method` may return.

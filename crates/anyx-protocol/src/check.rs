@@ -492,6 +492,7 @@ impl<'a> Checker<'a> {
             doc: header.and_then(|header| doc(&header.doc)),
             name: name.unwrap_or_default(),
             version: header.map_or(0, |header| header.version.value),
+            built_ins: crate::schema::built_ins(&types),
             types,
             errors: errors_found,
             methods,

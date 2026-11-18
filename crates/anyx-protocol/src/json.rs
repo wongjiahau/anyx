@@ -263,7 +263,7 @@ fn outcome_to_json(schema: &Schema, index: usize, outcome: Option<Outcome>) -> J
 /// The method that `name` calls: by its full name, `tag _`, or by its
 /// typed name, `tag (LIST Text)`, which an overload needs.
 fn method_index(schema: &Schema, name: &str) -> Result<usize, String> {
-    let methods = 0..=schema.introspection();
+    let methods = schema.calls();
     if let Some(index) = methods
         .clone()
         .find(|index| schema.typed_name(schema.method_at(*index)) == name)

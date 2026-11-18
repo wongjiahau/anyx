@@ -32,15 +32,16 @@ shape of one of the methods below, with a value in each `(name: Type)` slot:
 {overloads}
 Every call runs, in order, and the response has one result per call.
 {conditions}
-`SCHEMA` is a call every server answers, with this guide.
+`SCHEMA` is a call every server answers, with this guide, and
+`SCHEMA FILES` with the files of the schema, the entry first.
 
 ## Effects
 
 Words before `METHOD` say what a call of it may do, and decide when it is
 safe to send without asking:
 
-- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` is
-  read only.
+- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` and
+  `SCHEMA FILES` are read only.
 - `IDEMPOTENT METHOD`: calling it again with the same arguments changes
   nothing more, so it is safe to retry when a response was lost. A retry may
   still answer differently, such as with an error saying it is already done,

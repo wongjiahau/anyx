@@ -116,6 +116,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 // Runtime descriptors are emitted from the same checked schema as the API.
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
@@ -525,13 +534,16 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', name:"Revisio
 {parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'named', index:3, args:[]}},{wire:"revision", name:"revision", type:{k:'named', index:0, args:[]}},{wire:"limit", name:"limit", type:{k:'named', index:1, args:[]}, defaultValue:()=>10n}]},
 {parameters:["item"],kind:'record', fields:[{wire:"value", name:"value", type:{k:'parameter', name:"item"}}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["write _ at _"]:{shape:{text:"write _ at _", kind:"writeAt", params:[{name:"path", type:{k:'named', index:3, args:[]}, annotation:"Score Path"},{name:"revision", type:{k:'named', index:0, args:[]}, annotation:"Revision"}]}, returns:{k:'named', index:0, args:[]}, errors:[]},
 ["limit _"]:{shape:{text:"limit _", kind:"limit", params:[{name:"value", type:{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}, annotation:"(Integer) WHERE [10 <= _ < 30]"}]}, returns:{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}, errors:[]},
 ["summary _"]:{shape:{text:"summary _", kind:"summary", params:[{name:"value", type:{k:'named', index:12, args:[]}, annotation:"Summary"}]}, returns:{k:'named', index:12, args:[]}, errors:[]},
 ["boxed _"]:{shape:{text:"boxed _", kind:"boxed", params:[{name:"value", type:{k:'named', index:13, args:[{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}]}, annotation:"Box of ((Integer) WHERE [10 <= _ < 30])"}]}, returns:{k:'named', index:13, args:[{k:'named', index:1, args:[]}]}, errors:[]},
 ["score _"]:{shape:{text:"score _", kind:"score", params:[{name:"value", type:{k:'named', index:2, args:[]}, annotation:"Probability"}]}, returns:{k:'named', index:2, args:[]}, errors:[]},
-["names _"]:{shape:{text:"names _", kind:"names", params:[{name:"value", type:{k:'named', index:11, args:[]}, annotation:"Names"}]}, returns:{k:'named', index:11, args:[]}, errors:[]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["names _"]:{shape:{text:"names _", kind:"names", params:[{name:"value", type:{k:'named', index:11, args:[]}, annotation:"Names"}]}, returns:{k:'named', index:11, args:[]}, errors:[]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:16, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -632,6 +644,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -658,5 +675,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "boxed _": { readOnly: false, idempotent: false, undoneBy: null },
   "score _": { readOnly: false, idempotent: false, undoneBy: null },
   "names _": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

@@ -28,6 +28,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `read _`. */
 export type ReadError =
   /** The note is in the trash. */
@@ -465,14 +474,17 @@ const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"
 {parameters:[],kind:'record', fields:[{wire:"line", name:"line", type:{k:'integer'}},{wire:"message", name:"message", type:{k:'text'}}]},
 {parameters:[],kind:'record', fields:[{wire:"html", name:"html", type:{k:'text'}},{wire:"problem", name:"problem", type:{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}, defaultValue:()=>{kind:"null"}}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list", kind:"list", params:[]}, returns:{k:'list', item:{k:'text'}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:0, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:1, args:[]}}, errors:[{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["trash _"]:{shape:{text:"trash _", kind:"trash", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:null, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["empty trash"]:{shape:{text:"empty trash", kind:"emptyTrash", params:[]}, returns:null, errors:[]},
 ["html _"]:{shape:{text:"html _", kind:"html", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:2, args:[]}}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
-["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:5, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -590,6 +602,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -617,5 +634,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "empty trash": { readOnly: false, idempotent: false, undoneBy: null },
   "html _": { readOnly: false, idempotent: false, undoneBy: null },
   "pdf _": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

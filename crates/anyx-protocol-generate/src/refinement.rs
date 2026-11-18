@@ -88,6 +88,9 @@ impl TestJavascript for Test {
                 "const kind = value !== null && typeof value === 'object' ? (value as {{kind?: unknown}}).kind : undefined; return kind === 'true' ? true : kind === 'false' ? false : {invalid};"
             ),
             Self::Literal(value) => format!("return {value};"),
+            Self::NoRepeats(()) | Self::AtMostOneOf((), _) => {
+                unreachable!("list tests appear only in method conditions, never in refinements")
+            }
             Self::All(_, tests) | Self::Boolean(_, tests) => {
                 let locals = tests.iter().enumerate().map(|(index, test)| {
                     format!("const v{index} = (() => {{ {} }})(); if (v{index} === null) return {invalid};", test.javascript("null"))

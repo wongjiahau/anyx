@@ -40,6 +40,11 @@ pub enum Test<B = ()> {
     All(String, Vec<Test<B>>),
     Flag(B),
     Literal(bool),
+    /// `items . has no repeats`: no two items of the list are equal.
+    NoRepeats(B),
+    /// `items . has at most one of [a, b]`: at most one item of the list is
+    /// a variant of these shapes, written with `_` in each slot.
+    AtMostOneOf(B, Vec<String>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -502,6 +507,13 @@ impl<B: Clone> Test<B> {
                     .map(|arg| Self::read(arg, binding, named))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
+            (Some(Function::NoRepeats | Function::AtMostOneOf), _) if !named => {
+                return Err("list tests such as `has no repeats` are for REQUIRES and ENSURES; a refinement tests one value".into());
+            }
+            (Some(Function::NoRepeats), [items]) => Self::NoRepeats(binding(items)?),
+            (Some(Function::AtMostOneOf), [items, variants]) => {
+                Self::AtMostOneOf(binding(items)?, variant_shapes(variants)?)
+            }
             (Some(_), _) => return Err("a predicate must return Boolean".into()),
             (None, []) if matches!(shape.as_str(), "true" | "false") => {
                 Self::Literal(shape == "true")
@@ -510,6 +522,34 @@ impl<B: Clone> Test<B> {
             _ => return Err(unsupported()),
         })
     }
+}
+
+/// The shapes of `[any case, _ encoding]`: each a variant written by its
+/// words, with `_` in each of its slots.
+fn variant_shapes(node: &Node) -> Result<Vec<String>, String> {
+    let NodeKind::Brackets(items) = &node.kind else {
+        return Err("expected variants in square brackets, as in `[any case, smart case]`".into());
+    };
+    if items.is_empty() {
+        return Err("expected at least one variant in the square brackets".into());
+    }
+    items
+        .iter()
+        .map(|item| match &item.kind {
+            NodeKind::Call(call)
+                if call
+                    .arguments
+                    .iter()
+                    .all(|argument| matches!(argument.kind, NodeKind::Underscore)) =>
+            {
+                Ok(call.name_text())
+            }
+            _ => Err(format!(
+                "found `{}`; expected a variant written by its words with `_` in each slot, as in `any case` or `_ encoding`",
+                node_text(item)
+            )),
+        })
+        .collect()
 }
 
 impl<B> TextOperand<B> {
@@ -553,7 +593,9 @@ impl<B> Test<B> {
             Self::Text(a, _, b) => [a, b]
                 .iter()
                 .any(|operand| matches!(operand, TextOperand::Value(index) if matches(index))),
-            Self::Flag(index) => matches(index),
+            Self::Flag(index) | Self::NoRepeats(index) | Self::AtMostOneOf(index, _) => {
+                matches(index)
+            }
             Self::Boolean(_, tests) | Self::All(_, tests) => {
                 tests.iter().any(|test| test.references(matches))
             }
@@ -604,6 +646,45 @@ impl<B> Test<B> {
             Self::Boolean(_, tests) => {
                 for test in tests {
                     test.check_types(ty, schema)?;
+                }
+            }
+            Self::NoRepeats(index) => {
+                if !matches!(ty(index), Type::List(_)) {
+                    return Err("`has no repeats` tests a LIST".into());
+                }
+            }
+            Self::AtMostOneOf(index, shapes) => {
+                let Type::List(item) = ty(index) else {
+                    return Err("`has at most one of` tests a LIST".into());
+                };
+                let variants = match schema.instance(item) {
+                    Some((_, kind)) => match kind.as_ref() {
+                        TypeKind::Choice(variants) => variants
+                            .iter()
+                            .map(|variant| variant.shape.text.clone())
+                            .collect::<Vec<_>>(),
+                        _ => Vec::new(),
+                    },
+                    None => Vec::new(),
+                };
+                if variants.is_empty() {
+                    return Err(format!(
+                        "`has at most one of` tests a LIST of a CHOICE, not a LIST {}",
+                        schema.type_name(item)
+                    ));
+                }
+                for shape in shapes {
+                    if !variants.contains(shape) {
+                        return Err(format!(
+                            "`{shape}` is not a variant of {}; its variants are {}",
+                            schema.type_name(item),
+                            variants
+                                .iter()
+                                .map(|variant| format!("`{variant}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
                 }
             }
             _ => {}
@@ -671,6 +752,27 @@ impl<B> Test<B> {
                 _ => return None,
             },
             Self::Literal(value) => *value,
+            Self::NoRepeats(index) => {
+                let Value::List(items) = get(index)? else {
+                    return None;
+                };
+                items
+                    .iter()
+                    .enumerate()
+                    .all(|(i, item)| !items[..i].contains(item))
+            }
+            Self::AtMostOneOf(index, shapes) => {
+                let Value::List(items) = get(index)? else {
+                    return None;
+                };
+                items
+                    .iter()
+                    .filter(|item| {
+                        matches!(item, Value::Variant { shape, .. } if shapes.contains(shape))
+                    })
+                    .nth(1)
+                    .is_none()
+            }
             Self::Boolean(op, operands) => match operands.as_slice() {
                 [a] => op.apply(a.evaluate(get)?, false),
                 [a, b] => op.apply(a.evaluate(get)?, b.evaluate(get)?),
@@ -715,6 +817,12 @@ impl<B> Test<B> {
                 .join(" and "),
             Self::Flag(binding) => format!("{} is true", name(binding)),
             Self::Literal(value) => value.to_string(),
+            Self::NoRepeats(binding) => format!("{} has no repeats", name(binding)),
+            Self::AtMostOneOf(binding, shapes) => format!(
+                "{} has at most one of [{}]",
+                name(binding),
+                shapes.join(", ")
+            ),
             Self::Compare(a, op, b) => {
                 let (subject, op, bound) = if !a.constant() && b.constant() {
                     (a, op.as_str(), b)

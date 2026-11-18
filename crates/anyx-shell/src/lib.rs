@@ -178,10 +178,9 @@ impl Interpreter {
             anyx_protocol::refinement::validate(schema, &parameter.r#type, value)
                 .map_err(|_| "INTERNAL ERROR\n".to_string())?;
         }
-        let outcome = if call.method == schema.introspection() {
-            anyx_protocol::server::introspect(schema)
-        } else {
-            tool.invoke(&call)
+        let outcome = match anyx_protocol::server::built_in(schema, &call) {
+            Some(outcome) => outcome,
+            None => tool.invoke(&call),
         };
         let schema = tool.schema();
         let response = Response::Outcomes(vec![outcome]);

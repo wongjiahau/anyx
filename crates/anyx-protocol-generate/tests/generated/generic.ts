@@ -60,6 +60,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 // Runtime descriptors are emitted from the same checked schema as the API.
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
@@ -463,14 +472,17 @@ const definitions: Definition[] = [{parameters:["item"],kind:'record', fields:[{
 {parameters:[],kind:'choice', variants:[{text:"insufficient funds", kind:"insufficientFunds", params:[]},{text:"card expired", kind:"cardExpired", params:[]}]},
 {parameters:[],kind:'distinct', type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _", kind:"pay", params:[{name:"amount", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}, errors:[]},
 ["pay all _"]:{shape:{text:"pay all _", kind:"payAll", params:[{name:"amounts", type:{k:'list', item:{k:'integer'}}, annotation:"LIST Integer"}]}, returns:{k:'named', index:0, args:[{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}]}, errors:[]},
 ["payments"]:{shape:{text:"payments", kind:"payments", params:[]}, returns:{k:'named', index:7, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"payments", type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}, annotation:"Page of (Payment)"}]}, returns:{k:'integer'}, errors:[]},
 ["categories"]:{shape:{text:"categories", kind:"categories", params:[]}, returns:{k:'named', index:3, args:[{k:'text'}]}, errors:[]},
 ["latest"]:{shape:{text:"latest", kind:"latest", params:[]}, returns:{k:'named', index:2, args:[{k:'text'}]}, errors:[]},
-["prices"]:{shape:{text:"prices", kind:"prices", params:[]}, returns:{k:'named', index:4, args:[{k:'text'},{k:'integer'}]}, errors:[]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["prices"]:{shape:{text:"prices", kind:"prices", params:[]}, returns:{k:'named', index:4, args:[{k:'text'},{k:'integer'}]}, errors:[]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:10, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -576,6 +588,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -603,5 +620,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "categories": { readOnly: false, idempotent: false, undoneBy: null },
   "latest": { readOnly: false, idempotent: false, undoneBy: null },
   "prices": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

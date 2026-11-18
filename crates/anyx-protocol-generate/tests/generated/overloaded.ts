@@ -22,6 +22,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `tag (LIST Text)`. */
 export type TagWithListOfTextError =
   | { kind: "missing"; path: string };
@@ -427,7 +436,8 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text'}},
 {parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
 ["tag (LIST File Id)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["scale (Float)"]:{shape:{text:"scale _", kind:"scale", params:[{name:"factor", type:{k:'float'}, annotation:"Float"}]}, returns:{k:'float'}, errors:[]},
@@ -436,7 +446,9 @@ const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{t
 ["hide (File Id)"]:{shape:{text:"hide _", kind:"hide", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:null, errors:[]},
 ["show (Text)"]:{shape:{text:"show _", kind:"show", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:null, errors:[]},
 ["show (File Id)"]:{shape:{text:"show _", kind:"show", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:null, errors:[]},
-["paint _"]:{shape:{text:"paint _", kind:"paint", params:[{name:"shade", type:{k:'named', index:1, args:[]}, annotation:"Shade"}]}, returns:null, errors:[]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["paint _"]:{shape:{text:"paint _", kind:"paint", params:[{name:"shade", type:{k:'named', index:1, args:[]}, annotation:"Shade"}]}, returns:null, errors:[]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -572,6 +584,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -601,5 +618,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "show (Text)": { readOnly: false, idempotent: true, undoneBy: null },
   "show (File Id)": { readOnly: false, idempotent: true, undoneBy: null },
   "paint _": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

@@ -78,6 +78,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `share _ tagged _`. */
 export type ShareTaggedError =
   | { kind: "missing"; id: FileId };
@@ -487,13 +496,16 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text
 {parameters:[],kind:'distinct', type:{k:'map', item:{k:'named', index:7, args:[]}}},
 {parameters:[],kind:'record', fields:[{wire:"at", name:"at", type:{k:'named', index:7, args:[]}},{wire:"by person", name:"byPerson", type:{k:'named', index:8, args:[]}},{wire:"label", name:"label", type:{k:'named', index:1, args:[]}, defaultValue:()=>"none"}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"source", name:"source", type:{k:'text'}}]}];
 const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{text:"share _ tagged _", kind:"shareTagged", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"},{name:"tags", type:{k:'named', index:2, args:[]}, annotation:"Tags"}]}, returns:{k:'named', index:4, args:[]}, errors:[{text:"missing _", kind:"missing", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["revoke _"]:{shape:{text:"revoke _", kind:"revoke", params:[{name:"id", type:{k:'named', index:1, args:[]}, annotation:"Share Id"}]}, returns:null, errors:[]},
 ["restore _"]:{shape:{text:"restore _", kind:"restore", params:[{name:"id", type:{k:'named', index:1, args:[]}, annotation:"Share Id"}]}, returns:null, errors:[]},
 ["links"]:{shape:{text:"links", kind:"links", params:[]}, returns:{k:'list', item:{k:'named', index:1, args:[]}}, errors:[]},
 ["grant _ on _"]:{shape:{text:"grant _ on _", kind:"grantOn", params:[{name:"level", type:{k:'named', index:6, args:[]}, annotation:"Level"},{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:{k:'named', index:6, args:[]}, errors:[]},
-["visits"]:{shape:{text:"visits", kind:"visits", params:[]}, returns:{k:'list', item:{k:'named', index:9, args:[]}}, errors:[]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["visits"]:{shape:{text:"visits", kind:"visits", params:[]}, returns:{k:'list', item:{k:'named', index:9, args:[]}}, errors:[]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:12, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -598,6 +610,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -624,5 +641,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "links": { readOnly: true, idempotent: true, undoneBy: null },
   "grant _ on _": { readOnly: false, idempotent: false, undoneBy: null },
   "visits": { readOnly: true, idempotent: true, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

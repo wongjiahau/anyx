@@ -459,11 +459,10 @@ fn handle(out: &mut String, schema: &Schema) {
          \x20   for call in &calls {{\n\
          \x20       if stopped {{\n            outcomes.push(anyx_protocol::Outcome::NotRun);\n            continue;\n        }}\n\
          \x20       let mut arguments = call.arguments.clone().into_iter();\n\
-         \x20       let outcome = match call.method {{\n{arms}            {introspection} => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),\n            _ => unreachable!(\"the codec read a method of the schema\"),\n        }};\n\
+         \x20       let outcome = match call.method {{\n{arms}            _ => Ok::<_, <S as Server>::Error>(anyx_protocol::server::built_in(schema, call).expect(\"the codec read a method of the schema\")),\n        }};\n\
          \x20       let outcome = outcome.unwrap_or_else(|error| {{\n            on_internal_error(error);\n            stopped = true;\n            anyx_protocol::Outcome::InternalError\n        }});\n\
          \x20       if anyx_protocol::server::validate_outcome(schema, call, &outcome).is_err() {{\n            stopped = true;\n            outcomes.push(anyx_protocol::Outcome::InternalError);\n        }} else {{\n            outcomes.push(outcome);\n        }}\n    }}\n\
          \x20   anyx_protocol::server::respond(schema, &calls, outcomes)\n}}\n\n",
-        introspection = schema.introspection(),
     )
     .unwrap();
 }
@@ -514,8 +513,9 @@ fn client(out: &mut String, schema: &Schema) {
         })
         .collect();
     let introspection = format!(
-        "    /// `SCHEMA`, returning the guide to the schema.\n    pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {}, vec![]).await\n    }}\n\n",
-        schema.introspection()
+        "    /// `SCHEMA`, returning the guide to the schema.\n    pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {}, vec![]).await\n    }}\n\n    /// `SCHEMA FILES`, returning the files of the schema, the entry first.\n    pub async fn schema_files(&self) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {}, vec![]).await\n    }}\n\n",
+        schema.introspection(),
+        schema.schema_files(),
     );
     let members = (methods + &introspection)
         .trim_end_matches('\n')

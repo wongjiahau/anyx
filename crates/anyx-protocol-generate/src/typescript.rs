@@ -67,7 +67,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             )
         })
         .collect();
-    let introspection = "  /** `SCHEMA`, returning the guide to the schema. */\n  schema(): Promise<Outcome<string, never>> {\n    return this.call(\"SCHEMA\", []);\n  }\n".to_string();
+    let introspection = "  /** `SCHEMA`, returning the guide to the schema. */\n  schema(): Promise<Outcome<string, never>> {\n    return this.call(\"SCHEMA\", []);\n  }\n\n  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */\n  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {\n    return this.call(\"SCHEMA FILES\", []);\n  }\n".to_string();
     out.push_str(
         &root_methods
             .into_iter()
@@ -257,7 +257,7 @@ fn method_doc(method: &Method) -> Option<String> {
 /// it.
 fn effects(out: &mut String, schema: &Schema) {
     out.push_str(EFFECTS);
-    for method in &schema.methods {
+    for method in schema.methods.iter().chain(&schema.built_ins) {
         let undone_by = match &method.undone_by {
             Some(undo) => format!("{:?}", undo.text),
             None => "null".to_string(),
@@ -271,7 +271,7 @@ fn effects(out: &mut String, schema: &Schema) {
         )
         .unwrap();
     }
-    out.push_str("  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },\n};\n");
+    out.push_str("};\n");
 }
 
 const EFFECTS: &str = r#"
@@ -485,6 +485,7 @@ fn native_schema(schema: &Schema) -> String {
     let methods = schema
         .methods
         .iter()
+        .chain(&schema.built_ins)
         .map(|m| {
             format!(
                 "[{:?}]:{{shape:{}, returns:{}, errors:[{}]}}",
@@ -503,9 +504,8 @@ fn native_schema(schema: &Schema) -> String {
         })
         .collect::<Vec<_>>()
         .join(",\n");
-    let separator = if methods.is_empty() { "" } else { "," };
     format!(
-        "const definitions: Definition[] = [{definitions}];\nconst methods: Record<string, MethodDescriptor> = {{{methods}{separator} SCHEMA:{{shape:{{text:'SCHEMA',kind:'schema',params:[]}}, returns:{{k:'text'}}, errors:[]}}}};\n"
+        "const definitions: Definition[] = [{definitions}];\nconst methods: Record<string, MethodDescriptor> = {{{methods}}};\n"
     )
 }
 

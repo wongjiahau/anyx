@@ -407,6 +407,38 @@ impl<Item: FromValue> FromValue for Nullable<Item> {
     }
 }
 
+/// A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+/// as the schema's `USE` lines reach it, and its source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SchemaFile {
+    pub path: String,
+    pub source: String,
+}
+
+impl IntoValue for SchemaFile {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("path", self.path)
+                .field("source", self.source)
+                .build(),
+        )
+    }
+}
+
+impl FromValue for SchemaFile {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            path: fields.field("path")?,
+            source: fields.field("source")?,
+        })
+    }
+}
+
 /// The protocol methods, for a server to implement. An `Err` is the server's own failure: the
 /// caller gets `INTERNAL ERROR`, and the calls after it don't run.
 #[allow(async_fn_in_trait)]
@@ -497,8 +529,10 @@ pub async fn handle<S: Server>(
             4 => anyx_protocol::server::value(<S as Server>::categories(implementation).await),
             5 => anyx_protocol::server::value(<S as Server>::latest(implementation).await),
             6 => anyx_protocol::server::value(<S as Server>::prices(implementation).await),
-            7 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
-            _ => unreachable!("the codec read a method of the schema"),
+            _ => Ok::<_, <S as Server>::Error>(
+                anyx_protocol::server::built_in(schema, call)
+                    .expect("the codec read a method of the schema"),
+            ),
         };
         let outcome = outcome.unwrap_or_else(|error| {
             on_internal_error(error);
@@ -595,6 +629,13 @@ impl<T: Transport> Client<T> {
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
+    }
+
+    /// `SCHEMA FILES`, returning the files of the schema, the entry first.
+    pub async fn schema_files(
+        &self,
+    ) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 8, vec![]).await
     }
 }
 

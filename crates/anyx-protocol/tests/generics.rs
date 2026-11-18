@@ -398,6 +398,7 @@ fn a_slot_may_sit_anywhere_in_a_generic_type_s_shape() {
         ("Page", "Page", vec![]),
         ("Boolean", "Boolean", vec![]),
         ("_ ?", "(item) ?", vec!["item"]),
+        ("Schema File", "Schema File", vec![]),
     ];
     assert_eq!(declared.len(), expected.len());
     for ((name, shape, parameters), (expected_name, expected_shape, expected_parameters)) in

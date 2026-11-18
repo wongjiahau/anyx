@@ -191,6 +191,77 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
 }
 
 #[test]
+fn list_tests_rule_out_repeats_and_contradicting_settings() {
+    let schema = common::schema(
+        r#"
+        CHOICE Setting { any case, smart case, hidden, (encoding: Text) encoding },
+        METHOD find (pattern: Text) with (settings: LIST Setting)
+            REQUIRES [
+                settings . has no repeats,
+                settings . has at most one of [any case, smart case],
+                settings . has at most one of [_ encoding],
+            ]
+            RETURNS NOTHING,
+        "#,
+    );
+    for accepted in [
+        r#"find "a" with ([] AS: LIST Setting)"#,
+        r#"find "a" with [any case, hidden]"#,
+        r#"find "a" with ["utf-8" encoding, smart case]"#,
+    ] {
+        if let Err(error) = decode_request(&schema, accepted) {
+            panic!("{accepted}: {error}");
+        }
+    }
+    for (rejected, expected) in [
+        (
+            r#"find "a" with [hidden, hidden]"#,
+            "settings has no repeats",
+        ),
+        (
+            r#"find "a" with [any case, smart case]"#,
+            "settings has at most one of [any case, smart case]",
+        ),
+        (
+            r#"find "a" with ["utf-8" encoding, "latin1" encoding]"#,
+            "settings has at most one of [_ encoding]",
+        ),
+    ] {
+        let error = decode_request(&schema, rejected).unwrap_err().to_string();
+        assert!(error.contains(expected), "{rejected}: {error}");
+    }
+}
+
+#[test]
+fn list_tests_name_variants_of_a_choice_in_a_method_condition() {
+    for (source, expected) in [
+        (
+            "CHOICE Case { any case, smart case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [exact case]] RETURNS NOTHING",
+            "`exact case` is not a variant of Case",
+        ),
+        (
+            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [a]] RETURNS NOTHING",
+            "tests a LIST of a CHOICE",
+        ),
+        (
+            "METHOD f (name: Text) REQUIRES [name . has no repeats] RETURNS NOTHING",
+            "`has no repeats` tests a LIST",
+        ),
+        (
+            "CHOICE Case { any case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
+            "expected variants in square brackets",
+        ),
+        (
+            "TYPE Names: LIST Text . WHERE [_ . has no repeats]",
+            "are for REQUIRES and ENSURES",
+        ),
+    ] {
+        let errors = common::diagnostics(source);
+        assert!(errors.contains(expected), "{source}\n{errors}");
+    }
+}
+
+#[test]
 fn conditions_require_a_declared_signature() {
     for (condition, expected) in [
         ("value + 1", "a predicate must return Boolean"),

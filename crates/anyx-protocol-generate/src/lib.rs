@@ -272,10 +272,17 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
             format!("`{}`", schema.call_name(method)),
         )
     });
-    let introspection = std::iter::once((
-        "schema".to_string(),
-        "the client's `schema`, which calls `SCHEMA`".to_string(),
-    ));
+    let introspection = [
+        (
+            "schema".to_string(),
+            "the client's `schema`, which calls `SCHEMA`".to_string(),
+        ),
+        (
+            "schema_files".to_string(),
+            "the client's `schema_files`, which calls `SCHEMA FILES`".to_string(),
+        ),
+    ]
+    .into_iter();
     distinct(
         "method",
         reserved_methods().chain(introspection).chain(methods),

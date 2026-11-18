@@ -248,6 +248,11 @@ pub(crate) enum Function {
     Length,
     Text(&'static str),
     Boolean(BooleanOperation),
+    /// `_ has no repeats`: no two items of a list are equal.
+    NoRepeats,
+    /// `_ has at most one of _`: at most one item of a list is a variant of
+    /// the given shapes.
+    AtMostOneOf,
 }
 
 #[derive(Clone, Copy)]
@@ -316,6 +321,8 @@ impl Function {
             "_ and _" => Self::Boolean(And),
             "_ or _" => Self::Boolean(Or),
             "_ xor _" => Self::Boolean(Xor),
+            "_ has no repeats" => Self::NoRepeats,
+            "_ has at most one of _" => Self::AtMostOneOf,
             _ => return None,
         })
     }
@@ -341,6 +348,8 @@ impl Function {
                 parameters == ["Boolean"] && returns == "Boolean"
             }
             Self::Boolean(_) => parameters == ["Boolean", "Boolean"] && returns == "Boolean",
+            Self::NoRepeats => parameters == ["LIST Type"] && returns == "Boolean",
+            Self::AtMostOneOf => parameters == ["LIST Type", "LIST Type"] && returns == "Boolean",
         }
     }
 }

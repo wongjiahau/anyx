@@ -124,7 +124,7 @@ impl Interpreter {
         schema
             .methods
             .iter()
-            .chain(std::iter::once(anyx_protocol::schema::introspection()))
+            .chain(&schema.built_ins)
             .filter(|method| method.shape.text == call.name_text())
             .filter_map(|method| {
                 let parameter = method.shape.parameters.get(index)?;

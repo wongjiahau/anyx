@@ -60,7 +60,7 @@ impl Compiler<'_> {
         let mut failure = None;
         for scope in self.opened {
             let schema = self.interpreter.tools[scope].schema();
-            for index in 0..=schema.introspection() {
+            for index in schema.calls() {
                 let method = schema.method_at(index);
                 if method.shape.text != name {
                     continue;
@@ -186,7 +186,7 @@ impl Compiler<'_> {
             return Err(self.error(node.span, "expected a method call after `/`"));
         };
         let name = call.name_text();
-        let methods: Vec<_> = (0..=schema.introspection())
+        let methods: Vec<_> = (schema.calls())
             .filter(|index| schema.method_at(*index).shape.text == name)
             .collect();
         if methods.is_empty() {

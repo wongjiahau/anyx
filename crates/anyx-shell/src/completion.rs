@@ -310,10 +310,7 @@ impl Interpreter {
 }
 
 fn methods(schema: &Schema) -> impl Iterator<Item = &Method> {
-    schema
-        .methods
-        .iter()
-        .chain(std::iter::once(anyx_protocol::schema::introspection()))
+    schema.methods.iter().chain(&schema.built_ins)
 }
 
 fn method_completion(

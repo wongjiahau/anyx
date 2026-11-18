@@ -139,7 +139,7 @@ fn request_syntax_problem(source: &str, error: request::DecodeError) -> Problem 
 fn decode_call(schema: &Schema, source: &str, syntax: &request::Call) -> Result<Call, Mismatch> {
     let span = syntax.span;
     let call = syntax;
-    let methods: Vec<usize> = (0..=schema.introspection()).collect();
+    let methods: Vec<usize> = schema.calls().collect();
     let all_methods = || {
         let mut names: Vec<String> = Vec::new();
         for method in &schema.methods {
