@@ -340,7 +340,7 @@ fn guide_example_satisfies_its_parameter_refinements() {
 
 #[test]
 fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
-    let schema=Schema::parse("TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE Pair of Bytes: Bytes . WHERE [(_ length) = 2], TYPE Small Map: (MAP Integer) WHERE [(_ length) <= 1]").unwrap();
+    let schema=Schema::parse("TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE Pair Of Bytes: Bytes . WHERE [(_ length) = 2], TYPE Small Map: (MAP Integer) WHERE [(_ length) <= 1]").unwrap();
     assert!(
         anyx_protocol::refinement::validate(&schema, &ty(&schema, "Wide"), &Value::Integer(1))
             .is_ok()
@@ -352,7 +352,7 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
     assert!(
         anyx_protocol::refinement::validate(
             &schema,
-            &ty(&schema, "Pair of Bytes"),
+            &ty(&schema, "Pair Of Bytes"),
             &Value::Bytes(vec![0, 255])
         )
         .is_ok()
@@ -360,7 +360,7 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
     assert!(
         anyx_protocol::refinement::validate(
             &schema,
-            &ty(&schema, "Pair of Bytes"),
+            &ty(&schema, "Pair Of Bytes"),
             &Value::Bytes(vec![0])
         )
         .is_err()

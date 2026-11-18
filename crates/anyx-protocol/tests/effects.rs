@@ -161,7 +161,7 @@ fn mistakes_in_markers_are_diagnosed() {
         ),
         (
             "an undo whose types match no method of its words",
-            "PROTOCOL a VERSION 1, TYPE file id: Text, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: file id) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE File Id: Text, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING,",
         ),
     ];
     let rendered: Vec<String> = cases

@@ -84,6 +84,12 @@ name, type, and position shown below the input. Press Enter with no menu open
 to run the command. Template values are editable defaults, so replace them
 before submitting.
 
+Move the cursor onto an argument to see an Argument panel with its parameter
+name, expected type, method signature, and available method documentation. This
+also works for manually typed commands and history entries, independently of
+snippet editing. Nested calls show the innermost argument's details. Completion
+menus take priority over the argument panel.
+
 Completion reads registered tools' schemas without executing them. It works
 inside nested calls and after commas or grouping operators, and preserves
 existing arguments when editing a method word in the middle of a command.
@@ -208,6 +214,19 @@ protocol implementation under a lowercase scope with
 checks requests against `Tool::schema()` before calling `Tool::invoke()`.
 Schemas must remain stable. Returned values and declared errors are checked
 against that same schema. Additional tools need no changes to routing.
+
+## Boolean operations
+
+The `boolean` tool uses the protocol prelude's `Boolean` type. It provides
+`not`, `and`, `or` and `xor`. Put Boolean literals in parentheses when
+passing them as arguments:
+
+```anyx
+boolean / not (false),
+boolean / (true) and (false),
+boolean / (true) or (false),
+boolean / (true) xor (true),
+```
 
 ## Environment example
 

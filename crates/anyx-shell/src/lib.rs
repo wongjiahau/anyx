@@ -7,7 +7,10 @@
 
 mod compile;
 mod completion;
+mod hover;
 pub use completion::{Completion, Completions, TabStop};
+pub use hover::ArgumentInfo;
+pub mod boolean;
 pub mod environment;
 
 use std::collections::BTreeMap;

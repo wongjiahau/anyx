@@ -1,7 +1,7 @@
 //! Editing and snippet state, independent of terminal rendering.
 use std::ops::Range;
 
-use anyx_shell::{Completions, Interpreter, TabStop};
+use anyx_shell::{ArgumentInfo, Completions, Interpreter, TabStop};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -12,6 +12,7 @@ pub struct Editor {
     pub selection: Option<Range<usize>>,
     pub menu: Option<Menu>,
     pub snippet: Option<Snippet>,
+    pub argument_info: Vec<ArgumentInfo>,
     history_index: Option<usize>,
     draft: String,
 }

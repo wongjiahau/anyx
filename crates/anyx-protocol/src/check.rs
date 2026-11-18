@@ -329,7 +329,7 @@ impl<'a> Checker<'a> {
                                 ),
                             );
                         }
-                        self.check_type_words(name);
+                        self.check_type_words(name, false);
                         self.declare_type(name, found.public);
                         self.declare_type_parameters(&[]);
                     }
@@ -701,7 +701,7 @@ impl<'a> Checker<'a> {
                 ),
             );
         } else {
-            self.check_type_words(&shape.words);
+            self.check_type_words(&shape.words, !shape.parameters.is_empty());
         }
         let parameters: Vec<String> = shape
             .parameters
@@ -1166,21 +1166,31 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A type's name becomes a Rust and TypeScript identifier, so each word
-    /// is ASCII letters and digits, starting with a letter. Type names are
-    /// written in Title Case, `File Summary`, but only by convention: any
-    /// case reads.
-    fn check_type_words(&mut self, name: &ast::Spanned<String>) {
+    /// Simple type names use Title Case. Generic shapes can use connective
+    /// words or the nullable `?` operator around their type parameters.
+    fn check_type_words(&mut self, name: &ast::Spanned<String>, generic: bool) {
         let fits = name.value.split(' ').all(|word| {
-            word == "?"
-                || word.starts_with(|c: char| c.is_ascii_alphabetic())
-                    && word.chars().all(|c| c.is_ascii_alphanumeric())
+            if generic {
+                return word == "?"
+                    || word.starts_with(|c: char| c.is_ascii_alphabetic())
+                        && word.bytes().all(|c| c.is_ascii_alphanumeric());
+            }
+            word.starts_with(|c: char| c.is_ascii_uppercase())
+                && word
+                    .bytes()
+                    .skip(1)
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         });
         if !fits {
+            let expected = if generic {
+                "words of ASCII letters and digits, each starting with a letter, such as `Page of`"
+            } else {
+                "words in Title Case, such as `File Summary`"
+            };
             self.error(
                 name.span,
                 format!(
-                    "found `{}` as the name of a type; expected words of ASCII letters and digits, each starting with a letter, such as `File Summary`, since names become Rust and TypeScript identifiers; rename it",
+                    "found `{}` as the name of a type; expected {expected}; rename it",
                     name.value
                 ),
             );

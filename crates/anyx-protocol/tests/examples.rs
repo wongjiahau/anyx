@@ -180,8 +180,8 @@ METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
 fn an_example_reads_its_values_with_their_defaults() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
-RECORD reminder { at: Instant, times: Integer DEFAULT 3 },
-METHOD next RETURNS (reminder: reminder) EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
+RECORD Reminder { at: Instant, times: Integer DEFAULT 3 },
+METHOD next RETURNS (reminder: Reminder) EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
 ",
     );
     let Outcome::Value(Value::Record(fields)) = &schema.methods[0].examples[0].outcome else {

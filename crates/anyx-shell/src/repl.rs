@@ -30,6 +30,7 @@ pub fn run(mut interpreter: Interpreter) -> Result<bool, String> {
         let mut editor = Editor::default();
         let mut terminal = Terminal::new().map_err(|error| error.to_string())?;
         let action = loop {
+            editor.argument_info = interpreter.argument_info(&editor.text, editor.cursor);
             terminal.draw(&editor).map_err(|error| error.to_string())?;
             let action = match event::read().map_err(|error| error.to_string())? {
                 Event::Key(key) if key.kind != KeyEventKind::Release => {
