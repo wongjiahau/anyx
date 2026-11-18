@@ -113,3 +113,75 @@ result grows with the data is the schema's job, not the batch's.
 - [ ] More conditions for `ANYFIX CALL` and `ANY WORD` as needs come up
 - [ ] A `build.rs` library entry point, later
 - [ ] Output in languages other than Rust, later
+
+## Protocol tools from other programs: `fd` first, then `rg`
+
+A tool is any program that answers `--anyx-protocol`: the shell writes one
+request to its standard input, closes it, and reads the response from its
+standard output. The tool is written against the libraries a command is
+built on, never by running the command. `fd` comes first because it brings
+in the new plumbing with the smallest domain, and `rg` then selects files by
+calling it: `rg / search "TODO" in (fd / …)`.
+
+### Protocol
+
+- [x] Check whether a condition accepts a choice's variants as constants,
+      `REQUIRES [settings has at most one of [any case, smart case]]`;
+      support it if not
+- [x] Prelude: `(items: LIST Type) has no repeats` and
+      `(items: LIST Type) has at most one of (choices: LIST Type)`, with
+      tests and `PROTOCOL.md`
+- [x] A built-in call that returns the schema's files, since `SCHEMA`
+      returns the guide; choose its name
+- [x] Decide how a path that is not Unicode is returned: an error, `Bytes`,
+      or a lossy conversion (an error, `(path) is not unicode`, for now)
+
+### Shell
+
+- [x] `USE fd FROM COMMAND "anyx-fd"` in `shell.grammar.anyx`, the source a
+      choice so that `URL "…"` can follow; `USE ALL FROM` keeps taking a name
+- [x] Ask for the schema on the `USE` line, and report a missing program or a
+      broken schema there, before any call runs
+- [ ] Run a request: start the program with `--anyx-protocol` in the shell's
+      working directory, write the request, close standard input, read the
+      response; standard error goes to the log (done, except the log: the
+      shell has none yet, so standard error is shown only when `USE` fails)
+- [x] A program that exits with a failure, is killed, or answers something
+      unreadable gives `INTERNAL ERROR`
+- [x] Check the response against the schema before its values reach another
+      call
+- [x] Completion and argument hints from the fetched schema
+
+### The `fd` tool (`crates/anyx-fd`, program `anyx-fd`)
+
+- [x] Account for every flag of `fd` 10.2:
+  - sentence parts: the pattern and the search paths
+  - settings, `with [hidden, follow links, "*.pyc" excluded, …]`: `-H`,
+    `-I`, `--no-ignore-vcs`, `--no-ignore-parent`, `--no-require-git`,
+    `-u`, `-s`/`-i` (smart case by default), `-g`/`--regex`, `-F`, `-p`,
+    `-L`, `-d`/`--min-depth`/`--exact-depth`, `-E`, `--prune`, `-t`, `-e`,
+    `-S`, `--changed-within`/`--changed-before`, `-o`, `--ignore-file`,
+    `--one-file-system`, `--and`, `--max-results`
+  - methods of their own: `-l` (files with details, another result type),
+    `-q` (`any file …`, a `Boolean`)
+  - nothing to do, since results are typed values: `-a`, `-0`, `-c`,
+    `--hyperlink`, `--format`, `--path-separator`, `--strip-cwd-prefix`,
+    `--show-errors` (unreadable folders are a field of the result)
+  - replaced by the shell: `-x`/`-X`/`--batch-size` by nested calls,
+    `--base-directory` by the working directory, `--search-path` by the
+    paths
+  - left to the tool: `-j`
+- [x] `fd.protocol.anyx`: the methods, the settings choice, its `REQUIRES`,
+      the errors (bad pattern, missing path), `READ ONLY`, `EXAMPLES`
+- [x] Implement with `ignore::WalkBuilder`, `globset` and `regex`
+- [x] Tests: the schema loads, its examples hold, conflicting settings are
+      `INVALID REQUEST`, and a session runs `USE fd FROM COMMAND "anyx-fd"`
+      end to end
+
+### The `rg` tool, after `fd`
+
+- [ ] `rg.protocol.anyx`: `search _` and `search _ in _`, settings for how a
+      line matches, a method for each kind of result (lines, counts, files
+      with matches, replacements), pages of matches
+- [ ] Implement with `grep-searcher`, `grep-regex` and `grep-matcher`
+- [ ] The demo: `rg / search "TODO" in (fd / …)`
