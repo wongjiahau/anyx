@@ -174,3 +174,16 @@ fn boolean_operations_are_available_in_the_shell() {
     succeeds(&output);
     assert_eq!(output.stdout, b"true,\nfalse,\ntrue,\nfalse,\n");
 }
+
+#[test]
+fn boolean_tool_can_be_opened_in_a_batch() {
+    let output = command()
+        .args([
+            "--expression",
+            "USE ALL FROM boolean, true .and (false .and (true)), boolean / not (true)",
+        ])
+        .output()
+        .unwrap();
+    succeeds(&output);
+    assert_eq!(output.stdout, b"false,\nfalse,\n");
+}

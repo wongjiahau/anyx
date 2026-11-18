@@ -1,12 +1,15 @@
 //! Schema-derived completion templates. Completion never invokes a tool.
 
-use crate::Interpreter;
+use crate::{Interpreter, shell_grammar};
 use anyx::{Expression, Item, Sequence, Token, TokenKind, TriviaKind};
 use anyx_protocol::{
     Schema,
     schema::{Method, Type},
 };
-use std::ops::Range;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::Range,
+};
 
 /// A selection within a completion's inserted text, in UTF-8 bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,6 +56,13 @@ impl Completion {
     }
 }
 
+#[derive(Default)]
+struct Frame<'a> {
+    tokens: Vec<&'a Token>,
+    start: Option<usize>,
+    dot: bool,
+}
+
 impl Interpreter {
     /// Suggest scopes and complete method templates at a UTF-8 byte offset.
     /// Includes argument selections and protocol documentation for a UI to show.
@@ -73,7 +83,7 @@ impl Interpreter {
         }) {
             return Completions::empty(offset);
         }
-        let mut frames: Vec<Vec<&Token>> = vec![Vec::new()];
+        let mut frames = vec![Frame::default()];
         let mut replace = offset..offset;
         let mut prefix = "";
         for token in &tokens {
@@ -97,53 +107,102 @@ impl Interpreter {
             {
                 return Completions::empty(offset);
             }
+            let frame = frames.last_mut().unwrap();
             match token.kind {
                 TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::OpenBrace => {
-                    frames.push(Vec::new())
+                    frame.start.get_or_insert(token.span.start);
+                    frames.push(Frame::default());
                 }
                 TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace => {
                     if frames.len() == 1 {
                         return Completions::empty(offset);
                     }
                     frames.pop();
-                    frames.last_mut().unwrap().push(token);
+                    frames.last_mut().unwrap().tokens.push(token);
                 }
-                TokenKind::Comma | TokenKind::Colon | TokenKind::Dot => {
-                    frames.last_mut().unwrap().clear()
+                TokenKind::Comma | TokenKind::Colon => *frame = Frame::default(),
+                TokenKind::Dot => {
+                    frame.tokens.clear();
+                    frame.dot = true;
                 }
                 TokenKind::End => {}
-                _ => frames.last_mut().unwrap().push(token),
+                _ => {
+                    frame.start.get_or_insert(token.span.start);
+                    frame.tokens.push(token);
+                }
             }
         }
-        let current = frames.last().unwrap();
-        if current.is_empty() {
-            let items = self
-                .tools
-                .keys()
-                .filter(|scope| scope.starts_with(prefix))
-                .map(|scope| {
-                    Completion::plain(if source[replace.end..].trim_start().starts_with('/') {
-                        scope.clone()
-                    } else {
-                        format!("{scope} / ")
-                    })
-                })
-                .collect();
+        let frame = frames.last().unwrap();
+        let current = &frame.tokens;
+        let scoped = current
+            .first()
+            .and_then(|token| self.tools.get_key_value(&token.text));
+        let mut items = Vec::new();
+        if current.is_empty() && !frame.dot {
+            items.extend(
+                self.tools
+                    .keys()
+                    .filter(|scope| scope.starts_with(prefix))
+                    .map(|scope| {
+                        Completion::plain(if source[replace.end..].trim_start().starts_with('/') {
+                            scope.clone()
+                        } else {
+                            format!("{scope} / ")
+                        })
+                    }),
+            );
+        }
+        if current.len() == 1 && scoped.is_some() && "/".starts_with(prefix) {
+            items.push(Completion::plain("/ ".into()));
+        }
+        if frames.len() == 1
+            && current
+                .iter()
+                .map(|token| token.text.as_str())
+                .eq(["USE", "ALL", "FROM"])
+        {
+            items.extend(
+                self.tools
+                    .keys()
+                    .filter(|scope| scope.starts_with(prefix))
+                    .cloned()
+                    .map(Completion::plain),
+            );
             return Completions { replace, items };
         }
-        let Some(tool) = self.tools.get(&current[0].text) else {
-            return Completions::empty(offset);
+        let qualified = current.get(1).is_some_and(|token| token.text == "/");
+        let mut opened = self.opened.clone();
+        if !qualified {
+            for node in parsed.syntax.nodes() {
+                if node.span.end >= frame.start.unwrap_or(replace.start) {
+                    break;
+                }
+                if let Ok(opening) = shell_grammar::decode_opening(&node) {
+                    let scope = opening.scope.name.text;
+                    if self.tools.contains_key(&scope) {
+                        opened.insert(scope);
+                    }
+                }
+            }
+        }
+        let tools: Vec<_> = if qualified {
+            scoped.into_iter().collect()
+        } else {
+            opened
+                .iter()
+                .filter_map(|scope| self.tools.get_key_value(scope))
+                .collect()
         };
-        if current.len() == 1 {
-            let items = if "/".starts_with(prefix) {
-                vec![Completion::plain("/ ".into())]
-            } else {
-                Vec::new()
-            };
-            return Completions { replace, items };
-        }
-        if current[1].text != "/" {
-            return Completions::empty(offset);
+        let mut shapes = BTreeMap::new();
+        if !qualified && tools.len() > 1 {
+            for (_, tool) in &tools {
+                let unique: BTreeSet<_> = methods(tool.schema())
+                    .map(|method| method.shape.text.as_str())
+                    .collect();
+                for shape in unique {
+                    *shapes.entry(shape).or_insert(0) += 1;
+                }
+            }
         }
         // When editing before existing arguments/words, replace only the current
         // word. Inserting a whole template there would duplicate the user's suffix.
@@ -161,53 +220,100 @@ impl Interpreter {
                         | TokenKind::OpenBrace
                 )
             });
-        let schema = tool.schema();
-        let mut items = Vec::new();
-        for method in schema
-            .methods
-            .iter()
-            .chain(std::iter::once(anyx_protocol::schema::introspection()))
-        {
-            let parts: Vec<_> = method.shape.text.split(' ').collect();
-            let typed = &current[2..];
-            if typed.len() >= parts.len()
-                || !typed.iter().zip(&parts).all(|(token, part)| {
-                    if *part == "_" {
-                        token.kind != TokenKind::Word
-                            || matches!(token.text.as_str(), "true" | "false")
-                    } else {
-                        token.kind == TokenKind::Word && token.text == *part
-                    }
-                })
-            {
-                continue;
+        let mut suggested = Vec::new();
+        for (scope, tool) in tools {
+            let schema = tool.schema();
+            for method in methods(schema) {
+                let parts: Vec<_> = method.shape.text.split(' ').collect();
+                let typed = if qualified {
+                    &current[2..]
+                } else {
+                    current.as_slice()
+                };
+                let implicit_slot = usize::from(frame.dot && !qualified);
+                if implicit_slot == 1 && parts.first() != Some(&"_") {
+                    continue;
+                }
+                let matched = &parts[implicit_slot..];
+                if typed.len() >= matched.len()
+                    || !typed.iter().zip(matched).all(|(token, part)| {
+                        if *part == "_" {
+                            token.kind != TokenKind::Word
+                                || matches!(token.text.as_str(), "true" | "false")
+                        } else {
+                            token.kind == TokenKind::Word && token.text == *part
+                        }
+                    })
+                {
+                    continue;
+                }
+                let remaining = &matched[typed.len()..];
+                if (remaining[0] == "_" && !prefix.is_empty())
+                    || (remaining[0] != "_" && !remaining[0].starts_with(prefix))
+                {
+                    continue;
+                }
+                let consumed = parts[..typed.len() + implicit_slot]
+                    .iter()
+                    .filter(|part| **part == "_")
+                    .count();
+                let mut item = method_completion(schema, method, remaining, consumed);
+                if has_suffix && remaining[0] != "_" {
+                    item.insert_text = remaining[0].into();
+                    item.tab_stops.clear();
+                }
+                let qualification = (shapes.get(method.shape.text.as_str()).copied().unwrap_or(0)
+                    > 1)
+                .then_some(scope.as_str());
+                if qualification.is_none()
+                    && offset == replace.end
+                    && item.tab_stops.is_empty()
+                    && item.insert_text == source[replace.clone()]
+                {
+                    continue;
+                }
+                if !qualified {
+                    item.detail = format!("{scope} / {}", item.detail);
+                }
+                let qualification = (shapes.get(method.shape.text.as_str()).copied().unwrap_or(0)
+                    > 1)
+                .then_some(scope.as_str());
+                suggested.push((item, qualification));
             }
-            let remaining = &parts[typed.len()..];
-            if (remaining[0] == "_" && !prefix.is_empty())
-                || (remaining[0] != "_" && !remaining[0].starts_with(prefix))
-            {
-                continue;
-            }
-            let consumed = parts[..typed.len()]
-                .iter()
-                .filter(|part| **part == "_")
-                .count();
-            let mut item = method_completion(schema, method, remaining, consumed);
-            if has_suffix && remaining[0] != "_" {
-                item.insert_text = remaining[0].into();
-                item.tab_stops.clear();
-            }
-            if offset == replace.end
-                && item.tab_stops.is_empty()
-                && item.insert_text == source[replace.clone()]
-            {
-                continue;
+        }
+
+        let start = if suggested.iter().any(|(_, scope)| scope.is_some()) {
+            frame.start.unwrap_or(replace.start)
+        } else {
+            replace.start
+        };
+        let preceding = &source[start..replace.start];
+        suggested.extend(items.drain(..).map(|item| (item, None)));
+        for (mut item, scope) in suggested {
+            let prefix = scope.map_or_else(
+                || preceding.to_owned(),
+                |scope| format!("{scope} / {preceding}"),
+            );
+            if !prefix.is_empty() {
+                for stop in &mut item.tab_stops {
+                    stop.range.start += prefix.len();
+                    stop.range.end += prefix.len();
+                }
+                item.insert_text.insert_str(0, &prefix);
             }
             items.push(item);
         }
+        replace.start = start;
         items.sort_by(|a, b| a.label.cmp(&b.label).then(a.detail.cmp(&b.detail)));
         Completions { replace, items }
     }
+}
+
+fn methods(schema: &Schema) -> impl Iterator<Item = &Method> {
+    schema
+        .methods
+        .iter()
+        .chain(std::iter::once(anyx_protocol::schema::introspection()))
 }
 
 fn method_completion(

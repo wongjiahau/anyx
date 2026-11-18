@@ -1,6 +1,6 @@
 //! An interpreter for calls to scoped anyx protocols.
 //!
-//! Each top-level expression is `scope / method arguments`. The interpreter
+//! Calls can qualify a method with its scope or use an opened tool. The interpreter
 //! validates every call before invoking any tool, then executes in order.
 //! Successful results are standalone anyx values; protocol envelopes are not
 //! displayed. A method failure stops execution without rolling back earlier calls.
@@ -12,12 +12,19 @@ pub use completion::{Completion, Completions, TabStop};
 pub use hover::ArgumentInfo;
 pub mod boolean;
 pub mod environment;
+#[allow(unused_imports)]
+mod shell_grammar;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyx::line_column;
 use anyx_protocol::{Call, Outcome, Problem, Response, Schema, Value};
 use compile::{Argument, Call as PreparedCall, Compiler, ExpressionValue};
+
+enum PreparedStatement {
+    Opening(String),
+    Call(PreparedCall),
+}
 
 /// A session-owned tool. Calls have already been checked against `schema()`.
 /// Implementations must keep their schema stable for their lifetime.
@@ -29,6 +36,7 @@ pub trait Tool {
 #[derive(Default)]
 pub struct Interpreter {
     tools: BTreeMap<String, Box<dyn Tool>>,
+    opened: BTreeSet<String>,
 }
 
 /// Results up to the first execution failure. `output` is an anyx document
@@ -72,20 +80,39 @@ impl Interpreter {
         if let Some(error) = parsed.errors.first() {
             return Err(at(source, error.span.start, error.message.clone()));
         }
-        let compiler = Compiler {
-            interpreter: self,
-            source,
-        };
-        let prepared = parsed
-            .syntax
-            .sequence
-            .elements
-            .iter()
-            .map(|element| compiler.element(element))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut opened = self.opened.clone();
+        let mut prepared = Vec::new();
+        for node in parsed.syntax.nodes() {
+            if let Ok(opening) = shell_grammar::decode_opening(&node) {
+                let scope = opening.scope.name.text;
+                if !self.tools.contains_key(&scope) {
+                    return Err(at(
+                        source,
+                        opening.scope.span.start,
+                        format!("unknown tool scope `{scope}`"),
+                    ));
+                }
+                opened.insert(scope.clone());
+                prepared.push(PreparedStatement::Opening(scope));
+            } else {
+                let compiler = Compiler {
+                    interpreter: self,
+                    source,
+                    opened: &opened,
+                };
+                prepared.push(PreparedStatement::Call(compiler.element(&node)?));
+            }
+        }
         let mut execution = Execution::default();
         let mut written = Vec::new();
         for prepared in prepared {
+            let prepared = match prepared {
+                PreparedStatement::Opening(scope) => {
+                    self.opened.insert(scope);
+                    continue;
+                }
+                PreparedStatement::Call(call) => call,
+            };
             match self.evaluate_call(&prepared) {
                 Ok(Value::Nothing) => {}
                 Ok(value) => {

@@ -12,6 +12,7 @@ readme = "README.md"
 anyx = { path = "../anyx", version = "0.1.0" }
 anyx-protocol = { path = "../anyx-protocol", version = "0.1.0" }
 crossterm = { version = "0.29", default-features = false, features = ["events", "bracketed-paste", "windows"] }
+regex = "1"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"

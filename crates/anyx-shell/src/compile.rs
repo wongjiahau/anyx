@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use anyx::{Element, Expression, Item, Node, NodeKind, Span, TokenKind};
+use anyx::{Expression, Item, Node, NodeKind, Span, TokenKind};
 use anyx_protocol::{
     Problem, Schema, Value,
     schema::{Type, TypeKind},
@@ -34,18 +34,112 @@ pub(crate) enum ExpressionValue {
 pub(crate) struct Compiler<'a> {
     pub interpreter: &'a Interpreter,
     pub source: &'a str,
+    pub opened: &'a BTreeSet<String>,
 }
 
 impl Compiler<'_> {
-    pub fn element(&self, element: &Element) -> Result<Call, Problem> {
-        let end = element
-            .comma
-            .as_ref()
-            .map_or(self.source.len(), |comma| comma.span.start);
-        self.call(Span {
-            start: expression_start(&element.expression),
-            end,
+    pub fn element(&self, node: &Node) -> Result<Call, Problem> {
+        if self.is_scoped(node) {
+            return self.call(node.span);
+        }
+        self.opened_call(node, None).unwrap_or_else(|| {
+            Err(self.error(node.span, "expected a scoped call, such as `environment / list variables`, or a method from an opened tool"))
         })
+    }
+
+    fn opened_call(
+        &self,
+        node: &Node,
+        target: Option<(&Schema, Option<&Type>)>,
+    ) -> Option<Result<Call, Problem>> {
+        let NodeKind::Call(call) = &node.kind else {
+            return None;
+        };
+        let name = call.name_text();
+        let mut fitting = Vec::new();
+        let mut failure = None;
+        for scope in self.opened {
+            let schema = self.interpreter.tools[scope].schema();
+            for index in 0..=schema.introspection() {
+                let method = schema.method_at(index);
+                if method.shape.text != name {
+                    continue;
+                }
+                if let Some((destination, expected)) = target {
+                    let result = method.returns.as_ref().and_then(|value| {
+                        transfer(schema, destination, &value.r#type, &mut BTreeSet::new())
+                    });
+                    match result {
+                        Some(result)
+                            if expected.is_none_or(|ty| ty.accepts_argument_type(&result)) => {}
+                        _ => {
+                            failure.get_or_insert_with(|| {
+                                self.error(node.span, format!(
+                                "`{scope} / {name}` does not return a compatible argument type"
+                            ))
+                            });
+                            continue;
+                        }
+                    }
+                }
+                match self.check_parameters(schema, &call.arguments, &method.shape.parameters) {
+                    Ok(arguments) => fitting.push(Call {
+                        scope: scope.clone(),
+                        method: index,
+                        arguments,
+                    }),
+                    Err(error) => {
+                        failure.get_or_insert(error);
+                    }
+                }
+            }
+        }
+        match fitting.len() {
+            0 => failure.map(Err),
+            1 => fitting.pop().map(Ok),
+            _ => {
+                let candidates = fitting
+                    .iter()
+                    .map(|call| {
+                        let schema = self.interpreter.tools[&call.scope].schema();
+                        format!(
+                            "`{} / {}`",
+                            call.scope,
+                            schema.typed_shape(&schema.method_at(call.method).shape)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Some(Err(self.error(
+                    node.span,
+                    format!(
+                        "ambiguous call `{name}`; qualify the call with a tool scope: {candidates}"
+                    ),
+                )))
+            }
+        }
+    }
+
+    fn check_parameters(
+        &self,
+        schema: &Schema,
+        nodes: &[Node],
+        parameters: &[anyx_protocol::schema::Parameter],
+    ) -> Result<Vec<Argument>, Problem> {
+        nodes
+            .iter()
+            .zip(parameters)
+            .map(
+                |(node, parameter)| match self.argument(schema, node, None) {
+                    Ok(argument) if argument.r#type == parameter.r#type => Ok(argument),
+                    Ok(argument) => {
+                        self.check(schema, node.span, argument, Some(&parameter.r#type))?;
+                        self.argument(schema, node, Some(&parameter.r#type))
+                    }
+                    Err(_) => self.argument(schema, node, Some(&parameter.r#type)),
+                },
+            )
+            .collect()
     }
 
     fn call(&self, span: Span) -> Result<Call, Problem> {
@@ -105,7 +199,36 @@ impl Compiler<'_> {
             .arguments
             .iter()
             .map(|argument| self.argument(schema, argument, None))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>();
+        let arguments = match arguments {
+            Ok(arguments) => arguments,
+            Err(error) if self.opened.is_empty() => return Err(error),
+            Err(error) => {
+                let mut contextual = methods.iter().filter_map(|&method| {
+                    self.check_parameters(
+                        schema,
+                        &call.arguments,
+                        &schema.method_at(method).shape.parameters,
+                    )
+                    .ok()
+                    .map(|arguments| Call {
+                        scope: scope.text.clone(),
+                        method,
+                        arguments,
+                    })
+                });
+                match (contextual.next(), contextual.next()) {
+                    (Some(call), None) => return Ok(call),
+                    (None, _) => return Err(error),
+                    _ => {
+                        return Err(self.error(
+                            node.span,
+                            format!("ambiguous call `{name}` in `{}`", scope.text),
+                        ));
+                    }
+                }
+            }
+        };
         let fitting: Vec<_> = methods
             .iter()
             .copied()
@@ -192,29 +315,7 @@ impl Compiler<'_> {
             return self.check(schema, node.span, argument, expected);
         }
         if self.is_scoped(node) {
-            let call = self.call(node.span)?;
-            let origin = self.interpreter.tools[&call.scope].schema();
-            let returns = origin
-                .method_at(call.method)
-                .returns
-                .as_ref()
-                .ok_or_else(|| {
-                    self.error(
-                        node.span,
-                        "a method that returns nothing cannot be used as an argument",
-                    )
-                })?;
-            let r#type = transfer(origin, schema, &returns.r#type, &mut BTreeSet::new())
-                .ok_or_else(|| self.error(node.span, format!("the result type `{}` is not available with the same definition in this protocol", origin.type_name(&returns.r#type))))?;
-            return self.check(
-                schema,
-                node.span,
-                Argument {
-                    r#type,
-                    value: ExpressionValue::Call(Box::new(call)),
-                },
-                expected,
-            );
+            return self.call_argument(schema, node.span, self.call(node.span)?, expected);
         }
         let literal = match expected {
             Some(expected) => self
@@ -231,6 +332,9 @@ impl Compiler<'_> {
                 r#type,
                 value: ExpressionValue::Literal(value),
             });
+        }
+        if let Some(call) = self.opened_call(node, Some((schema, expected))) {
+            return self.call_argument(schema, node.span, call?, expected);
         }
         let literal_error = literal.unwrap_err();
         match &node.kind {
@@ -300,6 +404,37 @@ impl Compiler<'_> {
             }
             _ => Err(literal_error),
         }
+    }
+
+    fn call_argument(
+        &self,
+        schema: &Schema,
+        span: Span,
+        call: Call,
+        expected: Option<&Type>,
+    ) -> Result<Argument, Problem> {
+        let origin = self.interpreter.tools[&call.scope].schema();
+        let returns = origin
+            .method_at(call.method)
+            .returns
+            .as_ref()
+            .ok_or_else(|| {
+                self.error(
+                    span,
+                    "a method that returns nothing cannot be used as an argument",
+                )
+            })?;
+        let r#type = transfer(origin, schema, &returns.r#type, &mut BTreeSet::new())
+            .ok_or_else(|| self.error(span, format!("the result type `{}` is not available with the same definition in this protocol", origin.type_name(&returns.r#type))))?;
+        self.check(
+            schema,
+            span,
+            Argument {
+                r#type,
+                value: ExpressionValue::Call(Box::new(call)),
+            },
+            expected,
+        )
     }
 
     fn braces(
@@ -497,10 +632,6 @@ fn first_run(expression: &Expression) -> &anyx::Run {
         Expression::Run(run) => run,
         Expression::Dot(binary) | Expression::Colon(binary) => first_run(&binary.left),
     }
-}
-
-fn expression_start(expression: &Expression) -> usize {
-    first_run(expression).position
 }
 
 fn relocate(node: &mut Node, offset: usize) {

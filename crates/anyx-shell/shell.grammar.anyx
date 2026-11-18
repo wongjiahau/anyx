@@ -1,0 +1,8 @@
+## Shell directive syntax. Call shapes come from the tool schemas.
+ENTRY [ONE OR MORE: opening],
+opening: ANYFIX CALL [
+  WORD "USE",
+  WORD "ALL",
+  WORD "FROM",
+  scope: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*$"]],
+],
