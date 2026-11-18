@@ -1,38 +1,38 @@
 == a named type referring to itself
-PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
-schema:1:28: found the named type `a` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE a: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
-                             ^
-schema:1:45: found the named type `b` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE b: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
-                                              ^
-schema:1:56: found the named type `c` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE c: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,
-                                                         ^
+PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,
+schema:1:28: found the named type `Alpha` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE Alpha: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,
+                             ^^^^^
+schema:1:53: found the named type `Beta` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE Beta: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,
+                                                      ^^^^
+schema:1:71: found the named type `Gamma` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE Gamma: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,
+                                                                        ^^^^^
 
 == a named type holding a record that holds it
-PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
-schema:1:30: found the type `r` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
-                               ^
-schema:1:47: found the type `a` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,
-                                                ^
+PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, TYPE Alpha: Row,
+schema:1:30: found the type `Row` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, TYPE Alpha: Row,
+                               ^^^
+schema:1:53: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, TYPE Alpha: Row,
+                                                      ^^^^^
 
 == a named type defined twice
-PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },
-schema:1:44: duplicate declaration `a` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },
-                                             ^
+PROTOCOL a VERSION 1, TYPE Alpha: Text, RECORD Alpha { b: Text },
+schema:1:48: duplicate declaration `Alpha` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE Alpha: Text, RECORD Alpha { b: Text },
+                                                 ^^^^^
 
 == a named type over an unknown type
-PROTOCOL a VERSION 1, TYPE a: thing,
-schema:1:31: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, TYPE a: thing,
-                                ^^^^^
+PROTOCOL a VERSION 1, TYPE Alpha: thing,
+schema:1:35: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+  PROTOCOL a VERSION 1, TYPE Alpha: thing,
+                                    ^^^^^
 
 == a named type over an optional type
-PROTOCOL a VERSION 1, TYPE a: Text DEFAULT "",
-schema:1:31: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written
-  PROTOCOL a VERSION 1, TYPE a: Text DEFAULT "",
-                                ^^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT "",
+schema:1:35: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written
+  PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT "",
+                                    ^^^^^^^^^^^^^^^

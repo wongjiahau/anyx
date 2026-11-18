@@ -156,11 +156,11 @@ fn an_invalid_request_reads_back() {
 }
 
 const MODES: &str = "PROTOCOL a VERSION 1,
-CHOICE shade { dark, light },
-CHOICE mode { dark, light, custom hue (hue: Float), (base: shade) dimmed },
-RECORD options { mode: mode, strict: Boolean DEFAULT false },
-METHOD set (mode: mode) strict (strict: Boolean) RETURNS (ok: Boolean),
-METHOD apply (options: options) RETURNS (modes: LIST: mode),";
+CHOICE Shade { dark, light },
+CHOICE Mode { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
+RECORD Options { mode: Mode, strict: Boolean DEFAULT false },
+METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean),
+METHOD apply (options: Options) RETURNS (modes: LIST: Mode),";
 
 #[test]
 fn words_in_slots_go_in_parentheses() {
@@ -208,7 +208,7 @@ fn words_in_slots_go_in_parentheses() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "set (dark AS mode) strict (true),
+        "set (dark AS Mode) strict (true),
 set (custom hue 0.5) strict (false),
 set ((dark) dimmed) strict (false),
 apply { mode: (light) dimmed, strict: false },
@@ -449,9 +449,9 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-RECORD timer { at: Instant, every: Duration, pause: Duration DEFAULT 0 seconds },
+RECORD Timer { at: Instant, every: Duration, pause: Duration DEFAULT 0 seconds },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant),
-METHOD set (timer: timer) RETURNS (left: Duration),
+METHOD set (timer: Timer) RETURNS (left: Duration),
 METHOD list RETURNS (durations: LIST Duration),";
 
 fn instant(text: &str) -> Value {
@@ -564,8 +564,8 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        RECORD search { query: Text, limit: Integer DEFAULT 50, note: Text DEFAULT \"\" },
-        METHOD find (search: search) RETURNS (search: search),",
+        RECORD Search { query: Text, limit: Integer DEFAULT 50, note: Text DEFAULT \"\" },
+        METHOD find (search: Search) RETURNS (search: Search),",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
     let filled = record(&[
@@ -591,10 +591,10 @@ fn a_field_left_out_takes_its_default() {
 }
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
-CHOICE mood { calm, wild },
-RECORD tally { counts: MAP Integer, moods: MAP: mood DEFAULT {} },
-METHOD count (tally: tally) RETURNS (counts: MAP Integer),
-METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: mood),";
+CHOICE Mood { calm, wild },
+RECORD Tally { counts: MAP Integer, moods: MAP: Mood DEFAULT {} },
+METHOD count (tally: Tally) RETURNS (counts: MAP Integer),
+METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood),";
 
 fn map(entries: &[(&str, Value)]) -> Value {
     Value::Map(

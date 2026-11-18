@@ -11,10 +11,10 @@ schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in ty
                                      ^^^^^^^
 
 == an old all-caps name inside a list
-PROTOCOL a VERSION 1, RECORD x { tags: LIST: TEXT },
-schema:1:46: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, RECORD x { tags: LIST: TEXT },
-                                               ^^^^
+PROTOCOL a VERSION 1, RECORD Example { tags: LIST: TEXT },
+schema:1:52: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
+  PROTOCOL a VERSION 1, RECORD Example { tags: LIST: TEXT },
+                                                     ^^^^
 
 == INTRINSIC in a schema
 PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,
@@ -23,9 +23,9 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == INTRINSIC on a record in a schema
-PROTOCOL a VERSION 1, INTRINSIC RECORD x { a: Text },
+PROTOCOL a VERSION 1, INTRINSIC RECORD Example { a: Text },
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC RECORD x { a: Text },
+  PROTOCOL a VERSION 1, INTRINSIC RECORD Example { a: Text },
                         ^^^^^^^^^
 
 == INTRINSIC on a method
@@ -59,22 +59,22 @@ schema:1:61: found the number `3`; expected the call `… _`, `…`, a `#` line 
                                                               ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
-schema:1:52: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, RECORD x { a: Text }, CHOICE x { b },
-                                                     ^
+PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },
+schema:1:58: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+  PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },
+                                                           ^^^^^^^
 
 == a field twice
-PROTOCOL a VERSION 1, RECORD x { a: Text, a: Integer },
-schema:1:43: found a second field named `a`; expected each field once; rename or remove one of them
-  PROTOCOL a VERSION 1, RECORD x { a: Text, a: Integer },
-                                            ^
+PROTOCOL a VERSION 1, RECORD Example { a: Text, a: Integer },
+schema:1:49: found a second field named `a`; expected each field once; rename or remove one of them
+  PROTOCOL a VERSION 1, RECORD Example { a: Text, a: Integer },
+                                                  ^
 
 == a variant twice
-PROTOCOL a VERSION 1, CHOICE x { a, a (b: Text) },
-schema:1:37: found a second variant named `a`; expected each variant's words once; rename or remove one of them
-  PROTOCOL a VERSION 1, CHOICE x { a, a (b: Text) },
-                                      ^
+PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },
+schema:1:43: found a second variant named `a`; expected each variant's words once; rename or remove one of them
+  PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },
+                                            ^
 
 == a parameter twice
 PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
@@ -89,9 +89,9 @@ schema:1:58: found a second method `f` with the same parameter types as one befo
                                                            ^
 
 == overloads with the same parameter types
-PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
 schema:1:136: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, TYPE id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
                                                                                                                                          ^^^
 
 == overloads that differ only in what they return
@@ -101,52 +101,52 @@ schema:1:80: found a second method `scale _` with the same parameter types as on
                                                                                  ^^^^^
 
 == a type holding itself
-PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },
-schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD node { next: node }, RECORD tree { children: LIST: tree },
+PROTOCOL a VERSION 1, RECORD Node { next: Node }, RECORD Tree { children: LIST: Tree },
+schema:1:30: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Node { next: Node }, RECORD Tree { children: LIST: Tree },
                                ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },
-schema:1:30: found the type `node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD node { next: node? DEFAULT null }, RECORD tree { children: MAP: tree },
+PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },
+schema:1:30: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },
                                ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },
-schema:1:58: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
-  PROTOCOL a VERSION 1, RECORD x { a: MAP: Integer DEFAULT [] },
-                                                           ^^
+PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },
+schema:1:64: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },
+                                                                 ^^
 
 == a cycle through a choice
-PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
-schema:1:30: found the type `a` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
-                               ^
-schema:1:49: found the type `b` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD a { b: b }, CHOICE b { has (a: a), none },
-                                                  ^
+PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+schema:1:30: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+                               ^^^^^
+schema:1:56: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+                                                         ^^^^
 
 == names that are not lowercase ASCII
-PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
-schema:1:34: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
-                                   ^^^^
-schema:1:46: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, RECORD x { Path: Text, café: Text },
-                                               ^^^^
+PROTOCOL a VERSION 1, RECORD Example { Path: Text, café: Text },
+schema:1:40: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, RECORD Example { Path: Text, café: Text },
+                                         ^^^^
+schema:1:52: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, RECORD Example { Path: Text, café: Text },
+                                                     ^^^^
 
 == a parameter named kind
-PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },
-schema:1:37: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
-  PROTOCOL a VERSION 1, CHOICE x { y (kind: Text) },
-                                      ^^^^
+PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },
+schema:1:43: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
+  PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },
+                                            ^^^^
 
 == a keyword in a name
-PROTOCOL a VERSION 1, RECORD x { a Text b: Text },
-schema:1:34: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, RECORD x { a Text b: Text },
-                                   ^^^^^^^^
+PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },
+schema:1:40: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },
+                                         ^^^^^^^^
 
 == an unknown group
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
@@ -228,8 +228,8 @@ schema:1:73: found a string in an error's slot; expected a parameter, as in `(re
                                                                           ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, CHOICE x { y (a: Text) # doc
+PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc
 },
-schema:1:46: found a string in a variant's slot; expected a parameter, as in `(revision: Integer)`; a variant's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, CHOICE x { y (a: Text) # doc
-                                               ^^^^^
+schema:1:52: found a string in a variant's slot; expected a parameter, as in `(revision: Integer)`; a variant's `#` doc goes on the lines before it
+  PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc
+                                                     ^^^^^

@@ -209,6 +209,19 @@ checks requests against `Tool::schema()` before calling `Tool::invoke()`.
 Schemas must remain stable. Returned values and declared errors are checked
 against that same schema. Additional tools need no changes to routing.
 
+## Boolean operations
+
+The `boolean` tool uses the protocol prelude's `Boolean` type. It provides
+`not`, `and`, `or` and `xor`. Put Boolean literals in parentheses when
+passing them as arguments:
+
+```anyx
+boolean / not (false),
+boolean / (true) and (false),
+boolean / (true) or (false),
+boolean / (true) xor (true),
+```
+
 ## Environment example
 
 [`environment.protocol.anyx`](environment.protocol.anyx) defines four methods:

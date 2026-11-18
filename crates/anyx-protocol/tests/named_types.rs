@@ -1,4 +1,4 @@
-//! Named types: `TYPE file id: Text` gives a type a name of its own, and is
+//! Named types: `TYPE File Id: Text` gives a type a name of its own, and is
 //! written on the wire exactly like the type underneath.
 
 mod common;
@@ -10,22 +10,22 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 const SHARING: &str = "PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-TYPE file id: Text,
+TYPE File Id: Text,
 
-TYPE tags: LIST Text,
+TYPE Tags: LIST Text,
 
-RECORD file link { file id: file id, tags: tags },
+RECORD File Link { file id: File Id, tags: Tags },
 
-TYPE link: file link,
+TYPE Link: File Link,
 
-METHOD share (id: file id) tagged (tags: tags) RETURNS (link: link) ERRORS [missing (id: file id)],
+METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: Link) ERRORS [missing (id: File Id)],
 ";
 
 #[test]
 fn a_named_type_reads_with_its_doc_and_the_type_underneath() {
     let schema = schema(SHARING);
     let file_id = &schema.types[0];
-    assert_eq!(file_id.name, "file id");
+    assert_eq!(file_id.name, "File Id");
     assert_eq!(
         file_id.doc.as_deref(),
         Some("Which file, among every account's.")
@@ -38,7 +38,7 @@ fn a_named_type_reads_with_its_doc_and_the_type_underneath() {
     assert_eq!(schema.types[3].kind, TypeKind::Distinct(Type::Named(2)));
     assert_eq!(schema.underlying(&Type::Named(3)), &Type::Named(2));
     assert_eq!(schema.underlying(&Type::Named(0)), &Type::Text);
-    assert_eq!(schema.type_name(&Type::Named(0)), "file id");
+    assert_eq!(schema.type_name(&Type::Named(0)), "File Id");
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn a_named_type_is_written_like_the_type_underneath() {
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
     assert_eq!(
         request,
-        "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n"
+        "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n"
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
     let response = "RETURNS { file id \"a\", tags [\"hymn\"] }";
@@ -82,7 +82,7 @@ fn a_named_type_is_the_type_underneath_in_json() {
     let schema = schema(SHARING);
     assert_eq!(
         encode_request_json(&schema, "share _ tagged _", r#"["a", ["hymn"]]"#).unwrap(),
-        "share (\"a\" AS file id) tagged ([\"hymn\"] AS tags)\n"
+        "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n"
     );
     assert_eq!(
         decode_response_json(&schema, "share _ tagged _", "ERROR missing \"a\"").unwrap(),
@@ -106,15 +106,15 @@ fn the_guide_names_each_named_type_and_the_type_underneath() {
         guide.contains(
             "- A named TYPE is written exactly like the type it names, but holds
   only what its name says:
-  - `file id`: `Text`. Which file, among every account's.
-  - `tags`: `LIST Text`.
-  - `link`: `file link`.
+  - `File Id`: `Text`. Which file, among every account's.
+  - `Tags`: `LIST Text`.
+  - `Link`: `File Link`.
 "
         ),
         "{guide}"
     );
     assert!(
-        guide.contains("    share (\"a\" AS: file id) tagged ([…] AS: tags)\n"),
+        guide.contains("    share (\"a\" AS: File Id) tagged ([…] AS: Tags)\n"),
         "{guide}"
     );
 }
@@ -128,27 +128,27 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC TYPE file id: Text, TYPE secret: Text,",
+            "PUBLIC TYPE File Id: Text, TYPE Secret: Text,",
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: file id) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text),",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
     let read = schema.method("read _").unwrap();
     assert_eq!(
         schema.type_name(&read.shape.parameters[0].r#type),
-        "file id"
+        "File Id"
     );
     let guide = anyx_protocol::guide(&schema, "");
-    assert!(guide.contains("  - `file id`: `Text`.\n"), "{guide}");
+    assert!(guide.contains("  - `File Id`: `Text`.\n"), "{guide}");
     let files = [
         files[0],
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: secret) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text),",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -165,23 +165,23 @@ fn mistakes_in_named_types_are_diagnosed() {
     let cases = [
         (
             "a named type referring to itself",
-            "PROTOCOL a VERSION 1, TYPE a: LIST: a, TYPE b: c, TYPE c: b,",
+            "PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,",
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, RECORD r { x: a }, TYPE a: r,",
+            "PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, TYPE Alpha: Row,",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, TYPE a: Text, RECORD a { b: Text },",
+            "PROTOCOL a VERSION 1, TYPE Alpha: Text, RECORD Alpha { b: Text },",
         ),
         (
             "a named type over an unknown type",
-            "PROTOCOL a VERSION 1, TYPE a: thing,",
+            "PROTOCOL a VERSION 1, TYPE Alpha: thing,",
         ),
         (
             "a named type over an optional type",
-            "PROTOCOL a VERSION 1, TYPE a: Text DEFAULT \"\",",
+            "PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT \"\",",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -198,11 +198,11 @@ fn mistakes_in_named_types_are_diagnosed() {
 fn a_named_type_may_be_an_instant_a_map_or_have_a_default() {
     let schema = schema(
         "PROTOCOL visits VERSION 1,
-TYPE opened at: Instant,
-TYPE openings: MAP: opened at,
-TYPE label: Text,
-RECORD visit { at: opened at, by person: openings, label: label DEFAULT \"none\" },
-METHOD visits RETURNS (visits: LIST: visit),
+TYPE Opened At: Instant,
+TYPE Openings: MAP: Opened At,
+TYPE Label: Text,
+RECORD Visit { at: Opened At, by person: Openings, label: Label DEFAULT \"none\" },
+METHOD visits RETURNS (visits: LIST: Visit),
 ",
     );
     let response =
@@ -223,10 +223,10 @@ METHOD visits RETURNS (visits: LIST: visit),
     assert_eq!(
         diagnostics(
             "PROTOCOL visits VERSION 1,
-TYPE label: Text,
-RECORD visit { label: label DEFAULT 3 },
+TYPE Label: Text,
+RECORD Visit { label: Label DEFAULT 3 },
 "
         ),
-        "schema:3:37: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD visit { label: label DEFAULT 3 },\n                                      ^"
+        "schema:3:37: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD Visit { label: Label DEFAULT 3 },\n                                      ^"
     );
 }

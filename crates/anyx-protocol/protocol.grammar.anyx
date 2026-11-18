@@ -35,7 +35,8 @@ record: ANYFIX CALL [
 ## `File Summary { path: Text }`. A generic record has a type parameter in
 ## each other slot, anywhere among the words: `Page of (item: Type) { … }`,
 ## `(item: Type) history { … }`. The schema checker reads the shape from the
-## call's name, and checks that the braces come last.
+## call's name, requires Title Case for a name with no type parameters,
+## and checks that the braces come last.
 record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record part],
 
 record part: ONE OF [fields: CURLY BRACE [ZERO OR MORE: field], type parameter],
@@ -79,7 +80,8 @@ choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type paramete
 
 ## A named type gives a type its own name, `TYPE File Id: Text`, so values
 ## that share a representation but mean different things can't be mixed up.
-## On the wire it is written exactly like the type underneath.
+## The checker requires a Title Case name. On the wire it is written
+## exactly like the type underneath.
 named type: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   intrinsic: OPTIONAL: WORD "INTRINSIC",

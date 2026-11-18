@@ -9,27 +9,27 @@ use anyx_protocol::{Call, Value, decode_request, encode_request};
 use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
-TYPE file id: Text,
-CHOICE shade { dark, light },
-CHOICE colour { dark, red },
-CHOICE mood { calm, wild },
-RECORD point { x: Integer, y: Integer },
-RECORD size { x: Integer, label: Text DEFAULT \"\" },
-RECORD width { x: Integer },
+TYPE File Id: Text,
+CHOICE Shade { dark, light },
+CHOICE Colour { dark, red },
+CHOICE Mood { calm, wild },
+RECORD Point { x: Integer, y: Integer },
+RECORD Size { x: Integer, label: Text DEFAULT \"\" },
+RECORD Width { x: Integer },
 METHOD tag (names: LIST Text) RETURNS NOTHING,
 METHOD tag (ids: LIST Integer) RETURNS NOTHING,
 METHOD open (path: Text) RETURNS NOTHING,
-METHOD open (id: file id) RETURNS NOTHING,
+METHOD open (id: File Id) RETURNS NOTHING,
 METHOD scale (factor: Float) RETURNS NOTHING,
 METHOD scale (times: Integer) RETURNS NOTHING,
-METHOD paint (shade: shade) RETURNS NOTHING,
-METHOD paint (colour: colour) RETURNS NOTHING,
-METHOD feel (mood: mood) RETURNS NOTHING,
-METHOD move to (point: point) RETURNS NOTHING,
-METHOD fit (size: size) RETURNS NOTHING,
+METHOD paint (shade: Shade) RETURNS NOTHING,
+METHOD paint (colour: Colour) RETURNS NOTHING,
+METHOD feel (mood: Mood) RETURNS NOTHING,
+METHOD move to (point: Point) RETURNS NOTHING,
+METHOD fit (size: Size) RETURNS NOTHING,
 METHOD show (shown: Boolean) RETURNS NOTHING,
 METHOD wait (length: Duration) RETURNS NOTHING,
-METHOD read (id: file id) RETURNS NOTHING,";
+METHOD read (id: File Id) RETURNS NOTHING,";
 
 fn text(value: &str) -> Value {
     Value::Text(value.to_string())
@@ -72,16 +72,16 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
         [(1, vec![list(vec![])])]
     );
     assert_eq!(calls("open \"a\""), [(2, vec![text("a")])]);
-    assert_eq!(calls("open (\"a\" AS: file id)"), [(3, vec![text("a")])]);
+    assert_eq!(calls("open (\"a\" AS: File Id)"), [(3, vec![text("a")])]);
     assert_eq!(
-        calls("open (\"a\" AS file id)"),
+        calls("open (\"a\" AS File Id)"),
         [(3, vec![text("a")])],
         "`AS: x` is `AS (x)`"
     );
     assert_eq!(calls("scale 3.0"), [(4, vec![Value::Float(3.0)])]);
     assert_eq!(calls("scale 3"), [(5, vec![Value::Integer(3)])]);
-    assert_eq!(calls("paint (dark AS: shade)")[0].0, 6);
-    assert_eq!(calls("paint (dark AS: colour)")[0].0, 7);
+    assert_eq!(calls("paint (dark AS: Shade)")[0].0, 6);
+    assert_eq!(calls("paint (dark AS: Colour)")[0].0, 7);
     assert_eq!(calls("paint (red)")[0].0, 7, "`red` is only a `colour`");
 }
 
@@ -93,17 +93,17 @@ fn a_value_with_no_type_of_its_own_needs_an_annotation() {
     );
     assert_eq!(
         message("paint (dark)"),
-        "in `paint _`: `dark` has no type of its own, so no overload of `paint _` can be chosen by it; annotate it with the type of the one to call, as in `paint (dark AS: shade)`; the overloads are `paint (shade: shade)`, `paint (colour: colour)`"
+        "in `paint _`: `dark` has no type of its own, so no overload of `paint _` can be chosen by it; annotate it with the type of the one to call, as in `paint (dark AS: Shade)`; the overloads are `paint (shade: Shade)`, `paint (colour: Colour)`"
     );
     // Even when the method has no overloads, so that adding one never
     // breaks a call.
     assert_eq!(
         message("read \"a\""),
-        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `file id`; annotate it, as in `read (\"a\" AS: file id)`"
+        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`"
     );
     assert_eq!(
         message("feel (calm), read \"a\""),
-        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `file id`; annotate it, as in `read (\"a\" AS: file id)`",
+        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`",
         "the whole request is invalid, so none of its calls run"
     );
 }
@@ -119,7 +119,7 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
     assert_eq!(calls("fit { x 1, label \"a\" }")[0].0, 10);
     assert_eq!(
         message("fit { x 1 }"),
-        "in `size` of `fit _`: `{ x 1 }` has no type of its own; annotate it, as in `fit ({ x 1 } AS: size)`",
+        "in `size` of `fit _`: `{ x 1 }` has no type of its own; annotate it, as in `fit ({ x 1 } AS: Size)`",
         "`size` and `width` both fit; `point` needs a `y`"
     );
     assert_eq!(
@@ -150,8 +150,8 @@ fn an_annotation_is_a_checked_claim() {
         "in `names` of `tag _`: found the number `1`; expected a string, as in `\"text\"`"
     );
     assert_eq!(
-        message("feel (calm AS: shade)"),
-        "in `mood` of `feel _`: found `AS: shade`; expected `AS: mood`, the type of `mood`"
+        message("feel (calm AS: Shade)"),
+        "in `mood` of `feel _`: found `AS: Shade`; expected `AS: Mood`, the type of `mood`"
     );
     assert_eq!(
         message("feel (calm AS: weather)"),
@@ -207,9 +207,9 @@ fn a_request_states_the_types_it_depends_on() {
         request,
         "tag ([] AS: LIST Text),
 tag [1],
-open (\"a\" AS file id),
+open (\"a\" AS File Id),
 scale 3.0,
-paint (dark AS shade),
+paint (dark AS Shade),
 feel (calm),
 "
     );
@@ -220,11 +220,11 @@ feel (calm),
 fn undone_by_names_one_overload() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-TYPE file id: Text,
+TYPE File Id: Text,
 METHOD hide (path: Text) RETURNS NOTHING UNDONE BY show (path: Text),
-METHOD hide (id: file id) RETURNS NOTHING UNDONE BY show (id: file id),
+METHOD hide (id: File Id) RETURNS NOTHING UNDONE BY show (id: File Id),
 METHOD show (path: Text) RETURNS NOTHING,
-METHOD show (id: file id) RETURNS NOTHING,",
+METHOD show (id: File Id) RETURNS NOTHING,",
     );
     assert_eq!(
         schema.methods[0].undone_by.as_ref().map(|undo| undo.method),
@@ -235,7 +235,7 @@ METHOD show (id: file id) RETURNS NOTHING,",
         Some(Undo {
             method: 3,
             arguments: vec![0],
-            text: "show (id: file id)".to_string(),
+            text: "show (id: File Id)".to_string(),
         })
     );
 }
@@ -243,17 +243,17 @@ METHOD show (id: file id) RETURNS NOTHING,",
 #[test]
 fn an_example_annotates_as_a_request_does() {
     let parsed = anyx_protocol::Schema::parse(
-        "PROTOCOL a VERSION 1, TYPE file id: Text,
-METHOD read (id: file id) RETURNS NOTHING EXAMPLES [read (\"a\" AS: file id) RETURNS NOTHING],",
+        "PROTOCOL a VERSION 1, TYPE File Id: Text,
+METHOD read (id: File Id) RETURNS NOTHING EXAMPLES [read (\"a\" AS: File Id) RETURNS NOTHING],",
     );
     assert!(parsed.is_ok(), "{parsed:?}");
     let unannotated = common::diagnostics(
-        "PROTOCOL a VERSION 1, TYPE file id: Text,
-METHOD read (id: file id) RETURNS NOTHING EXAMPLES [read \"a\" RETURNS NOTHING],",
+        "PROTOCOL a VERSION 1, TYPE File Id: Text,
+METHOD read (id: File Id) RETURNS NOTHING EXAMPLES [read \"a\" RETURNS NOTHING],",
     );
     assert!(
         unannotated.contains(
-            "in an example of `read _`: in `id` of `read _`: `\"a\"` has the type Text of its own, not `file id`; annotate it, as in `read (\"a\" AS: file id)`"
+            "in an example of `read _`: in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`"
         ),
         "{unannotated}"
     );
@@ -275,8 +275,8 @@ fn json_names_an_overload_with_its_parameters_types() {
         "scale 3\n"
     );
     assert_eq!(
-        encode_request_json(&schema, "open (file id)", "[\"a\"]").unwrap(),
-        "open (\"a\" AS file id)\n"
+        encode_request_json(&schema, "open (File Id)", "[\"a\"]").unwrap(),
+        "open (\"a\" AS File Id)\n"
     );
     assert_eq!(
         encode_request_json(&schema, "scale _", "[3]").unwrap_err(),
@@ -285,16 +285,16 @@ fn json_names_an_overload_with_its_parameters_types() {
     // A method with no overloads goes by its full name, or its typed one.
     assert_eq!(
         encode_request_json(&schema, "read _", "[\"a\"]").unwrap(),
-        "read (\"a\" AS file id)\n"
+        "read (\"a\" AS File Id)\n"
     );
     assert_eq!(
-        encode_request_json(&schema, "read (file id)", "[\"a\"]").unwrap(),
-        "read (\"a\" AS file id)\n"
+        encode_request_json(&schema, "read (File Id)", "[\"a\"]").unwrap(),
+        "read (\"a\" AS File Id)\n"
     );
     assert_eq!(
         decode_request_json(
             &schema,
-            "tag ([] AS: LIST Integer), read (\"a\" AS: file id)"
+            "tag ([] AS: LIST Integer), read (\"a\" AS: File Id)"
         )
         .unwrap(),
         r#"[{"arguments":[[]],"method":"tag (LIST Integer)"},{"arguments":["a"],"method":"read _"}]"#
@@ -309,9 +309,9 @@ fn the_guide_lists_each_shape_s_overloads_together() {
             "argument whose value doesn't show its type (see Values):
 
 - `tag (names: LIST Text)`, `tag (ids: LIST Integer)`
-- `open (path: Text)`, `open (id: file id)`
+- `open (path: Text)`, `open (id: File Id)`
 - `scale (factor: Float)`, `scale (times: Integer)`
-- `paint (shade: shade)`, `paint (colour: colour)`
+- `paint (shade: Shade)`, `paint (colour: Colour)`
 "
         ),
         "{guide}"
