@@ -3,7 +3,6 @@
 use crate::Value;
 use crate::schema::{Diagnostic, Schema, Type, TypeKind};
 use anyx::{NamePart, Node, NodeKind, Span};
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct Predicate<B = ()> {
@@ -121,26 +120,45 @@ impl<B: Clone> Predicate<B> {
             let NodeKind::Call(call) = &node.kind else {
                 return Err(unsupported());
             };
-            if let Some(test) = text_test(call, binding, method)? {
-                tests.push(test);
+            let shape = call.name_text();
+            if let Some(op) = match shape.as_str() {
+                "_ starts with _" => Some("starts with"),
+                "_ ends with _" => Some("ends with"),
+                "_ contains _" => Some("contains"),
+                _ => None,
+            } {
+                let [subject, literal] = call.arguments.as_slice() else {
+                    return Err(unsupported());
+                };
+                let NodeKind::String(text) = &literal.kind else {
+                    return Err(unsupported());
+                };
+                tests.push(Test::Text(binding(subject)?, op.into(), text.value.clone()));
                 continue;
             }
-            let mut operands = Vec::new();
-            let mut operators = Vec::new();
-            let mut start = 0;
-            for (index, part) in call.name.iter().enumerate() {
-                if let NamePart::Word { text, .. } = part
-                    && ["<", "<=", ">", ">=", "=", "!="].contains(&text.as_str())
-                {
-                    operands.push(operand(call, start, index, binding, method)?);
-                    operators.push(text);
-                    start = index + 1;
-                }
-            }
-            if operators.is_empty() {
+            // A comparison chain is one call whose slots already hold its operands.
+            let Some((NamePart::Slot, pairs)) = call.name.split_first() else {
+                return Err(unsupported());
+            };
+            if pairs.is_empty() || pairs.len() != 2 * (call.arguments.len() - 1) {
                 return Err(unsupported());
             }
-            operands.push(operand(call, start, call.name.len(), binding, method)?);
+            let operators = pairs
+                .chunks_exact(2)
+                .map(|pair| match pair {
+                    [NamePart::Word { text, .. }, NamePart::Slot]
+                        if ["<", "<=", ">", ">=", "=", "!="].contains(&text.as_str()) =>
+                    {
+                        Ok(text)
+                    }
+                    _ => Err(unsupported()),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let operands = call
+                .arguments
+                .iter()
+                .map(|node| expr(node, binding))
+                .collect::<Result<Vec<_>, _>>()?;
             tests.extend(
                 operands
                     .windows(2)
@@ -171,81 +189,6 @@ impl<B: Clone> Predicate<B> {
             .collect::<Vec<_>>()
             .join(" and ")
     }
-}
-
-fn text_test<B>(
-    call: &anyx::Call,
-    binding: &impl Fn(&Node) -> Result<B, String>,
-    method: bool,
-) -> Result<Option<Test<B>>, String> {
-    let Some(Node {
-        kind: NodeKind::String(text),
-        ..
-    }) = call.arguments.last()
-    else {
-        return Ok(None);
-    };
-    for op in ["starts with", "ends with", "contains"] {
-        let words: Vec<_> = op.split(' ').collect();
-        let Some(end) = call.name.len().checked_sub(words.len() + 1) else {
-            continue;
-        };
-        if matches!(call.name.last(), Some(NamePart::Slot))
-            && call.name[end..call.name.len() - 1]
-                .iter()
-                .zip(words)
-                .all(|(part, word)| matches!(part, NamePart::Word { text, .. } if text == word))
-        {
-            let node = subexpression(call, 0, end, method)?;
-            return Ok(Some(Test::Text(
-                binding(&node)?,
-                op.into(),
-                text.value.clone(),
-            )));
-        }
-    }
-    Ok(None)
-}
-
-fn operand<B>(
-    call: &anyx::Call,
-    start: usize,
-    end: usize,
-    binding: &impl Fn(&Node) -> Result<B, String>,
-    method: bool,
-) -> Result<Expr<B>, String> {
-    expr(
-        subexpression(call, start, end, method)?.as_ref(),
-        binding,
-        method,
-    )
-}
-
-fn subexpression(
-    call: &anyx::Call,
-    start: usize,
-    end: usize,
-    method: bool,
-) -> Result<Cow<'_, Node>, String> {
-    let parts = &call.name[start..end];
-    let slot = |part: &&NamePart| matches!(part, NamePart::Slot);
-    let first = call.name[..start].iter().filter(slot).count();
-    if matches!(parts, [NamePart::Slot]) {
-        return Ok(Cow::Borrowed(&call.arguments[first]));
-    }
-    if !method || parts.is_empty() {
-        return Err(unsupported());
-    }
-    let count = parts.iter().filter(slot).count();
-    // Between comparison symbols, named values and arithmetic can be
-    // part of the outer call's name. Read those parts as one operand.
-    Ok(Cow::Owned(Node {
-        kind: NodeKind::Call(anyx::Call {
-            name: parts.to_vec(),
-            arguments: call.arguments[first..first + count].to_vec(),
-        }),
-        span: Span::empty(0),
-    }))
 }
 
 impl Predicate<usize> {
@@ -447,16 +390,12 @@ pub(crate) fn check_methods(schema: &Schema) -> Vec<Diagnostic> {
 }
 
 fn unsupported() -> String {
-    "unsupported predicate; expected a comparison chain such as `10 <= _ < 30`, a text test such as `_ ends with \".poentaro\"`, or a comparison of `(_ length)`; put arithmetic in parentheses, as in `(_ + 1) <= 30`".into()
+    "unsupported predicate; expected a comparison chain such as `10 <= _ < 30`, a text test such as `_ ends with \".poentaro\"`, or a comparison of `(_ length)`; group nested calls with parentheses, dot, or colon, as in `(_ + 1) <= 30` or `30 >=: _ + 1`".into()
 }
 
-fn expr<B>(
-    node: &Node,
-    binding: &impl Fn(&Node) -> Result<B, String>,
-    method: bool,
-) -> Result<Expr<B>, String> {
+fn expr<B>(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result<Expr<B>, String> {
     Ok(match &node.kind {
-        NodeKind::Parens(items) if items.len() == 1 => return expr(&items[0], binding, method),
+        NodeKind::Parens(items) if items.len() == 1 => return expr(&items[0], binding),
         NodeKind::Number(text) => {
             if let Ok(n) = text.parse::<i64>() {
                 Expr::Integer(n)
@@ -468,40 +407,20 @@ fn expr<B>(
                 Expr::Float(n)
             }
         }
-        NodeKind::Call(call) => {
-            if method
-                && call.arguments.is_empty()
-                && let Ok(value) = binding(node)
-            {
-                return Ok(Expr::Value(value));
-            }
-            let parts = &call.name;
-            if let Some(NamePart::Word { text, .. }) = parts.last()
-                && text == "length"
-            {
-                let subject = subexpression(call, 0, parts.len() - 1, method)?;
-                return Ok(Expr::Length(binding(&subject)?));
-            }
-            if let Some((index, op)) = parts.iter().enumerate().find_map(|(i, part)| match part {
-                NamePart::Word { text, .. } if ["+", "-", "*"].contains(&text.as_str()) => {
-                    Some((i, text.as_str()))
-                }
-                _ => None,
-            }) {
-                if parts[index + 1..].iter().any(|part| matches!(part, NamePart::Word { text, .. } if ["+", "-", "*"].contains(&text.as_str()))) {
-                    return Err(unsupported());
-                }
-                let a = Box::new(operand(call, 0, index, binding, method)?);
-                let b = Box::new(operand(call, index + 1, parts.len(), binding, method)?);
-                return Ok(match op {
-                    "+" => Expr::Add(a, b),
-                    "-" => Expr::Sub(a, b),
-                    "*" if a.constant() || b.constant() => Expr::Mul(a, b),
+        NodeKind::Call(call) => match (call.name_text().as_str(), call.arguments.as_slice()) {
+            ("_ length", [subject]) => Expr::Length(binding(subject)?),
+            (op @ ("_ + _" | "_ - _" | "_ * _"), [left, right]) => {
+                let a = Box::new(expr(left, binding)?);
+                let b = Box::new(expr(right, binding)?);
+                match op {
+                    "_ + _" => Expr::Add(a, b),
+                    "_ - _" => Expr::Sub(a, b),
+                    "_ * _" if a.constant() || b.constant() => Expr::Mul(a, b),
                     _ => return Err(unsupported()),
-                });
+                }
             }
-            Expr::Value(binding(node)?)
-        }
+            _ => Expr::Value(binding(node)?),
+        },
         _ => Expr::Value(binding(node)?),
     })
 }

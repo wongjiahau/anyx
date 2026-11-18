@@ -271,14 +271,16 @@ A method can declare a `REQUIRES` clause before `RETURNS` and an
 METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer)
     REQUIRES [1 <= revision < limit]
     RETURNS (new revision: Integer)
-    ENSURES [new revision = revision + 1],
+    ENSURES [new revision =: revision + 1],
 ```
 
 Conditions share the refinement predicate language. They refer to the
 method's named arguments, and `ENSURES` may also refer to the named result.
 They can compare numbers or lengths, use comparison chains and arithmetic,
-and apply the same text tests as refinements. Each test in the brackets must
-hold. Use refinement types for restrictions on individual values that apply
+and apply the same text tests as refinements. Use parentheses, dot, or
+colon to group nested calls. For example, `new revision =: revision + 1`
+and `new revision = (revision + 1)` express the same condition. Each test
+in the brackets must hold. Use refinement types for restrictions on individual values that apply
 wherever those types are used.
 
 The decoder checks every call's preconditions before dispatch. A failure

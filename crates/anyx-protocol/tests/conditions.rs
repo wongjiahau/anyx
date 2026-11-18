@@ -5,9 +5,9 @@ use anyx_protocol::{Outcome, Response, Schema, Value, decode_request, encode_res
 const SOURCE: &str = r#"
 PROTOCOL revisions VERSION 1,
 METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer)
-    REQUIRES [0 < revision < limit, path ends with ".txt"]
+    REQUIRES [0 < revision < limit, path . ends with ".txt"]
     RETURNS (new revision: Integer)
-    ENSURES [new revision = revision + 1]
+    ENSURES [new revision =: revision + 1]
     ERRORS [conflict]
     EXAMPLES [write "a.txt" at revision 2 before 4 RETURNS 3],
 METHOD ping RETURNS NOTHING,
@@ -57,7 +57,7 @@ fn producer_checks_successful_results_against_their_own_arguments() {
     assert!(
         error
             .message
-            .contains("ENSURES [new revision = revision + 1]")
+            .contains("ENSURES [new revision =: revision + 1]")
     );
     assert_eq!(
         server::respond(&schema, &calls, outcomes.clone()),
@@ -82,7 +82,7 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
     let schema = common::schema(SOURCE);
     let guide = anyx_protocol::guide(&schema, "");
     assert!(guide.contains("REQUIRES [0 < revision < limit"));
-    assert!(guide.contains("ENSURES [new revision = revision + 1]"));
+    assert!(guide.contains("ENSURES [new revision =: revision + 1]"));
     assert!(guide.contains("the whole request gets `INVALID REQUEST`"));
     let formatted = anyx_protocol::format_schema(SOURCE).unwrap();
     assert!(formatted.contains("\n    REQUIRES"), "{formatted}");
@@ -94,7 +94,7 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
             "unknown value `new revision`",
         ),
         (
-            "new revision = revision + 1",
+            "new revision =: revision + 1",
             "old revision > 0",
             "unknown value `old revision`",
         ),
@@ -117,11 +117,36 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
 }
 
 #[test]
+fn arithmetic_uses_the_call_tree_from_anyx() {
+    for expression in [
+        "new revision =: revision + 1 .+ 1",
+        "new revision = ((revision + 1) + 1)",
+    ] {
+        let source = SOURCE
+            .replace("new revision =: revision + 1", expression)
+            .replace("before 4 RETURNS 3]", "before 4 RETURNS 4]");
+        let schema = common::schema(&source);
+        let calls = decode_request(&schema, "write \"a.txt\" at revision 2 before 4").unwrap();
+        assert_eq!(
+            server::respond(&schema, &calls, vec![Outcome::Value(Value::Integer(4))]),
+            "RETURNS 4\n"
+        );
+    }
+    let flat = SOURCE.replace(
+        "new revision =: revision + 1",
+        "new revision = revision + 1",
+    );
+    let errors = common::diagnostics(&flat);
+    assert!(errors.contains("invalid ENSURES"), "{errors}");
+    assert!(errors.contains("group nested calls"), "{errors}");
+}
+
+#[test]
 fn lengths_and_float_arithmetic_use_the_refinement_rules() {
     let schema = common::schema(
         r#"
         METHOD copy (source text: Text) into (target: Text)
-            REQUIRES [(source text length) <= (target length)]
+            REQUIRES [(source text . length) <= (target . length)]
             RETURNS NOTHING,
         METHOD double (input: Float) RETURNS (output: Float)
             ENSURES [output = (input * 2.0)],
