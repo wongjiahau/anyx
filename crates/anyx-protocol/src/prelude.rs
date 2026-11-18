@@ -97,20 +97,25 @@ pub(crate) fn renamed(word: &str) -> Option<&'static Intrinsic> {
         .find(|intrinsic| intrinsic.name.to_uppercase() == word)
 }
 
-/// Reads and checks the prelude: every declaration is `INTRINSIC`, has a
-/// doc, and is one the implementation supplies, and every one it supplies
-/// is declared. `Err` lists what is wrong.
+fn document() -> Result<&'static ast::Document, &'static [String]> {
+    static DOCUMENT: LazyLock<Result<ast::Document, Vec<String>>> = LazyLock::new(|| {
+        let parsed = anyx::parse(SOURCE);
+        if !parsed.errors.is_empty() {
+            return Err(parsed
+                .errors
+                .into_iter()
+                .map(|error| error.message)
+                .collect());
+        }
+        ast::decode_document(&parsed.syntax.nodes())
+            .map_err(|error| vec![error.render(SOURCE, PATH)])
+    });
+    DOCUMENT.as_ref().map_err(Vec::as_slice)
+}
+
+/// Checks the prelude's intrinsic type declarations against the implementation.
 fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
-    let parsed = anyx::parse(SOURCE);
-    if !parsed.errors.is_empty() {
-        return Err(parsed
-            .errors
-            .iter()
-            .map(|error| error.message.clone())
-            .collect());
-    }
-    let document = ast::decode_document(&parsed.syntax.nodes())
-        .map_err(|error| vec![error.render(SOURCE, PATH)])?;
+    let document = document().map_err(<[String]>::to_vec)?;
     let mut problems = Vec::new();
     if document.header.is_some() {
         problems.push("found a `PROTOCOL` header; expected only `INTRINSIC` declarations".into());
@@ -216,12 +221,11 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
 /// Ordinary prelude declarations use the same checker as user declarations.
 pub(crate) fn declarations() -> ast::Document {
     static DECLARATIONS: LazyLock<ast::Document> = LazyLock::new(|| {
-        let parsed = anyx::parse(SOURCE);
-        let mut document =
-            ast::decode_document(&parsed.syntax.nodes()).expect("the prelude parses");
-        document
-            .definition
-            .retain(|definition| !is_intrinsic(definition));
+        let mut document = document().expect("the prelude parses").clone();
+        functions();
+        document.definition.retain(|definition| {
+            !is_intrinsic(definition) && !matches!(definition, ast::Definition::Function(_))
+        });
         document
     });
     DECLARATIONS.clone()
@@ -235,6 +239,189 @@ fn is_intrinsic(definition: &ast::Definition) -> bool {
         ast::Definition::Errors(d) => d.intrinsic.is_some(),
         _ => false,
     }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Function {
+    Compare(&'static [&'static str]),
+    Arithmetic(Arithmetic),
+    Length,
+    Text(&'static str),
+    Boolean(BooleanOperation),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Arithmetic {
+    Add,
+    Subtract,
+    Multiply,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BooleanOperation {
+    Not,
+    And,
+    Or,
+    Xor,
+}
+
+impl BooleanOperation {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Self::Not => "not",
+            Self::And => "and",
+            Self::Or => "or",
+            Self::Xor => "xor",
+        }
+    }
+
+    pub fn apply(self, left: bool, right: bool) -> bool {
+        match self {
+            Self::Not => !left,
+            Self::And => left & right,
+            Self::Or => left | right,
+            Self::Xor => left ^ right,
+        }
+    }
+}
+
+impl Function {
+    fn implementation(shape: &str) -> Option<Self> {
+        use Arithmetic::{Add, Multiply, Subtract};
+        use BooleanOperation::{And, Not, Or, Xor};
+        Some(match shape {
+            "_ + _" => Self::Arithmetic(Add),
+            "_ - _" => Self::Arithmetic(Subtract),
+            "_ * _" => Self::Arithmetic(Multiply),
+            "_ < _" => Self::Compare(&["<"]),
+            "_ <= _" => Self::Compare(&["<="]),
+            "_ > _" => Self::Compare(&[">"]),
+            "_ >= _" => Self::Compare(&[">="]),
+            "_ = _" => Self::Compare(&["="]),
+            "_ != _" => Self::Compare(&["!="]),
+            "_ < _ < _" => Self::Compare(&["<", "<"]),
+            "_ < _ <= _" => Self::Compare(&["<", "<="]),
+            "_ <= _ < _" => Self::Compare(&["<=", "<"]),
+            "_ <= _ <= _" => Self::Compare(&["<=", "<="]),
+            "_ > _ > _" => Self::Compare(&[">", ">"]),
+            "_ > _ >= _" => Self::Compare(&[">", ">="]),
+            "_ >= _ > _" => Self::Compare(&[">=", ">"]),
+            "_ >= _ >= _" => Self::Compare(&[">=", ">="]),
+            "_ <= _ <= _ <= _" => Self::Compare(&["<=", "<=", "<="]),
+            "_ length" => Self::Length,
+            "_ starts with _" => Self::Text("starts with"),
+            "_ ends with _" => Self::Text("ends with"),
+            "_ contains _" => Self::Text("contains"),
+            "not _" => Self::Boolean(Not),
+            "_ and _" => Self::Boolean(And),
+            "_ or _" => Self::Boolean(Or),
+            "_ xor _" => Self::Boolean(Xor),
+            _ => return None,
+        })
+    }
+
+    fn supports(self, parameters: &[&str], returns: &str) -> bool {
+        match self {
+            Self::Compare(operators) => {
+                parameters.len() == operators.len() + 1
+                    && ["Integer", "Float"]
+                        .into_iter()
+                        .any(|ty| parameters.iter().all(|p| *p == ty))
+                    && returns == "Boolean"
+            }
+            Self::Arithmetic(_) => {
+                ["Integer", "Float"].contains(&returns) && parameters == [returns, returns]
+            }
+            Self::Length => {
+                matches!(parameters, ["Text" | "Bytes" | "LIST Type" | "MAP Type"])
+                    && returns == "Integer"
+            }
+            Self::Text(_) => parameters == ["Text", "Text"] && returns == "Boolean",
+            Self::Boolean(BooleanOperation::Not) => {
+                parameters == ["Boolean"] && returns == "Boolean"
+            }
+            Self::Boolean(_) => parameters == ["Boolean", "Boolean"] && returns == "Boolean",
+        }
+    }
+}
+
+fn signature_type(ty: &ast::Type) -> &'static str {
+    match ty {
+        ast::Type::Named(reference) if reference.arguments.is_empty() => {
+            match reference.name.text.as_str() {
+                "Text" => "Text",
+                "Bytes" => "Bytes",
+                "Integer" => "Integer",
+                "Float" => "Float",
+                "Boolean" => "Boolean",
+                "Type" => "Type",
+                _ => "",
+            }
+        }
+        ast::Type::List { item, .. } if signature_type(item) == "Type" => "LIST Type",
+        ast::Type::Map { value, .. } if signature_type(value) == "Type" => "MAP Type",
+        _ => "",
+    }
+}
+
+struct DeclaredFunction {
+    implementation: Function,
+    overloads: Vec<Vec<&'static str>>,
+}
+
+fn functions() -> &'static std::collections::HashMap<String, DeclaredFunction> {
+    static FUNCTIONS: LazyLock<std::collections::HashMap<String, DeclaredFunction>> =
+        LazyLock::new(|| {
+            let mut functions = std::collections::HashMap::new();
+            for definition in &document().expect("the prelude parses").definition {
+                if let ast::Definition::Function(function) = definition {
+                    let shape = &function.shape.name.text;
+                    let implementation = Function::implementation(shape).unwrap_or_else(|| {
+                        panic!("no implementation of prelude FUNCTION `{shape}`")
+                    });
+                    let parameters = function
+                        .shape
+                        .arguments
+                        .iter()
+                        .map(|p| signature_type(&p.r#type))
+                        .collect::<Vec<_>>();
+                    let returns = signature_type(&function.returns.r#type);
+                    assert!(
+                        implementation.supports(&parameters, returns),
+                        "unsupported signature for prelude FUNCTION `{shape}`"
+                    );
+                    let declared =
+                        functions
+                            .entry(shape.clone())
+                            .or_insert_with(|| DeclaredFunction {
+                                implementation,
+                                overloads: Vec::new(),
+                            });
+                    assert!(
+                        !declared.overloads.contains(&parameters),
+                        "duplicate signature for prelude FUNCTION `{shape}`"
+                    );
+                    declared.overloads.push(parameters);
+                }
+            }
+            functions
+        });
+    &FUNCTIONS
+}
+
+pub(crate) fn function(shape: &str) -> Option<Function> {
+    functions()
+        .get(shape)
+        .map(|function| function.implementation)
+}
+
+pub(crate) fn function_takes(shape: &str, parameters: &[&str]) -> bool {
+    functions().get(shape).is_some_and(|function| {
+        function
+            .overloads
+            .iter()
+            .any(|overload| overload == parameters)
+    })
 }
 
 #[cfg(test)]

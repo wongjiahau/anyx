@@ -27,6 +27,7 @@ pub enum Definition {
     NamedType(NamedType),
     Errors(Errors),
     Method(Method),
+    Function(Function),
     Import(Import),
 }
 
@@ -200,6 +201,14 @@ pub enum MethodReturns {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Function {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub shape: Shape,
+    pub returns: Returns,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Condition {
     pub predicate: Vec<Node>,
     pub span: Span,
@@ -290,6 +299,7 @@ impl Definition {
             Definition::NamedType(value) => value.span,
             Definition::Errors(value) => value.span,
             Definition::Method(value) => value.span,
+            Definition::Function(value) => value.span,
             Definition::Import(value) => value.span,
         }
     }
@@ -420,6 +430,7 @@ impl support::Errors for Definition {
             Definition::NamedType(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
+            Definition::Function(value) => support::Errors::errors(value, found),
             Definition::Import(value) => support::Errors::errors(value, found),
         }
     }
@@ -615,6 +626,14 @@ impl support::Errors for MethodReturns {
     }
 }
 
+impl support::Errors for Function {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.shape, found);
+        support::Errors::errors(&self.returns, found);
+    }
+}
+
 impl support::Errors for Condition {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.predicate, found);
@@ -750,6 +769,7 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
+        .or_else(|error| error.or(decode_function(node).map(Definition::Function)))
         .or_else(|error| error.or(decode_import(node).map(Definition::Import)))
 }
 
@@ -1219,6 +1239,18 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
     Ok(decoded)
 }
 
+pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
+    let mut parts = support::call(node, "the call `_? FUNCTION _ RETURNS _`")?;
+    let decoded = Function {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        shape: parts.word("FUNCTION")?.one(decode_shape, "a shape")?,
+        returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
 pub fn decode_condition(node: &Node) -> Result<Condition, DecodeError> {
     let mut elements = support::square_bracket(node)?;
     let decoded = Condition {
@@ -1449,12 +1481,18 @@ pub fn parse_document(source: &str) -> support::Parsed<Document> {
 pub const DOCUMENTATION: &[(&str, &str)] = &[];
 
 /// How [`format`] lays out calls, from the grammar's `FORMAT`s.
-pub const LAYOUT: &[support::LayoutRule] = &[support::LayoutRule {
-    words: &["METHOD", "RETURNS"],
-    break_before: &[
-        "REQUIRES", "RETURNS", "ENSURES", "ERRORS", "UNDONE", "EXAMPLES",
-    ],
-}];
+pub const LAYOUT: &[support::LayoutRule] = &[
+    support::LayoutRule {
+        words: &["METHOD", "RETURNS"],
+        break_before: &[
+            "REQUIRES", "RETURNS", "ENSURES", "ERRORS", "UNDONE", "EXAMPLES",
+        ],
+    },
+    support::LayoutRule {
+        words: &["FUNCTION", "RETURNS"],
+        break_before: &["RETURNS"],
+    },
+];
 
 /// Formats `source` canonically, laying calls out as the grammar says.
 pub fn format(

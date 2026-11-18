@@ -217,7 +217,8 @@ Supported predicates are deliberately small and checked when loading the
 schema:
 
 - Comparisons `<`, `<=`, `>`, `>=`, `=`, `!=`, including chains with mixed
-  bounds, such as `10 <= _ < 30`. Each adjacent pair must hold.
+  bounds, such as `10 <= _ < 30`. Each adjacent pair must hold. The prelude
+  declares the supported chain shapes.
 - Numeric `_` for `Integer` or `Float`, with numeric constants. Integer
   predicates use whole-number constants and exact checked signed 128-bit
   arithmetic; overflow fails the predicate. Float predicates use finite
@@ -232,6 +233,8 @@ schema:
   count entries. Length bounds are whole numbers.
 - Text tests `_ starts with "prefix"`, `_ ends with "suffix"`, and
   `_ contains "part"`, matched exactly and case-sensitively.
+- Boolean functions `not`, `and`, `or`, and `xor` combine predicates.
+  Group nested calls with parentheses, dot, or colon.
 - Several predicates separated by commas mean all of them must hold:
   `Text . WHERE [1 <= (_ length), _ ends with ".poentaro"]`.
 
@@ -276,12 +279,15 @@ METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer
 
 Conditions share the refinement predicate language. They refer to the
 method's named arguments, and `ENSURES` may also refer to the named result.
-They can compare numbers or lengths, use comparison chains and arithmetic,
-and apply the same text tests as refinements. Use parentheses, dot, or
+The supported call shapes and overloads are declared as `FUNCTION` in
+[`prelude.protocol.anyx`](prelude.protocol.anyx). Each bracket entry must
+produce a `Boolean`. Functions such as `+` and `length` provide operands
+to other calls. The codec evaluates these functions locally. Only the
+bundled prelude can declare a `FUNCTION`. Use parentheses, dot, or
 colon to group nested calls. For example, `new revision =: revision + 1`
 and `new revision = (revision + 1)` express the same condition. Each test
-in the brackets must hold. Use refinement types for restrictions on individual values that apply
-wherever those types are used.
+in the brackets must hold. Use refinement types for restrictions on
+individual values that apply wherever those types are used.
 
 The decoder checks every call's preconditions before dispatch. A failure
 returns one `INVALID REQUEST` for the whole batch, with the call's location,

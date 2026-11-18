@@ -338,6 +338,10 @@ impl<'a> Checker<'a> {
                         self.check_intrinsic(found.intrinsic);
                         self.declare_group(found.body, found.public);
                     }
+                    ast::Definition::Function(function) => self.error(
+                        function.span,
+                        "only the protocol prelude can declare a FUNCTION",
+                    ),
                     ast::Definition::Method(_) | ast::Definition::Import(_) => {}
                 }
             }
@@ -404,6 +408,7 @@ impl<'a> Checker<'a> {
                     }
                     ast::Definition::Errors(_)
                     | ast::Definition::Method(_)
+                    | ast::Definition::Function(_)
                     | ast::Definition::Import(_) => {}
                 }
             }

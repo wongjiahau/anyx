@@ -1,6 +1,7 @@
 //! Checked predicates shared by type refinements and method conditions.
 //! No predicate evaluates application code or applies operator precedence.
 use crate::Value;
+use crate::prelude::{self, Arithmetic, BooleanOperation, Function};
 use crate::schema::{Diagnostic, Schema, Type, TypeKind};
 use anyx::{NamePart, Node, NodeKind, Span};
 
@@ -34,7 +35,17 @@ pub enum Expr<B = ()> {
 /// One comparison or text test of a checked predicate.
 pub enum Test<B = ()> {
     Compare(Expr<B>, String, Expr<B>),
-    Text(B, String, String),
+    Text(TextOperand<B>, &'static str, TextOperand<B>),
+    Boolean(BooleanOperation, Vec<Test<B>>),
+    All(String, Vec<Test<B>>),
+    Flag(B),
+    Literal(bool),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TextOperand<B> {
+    Value(B),
+    Literal(String),
 }
 
 impl Predicate {
@@ -65,30 +76,17 @@ impl Predicate {
     pub(crate) fn check_type(&self, schema: &Schema, base: &Type) -> Result<(), String> {
         let base = schema.underlying(base);
         for test in &self.tests {
-            match test {
-                Test::Text(..) if base != &Type::Text => {
-                    return Err("text tests require Text".into());
-                }
-                Test::Compare(a, _, b) => {
-                    for expression in [a, b] {
-                        if expression.has_value() && !matches!(base, Type::Integer | Type::Float) {
-                            return Err("numeric `_` requires Integer or Float; use `(_ length)` to compare a length".into());
-                        }
-                        if expression.has_length()
-                            && !matches!(
-                                base,
-                                Type::Text | Type::Bytes | Type::List(_) | Type::Map(_)
-                            )
-                        {
-                            return Err("`_ length` requires Text, Bytes, LIST or MAP".into());
-                        }
-                        if expression.has_float() && base != &Type::Float {
-                            return Err("fractional constants require Float; use whole-number constants for integers and lengths".into());
-                        }
-                    }
-                }
-                _ => {}
+            if base != &Type::Float && test.has_fractional_constant() {
+                return Err("fractional constants require Float; use whole-number constants for integers and lengths".into());
             }
+            test.check_types(&|_| base, schema).map_err(|message| {
+                if message == "numeric comparisons require Integer or Float values" {
+                    "numeric `_` requires Integer or Float; use `(_ length)` to compare a length"
+                        .into()
+                } else {
+                    message
+                }
+            })?;
         }
         Ok(())
     }
@@ -96,7 +94,7 @@ impl Predicate {
     fn failure(&self, value: &Value) -> Option<String> {
         self.tests
             .iter()
-            .find(|test| !test.accepts(&|_| Some(value), matches!(value, Value::Float(_))))
+            .find_map(|test| test.failure(&|_| Some(value)))
             .map(Test::words)
     }
 
@@ -115,57 +113,10 @@ impl<B: Clone> Predicate<B> {
         if nodes.is_empty() {
             return Err("expected at least one predicate inside brackets".into());
         }
-        let mut tests = Vec::new();
-        for node in nodes {
-            let NodeKind::Call(call) = &node.kind else {
-                return Err(unsupported());
-            };
-            let shape = call.name_text();
-            if let Some(op) = match shape.as_str() {
-                "_ starts with _" => Some("starts with"),
-                "_ ends with _" => Some("ends with"),
-                "_ contains _" => Some("contains"),
-                _ => None,
-            } {
-                let [subject, literal] = call.arguments.as_slice() else {
-                    return Err(unsupported());
-                };
-                let NodeKind::String(text) = &literal.kind else {
-                    return Err(unsupported());
-                };
-                tests.push(Test::Text(binding(subject)?, op.into(), text.value.clone()));
-                continue;
-            }
-            // A comparison chain is one call whose slots already hold its operands.
-            let Some((NamePart::Slot, pairs)) = call.name.split_first() else {
-                return Err(unsupported());
-            };
-            if pairs.is_empty() || pairs.len() != 2 * (call.arguments.len() - 1) {
-                return Err(unsupported());
-            }
-            let operators = pairs
-                .chunks_exact(2)
-                .map(|pair| match pair {
-                    [NamePart::Word { text, .. }, NamePart::Slot]
-                        if ["<", "<=", ">", ">=", "=", "!="].contains(&text.as_str()) =>
-                    {
-                        Ok(text)
-                    }
-                    _ => Err(unsupported()),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let operands = call
-                .arguments
-                .iter()
-                .map(|node| expr(node, binding))
-                .collect::<Result<Vec<_>, _>>()?;
-            tests.extend(
-                operands
-                    .windows(2)
-                    .zip(operators)
-                    .map(|(pair, op)| Test::Compare(pair[0].clone(), op.clone(), pair[1].clone())),
-            );
-        }
+        let tests = nodes
+            .iter()
+            .map(|node| Test::read(node, binding, method))
+            .collect::<Result<Vec<_>, _>>()?;
         if !tests.iter().any(Test::uses_value) {
             return Err(if method {
                 "expected a predicate that refers to a method argument or result"
@@ -241,37 +192,9 @@ impl Predicate<usize> {
         schema: &Schema,
         parameters: &[&crate::schema::Parameter],
     ) -> Result<(), String> {
-        let ty = |index: usize| schema.underlying(&parameters[index].r#type);
+        let ty = |index: &usize| schema.underlying(&parameters[*index].r#type);
         for test in &self.tests {
-            match test {
-                Test::Text(index, ..) if ty(*index) != &Type::Text => {
-                    return Err(format!(
-                        "text tests require Text, found `{}`",
-                        parameters[*index].name
-                    ));
-                }
-                Test::Compare(a, _, b) => {
-                    let invalid_numeric = |expr: &Expr<usize>| matches!(expr, Expr::Value(index) if !matches!(ty(*index), Type::Integer | Type::Float));
-                    if a.any(invalid_numeric) || b.any(invalid_numeric) {
-                        return Err("numeric comparisons require Integer or Float values".into());
-                    }
-                    let invalid_length = |expr: &Expr<usize>| matches!(expr, Expr::Length(index) if !matches!(ty(*index), Type::Text | Type::Bytes | Type::List(_) | Type::Map(_)));
-                    if a.any(invalid_length) || b.any(invalid_length) {
-                        return Err("length requires Text, Bytes, LIST or MAP".into());
-                    }
-                    let float = a.has_float()
-                        || b.has_float()
-                        || test.references(|index| ty(*index) == &Type::Float);
-                    let integer = |expr: &Expr<usize>| {
-                        matches!(expr, Expr::Length(_))
-                            || matches!(expr, Expr::Value(index) if ty(*index) == &Type::Integer)
-                    };
-                    if float && (a.any(integer) || b.any(integer)) {
-                        return Err("use whole-number constants with Integer values and lengths, or compare Float values separately".into());
-                    }
-                }
-                _ => {}
-            }
+            test.check_types(&ty, schema)?;
         }
         Ok(())
     }
@@ -299,14 +222,11 @@ impl Predicate<usize> {
         };
         let name = |index: &usize| parameters[*index].name.clone();
         for test in &self.tests {
-            let float = matches!(test, Test::Compare(a, _, b) if
-                a.has_float() || b.has_float() ||
-                test.references(|index| matches!(value(index), Some(Value::Float(_)))));
-            if !test.accepts(&value, float) {
+            if let Some(failed) = test.failure(&value) {
                 let sent = parameters
                     .iter()
                     .enumerate()
-                    .filter(|(index, _)| test.references(|used| used == index))
+                    .filter(|(index, _)| failed.references(|used| used == index))
                     .filter_map(|(index, parameter)| {
                         value(&index).map(|value| {
                             format!(
@@ -323,24 +243,11 @@ impl Predicate<usize> {
                     "{clause} [{}] failed for `{}` with {sent}; expected {}",
                     self.source,
                     schema.typed_shape(&method.shape),
-                    test.describe(&name),
+                    failed.describe(&name),
                 ));
             }
         }
         Ok(())
-    }
-}
-
-impl<B> Test<B> {
-    fn references(&self, matches: impl Fn(&B) -> bool + Copy) -> bool {
-        let uses = |expr: &Expr<B>| match expr {
-            Expr::Value(index) | Expr::Length(index) => matches(index),
-            _ => false,
-        };
-        match self {
-            Self::Text(index, ..) => matches(index),
-            Self::Compare(a, _, b) => a.any(uses) || b.any(uses),
-        }
     }
 }
 
@@ -407,19 +314,23 @@ fn expr<B>(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result
                 Expr::Float(n)
             }
         }
-        NodeKind::Call(call) => match (call.name_text().as_str(), call.arguments.as_slice()) {
-            ("_ length", [subject]) => Expr::Length(binding(subject)?),
-            (op @ ("_ + _" | "_ - _" | "_ * _"), [left, right]) => {
+        NodeKind::Call(call) => match (
+            prelude::function(&call.name_text()),
+            call.arguments.as_slice(),
+        ) {
+            (Some(Function::Length), [subject]) => Expr::Length(binding(subject)?),
+            (Some(Function::Arithmetic(op)), [left, right]) => {
                 let a = Box::new(expr(left, binding)?);
                 let b = Box::new(expr(right, binding)?);
                 match op {
-                    "_ + _" => Expr::Add(a, b),
-                    "_ - _" => Expr::Sub(a, b),
-                    "_ * _" if a.constant() || b.constant() => Expr::Mul(a, b),
+                    Arithmetic::Add => Expr::Add(a, b),
+                    Arithmetic::Subtract => Expr::Sub(a, b),
+                    Arithmetic::Multiply if a.constant() || b.constant() => Expr::Mul(a, b),
                     _ => return Err(unsupported()),
                 }
             }
-            _ => Expr::Value(binding(node)?),
+            (None, []) => Expr::Value(binding(node)?),
+            _ => return Err(unsupported()),
         },
         _ => Expr::Value(binding(node)?),
     })
@@ -444,6 +355,45 @@ impl<B> Expr<B> {
     }
     fn constant(&self) -> bool {
         !self.has_value() && !self.has_length()
+    }
+    fn check_numeric<'a>(&self, ty: &impl Fn(&B) -> &'a Type, numeric: &str) -> Result<(), String> {
+        match self {
+            Self::Value(index) if !matches!(ty(index), Type::Integer | Type::Float) => {
+                return Err("numeric comparisons require Integer or Float values".into());
+            }
+            Self::Value(index) if matches!(ty(index), Type::Integer) && numeric == "Float" => {
+                return Err("use whole-number constants with Integer values and lengths, or compare Float values separately".into());
+            }
+            Self::Length(index) => {
+                let input = match ty(index) {
+                    Type::Text => "Text",
+                    Type::Bytes => "Bytes",
+                    Type::List(_) => "LIST Type",
+                    Type::Map(_) => "MAP Type",
+                    _ => return Err("length requires Text, Bytes, LIST or MAP".into()),
+                };
+                if numeric != "Integer" {
+                    return Err("use whole-number constants with Integer values and lengths, or compare Float values separately".into());
+                }
+                if !prelude::function_takes("_ length", &[input]) {
+                    return Err("no prelude length overload for this operand".into());
+                }
+            }
+            Self::Add(a, b) | Self::Sub(a, b) | Self::Mul(a, b) => {
+                let shape = match self {
+                    Self::Add(..) => "_ + _",
+                    Self::Sub(..) => "_ - _",
+                    _ => "_ * _",
+                };
+                if !prelude::function_takes(shape, &[numeric, numeric]) {
+                    return Err("no prelude arithmetic overload for these operands".into());
+                }
+                a.check_numeric(ty, numeric)?;
+                b.check_numeric(ty, numeric)?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
     fn integer<'a>(&self, value: &impl Fn(&B) -> Option<&'a Value>) -> Option<i128> {
         match self {
@@ -512,50 +462,259 @@ fn compare<T: PartialOrd>(a: T, op: &str, b: T) -> bool {
         _ => false,
     }
 }
-impl<B> Test<B> {
-    fn uses_value(&self) -> bool {
-        match self {
-            Self::Text(..) => true,
-            Self::Compare(a, _, b) => !a.constant() || !b.constant(),
+impl<B: Clone> Test<B> {
+    fn read(
+        node: &Node,
+        binding: &impl Fn(&Node) -> Result<B, String>,
+        named: bool,
+    ) -> Result<Self, String> {
+        let NodeKind::Call(call) = &node.kind else {
+            return Ok(Self::Flag(binding(node)?));
+        };
+        let shape = call.name_text();
+        let args = call.arguments.as_slice();
+        Ok(match (prelude::function(&shape), args) {
+            (Some(Function::Compare(operators)), args) => {
+                let expressions = args
+                    .iter()
+                    .map(|arg| expr(arg, binding))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let mut comparisons = expressions.windows(2).zip(operators).map(|(pair, op)| {
+                    Self::Compare(pair[0].clone(), (*op).into(), pair[1].clone())
+                });
+                let first = comparisons
+                    .next()
+                    .expect("a comparison takes at least two operands");
+                if operators.len() == 1 {
+                    first
+                } else {
+                    Self::All(shape, std::iter::once(first).chain(comparisons).collect())
+                }
+            }
+            (Some(Function::Text(op)), [subject, pattern]) => Self::Text(
+                TextOperand::read(subject, binding)?,
+                op,
+                TextOperand::read(pattern, binding)?,
+            ),
+            (Some(Function::Boolean(op)), args) => Self::Boolean(
+                op,
+                args.iter()
+                    .map(|arg| Self::read(arg, binding, named))
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            (Some(_), _) => return Err("a predicate must return Boolean".into()),
+            (None, []) if matches!(shape.as_str(), "true" | "false") => {
+                Self::Literal(shape == "true")
+            }
+            (None, []) if named => Self::Flag(binding(node)?),
+            _ => return Err(unsupported()),
+        })
+    }
+}
+
+impl<B> TextOperand<B> {
+    fn read(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result<Self, String> {
+        match &node.kind {
+            NodeKind::String(text) => Ok(Self::Literal(text.value.clone())),
+            _ => binding(node).map(Self::Value),
         }
     }
-    fn accepts<'a>(&self, value: &impl Fn(&B) -> Option<&'a Value>, float: bool) -> bool {
+
+    fn describe(&self, name: &impl Fn(&B) -> String) -> String {
         match self {
-            Self::Text(binding, op, text) => {
-                if let Some(Value::Text(s)) = value(binding) {
-                    match op.as_str() {
-                        "starts with" => s.starts_with(text),
-                        "ends with" => s.ends_with(text),
-                        "contains" => s.contains(text),
-                        _ => false,
-                    }
-                } else {
-                    false
+            Self::Literal(text) => format!("{text:?}"),
+            Self::Value(binding) => name(binding),
+        }
+    }
+
+    fn value<'a, 'v: 'a>(&'a self, get: &impl Fn(&B) -> Option<&'v Value>) -> Option<&'a str> {
+        match self {
+            Self::Literal(text) => Some(text),
+            Self::Value(binding) => match get(binding)? {
+                Value::Text(text) => Some(text),
+                _ => None,
+            },
+        }
+    }
+}
+
+impl<B> Test<B> {
+    fn uses_value(&self) -> bool {
+        self.references(|_| true)
+    }
+
+    fn references(&self, matches: impl Fn(&B) -> bool + Copy) -> bool {
+        let uses = |expr: &Expr<B>| match expr {
+            Expr::Value(index) | Expr::Length(index) => matches(index),
+            _ => false,
+        };
+        match self {
+            Self::Compare(a, _, b) => a.any(uses) || b.any(uses),
+            Self::Text(a, _, b) => [a, b]
+                .iter()
+                .any(|operand| matches!(operand, TextOperand::Value(index) if matches(index))),
+            Self::Flag(index) => matches(index),
+            Self::Boolean(_, tests) | Self::All(_, tests) => {
+                tests.iter().any(|test| test.references(matches))
+            }
+            Self::Literal(_) => false,
+        }
+    }
+
+    fn has_fractional_constant(&self) -> bool {
+        match self {
+            Self::Compare(a, _, b) => a.has_float() || b.has_float(),
+            Self::All(_, tests) | Self::Boolean(_, tests) => {
+                tests.iter().any(Self::has_fractional_constant)
+            }
+            _ => false,
+        }
+    }
+
+    fn check_types<'a>(&self, ty: &impl Fn(&B) -> &'a Type, schema: &Schema) -> Result<(), String> {
+        match self {
+            Self::Text(a, _, b) => {
+                if [a, b].iter().any(|operand| matches!(operand, TextOperand::Value(index) if ty(index) != &Type::Text)) {
+                    return Err("text tests require Text".into());
                 }
             }
             Self::Compare(a, op, b) => {
-                if float {
-                    a.float(value)
-                        .zip(b.float(value))
-                        .is_some_and(|(a, b)| compare(a, op, b))
-                } else {
-                    a.integer(value)
-                        .zip(b.integer(value))
-                        .is_some_and(|(a, b)| compare(a, op, b))
+                let numeric = self.numeric_type(ty);
+                a.check_numeric(ty, numeric)?;
+                b.check_numeric(ty, numeric)?;
+                if !prelude::function_takes(&format!("_ {op} _"), &[numeric, numeric]) {
+                    return Err("no prelude comparison overload for these operands".into());
                 }
             }
+            Self::Flag(index) if schema.type_name(ty(index)) != "Boolean" => {
+                return Err("a predicate must return Boolean".into());
+            }
+            Self::All(shape, tests) => {
+                let numeric = self.numeric_type(ty);
+                for test in tests {
+                    if let Self::Compare(a, _, b) = test {
+                        a.check_numeric(ty, numeric)?;
+                        b.check_numeric(ty, numeric)?;
+                    }
+                }
+                if !prelude::function_takes(shape, &vec![numeric; tests.len() + 1]) {
+                    return Err("no prelude comparison overload for these operands".into());
+                }
+            }
+            Self::Boolean(_, tests) => {
+                for test in tests {
+                    test.check_types(ty, schema)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn numeric_type<'a>(&self, ty: &impl Fn(&B) -> &'a Type) -> &'static str {
+        if self.has_fractional_constant() || self.references(|index| ty(index) == &Type::Float) {
+            "Float"
+        } else {
+            "Integer"
         }
     }
-    fn describe(&self, name: &impl Fn(&B) -> String) -> String {
+
+    fn uses_float<'a>(&self, get: &impl Fn(&B) -> Option<&'a Value>) -> bool {
+        self.has_fractional_constant()
+            || self.references(|index| matches!(get(index), Some(Value::Float(_))))
+    }
+
+    fn evaluate_comparison<'a>(
+        &self,
+        get: &impl Fn(&B) -> Option<&'a Value>,
+        float: bool,
+    ) -> Option<bool> {
+        let Self::Compare(a, op, b) = self else {
+            unreachable!("comparison chain contains only comparisons")
+        };
+        if float {
+            Some(compare(a.float(get)?, op, b.float(get)?))
+        } else {
+            Some(compare(a.integer(get)?, op, b.integer(get)?))
+        }
+    }
+
+    fn failure<'a>(&self, value: &impl Fn(&B) -> Option<&'a Value>) -> Option<&Self> {
         match self {
-            Self::Text(binding, op, text) => {
-                let subject = name(binding);
-                if subject == "_" {
-                    format!("{op} {text:?}")
-                } else {
-                    format!("{subject} {op} {text:?}")
+            Self::All(_, tests) => {
+                let float = self.uses_float(value);
+                tests
+                    .iter()
+                    .find(|test| test.evaluate_comparison(value, float) != Some(true))
+            }
+            _ if self.evaluate(value) == Some(true) => None,
+            _ => Some(self),
+        }
+    }
+
+    fn evaluate<'a>(&self, get: &impl Fn(&B) -> Option<&'a Value>) -> Option<bool> {
+        Some(match self {
+            Self::Text(a, op, b) => {
+                let a = a.value(get)?;
+                let b = b.value(get)?;
+                match *op {
+                    "starts with" => a.starts_with(b),
+                    "ends with" => a.ends_with(b),
+                    _ => a.contains(b),
                 }
             }
+            Self::Compare(..) => return self.evaluate_comparison(get, self.uses_float(get)),
+            Self::Flag(index) => match get(index)? {
+                Value::Variant { shape, arguments } if arguments.is_empty() => {
+                    shape.parse().ok()?
+                }
+                _ => return None,
+            },
+            Self::Literal(value) => *value,
+            Self::Boolean(op, operands) => match operands.as_slice() {
+                [a] => op.apply(a.evaluate(get)?, false),
+                [a, b] => op.apply(a.evaluate(get)?, b.evaluate(get)?),
+                _ => unreachable!("prelude Boolean function arity was checked"),
+            },
+            Self::All(_, tests) => {
+                let float = self.uses_float(get);
+                let mut holds = true;
+                for test in tests {
+                    holds &= test.evaluate_comparison(get, float)?;
+                }
+                holds
+            }
+        })
+    }
+
+    fn describe(&self, name: &impl Fn(&B) -> String) -> String {
+        match self {
+            Self::Text(subject, op, text) => {
+                let subject = subject.describe(name);
+                let text = text.describe(name);
+                if subject == "_" {
+                    format!("{op} {text}")
+                } else {
+                    format!("{subject} {op} {text}")
+                }
+            }
+            Self::Boolean(op, operands) => match operands.as_slice() {
+                [value] => format!("not ({})", value.describe(name)),
+                [a, b] => format!(
+                    "({}) {} ({})",
+                    a.describe(name),
+                    op.word(),
+                    b.describe(name)
+                ),
+                _ => unreachable!("prelude Boolean function arity was checked"),
+            },
+            Self::All(_, tests) => tests
+                .iter()
+                .map(|test| test.describe(name))
+                .collect::<Vec<_>>()
+                .join(" and "),
+            Self::Flag(binding) => format!("{} is true", name(binding)),
+            Self::Literal(value) => value.to_string(),
             Self::Compare(a, op, b) => {
                 let (subject, op, bound) = if !a.constant() && b.constant() {
                     (a, op.as_str(), b)
@@ -852,22 +1011,40 @@ pub(crate) fn example(schema: &Schema, ty: &Type) -> Option<Value> {
                         _ => {}
                     }
                 }
-                let (mut prefix, mut middle, mut suffix) =
-                    (String::new(), String::new(), String::new());
-                for test in &predicate.tests {
+                let mut text_parts = (String::new(), String::new(), String::new());
+                fn gather(
+                    test: &Test,
+                    numbers: &mut Vec<i64>,
+                    text_parts: &mut (String, String, String),
+                ) {
                     match test {
                         Test::Compare(a, _, b) => {
-                            constants(a, &mut numbers);
-                            constants(b, &mut numbers);
+                            constants(a, numbers);
+                            constants(b, numbers);
                         }
-                        Test::Text((), op, text) => match op.as_str() {
-                            "starts with" => prefix.push_str(text),
-                            "ends with" => suffix.push_str(text),
-                            _ => middle.push_str(text),
-                        },
+                        Test::Text(TextOperand::Value(()), op, TextOperand::Literal(text)) => {
+                            match *op {
+                                "starts with" => text_parts.0.push_str(text),
+                                "ends with" => text_parts.2.push_str(text),
+                                _ => text_parts.1.push_str(text),
+                            }
+                        }
+                        Test::All(_, tests) | Test::Boolean(_, tests) => {
+                            for test in tests {
+                                gather(test, numbers, text_parts);
+                            }
+                        }
+                        _ => {}
                     }
                 }
+                for test in &predicate.tests {
+                    gather(test, &mut numbers, &mut text_parts);
+                }
+                let (prefix, middle, suffix) = text_parts;
                 match schema.underlying(base) {
+                    ty if schema.type_name(ty) == "Boolean" => {
+                        values.extend([true, false].map(crate::IntoValue::into_value));
+                    }
                     Type::Integer | Type::Float => {
                         for n in numbers {
                             for n in [n.checked_sub(1), Some(n), n.checked_add(1)]

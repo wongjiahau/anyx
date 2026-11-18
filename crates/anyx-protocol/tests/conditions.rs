@@ -161,6 +161,51 @@ fn lengths_and_float_arithmetic_use_the_refinement_rules() {
     );
 }
 
+#[test]
+fn prelude_boolean_functions_compose_with_typed_predicates() {
+    let schema = common::schema(
+        r#"
+        METHOD admit (start: Integer) before (end: Integer) when (enabled: Boolean)
+            REQUIRES [(start < end) and: enabled]
+            RETURNS (admitted: Boolean)
+            ENSURES [(not (not (admitted))) xor: false],
+        METHOD match (text: Text) with (prefix: Text) or (allowed: Boolean)
+            REQUIRES [(text . starts with (prefix)) or: allowed]
+            RETURNS NOTHING,
+        "#,
+    );
+    let calls = decode_request(&schema, "admit 1 before 2 when (true)").unwrap();
+    assert!(decode_request(&schema, "admit 2 before 1 when (true)").is_err());
+    assert!(decode_request(&schema, "admit 1 before 2 when (false)").is_err());
+    assert_eq!(
+        server::respond(
+            &schema,
+            &calls,
+            vec![Outcome::Value(anyx_protocol::IntoValue::into_value(false))]
+        ),
+        "INTERNAL ERROR\n"
+    );
+    assert!(decode_request(&schema, r#"match "abc" with "a" or (false)"#).is_ok());
+    assert!(decode_request(&schema, r#"match "abc" with "z" or (true)"#).is_ok());
+    assert!(decode_request(&schema, r#"match "abc" with "z" or (false)"#).is_err());
+}
+
+#[test]
+fn conditions_require_a_declared_signature() {
+    for (condition, expected) in [
+        ("value + 1", "a predicate must return Boolean"),
+        ("not (value)", "a predicate must return Boolean"),
+        ("0 < value > 2", "unsupported predicate"),
+    ] {
+        let errors = common::diagnostics(&format!(
+            "METHOD check (value: Integer) REQUIRES [{condition}] RETURNS NOTHING"
+        ));
+        assert!(errors.contains(expected), "{errors}");
+    }
+    let errors = common::diagnostics("FUNCTION (value: Integer) is valid RETURNS (holds: Boolean)");
+    assert!(errors.contains("only the protocol prelude"), "{errors}");
+}
+
 #[cfg(feature = "json")]
 #[test]
 fn json_bridge_uses_the_same_contracts() {

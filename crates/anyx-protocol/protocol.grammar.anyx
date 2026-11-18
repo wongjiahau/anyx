@@ -20,7 +20,7 @@ protocol: ANYFIX CALL [
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [record, choice, named type, errors, method, import],
+definition: ONE OF [record, choice, named type, errors, method, function, import],
 
 import: ANYFIX CALL [WORD "USE", path: STRING],
 
@@ -137,6 +137,14 @@ method: ANYFIX CALL [
   BREAK BEFORE WORD "UNDONE",
   BREAK BEFORE WORD "EXAMPLES",
 ],
+
+## Functions are evaluated locally by the codec. Bodyless declarations are
+## reserved for the bundled prelude.
+function: ANYFIX CALL [
+  doc: OPTIONAL: LINE STRING,
+  WORD "FUNCTION", shape,
+  WORD "RETURNS", returns,
+] FORMAT [BREAK BEFORE WORD "RETURNS"],
 
 condition: SQUARE BRACKET [predicate: ONE OR MORE: ANY NODE],
 
