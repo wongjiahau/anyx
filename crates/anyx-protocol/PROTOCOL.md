@@ -57,7 +57,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   lowercase words: `new revision`. All-caps words belong to the schema
   language, so a word with no lowercase letter is a keyword: write `Id`,
   never `ID`. Generic shapes can use lowercase connective words, as in
-  `Page of (item: Type)`. Keywords side by side join into one name, so write
+  `Page of (Item: TYPE)`. Keywords side by side join into one name, so write
   `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
@@ -65,7 +65,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
   `Duration` (a length of time), declared in the [prelude](#the-prelude);
   `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
-  `RECORD`, `CHOICE` or `TYPE`, and a use of a generic type,
+  `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS`, and a use of a generic type,
   `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
 - **`TYPE Name: T`** names a type, `TYPE File Id: Text`, so that values that
@@ -73,6 +73,17 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   written exactly like `T`, on the wire and in JSON, and generated code
   keeps it distinct from `T` and from other named types over `T`. `T` is any
   type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
+- **`TYPE ALIAS Name: T`** names a type without making a new one:
+  `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
+  wire, in JSON, in the guide and in generated code, so an alias and its
+  type mix freely. A generic alias has a type parameter in each other slot
+  of its name, as a generic `RECORD` does, and its type uses them:
+  `TYPE ALIAS (Item: TYPE) Pair: LIST Item`, used as `(Text) Pair`. The
+  type it stands for comes last and can't lead back to the alias, since an
+  alias is only another name; a type that holds itself is a `RECORD` or a
+  `CHOICE`. `PUBLIC` shares an alias with direct importers, as it does a
+  type. Use `TYPE` when values should not mix with others of the same
+  representation, and `TYPE ALIAS` when a long type only needs a short name.
 - **`RECORD Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
@@ -81,7 +92,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Without a default the field must be supplied. A default is checked as an
   entry of its field; parameters cannot have defaults.
 - **Nullability** is the prelude's generic choice `T?`: `null`, or
-  `value (item)`, and a value of it is always written as one of the two:
+  `value (item: Item)`, and a value of it is always written as one of the two:
   `note (value "hi")`. `note: Text?` is required but admits `null`;
   `note (Text?) DEFAULT note (null)` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
@@ -90,7 +101,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `custom hue (hue: Float)` or `(base: Shade) dimmed`. Variants differ by
   their words.
 - **A generic `RECORD` or `CHOICE`** has type parameters in its name. Its
-  name is a shape, like a variant's: words, with a `(parameter: Type)` slot
+  name is a shape, like a variant's: words, with a `(Parameter: TYPE)` slot
   anywhere among them, at the start, between words, or at the end. Its
   fields or variants use each parameter as a type. A use writes the same
   words with a type in parentheses in each slot, in the same places:
@@ -101,21 +112,21 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  RECORD Page of (item: Type) {
-      items: LIST: item,
+  RECORD Page of (Item: TYPE) {
+      items: LIST: Item,
       next (Text?) DEFAULT next (null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
-  CHOICE (value: Type) or (problem: Type) {
-      done (value: value),
-      failed (problem: problem),
+  CHOICE (Value: TYPE) or (Problem: TYPE) {
+      done (value: Value),
+      failed (problem: Problem),
   },
 
   # A value and who vouches for it. (A slot between words.)
-  RECORD (value: Type) signed by (signer: Type) {
-      value: value,
-      signer: signer,
+  RECORD (Value: TYPE) signed by (Signer: TYPE) {
+      value: Value,
+      signer: Signer,
   },
 
   METHOD orders RETURNS (orders: Page of (Order)),
@@ -129,30 +140,31 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `RECORD Box of (item: Type) sealed`, used as `Box of (Letter) sealed`, and
+  `RECORD Box of (Item: TYPE) sealed`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `RECORD Table from (key: Type) to (value: Type)`.
+  `RECORD Table from (Key: TYPE) to (Value: TYPE)`.
 
   A type is known by its words and where its slots are, so `Page` and
-  `Page of (item: Type)` are two types, and both may be declared; two
-  declarations of the same shape are an error. Only a `RECORD` or a
-  `CHOICE` is generic, `TYPE Name: T` is not, and
-  `PUBLIC RECORD Page of (item: Type)` shares one. A parameter is a
-  lowercase name, once in its declaration, used by at least one field or
+  `Page of (Item: TYPE)` are two types, and both may be declared; two
+  declarations of the same shape are an error. Only a `RECORD`, a
+  `CHOICE` or a `TYPE ALIAS` is generic, `TYPE Name: T` is not, and
+  `PUBLIC RECORD Page of (Item: TYPE)` shares one. A parameter is a
+  Title Case name, as a type's is, marked by the keyword `TYPE`, not a
+  type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
   or a directly imported `PUBLIC` type. A parameter has no slots, and a field
   whose type holds one can have a `DEFAULT` only if it can be checked
-  without knowing the argument, as in `content (item?) DEFAULT content (null)`. A use fills every slot, in order; a use whose
+  without knowing the argument, as in `content (Item?) DEFAULT content (null)`. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
-  with its own parameters as they are, `LIST Tree of (item)`, and only
+  with its own parameters as they are, `LIST Tree of (Item)`, and only
   through a `LIST` or a `MAP`. An imported type uses its plain shape, `Page of (Order)`.
 
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
   name reads better: `RECORD Trashed File { file: File Summary, trashed at: Instant }`,
-  not `RECORD (item: Type) in trash since (when: Type)` used only as
+  not `RECORD (Item: TYPE) in trash since (When: TYPE)` used only as
   `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: Type) ERRORS errors`**: the method's
   shape, what it returns, and the errors it may return. The returned value
@@ -598,9 +610,9 @@ INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
 
 CHOICE Boolean { false, true },
 
-CHOICE (item: Type) ? {
+CHOICE (Item: TYPE) ? {
     null,
-    value (item),
+    value (item: Item),
 },
 ```
 
@@ -612,7 +624,6 @@ CHOICE (item: Type) ? {
 - The prelude also contains ordinary declarations, checked as user types are.
   `Boolean` and postfix `?` are ordinary choices: their variants and generic
   payloads are declared here, without intrinsic Rust type or value cases.
-  A variant slot `(item)` abbreviates `(item: item)`.
 - The guide's list of built-in types is the prelude's docs, and a
   `Duration`'s units are the prelude's variants.
 - The built-in types were once keywords, `INTEGER`, `TEXT` and so on. An

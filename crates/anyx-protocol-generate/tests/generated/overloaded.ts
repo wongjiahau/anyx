@@ -17,7 +17,7 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item)` containing a value. */
+/** A nullable item: `null`, or `value (item: Item)` containing a value. */
 export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
@@ -489,7 +489,7 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text'}},
 {parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
 ["tag (LIST File Id)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},

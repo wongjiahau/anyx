@@ -206,7 +206,7 @@ fn mistakes_in_fields_are_diagnosed() {
 
 #[test]
 fn an_at_field_of_a_type_parameter_is_diagnosed() {
-    let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (item: Type) { @(value: item) },");
+    let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { @(value: Item) },");
     assert!(
         found.contains("found the `@` field `value` of a type parameter"),
         "{found}"

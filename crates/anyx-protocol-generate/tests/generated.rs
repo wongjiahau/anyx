@@ -163,15 +163,15 @@ fn names_that_become_the_same_name_are_rejected() {
 fn generic_types_whose_words_are_the_same_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD page of (item: Type) { items: LIST: item }, RECORD page (item: Type) of { item: item }"
+            "PROTOCOL p VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, RECORD page (Item: TYPE) of { item: Item }"
         ),
-        "found the type `page (item) of`, which becomes the type `PageOf`, like the type `page of (item)`; expected names that stay distinct in the generated code, so rename one"
+        "found the type `page (Item) of`, which becomes the type `PageOf`, like the type `page of (Item)`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD Page { a: Text }, RECORD page (item: Type) { item: item }"
+            "PROTOCOL p VERSION 1, RECORD Page { a: Text }, RECORD page (Item: TYPE) { item: Item }"
         ),
-        "found the type `page (item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
+        "found the type `page (Item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
     );
 }
 

@@ -36,14 +36,14 @@ the file.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `RECORD Page of (item: Type)`
+  `IntoValue` and `FromValue` bound on them: `RECORD Page of (Item: TYPE)`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
-  is `PageOf<Order>`. `RECORD (item: Type) history` is `History<Item>`,
-  `RECORD Table from (key: Type) to (value: Type)` is
-  `TableFromTo<Key, Value>`, and `CHOICE (left: Type) or (right: Type)` is
+  is `PageOf<Order>`. `RECORD (Item: TYPE) history` is `History<Item>`,
+  `RECORD Table from (Key: TYPE) to (Value: TYPE)` is
+  `TableFromTo<Key, Value>`, and `CHOICE (Left: TYPE) or (Right: TYPE)` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
-  `page (item: Type)`, would get the same name, so generating either
+  `page (Item: TYPE)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the
   module already uses, such as `value` (the generated code uses `Value`) or
   a type of the protocol, gets `Parameter` after it: `ValueParameter`. The

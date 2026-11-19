@@ -284,7 +284,7 @@ fn wrap(text: &str, indent: &str) -> String {
 }
 
 /// The rule for generic types, shown with the schema's first one: "`RECORD
-/// page of (item: Type)`", then a use of it. Empty for a schema without any.
+/// page of (Item: TYPE)`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
@@ -300,7 +300,7 @@ fn generic_types(schema: &Schema) -> String {
     let declared: Vec<String> = definition
         .parameters
         .iter()
-        .map(|parameter| format!("{parameter}: Type"))
+        .map(|parameter| format!("{parameter}: TYPE"))
         .collect();
     let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(

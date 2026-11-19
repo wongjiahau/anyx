@@ -29,6 +29,7 @@ pub enum Definition {
     Record(Record),
     Choice(Choice),
     NamedType(NamedType),
+    TypeAlias(TypeAlias),
     Errors(Errors),
     Method(Method),
     Function(Function),
@@ -150,6 +151,27 @@ pub enum NamedTypeBody {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TypeAlias {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub body: AliasBody,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AliasBody {
+    pub name: CallName,
+    pub arguments: Vec<AliasPart>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AliasPart {
+    TypeParameter(TypeParameter),
+    Type(Type),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variant {
     pub name: CallName,
     pub arguments: Vec<VariantSlot>,
@@ -160,7 +182,6 @@ pub struct Variant {
 pub enum VariantSlot {
     Doc(Spanned<StringLiteral>),
     Parameter(Parameter),
-    Unnamed { name: Spanned<String>, span: Span },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -290,6 +311,7 @@ impl Definition {
             Definition::Record(value) => value.span,
             Definition::Choice(value) => value.span,
             Definition::NamedType(value) => value.span,
+            Definition::TypeAlias(value) => value.span,
             Definition::Errors(value) => value.span,
             Definition::Method(value) => value.span,
             Definition::Function(value) => value.span,
@@ -358,10 +380,18 @@ impl NamedTypeBody {
     }
 }
 
+impl AliasPart {
+    pub fn span(&self) -> Span {
+        match self {
+            AliasPart::TypeParameter(value) => value.span,
+            AliasPart::Type(value) => value.span(),
+        }
+    }
+}
+
 impl VariantSlot {
     pub fn span(&self) -> Span {
         match self {
-            VariantSlot::Unnamed { span, .. } => *span,
             VariantSlot::Doc(value) => value.span,
             VariantSlot::Parameter(value) => value.span,
         }
@@ -426,6 +456,7 @@ impl support::Errors for Definition {
             Definition::Record(value) => support::Errors::errors(value, found),
             Definition::Choice(value) => support::Errors::errors(value, found),
             Definition::NamedType(value) => support::Errors::errors(value, found),
+            Definition::TypeAlias(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
             Definition::Function(value) => support::Errors::errors(value, found),
@@ -566,6 +597,30 @@ impl support::Errors for NamedTypeBody {
     }
 }
 
+impl support::Errors for TypeAlias {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.body, found);
+    }
+}
+
+impl support::Errors for AliasBody {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for AliasPart {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            AliasPart::TypeParameter(value) => support::Errors::errors(value, found),
+            AliasPart::Type(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
 impl support::Errors for Variant {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
@@ -578,9 +633,6 @@ impl support::Errors for VariantSlot {
         match self {
             VariantSlot::Doc(value) => support::Errors::errors(value, found),
             VariantSlot::Parameter(value) => support::Errors::errors(value, found),
-            VariantSlot::Unnamed { name, .. } => {
-                support::Errors::errors(name, found);
-            }
         }
     }
 }
@@ -759,6 +811,7 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
         .map(Definition::Record)
         .or_else(|error| error.or(decode_choice(node).map(Definition::Choice)))
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
+        .or_else(|error| error.or(decode_type_alias(node).map(Definition::TypeAlias)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
         .or_else(|error| error.or(decode_function(node).map(Definition::Function)))
@@ -854,7 +907,7 @@ pub fn decode_type_parameter(node: &Node) -> Result<TypeParameter, DecodeError> 
 }
 
 pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
-    support::word(node, "Type").map(TypeMarker::Type)
+    support::word(node, "TYPE").map(TypeMarker::Type)
 }
 
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
@@ -1031,6 +1084,50 @@ fn decode_named_type_body_bare(node: &Node) -> Result<NamedTypeBody, DecodeError
     Ok(decoded)
 }
 
+pub fn decode_type_alias(node: &Node) -> Result<TypeAlias, DecodeError> {
+    let mut parts = support::call(node, "the call `_? TYPE ALIAS _`")?;
+    let decoded = TypeAlias {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("PUBLIC")?)
+        } else {
+            None
+        },
+        body: parts
+            .word("TYPE")?
+            .word("ALIAS")?
+            .one(decode_alias_body, "an alias body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_alias_body(node: &Node) -> Result<AliasBody, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = AliasBody {
+        name,
+        arguments: arguments.one_or_more(decode_alias_part, "an alias part")?,
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_alias_part(node: &Node) -> Result<AliasPart, DecodeError> {
+    decode_type_parameter(node)
+        .map(AliasPart::TypeParameter)
+        .or_else(|error| error.or(decode_type(node).map(AliasPart::Type)))
+}
+
 pub fn decode_variant(node: &Node) -> Result<Variant, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
@@ -1051,20 +1148,6 @@ pub fn decode_variant_slot(node: &Node) -> Result<VariantSlot, DecodeError> {
     support::line_string(node, |_| true, "a `#` line string")
         .map(VariantSlot::Doc)
         .or_else(|error| error.or(decode_parameter(node).map(VariantSlot::Parameter)))
-        .or_else(|error| error.or(decode_variant_slot_unnamed(node)))
-}
-
-fn decode_variant_slot_unnamed(node: &Node) -> Result<VariantSlot, DecodeError> {
-    let mut parts = support::call(node, "the call `…`")?;
-    let decoded = VariantSlot::Unnamed {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
 }
 
 pub fn decode_errors(node: &Node) -> Result<Errors, DecodeError> {

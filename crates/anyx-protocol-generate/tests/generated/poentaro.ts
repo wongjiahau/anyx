@@ -28,7 +28,7 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item)` containing a value. */
+/** A nullable item: `null`, or `value (item: Item)` containing a value. */
 export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
@@ -539,7 +539,7 @@ const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"content _", form:"shape", name:"content", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"column _", form:"shape", name:"column", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"code _", form:"shape", name:"code", type:{k:'text'}, slots:[{k:'text'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list files"]:{shape:{text:"list files", kind:"listFiles", params:[]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:1, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},

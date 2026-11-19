@@ -45,19 +45,19 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `RECORD Page of (item: Type)`. A type is known by its words and
+    /// `RECORD Page of (Item: TYPE)`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
-    /// its shape, in order: `(value: Type) or (problem: Type)` has `value`
-    /// and `problem`. Empty for any other type.
+    /// its shape, in order: `(Value: TYPE) or (Problem: TYPE)` has `Value`
+    /// and `Problem`. Empty for any other type.
     pub parameters: Vec<String>,
     pub kind: TypeKind,
 }
 
 impl TypeDefinition {
     /// Its shape with each parameter in its slot, as a use of it is
-    /// written: `page of (item)`, or `file summary` for a type that isn't
+    /// written: `page of (Item)`, or `file summary` for a type that isn't
     /// generic.
     pub fn shape(&self) -> String {
         fill_slots(&self.name, &self.parameters)

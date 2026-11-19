@@ -73,7 +73,7 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item)` containing a value. */
+/** A nullable item: `null`, or `value (item: Item)` containing a value. */
 export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
@@ -549,7 +549,7 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text
 {parameters:[],kind:'distinct', type:{k:'map', item:{k:'named', index:7, args:[]}}},
 {parameters:[],kind:'record', fields:[{wire:"at _", form:"shape", name:"at", type:{k:'named', index:7, args:[]}, slots:[{k:'named', index:7, args:[]}]},{wire:"by person _", form:"shape", name:"byPerson", type:{k:'named', index:8, args:[]}, slots:[{k:'named', index:8, args:[]}]},{wire:"label _", form:"shape", name:"label", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], defaultValue:()=>"none"}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{text:"share _ tagged _", kind:"shareTagged", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"},{name:"tags", type:{k:'named', index:2, args:[]}, annotation:"Tags"}]}, returns:{k:'named', index:4, args:[]}, errors:[{text:"missing _", kind:"missing", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["revoke _"]:{shape:{text:"revoke _", kind:"revoke", params:[{name:"id", type:{k:'named', index:1, args:[]}, annotation:"Share Id"}]}, returns:null, errors:[]},

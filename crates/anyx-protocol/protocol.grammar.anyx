@@ -20,7 +20,7 @@ protocol: ANYFIX CALL [
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [record, choice, named type, errors, method, function, import],
+definition: ONE OF [record, choice, named type, type alias, errors, method, function, import],
 
 import: ANYFIX CALL [WORD "USE", path: STRING],
 
@@ -33,19 +33,21 @@ record: ANYFIX CALL [
 
 ## A record's name is a shape, then its fields in braces fill the last slot:
 ## `File Summary { path: Text }`. A generic record has a type parameter in
-## each other slot, anywhere among the words: `Page of (item: Type) { … }`,
-## `(item: Type) history { … }`. The schema checker reads the shape from the
+## each other slot, anywhere among the words: `Page of (Item: TYPE) { … }`,
+## `(Item: TYPE) history { … }`. The schema checker reads the shape from the
 ## call's name, requires Title Case for a name with no type parameters,
 ## and checks that the braces come last.
 record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record part],
 
 record part: ONE OF [fields: CURLY BRACE [ZERO OR MORE: field], type parameter],
 
-## A type parameter of a generic `RECORD` or `CHOICE`, in a slot of its
-## name: `(item: Type)`.
+## A type parameter of a generic `RECORD`, `CHOICE` or `TYPE ALIAS`, in a
+## slot of its name: `(Item: TYPE)`. Its name is Title Case, as a type's
+## is. `TYPE` is a keyword, not a type, so a type parameter never reads as
+## the use of a generic type, and no type of types is needed.
 type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
 
-type marker: ONE OF [WORD "Type"],
+type marker: ONE OF [WORD "TYPE"],
 
 ## A field is a shape, written in a value as it is declared, in any order
 ## among the others. Its words name it, and each slot holds a type:
@@ -90,7 +92,7 @@ choice: ANYFIX CALL [
 ],
 
 ## A choice's name is a shape like a record's, with its variants in braces
-## last: `(left: Type) or (right: Type) { first (value: left), … }`.
+## last: `(Left: TYPE) or (Right: TYPE) { first (value: Left), … }`.
 choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice part],
 
 choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
@@ -113,11 +115,27 @@ named type body: ONE OF [
   bare: ANYFIX CALL [name: WORDS [NO KEYWORD]],
 ],
 
+## A type alias names a type without making a new one: the alias and the
+## type it stands for are the same type, in the wire and in generated code.
+## `TYPE ALIAS Paths: LIST Text`. A generic alias has a type parameter in
+## each other slot of its name, anywhere among the words:
+## `TYPE ALIAS (Item: TYPE) Pair: LIST Item`. The type it stands for fills
+## the last slot; the checker reads the parameters from the others.
+type alias: ANYFIX CALL [
+  doc: OPTIONAL: LINE STRING,
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "TYPE", WORD "ALIAS", body: alias body,
+],
+
+alias body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ONE OR MORE: alias part],
+
+alias part: ONE OF [type parameter, type],
+
 ## A variant is written in the shape it takes on the wire. Its doc comes
 ## first, so it fills the call's first slot.
 variant: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: variant slot],
 
-variant slot: ONE OF [doc: LINE STRING, parameter, unnamed: ANYFIX CALL [name: WORDS [NO KEYWORD]]],
+variant slot: ONE OF [doc: LINE STRING, parameter],
 
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in

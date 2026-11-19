@@ -13,8 +13,8 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-RECORD Page of (item: Type) {
-    items: LIST: item,
+RECORD Page of (Item: TYPE) {
+    items: LIST: Item,
     next (Text?) DEFAULT next (null),
     # How many there are in all.
     total (Integer) DEFAULT total 0,
@@ -22,16 +22,16 @@ RECORD Page of (item: Type) {
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-CHOICE (value: Type) or (problem: Type) { done (value: value), failed (problem: problem) },
+CHOICE (Value: TYPE) or (Problem: TYPE) { done (value: Value), failed (problem: Problem) },
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-RECORD (item: Type) dated { item: item, at: Instant },
+RECORD (Item: TYPE) dated { item: Item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-RECORD Tree of (item: Type) { value: item, children: LIST Tree of (item) },
+RECORD Tree of (Item: TYPE) { value: Item, children: LIST Tree of (Item) },
 
 # Keys and their values, in the same order: a slot between words.
-RECORD Table from (key: Type) to (value: Type) { keys: LIST: key, values: LIST: value },
+RECORD Table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, values: LIST: Value },
 
 RECORD Payment { amount: Integer, at: Instant },
 
@@ -369,7 +369,7 @@ impl FromValue for Boolean {
     }
 }
 
-/// A nullable item: `null`, or `value (item)` containing a value.
+/// A nullable item: `null`, or `value (item: Item)` containing a value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Nullable<Item> {
     Null,

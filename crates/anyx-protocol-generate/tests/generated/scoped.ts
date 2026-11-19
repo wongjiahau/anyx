@@ -23,7 +23,7 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item)` containing a value. */
+/** A nullable item: `null`, or `value (item: Item)` containing a value. */
 export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
@@ -527,7 +527,7 @@ const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"
 {parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}, slots:[{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}], defaultValue:()=>{kind:"null"}}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list", kind:"list", params:[]}, returns:{k:'list', item:{k:'text'}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:0, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
