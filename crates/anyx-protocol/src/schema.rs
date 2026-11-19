@@ -26,6 +26,9 @@ pub struct Schema {
     pub types: Vec<TypeDefinition>,
     pub errors: Vec<ErrorDefinition>,
     pub methods: Vec<Method>,
+    /// The calls every server answers, after its own methods: `SCHEMA`,
+    /// then `SCHEMA FILES`.
+    pub built_ins: Vec<Method>,
 }
 
 /// A file of a checked schema.
@@ -92,11 +95,79 @@ pub enum TypeKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Field {
     pub doc: Option<String>,
+    /// Its words, which name it in generated code and in conditions:
+    /// `path`, `hidden`, `changed more than ago`; for an `@` field, its
+    /// parameter's name.
     pub name: String,
     pub r#type: Type,
     /// The value supplied when the field is omitted. Without a default the
     /// field is required, including when its type admits `null`.
     pub default: Option<crate::value::Value>,
+    pub form: FieldForm,
+}
+
+/// A value's outermost form, which finds the `@` field an entry fills:
+/// `@newest first` is the call `newest first`, `@"src"` a string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Written {
+    /// A call of this shape, such as `changed within _` or `hidden`.
+    Call(Vec<ShapePart>),
+    String,
+    Number,
+    List,
+    Braces,
+    Duration,
+}
+
+impl std::fmt::Display for Written {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Written::Call(shape) => write!(f, "`{}`", ShapePart::text(shape)),
+            Written::String => f.write_str("a string"),
+            Written::Number => f.write_str("a number"),
+            Written::List => f.write_str("a list `[…]`"),
+            Written::Braces => f.write_str("braces `{…}`"),
+            Written::Duration => f.write_str("a duration"),
+        }
+    }
+}
+
+impl Written {
+    /// Whether an entry written as `found` may be a value of a type
+    /// written as `self`, or the two clash as `@` fields: the same form, or
+    /// a variant shaped like a duration against a `Duration`.
+    pub fn admits(&self, found: &Written) -> bool {
+        match (self, found) {
+            (Written::Duration, Written::Call(parts)) => crate::time::is_duration_shape(parts),
+            _ => self == found,
+        }
+    }
+
+    /// A node's outermost form, `None` for one no value is written as.
+    pub fn of(node: &anyx::Node) -> Option<Written> {
+        Some(match &node.kind {
+            anyx::NodeKind::Number(_) => Written::Number,
+            anyx::NodeKind::String(_) => Written::String,
+            anyx::NodeKind::Brackets(_) => Written::List,
+            anyx::NodeKind::Braces(_) => Written::Braces,
+            anyx::NodeKind::Call(call) => Written::Call(ShapePart::of(&call.name)),
+            _ => return None,
+        })
+    }
+}
+
+/// How a record value writes a field.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldForm {
+    /// Its shape with its value in the one slot: `path _` for
+    /// `path: Text`, `_ case`, `at least _ bytes`.
+    Shape(String),
+    /// Its words alone, for `true`: `hidden`. Its type is `Boolean`, and
+    /// it is `false` when left out.
+    Checkbox,
+    /// `@` and its value, `@newest first`, found by the value's outermost
+    /// form. The field's name is its parameter's.
+    Unnamed,
 }
 
 /// A call's shape: words with a typed slot between or around them, such as
@@ -105,15 +176,51 @@ pub struct Field {
 pub struct Shape {
     /// The words with `_` for each slot: `conflict at revision _`.
     pub text: String,
+    /// Its words and slots, in order, as the parser read them.
+    pub parts: Vec<ShapePart>,
     pub parameters: Vec<Parameter>,
 }
 
 impl Shape {
     /// The words alone, which name it: `conflict at revision`.
     pub fn words(&self) -> String {
-        self.text
-            .split(' ')
-            .filter(|word| *word != "_")
+        self.parts
+            .iter()
+            .filter_map(|part| match part {
+                ShapePart::Word(word) => Some(word.as_str()),
+                ShapePart::Slot => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// A word or a slot of a shape, from a call's name as the parser read it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ShapePart {
+    Word(String),
+    Slot,
+}
+
+impl ShapePart {
+    /// The parts of a call's name, without their spans.
+    pub fn of(name: &[anyx::NamePart]) -> Vec<ShapePart> {
+        name.iter()
+            .map(|part| match part {
+                anyx::NamePart::Word { text, .. } => ShapePart::Word(text.clone()),
+                anyx::NamePart::Slot => ShapePart::Slot,
+            })
+            .collect()
+    }
+
+    /// The words with `_` for each slot, joined by spaces: `changed within _`.
+    pub fn text(parts: &[ShapePart]) -> String {
+        parts
+            .iter()
+            .map(|part| match part {
+                ShapePart::Word(word) => word.as_str(),
+                ShapePart::Slot => "_",
+            })
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -258,6 +365,10 @@ pub enum Type {
     /// (Text)`: the index of the type in [`Schema::types`], and a type for
     /// each of its parameters, in the order of its slots.
     Generic(usize, Vec<Type>),
+    /// The slots of a record's field with several of them, as in
+    /// `between (Integer) and (Integer)`: a type for each, in order. It has
+    /// no syntax of its own; a value is written in the field's shape.
+    Tuple(Vec<Type>),
     /// A type parameter, by its name, within the generic record or choice
     /// that declares it. A use of that type puts its argument in its place,
     /// so a value is never of this type.
@@ -296,6 +407,12 @@ impl Type {
             ),
             Type::List(item) => Type::List(Box::new(item.substitute(parameters, arguments))),
             Type::Map(value) => Type::Map(Box::new(value.substitute(parameters, arguments))),
+            Type::Tuple(slots) => Type::Tuple(
+                slots
+                    .iter()
+                    .map(|slot| slot.substitute(parameters, arguments))
+                    .collect(),
+            ),
             Type::Generic(index, inner) => Type::Generic(
                 *index,
                 inner
@@ -313,7 +430,7 @@ impl Type {
             match r#type {
                 Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => walk(item, found),
-                Type::Generic(_, arguments) => {
+                Type::Generic(_, arguments) | Type::Tuple(arguments) => {
                     arguments.iter().for_each(|argument| walk(argument, found))
                 }
                 _ => {}
@@ -346,6 +463,7 @@ impl TypeKind {
                         doc: variant.doc.clone(),
                         shape: Shape {
                             text: variant.shape.text.clone(),
+                            parts: variant.shape.parts.clone(),
                             parameters: variant
                                 .shape
                                 .parameters
@@ -371,18 +489,56 @@ impl TypeKind {
 /// belong to the schema language, so no method of a schema is called that.
 pub const INTROSPECTION: &str = "SCHEMA";
 
+/// The words of the built-in call every server answers with the files of
+/// its schema, the entry first, so a caller can check the schema itself.
+pub const SCHEMA_FILES: &str = "SCHEMA FILES";
+
 /// The built-in `SCHEMA` method: no parameters, returning the guide as
 /// `Text`, with no errors.
 pub fn introspection() -> &'static Method {
-    static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| Method {
-        doc: Some("The guide to this protocol and its schema.".to_string()),
+    static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| {
+        built_in(
+            &["SCHEMA"],
+            "The guide to this protocol and its schema.",
+            "guide",
+            Type::Text,
+        )
+    });
+    &METHOD
+}
+
+/// The calls every server answers, given the types of its schema, which
+/// hold the prelude's `Schema File`.
+pub(crate) fn built_ins(types: &[TypeDefinition]) -> Vec<Method> {
+    let schema_file = types
+        .iter()
+        .position(|definition| definition.name == "Schema File")
+        .expect("the prelude declares `Schema File`");
+    vec![
+        introspection().clone(),
+        built_in(
+            &["SCHEMA", "FILES"],
+            "The files of this protocol's schema, the entry first, then each file it imports.",
+            "files",
+            Type::List(Box::new(Type::Named(schema_file))),
+        ),
+    ]
+}
+
+fn built_in(words: &[&str], doc: &str, returns: &str, r#type: Type) -> Method {
+    Method {
+        doc: Some(doc.to_string()),
         shape: Shape {
-            text: INTROSPECTION.to_string(),
+            text: words.join(" "),
+            parts: words
+                .iter()
+                .map(|word| ShapePart::Word(word.to_string()))
+                .collect(),
             parameters: Vec::new(),
         },
         returns: Some(Parameter {
-            name: "guide".to_string(),
-            r#type: Type::Text,
+            name: returns.to_string(),
+            r#type,
         }),
         requires: None,
         ensures: None,
@@ -390,8 +546,7 @@ pub fn introspection() -> &'static Method {
         examples: Vec::new(),
         effect: Effect::ReadOnly,
         undone_by: None,
-    });
-    &METHOD
+    }
 }
 
 /// `keyword` before the type `name`, as the formatter writes it: with a
@@ -537,6 +692,11 @@ impl Schema {
                 fill_slots(&definition.name, &arguments)
             }
             Type::Parameter(name) => name.clone(),
+            Type::Tuple(slots) => slots
+                .iter()
+                .map(|slot| format!("({})", self.type_name(slot)))
+                .collect::<Vec<_>>()
+                .join(" "),
         }
     }
 
@@ -596,12 +756,69 @@ impl Schema {
         underlying
     }
 
+    /// `item` for the nullable `item?`.
+    pub fn nullable_item<'t>(&'t self, r#type: &'t Type) -> Option<&'t Type> {
+        match self.underlying(r#type) {
+            Type::Generic(index, arguments) if self.types[*index].name == "_ ?" => {
+                arguments.first()
+            }
+            _ => None,
+        }
+    }
+
+    /// The field of `fields` that an entry of this call shape fills, as in
+    /// `path _`, `_ case` or the checkbox `hidden`; `@ _` is found by its
+    /// value's form instead, with [`Schema::unnamed_field`].
+    pub fn shaped_field(&self, fields: &[Field], shape: &str) -> Option<usize> {
+        fields.iter().position(|field| match &field.form {
+            FieldForm::Shape(text) => shape == text,
+            FieldForm::Checkbox => shape == field.name,
+            FieldForm::Unnamed => false,
+        })
+    }
+
+    /// The `@` field of `fields` whose values are written in the form
+    /// `found`. The schema checker makes sure at most one is.
+    pub fn unnamed_field(&self, fields: &[Field], found: &Written) -> Option<usize> {
+        fields.iter().position(|field| {
+            field.form == FieldForm::Unnamed
+                && self
+                    .written_forms(&field.r#type)
+                    .is_some_and(|forms| forms.iter().any(|known| known.admits(found)))
+        })
+    }
+
+    /// The forms a value of `type` is written in, which tell an `@`
+    /// field's value from other entries of a record: a variant by its shape,
+    /// and other values by their kind. `None` for a type parameter, whose
+    /// form isn't known.
+    pub fn written_forms(&self, r#type: &Type) -> Option<Vec<Written>> {
+        Some(match self.underlying(r#type) {
+            Type::Text | Type::Bytes | Type::Instant => vec![Written::String],
+            Type::Integer | Type::Float => vec![Written::Number],
+            Type::Duration => vec![Written::Duration],
+            Type::List(_) => vec![Written::List],
+            Type::Map(_) => vec![Written::Braces],
+            Type::Parameter(_) => return None,
+            underlying => match self.instance(underlying).map(|(_, kind)| kind) {
+                Some(kind) => match kind.as_ref() {
+                    TypeKind::Choice(variants) => variants
+                        .iter()
+                        .map(|variant| Written::Call(variant.shape.parts.clone()))
+                        .collect(),
+                    _ => vec![Written::Braces],
+                },
+                None => vec![Written::Braces],
+            },
+        })
+    }
+
     /// The method a request calls by `full_name`, such as `files/read _`,
     /// or `SCHEMA`, the built-in one.
     pub fn method(&self, full_name: &str) -> Option<&Method> {
         self.methods
             .iter()
-            .chain([introspection()])
+            .chain(&self.built_ins)
             .find(|method| method.full_name() == full_name)
     }
 
@@ -643,13 +860,23 @@ impl Schema {
         self.methods.len()
     }
 
-    /// The method at `index`: one of the schema's own, or the built-in
-    /// `SCHEMA` one past them.
+    /// The index of the built-in `SCHEMA FILES` call, after `SCHEMA`.
+    pub fn schema_files(&self) -> usize {
+        self.methods.len() + 1
+    }
+
+    /// The index of every method a call may name: the schema's own, then
+    /// the built-in ones.
+    pub fn calls(&self) -> std::ops::Range<usize> {
+        0..self.methods.len() + self.built_ins.len()
+    }
+
+    /// The method at `index`: one of the schema's own, or a built-in one
+    /// past them.
     pub fn method_at(&self, index: usize) -> &Method {
-        match index == self.introspection() {
-            true => introspection(),
-            false => &self.methods[index],
-        }
+        self.methods
+            .get(index)
+            .unwrap_or_else(|| &self.built_ins[index - self.methods.len()])
     }
 
     /// The errors `method` may return.
@@ -840,7 +1067,13 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
+            )];
+        }
+        if let Some(default) = default_in_slot(&nodes, error.span) {
+            return vec![found(
+                default,
+                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (Integer) DEFAULT age 0` or `(age: Integer) DEFAULT age 0`".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
@@ -964,6 +1197,32 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
         .iter()
         .filter(|node| !has_word(node, "RECORD"))
         .find_map(|node| within(node, span))
+}
+
+/// Where the call with a `DEFAULT` that `span` is in is, when it fills a
+/// slot of a `RECORD`'s field, as in `age: Integer DEFAULT age 0`, which is
+/// `age (Integer DEFAULT age 0)`.
+fn default_in_slot(nodes: &[Node], span: Span) -> Option<Span> {
+    fn has_default(node: &Node) -> bool {
+        matches!(&node.kind, NodeKind::Call(call)
+            if call.name.iter().any(|part| matches!(part, NamePart::Word { text, .. } if text == "DEFAULT")))
+    }
+    fn within(node: &Node, span: Span, in_call: bool) -> Option<Span> {
+        if !(node.span.start <= span.start && span.end <= node.span.end) {
+            return None;
+        }
+        let (children, call): (&[Node], bool) = match &node.kind {
+            NodeKind::Call(call) => (&call.arguments, true),
+            NodeKind::Parens(nodes) => (nodes, in_call),
+            NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => (nodes, false),
+            _ => (&[], false),
+        };
+        children
+            .iter()
+            .find_map(|child| within(child, span, call))
+            .or_else(|| (in_call && has_default(node)).then_some(node.span))
+    }
+    nodes.iter().find_map(|node| within(node, span, false))
 }
 
 /// Whether `span` is in a top-level `ERROR`, which a schema no longer has:

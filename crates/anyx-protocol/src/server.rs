@@ -45,6 +45,36 @@ pub fn introspect(schema: &Schema) -> Outcome {
     Outcome::Value(Value::Text(crate::guide::guide(schema, "")))
 }
 
+/// The outcome of the built-in `SCHEMA FILES` call: each file of `schema`,
+/// the entry first, as a `Schema File`.
+pub fn schema_files(schema: &Schema) -> Outcome {
+    Outcome::Value(Value::List(
+        schema
+            .files
+            .iter()
+            .map(|file| {
+                Value::Record(
+                    [
+                        ("path".to_string(), Value::Text(file.path.clone())),
+                        ("source".to_string(), Value::Text(file.source.clone())),
+                    ]
+                    .into(),
+                )
+            })
+            .collect(),
+    ))
+}
+
+/// The outcome of `call` when it names a built-in call, which every server
+/// answers the same way, or `None` for a method of the schema.
+pub fn built_in(schema: &Schema, call: &Call) -> Option<Outcome> {
+    match call.method {
+        index if index == schema.introspection() => Some(introspect(schema)),
+        index if index == schema.schema_files() => Some(schema_files(schema)),
+        _ => None,
+    }
+}
+
 /// Writes the response to `calls`. A value with no form on the wire, such as
 /// a `Float` that is not finite, turns its outcome into `INTERNAL ERROR`.
 pub fn respond(schema: &Schema, calls: &[Call], outcomes: Vec<Outcome>) -> String {

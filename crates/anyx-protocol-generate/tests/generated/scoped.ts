@@ -28,6 +28,15 @@ export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
 
+/**
+ * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+ * as the schema's `USE` lines reach it, and its source.
+ */
+export interface SchemaFile {
+  path: string;
+  source: string;
+}
+
 /** The errors of `read _`. */
 export type ReadError =
   /** The note is in the trash. */
@@ -71,7 +80,11 @@ export type PdfError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-type FieldDescriptor = { wire: string; name: string; type: TypeDescriptor; defaultValue?: () => unknown };
+// A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
+// `slots` are each slot's type; a field with several slots holds an array, a
+// value for each. An `@` field has the `forms` its values are written in,
+// which find it.
+type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
 type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
@@ -150,7 +163,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       if (def.kind === "record") {
         const fields = def.fields!;
         for (const key of Object.keys(obj)) if (!fields.some(f => f.name === key)) return fail(`unknown field ${key}`);
-        return `{ ${fields.flatMap(f => (!Object.hasOwn(obj, f.name) || obj[f.name] === undefined) && f.defaultValue ? [] : [`${f.wire}: ${encodeValue(f.type, Object.hasOwn(obj, f.name) ? obj[f.name] : undefined, env)}`]).join(", ")} }`;
+        return `{ ${fields.flatMap(f => encodeField(f, obj, env)).join(", ")} }`;
       }
       const variant = def.variants!.find(v => v.kind === obj.kind);
       if (!variant) return fail("unknown choice variant");
@@ -158,6 +171,52 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     }
   }
   return fail(`invalid ${type.k} value`);
+}
+// A field as a reader writes it: a checkbox's words when true, `@` and the
+// value, or the shape with the value in its slot, after a `:` when the slot
+// is last. A `null` default is left out.
+function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings: Bindings): string[] {
+  const present = Object.hasOwn(obj, f.name) && obj[f.name] !== undefined;
+  if (!present && f.defaultValue) return [];
+  const value = present ? obj[f.name] as {kind?: string} & Record<string, unknown> : undefined;
+  if (f.form === "checkbox") {
+    if (value?.kind === "true") return [f.wire];
+    if (value?.kind === "false") return [];
+    return fail(`invalid checkbox ${f.name}`);
+  }
+  if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
+  const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
+  const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
+  if (f.form === "unnamed") return [`@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
+  const words = f.wire.split(" ");
+  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
+  let next = 0;
+  return [words.map(w => w === "_" ? `(${texts[next++]})` : w).join(" ")];
+}
+// A node's outermost form, which finds the `@` field it fills.
+function formOf(node: Syntax): string {
+  node = ungroup(node);
+  switch (node.tag) {
+    case "number": return "number";
+    case "text": return "string";
+    case "list": return "list";
+    case "braces": return "braces";
+    default: return `call:${parts(node).map(t => t.tag === "word" ? t.text : "_").join(" ")}`;
+  }
+}
+// Whether a node is a duration's call, a unit after each slot: `_ hour`,
+// `_ hours _ minutes`. Read from its parts, as the parser gave them.
+function isDurationCall(node: Syntax): boolean {
+  const p = parts(node);
+  return p.length > 0 && p.length % 2 === 0 && p.every((t, i) => i % 2 === 0
+    ? t.tag !== "word"
+    : t.tag === "word" && durationUnits.some(([unit]) => t.text === unit || t.text === `${unit}s`));
+}
+// A field's value from its entry's slots: one value, or an array of one for
+// each slot.
+function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
+  const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
+  return f.slots.length === 1 ? values[0] : values;
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -405,13 +464,16 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
         for (const entry of node.items) {
+          // An entry finds its field by its shape alone, and an `@` entry
+          // by its value's outermost form.
           const p = parts(entry);
-          const field = def.fields!.find(f => {
-            const words = f.wire.split(" ");
-            return p.length === words.length + 1 && p[words.length].tag !== "word" && words.every((w, i) => word(p[i], w));
-          });
+          const shape = p.map(t => t.tag === "word" ? t.text : "_").join(" ");
+          const field = shape === "@ _"
+            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && isDurationCall(p[1]))))
+            : def.fields!.find(f => f.form !== "unnamed" && f.wire === shape);
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
-          Object.defineProperty(out, field.name, { value: decodeValue(field.type, fromParts(p.slice(field.wire.split(" ").length)), env), enumerable: true, writable: true, configurable: true });
+          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter(t => t.tag !== "word"), env);
+          Object.defineProperty(out, field.name, { value, enumerable: true, writable: true, configurable: true });
         }
         for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
         return out;
@@ -461,18 +523,21 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path", name:"path", type:{k:'text'}},{wire:"revision", name:"revision", type:{k:'integer'}},{wire:"content", name:"content", type:{k:'text'}}]},
-{parameters:[],kind:'record', fields:[{wire:"line", name:"line", type:{k:'integer'}},{wire:"message", name:"message", type:{k:'text'}}]},
-{parameters:[],kind:'record', fields:[{wire:"html", name:"html", type:{k:'text'}},{wire:"problem", name:"problem", type:{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}, defaultValue:()=>{kind:"null"}}]},
+const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"content _", form:"shape", name:"content", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}, slots:[{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}], defaultValue:()=>{kind:"null"}}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]}];
+{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list", kind:"list", params:[]}, returns:{k:'list', item:{k:'text'}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:0, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:1, args:[]}}, errors:[{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["trash _"]:{shape:{text:"trash _", kind:"trash", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:null, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["empty trash"]:{shape:{text:"empty trash", kind:"emptyTrash", params:[]}, returns:null, errors:[]},
 ["html _"]:{shape:{text:"html _", kind:"html", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:2, args:[]}}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
-["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]}, SCHEMA:{shape:{text:'SCHEMA',kind:'schema',params:[]}, returns:{k:'text'}, errors:[]}};
+["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:5, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -590,6 +655,11 @@ export class Client {
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
   }
+
+  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */
+  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {
+    return this.call("SCHEMA FILES", []);
+  }
 }
 
 /** What a call of a method may do, as the schema's markers claim. A method
@@ -617,5 +687,6 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "empty trash": { readOnly: false, idempotent: false, undoneBy: null },
   "html _": { readOnly: false, idempotent: false, undoneBy: null },
   "pdf _": { readOnly: false, idempotent: false, undoneBy: null },
-  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
+  "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

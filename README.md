@@ -49,6 +49,12 @@ and `y` (see [Tree](#tree)).
    ones that end a [line string](#line-strings) or a comment, which run to
    the end of their line. Inside a [raw string](#raw-strings), lines are its
    content.
+8. **Readability over writability.** anyx, and every language built on it
+   such as the protocol, is read far more than it is written, and mostly
+   written by AI agents now. So when a form trades the two, readability
+   wins: `(any) case` reads as well as `any case`, so the parentheses that
+   keep the tree honest are worth the extra keystrokes, where a shortcut
+   that spares them by reinterpreting the tree is not.
 
 ## Grammar
 

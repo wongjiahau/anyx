@@ -263,7 +263,7 @@ fn outcome_to_json(schema: &Schema, index: usize, outcome: Option<Outcome>) -> J
 /// The method that `name` calls: by its full name, `tag _`, or by its
 /// typed name, `tag (LIST Text)`, which an overload needs.
 fn method_index(schema: &Schema, name: &str) -> Result<usize, String> {
-    let methods = 0..=schema.introspection();
+    let methods = schema.calls();
     if let Some(index) = methods
         .clone()
         .find(|index| schema.typed_name(schema.method_at(*index)) == name)
@@ -312,6 +312,20 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                 items
                     .iter()
                     .map(|value| to_json(schema, item, value))
+                    .collect(),
+            )
+        }
+        // A field's slots, as an array of their values.
+        Value::Tuple(values) => {
+            let slots = match r#type {
+                Type::Tuple(slots) => &slots[..],
+                _ => &[],
+            };
+            Json::Array(
+                values
+                    .iter()
+                    .zip(slots)
+                    .map(|(value, slot)| to_json(schema, slot, value))
                     .collect(),
             )
         }
@@ -433,6 +447,18 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 .collect::<Result<_, _>>()
                 .map(Value::List),
             _ => mismatch("an array"),
+        },
+        Type::Tuple(slots) => match json {
+            Json::Array(items) if items.len() == slots.len() => slots
+                .iter()
+                .zip(items)
+                .map(|(slot, json)| from_json(schema, slot, json))
+                .collect::<Result<_, _>>()
+                .map(Value::Tuple),
+            _ => mismatch(&format!(
+                "an array of {} values, one for each slot",
+                slots.len()
+            )),
         },
         Type::Map(value_type) => match json {
             Json::Object(object) => object

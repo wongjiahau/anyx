@@ -66,6 +66,19 @@ pub(crate) fn units() -> &'static [Unit] {
     &UNITS
 }
 
+/// Whether a shape is a duration's, a unit after each slot: `_ hour`,
+/// `_ hours _ minutes`.
+pub(crate) fn is_duration_shape(parts: &[crate::schema::ShapePart]) -> bool {
+    use crate::schema::ShapePart;
+    !parts.is_empty()
+        && parts.chunks(2).all(|pair| match pair {
+            [ShapePart::Slot, ShapePart::Word(word)] => units()
+                .iter()
+                .any(|unit| unit.singular == *word || unit.plural == *word),
+            _ => false,
+        })
+}
+
 /// Milliseconds since the Unix epoch, rounded down: what an instant keeps.
 pub(crate) fn milliseconds_since_epoch(instant: SystemTime) -> Option<i64> {
     match instant.duration_since(UNIX_EPOCH) {

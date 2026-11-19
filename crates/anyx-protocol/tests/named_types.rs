@@ -201,7 +201,7 @@ fn a_named_type_may_be_an_instant_a_map_or_have_a_default() {
 TYPE Opened At: Instant,
 TYPE Openings: MAP: Opened At,
 TYPE Label: Text,
-RECORD Visit { at: Opened At, by person: Openings, label: Label DEFAULT \"none\" },
+RECORD Visit { at: Opened At, by person: Openings, label (Label) DEFAULT label \"none\" },
 METHOD visits RETURNS (visits: LIST: Visit),
 ",
     );
@@ -224,9 +224,9 @@ METHOD visits RETURNS (visits: LIST: Visit),
         diagnostics(
             "PROTOCOL visits VERSION 1,
 TYPE Label: Text,
-RECORD Visit { label: Label DEFAULT 3 },
+RECORD Visit { label (Label) DEFAULT label 3 },
 "
         ),
-        "schema:3:37: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD Visit { label: Label DEFAULT 3 },\n                                      ^"
+        "schema:3:44: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD Visit { label (Label) DEFAULT label 3 },\n                                             ^"
     );
 }

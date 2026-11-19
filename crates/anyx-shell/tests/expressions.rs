@@ -251,7 +251,7 @@ fn nested_diagnostics_point_to_the_original_document() {
 fn generic_records_and_defaults_can_contain_computed_fields() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("generic", Identity(Schema::parse(
-        "PROTOCOL generic VERSION 1, RECORD Box of (item: Type) { value: item, count: Integer DEFAULT 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text))"
+        "PROTOCOL generic VERSION 1, RECORD Box of (item: Type) { value: item, count (Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text))"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("generic / identity ({ value: (example / text) } AS: Box of (Text))")
@@ -262,6 +262,40 @@ fn generic_records_and_defaults_can_contain_computed_fields() {
     };
     assert_eq!(record["value"], Value::Text("hello".into()));
     assert_eq!(record["count"], Value::Integer(7));
+}
+
+#[test]
+fn a_field_with_several_slots_takes_a_computed_value_in_each() {
+    let (mut interpreter, _) = interpreter();
+    interpreter.register("range", Identity(Schema::parse(
+        "PROTOCOL range VERSION 1, RECORD Span { between (Text) and (Integer) or (Integer?) }, METHOD identity (value: Span) RETURNS (value: Span)"
+    ).unwrap())).unwrap();
+    let execution = interpreter
+        .execute("range / identity { between (example / text) and 2 or (value 3) }")
+        .unwrap();
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let Value::Record(record) = &execution.values[0] else {
+        panic!()
+    };
+    assert_eq!(
+        record["between and or"],
+        Value::Tuple(vec![
+            Value::Text("hello".into()),
+            Value::Integer(2),
+            Value::Variant {
+                shape: "value _".into(),
+                arguments: vec![Value::Integer(3)]
+            },
+        ])
+    );
+    let problem = interpreter
+        .execute("range / identity { between \"a\" and \"b\" or (value 3) }")
+        .unwrap_err();
+    assert!(
+        problem.message.contains("expected a whole number"),
+        "{}",
+        problem.message
+    );
 }
 
 #[test]

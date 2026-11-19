@@ -32,15 +32,16 @@ shape of one of the methods below, with a value in each `(name: Type)` slot:
 {overloads}
 Every call runs, in order, and the response has one result per call.
 {conditions}
-`SCHEMA` is a call every server answers, with this guide.
+`SCHEMA` is a call every server answers, with this guide, and
+`SCHEMA FILES` with the files of the schema, the entry first.
 
 ## Effects
 
 Words before `METHOD` say what a call of it may do, and decide when it is
 safe to send without asking:
 
-- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` is
-  read only.
+- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` and
+  `SCHEMA FILES` are read only.
 - `IDEMPOTENT METHOD`: calling it again with the same arguments changes
   nothing more, so it is safe to retry when a response was lost. A retry may
   still answer differently, such as with an error saying it is already done,
@@ -63,10 +64,16 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
   words, put `:` after its key: `{{ \"hymn\": done }}`.
-- A RECORD is its fields in braces, each its name and value, in any order:
-  `{{ path \"a\", revision 3 }}`. A field with a `DEFAULT` may be left out
-  and then holds that value. When a value is words, put `:`
-  after the field's name: `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
+- A RECORD is its fields in braces, each written in its declared shape with
+  a value in each slot, in any order: `{{ path \"a\", revision 3 }}`,
+  `{{ (any) case, between 1 and 3 }}`. A value before a field's words
+  keeps its parentheses. A field of words alone is a checkbox, true when
+  written: `{{ hidden }}`. An `@` field is `@` and its value alone:
+  `{{ @by name }}`. A nullable value is `null` or `value _`:
+  `{{ max depth (value 3) }}`. A field with a `DEFAULT` may be left out and
+  then holds the entry after `DEFAULT`. When a value is words
+  and the slot is last, put `:` after the field's words:
+  `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 {generic_types}{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't
@@ -406,6 +413,7 @@ fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
         Type::Refined(base, _) => always_annotated(schema, base),
         Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
         Type::List(item) | Type::Map(item) => always_annotated(schema, item),
+        Type::Tuple(slots) => slots.iter().any(|slot| always_annotated(schema, slot)),
         _ => false,
     }
 }
@@ -428,6 +436,11 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Refined(base, _) => sample(schema, base),
         Type::List(_) => "[…]".to_string(),
         Type::Map(_) => "{ … }".to_string(),
+        Type::Tuple(slots) => slots
+            .iter()
+            .map(|slot| sample(schema, slot))
+            .collect::<Vec<_>>()
+            .join(" "),
         Type::Named(index) | Type::Generic(index, _) => match schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
             TypeKind::Choice(_) => "(…)".to_string(),
@@ -455,6 +468,11 @@ fn refinements(schema: &Schema) -> String {
             Type::Generic(_, args) => {
                 for arg in args {
                     describe(schema, arg, label, rows);
+                }
+            }
+            Type::Tuple(slots) => {
+                for (index, slot) in slots.iter().enumerate() {
+                    describe(schema, slot, &format!("{label} slot {}", index + 1), rows);
                 }
             }
             _ => {}

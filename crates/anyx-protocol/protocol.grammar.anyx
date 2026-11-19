@@ -47,23 +47,40 @@ type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
 
 type marker: ONE OF [WORD "Type"],
 
-field: ANYFIX CALL [doc: OPTIONAL: LINE STRING, name: WORDS [NO KEYWORD], type: field type],
-
-field type: ONE OF [defaulted, type],
-
-## A field's type and the value it takes when left out.
-defaulted: ONE OF [
-  list: ANYFIX CALL [WORD "LIST", item: defaulted],
-  ## `LIST File Summary DEFAULT []`
-  list of named: ANYFIX CALL [WORD "LIST", item: type, WORD "DEFAULT", default: ANY NODE],
-  map: ANYFIX CALL [WORD "MAP", value: defaulted],
-  ## `MAP File Summary DEFAULT {}`
-  map of named: ANYFIX CALL [WORD "MAP", value: type, WORD "DEFAULT", default: ANY NODE],
-  ## `Integer DEFAULT 50`, `Shade DEFAULT dark`,
-  ## `Page of (Text) DEFAULT { items [] }`, or a type in parentheses,
-  ## `(LIST: Text) DEFAULT []`
-  other: ANYFIX CALL [type, WORD "DEFAULT", default: ANY NODE],
+## A field is a shape, written in a value as it is declared, in any order
+## among the others. Its words name it, and each slot holds a type:
+##
+## - `path: Text`, the shape `path _`, written `path "a"`;
+## - `(Case) case`, written `(any) case`;
+## - `between (Integer) and (Integer)`, written `between 1 and 3`, holds a
+##   value for each slot;
+## - `hidden`, words alone: a `Boolean`, `true` when written and `false`
+##   when left out;
+## - `@(order: Order)`, the shape with no words, so a parameter names it.
+##   It is written as its value after `@`: `@newest first`. The checker
+##   finds which `@` field an entry fills by the value's outermost form
+##   alone.
+##
+## A field that may be left out says what it is then, as an entry written
+## as a value writes it: `age (Integer) DEFAULT age 0`,
+## `(path: Text) DEFAULT path "a"`, `@(order: Order) DEFAULT @newest first`.
+## The `DEFAULT` takes the whole field, so `path: Text DEFAULT path "a"`
+## puts it in the slot, where no type has one.
+field: ONE OF [
+  defaulted: ANYFIX CALL [field: declared field, WORD "DEFAULT", default: ANY NODE],
+  declared: declared field,
 ],
+
+declared field: ONE OF [
+  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "@", parameter],
+  ## Its first word isn't `@`, after any slot for a doc or for its type.
+  words: ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_@]"],
+    ARGUMENTS: ZERO OR MORE: field slot,
+  ],
+],
+
+field slot: ONE OF [doc: LINE STRING, type],
 
 choice: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,

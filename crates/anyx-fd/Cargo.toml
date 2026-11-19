@@ -1,0 +1,22 @@
+[package]
+name = "anyx-fd"
+version.workspace = true
+edition.workspace = true
+description = "Finds files by name, as fd does, as an anyx protocol tool"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "anyx-fd"
+path = "src/main.rs"
+
+[dependencies]
+anyx-protocol = { path = "../anyx-protocol", version = "0.1.0" }
+globset = "0.4"
+ignore = "0.4"
+regex = "1"
+
+[dev-dependencies]
+anyx-shell = { path = "../anyx-shell", version = "0.1.0" }
+tempfile = "3"

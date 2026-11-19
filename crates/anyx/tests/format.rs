@@ -121,6 +121,12 @@ fn operators_are_spaced_canonically() {
     assert_eq!(fmt("a:b"), "a: b\n");
     assert_eq!(fmt("a   .   f"), "a . f\n");
     assert_eq!(fmt("x.+y .- z"), "x + y .- z\n");
+    // A symbol word that starts a run is a prefix and hugs what follows,
+    // except a number, which `-` would make negative.
+    assert_eq!(
+        fmt("{@ by name, @ \"src\", @ (x), @ 3}"),
+        "{ @by name, @\"src\", @x, @ 3 }\n"
+    );
     assert_eq!(fmt("f(x)"), "f (x)\n");
     assert_eq!(fmt("{a:b}"), "{ a: b }\n");
     assert_eq!(fmt("[ a , b , ]"), "[a, b]\n");

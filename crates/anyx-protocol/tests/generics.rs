@@ -17,8 +17,8 @@ const SHOP: &str = "PROTOCOL shop VERSION 1,
 # A page of a long list, and where the next one starts.
 RECORD page of (item: Type) {
     items: LIST: item,
-    next: Text DEFAULT \"\",
-    size: Integer DEFAULT 20,
+    next (Text) DEFAULT next \"\",
+    size (Integer) DEFAULT size 20,
 },
 
 # What came of an attempt.
@@ -96,6 +96,7 @@ fn a_generic_type_reads_with_its_parameters_and_each_use_with_its_arguments() {
             name: "items".to_string(),
             r#type: Type::List(Box::new(Type::Parameter("item".to_string()))),
             default: None,
+            form: anyx_protocol::schema::FieldForm::Shape("items _".to_string()),
         }
     );
     assert_eq!(fields[2].default, Some(Value::Integer(20)));
@@ -243,10 +244,10 @@ METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer),
 fn defaults_and_examples_are_checked_against_each_use() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
-RECORD page of (item: Type) { items: LIST: item, size: Integer DEFAULT 20 },
+RECORD page of (item: Type) { items: LIST: item, size (Integer) DEFAULT size 20 },
 RECORD Search {
-    first: page of (Text) DEFAULT { items [\"a\"] },
-    pages: LIST page of (Integer) DEFAULT [],
+    first (page of (Text)) DEFAULT first { items [\"a\"] },
+    pages (LIST page of (Integer)) DEFAULT pages [],
 },
 METHOD find (search: Search) RETURNS (found: page of (Text))
     EXAMPLES [find ({} AS: Search) RETURNS { items [\"a\"], size 3 }],
@@ -274,13 +275,13 @@ METHOD find (search: Search) RETURNS (found: page of (Text))
         diagnostics(
             "PROTOCOL shop VERSION 1,
 RECORD page of (item: Type) { items: LIST: item },
-RECORD Search { first: page of (Text) DEFAULT { items [3] } },
+RECORD Search { first (page of (Text)) DEFAULT first { items [3] } },
 METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
-        "schema:3:56: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
-  RECORD Search { first: page of (Text) DEFAULT { items [3] } },
-                                                         ^"
+        "schema:3:63: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
+  RECORD Search { first (page of (Text)) DEFAULT first { items [3] } },
+                                                                ^"
     );
     assert_eq!(
         diagnostics(
@@ -398,6 +399,7 @@ fn a_slot_may_sit_anywhere_in_a_generic_type_s_shape() {
         ("Page", "Page", vec![]),
         ("Boolean", "Boolean", vec![]),
         ("_ ?", "(item) ?", vec!["item"]),
+        ("Schema File", "Schema File", vec![]),
     ];
     assert_eq!(declared.len(), expected.len());
     for ((name, shape, parameters), (expected_name, expected_shape, expected_parameters)) in
@@ -608,7 +610,7 @@ fn the_guide_explains_generic_types() {
 fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
     let formatted = anyx_protocol::format_schema(SHOP).unwrap();
     assert!(
-        formatted.contains("RECORD page of (item: Type) { items: LIST item, "),
+        formatted.contains("RECORD page of (item: Type) {\n    items: LIST item,\n"),
         "{formatted}"
     );
     assert!(
@@ -660,7 +662,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a default on a field whose type holds a parameter",
-            "PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item DEFAULT 3, size: Integer DEFAULT 3 },",
+            "PROTOCOL a VERSION 1, RECORD box of (item: Type) { value (item) DEFAULT value 3, size (Integer) DEFAULT size 3 },",
         ),
         (
             "a parameter with a type in a slot",
@@ -680,7 +682,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a generic type holding itself through an argument",
-            "PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next: ((item) chain)? DEFAULT null },",
+            "PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next (((item) chain)?) DEFAULT next (null) },",
         ),
         (
             "a generic type using itself with other arguments, directly or through another",

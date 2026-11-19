@@ -158,7 +158,7 @@ fn an_invalid_request_reads_back() {
 const MODES: &str = "PROTOCOL a VERSION 1,
 CHOICE Shade { dark, light },
 CHOICE Mode { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
-RECORD Options { mode: Mode, strict: Boolean DEFAULT false },
+RECORD Options { mode: Mode, strict (Boolean) DEFAULT strict (false) },
 METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean),
 METHOD apply (options: Options) RETURNS (modes: LIST: Mode),";
 
@@ -449,7 +449,7 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-RECORD Timer { at: Instant, every: Duration, pause: Duration DEFAULT 0 seconds },
+RECORD Timer { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant),
 METHOD set (timer: Timer) RETURNS (left: Duration),
 METHOD list RETURNS (durations: LIST Duration),";
@@ -564,7 +564,7 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        RECORD Search { query: Text, limit: Integer DEFAULT 50, note: Text DEFAULT \"\" },
+        RECORD Search { query: Text, limit (Integer) DEFAULT limit 50, note (Text) DEFAULT note \"\" },
         METHOD find (search: Search) RETURNS (search: Search),",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
@@ -592,7 +592,7 @@ fn a_field_left_out_takes_its_default() {
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
 CHOICE Mood { calm, wild },
-RECORD Tally { counts: MAP Integer, moods: MAP: Mood DEFAULT {} },
+RECORD Tally { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
 METHOD count (tally: Tally) RETURNS (counts: MAP Integer),
 METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood),";
 

@@ -1,8 +1,9 @@
-//! `SCHEMA`, the call every server answers with the guide to its schema.
+//! `SCHEMA` and `SCHEMA FILES`, the calls every server answers with the
+//! guide to its schema and with the schema's files.
 
 mod common;
 
-use anyx_protocol::server::introspect;
+use anyx_protocol::server::{built_in, introspect};
 use anyx_protocol::{
     Call, Outcome, Response, Value, decode_request, decode_response, encode_request,
     encode_response,
@@ -59,6 +60,56 @@ fn schema_answers_the_guide_without_how_to_send() {
         decode_response(&schema, &methods, &response).unwrap(),
         Response::Outcomes(vec![Outcome::Value(Value::Text(guide))])
     );
+}
+
+#[test]
+fn schema_files_answers_the_files_the_entry_first_to_load_again() {
+    let schema = scoped();
+    let index = schema.schema_files();
+    assert_eq!(schema.method_at(index).full_name(), "SCHEMA FILES");
+    let calls = decode_request(&schema, "SCHEMA FILES").unwrap();
+    assert_eq!(calls[0].method, index);
+    let outcome = built_in(&schema, &calls[0]).unwrap();
+    let response = encode_response(&schema, &calls, &Response::Outcomes(vec![outcome])).unwrap();
+    assert!(response.starts_with("RETURNS [\n"), "{response}");
+    let Response::Outcomes(outcomes) = decode_response(&schema, &[index], &response).unwrap()
+    else {
+        panic!("expected outcomes");
+    };
+    let [Outcome::Value(Value::List(files))] = outcomes.as_slice() else {
+        panic!("expected a list of files");
+    };
+    let files: Vec<(String, String)> = files
+        .iter()
+        .map(|file| {
+            let Value::Record(fields) = file else {
+                panic!("expected a Schema File");
+            };
+            let text = |name: &str| match &fields[name] {
+                Value::Text(text) => text.clone(),
+                other => panic!("expected text, found {other:?}"),
+            };
+            (text("path"), text("source"))
+        })
+        .collect();
+    assert_eq!(files[0].0, schema.files[0].path);
+    assert_eq!(files.len(), schema.files.len());
+    let again = anyx_protocol::Schema::load(&files[0].0, |path| {
+        files
+            .iter()
+            .find(|(file, _)| file == path)
+            .map(|(_, source)| source.clone())
+            .ok_or("not answered")
+    })
+    .unwrap();
+    assert_eq!(again, schema);
+}
+
+#[test]
+fn built_in_answers_only_the_built_in_calls() {
+    let schema = scoped();
+    let call = decode_request(&schema, "list").unwrap().remove(0);
+    assert!(built_in(&schema, &call).is_none());
 }
 
 #[test]

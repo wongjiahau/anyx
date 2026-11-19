@@ -15,11 +15,13 @@ PROTOCOL types VERSION 1,
 RECORD Reminder {
     note: Text,
     at: Instant,
-    every: Duration? DEFAULT null,
+    every (Duration?) DEFAULT every (null),
     # How many times to remind before giving up.
-    times: Integer DEFAULT 3,
+    times (Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
-    seen: MAP: Instant DEFAULT {},
+    seen (MAP: Instant) DEFAULT seen {},
+    # The hours of the day it stays quiet, from and to.
+    quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
 },
 
 CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },
@@ -63,6 +65,8 @@ pub struct Reminder {
     pub times: i64,
     /// When each person last saw it, by their name.
     pub seen: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
+    /// The hours of the day it stays quiet, from and to.
+    pub quiet_from_to: (i64, i64),
 }
 
 impl IntoValue for Reminder {
@@ -74,6 +78,7 @@ impl IntoValue for Reminder {
                 .field("every", self.every)
                 .field("times", self.times)
                 .field("seen", self.seen)
+                .field("quiet from to", self.quiet_from_to)
                 .build(),
         )
     }
@@ -91,6 +96,7 @@ impl FromValue for Reminder {
             every: fields.field("every")?,
             times: fields.field("times")?,
             seen: fields.field("seen")?,
+            quiet_from_to: fields.field("quiet from to")?,
         })
     }
 }
@@ -214,6 +220,38 @@ impl<Item: FromValue> FromValue for Nullable<Item> {
     }
 }
 
+/// A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+/// as the schema's `USE` lines reach it, and its source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SchemaFile {
+    pub path: String,
+    pub source: String,
+}
+
+impl IntoValue for SchemaFile {
+    fn into_value(self) -> Value {
+        Value::Record(
+            FieldsBuilder::new()
+                .field("path", self.path)
+                .field("source", self.source)
+                .build(),
+        )
+    }
+}
+
+impl FromValue for SchemaFile {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            path: fields.field("path")?,
+            source: fields.field("source")?,
+        })
+    }
+}
+
 /// The errors of `snooze _ for _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SnoozeForError {
@@ -320,8 +358,10 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            3 => Ok::<_, <S as Server>::Error>(anyx_protocol::server::introspect(schema)),
-            _ => unreachable!("the codec read a method of the schema"),
+            _ => Ok::<_, <S as Server>::Error>(
+                anyx_protocol::server::built_in(schema, call)
+                    .expect("the codec read a method of the schema"),
+            ),
         };
         let outcome = outcome.unwrap_or_else(|error| {
             on_internal_error(error);
@@ -393,6 +433,13 @@ impl<T: Transport> Client<T> {
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![]).await
+    }
+
+    /// `SCHEMA FILES`, returning the files of the schema, the entry first.
+    pub async fn schema_files(
+        &self,
+    ) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
     }
 }
 

@@ -5,11 +5,13 @@ PROTOCOL types VERSION 1,
 RECORD Reminder {
     note: Text,
     at: Instant,
-    every: Duration? DEFAULT null,
+    every (Duration?) DEFAULT every (null),
     # How many times to remind before giving up.
-    times: Integer DEFAULT 3,
+    times (Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
-    seen: MAP: Instant DEFAULT {},
+    seen (MAP: Instant) DEFAULT seen {},
+    # The hours of the day it stays quiet, from and to.
+    quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
 },
 
 CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },

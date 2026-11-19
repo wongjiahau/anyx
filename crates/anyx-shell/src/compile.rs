@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyx::{Expression, Item, Node, NodeKind, Span, TokenKind};
 use anyx_protocol::{
     Problem, Schema, Value,
-    schema::{Type, TypeKind},
+    schema::{Field, FieldForm, Type, TypeKind, Written},
 };
 
 use crate::{Interpreter, at};
@@ -15,6 +15,8 @@ pub(crate) struct Call {
     pub scope: String,
     pub method: usize,
     pub arguments: Vec<Argument>,
+    /// Where the call is written, for a precondition that fails.
+    pub span: Span,
 }
 
 pub(crate) struct Argument {
@@ -29,6 +31,59 @@ pub(crate) enum ExpressionValue {
     Record(Vec<(String, Argument)>),
     Map(Vec<(String, Argument)>),
     Variant(String, Vec<Argument>),
+    /// The slots of a record's field with several of them.
+    Tuple(Vec<Argument>),
+}
+
+impl Argument {
+    /// Its value, when it is written out with no call in it.
+    pub fn literal(&self) -> Option<Value> {
+        Some(match &self.value {
+            ExpressionValue::Literal(value) => value.clone(),
+            ExpressionValue::Call(_) => return None,
+            ExpressionValue::List(items) => {
+                Value::List(items.iter().map(Self::literal).collect::<Option<_>>()?)
+            }
+            ExpressionValue::Record(fields) => Value::Record(
+                fields
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), value.literal()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            ExpressionValue::Map(fields) => Value::Map(
+                fields
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), value.literal()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            ExpressionValue::Variant(shape, arguments) => Value::Variant {
+                shape: shape.clone(),
+                arguments: arguments.iter().map(Self::literal).collect::<Option<_>>()?,
+            },
+            ExpressionValue::Tuple(slots) => {
+                Value::Tuple(slots.iter().map(Self::literal).collect::<Option<_>>()?)
+            }
+        })
+    }
+
+    /// Runs `check` on each call in it, outermost first.
+    fn each_call(
+        &self,
+        check: &mut impl FnMut(&Call) -> Result<(), Problem>,
+    ) -> Result<(), Problem> {
+        match &self.value {
+            ExpressionValue::Literal(_) => Ok(()),
+            ExpressionValue::Call(call) => check(call),
+            ExpressionValue::List(items)
+            | ExpressionValue::Variant(_, items)
+            | ExpressionValue::Tuple(items) => {
+                items.iter().try_for_each(|item| item.each_call(check))
+            }
+            ExpressionValue::Record(fields) | ExpressionValue::Map(fields) => fields
+                .iter()
+                .try_for_each(|(_, value)| value.each_call(check)),
+        }
+    }
 }
 
 pub(crate) struct Compiler<'a> {
@@ -39,12 +94,39 @@ pub(crate) struct Compiler<'a> {
 
 impl Compiler<'_> {
     pub fn element(&self, node: &Node) -> Result<Call, Problem> {
-        if self.is_scoped(node) {
-            return self.call(node.span);
+        let call = if self.is_scoped(node) {
+            self.call(node.span)?
+        } else {
+            self.opened_call(node, None).unwrap_or_else(|| {
+                Err(self.error(node.span, "expected a scoped call, such as `environment / list variables`, or a method from an opened tool"))
+            })?
+        };
+        self.check_preconditions(&call)?;
+        Ok(call)
+    }
+
+    /// Checks the `REQUIRES` of `call` and of each call in its arguments
+    /// whose arguments are all written out. The rest are checked when their
+    /// arguments have been computed, just before the call runs.
+    fn check_preconditions(&self, call: &Call) -> Result<(), Problem> {
+        for argument in &call.arguments {
+            argument.each_call(&mut |nested| self.check_preconditions(nested))?;
         }
-        self.opened_call(node, None).unwrap_or_else(|| {
-            Err(self.error(node.span, "expected a scoped call, such as `environment / list variables`, or a method from an opened tool"))
-        })
+        let Some(values) = call
+            .arguments
+            .iter()
+            .map(Argument::literal)
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Ok(());
+        };
+        let schema = self.interpreter.tools[&call.scope].schema();
+        anyx_protocol::refinement::check_precondition(
+            schema,
+            schema.method_at(call.method),
+            &values,
+        )
+        .map_err(|message| self.error(call.span, message))
     }
 
     fn opened_call(
@@ -60,7 +142,7 @@ impl Compiler<'_> {
         let mut failure = None;
         for scope in self.opened {
             let schema = self.interpreter.tools[scope].schema();
-            for index in 0..=schema.introspection() {
+            for index in schema.calls() {
                 let method = schema.method_at(index);
                 if method.shape.text != name {
                     continue;
@@ -87,6 +169,7 @@ impl Compiler<'_> {
                         scope: scope.clone(),
                         method: index,
                         arguments,
+                        span: node.span,
                     }),
                     Err(error) => {
                         failure.get_or_insert(error);
@@ -186,7 +269,7 @@ impl Compiler<'_> {
             return Err(self.error(node.span, "expected a method call after `/`"));
         };
         let name = call.name_text();
-        let methods: Vec<_> = (0..=schema.introspection())
+        let methods: Vec<_> = (schema.calls())
             .filter(|index| schema.method_at(*index).shape.text == name)
             .collect();
         if methods.is_empty() {
@@ -215,6 +298,7 @@ impl Compiler<'_> {
                         scope: scope.text.clone(),
                         method,
                         arguments,
+                        span,
                     })
                 });
                 match (contextual.next(), contextual.next()) {
@@ -294,6 +378,7 @@ impl Compiler<'_> {
             scope: scope.text.clone(),
             method: *method,
             arguments,
+            span,
         })
     }
 
@@ -450,35 +535,31 @@ impl Compiler<'_> {
                 "empty braces have no type of their own; annotate them with `AS: Type`",
             ));
         }
-        let mut fields = Vec::new();
+        // Each entry is a map's key and value, or a record's entry: a call
+        // whose shape finds its field, as in `path _`, `hidden` or `@ _`.
+        let mut fields: Vec<(String, &Node)> = Vec::new();
+        let mut entry_calls: Vec<&anyx::Call> = Vec::new();
         let mut is_map = false;
         for entry in entries {
             let NodeKind::Call(call) = &entry.kind else {
                 return Err(self.error(entry.span, "expected a record field or map entry"));
             };
-            let (name, value) = if call.name_text() == "_ _" && call.arguments.len() == 2 {
+            if call.name_text() == "_ _" && call.arguments.len() == 2 {
                 let NodeKind::String(key) = &call.arguments[0].kind else {
                     return Err(self.error(entry.span, "expected a text map key"));
                 };
                 is_map = true;
-                (key.value.clone(), &call.arguments[1])
-            } else if call.arguments.len() == 1 && call.name.last() == Some(&anyx::NamePart::Slot) {
-                (
-                    call.name_text().trim_end_matches(" _").to_string(),
-                    &call.arguments[0],
-                )
+                let key = key.value.clone();
+                if fields.iter().any(|(previous, _)| *previous == key) {
+                    return Err(self.error(entry.span, format!("duplicate key `{key}`")));
+                }
+                fields.push((key, &call.arguments[1]));
             } else {
-                return Err(self.error(entry.span, "expected one value per record field"));
-            };
-            if fields.iter().any(|(previous, _)| previous == &name) {
-                return Err(self.error(entry.span, format!("duplicate field or key `{name}`")));
+                entry_calls.push(call);
             }
-            fields.push((name, value));
         }
         if is_map {
-            if entries.iter().any(
-                |entry| !matches!(&entry.kind, NodeKind::Call(call) if call.name_text() == "_ _"),
-            ) {
+            if !entry_calls.is_empty() {
                 return Err(self.error(span, "cannot mix record fields and map keys"));
             }
             let item = match expected.map(|expected| schema.underlying(expected)) {
@@ -512,13 +593,14 @@ impl Compiler<'_> {
                 let TypeKind::Record(record) = &definition.kind else {
                     return None;
                 };
+                let found: Vec<Option<usize>> = entry_calls
+                    .iter()
+                    .map(|call| record_entry(schema, record, call))
+                    .collect();
                 (definition.parameters.is_empty()
-                    && fields
-                        .iter()
-                        .all(|(name, _)| record.iter().any(|field| field.name == *name))
-                    && record.iter().all(|field| {
-                        field.default.is_some()
-                            || fields.iter().any(|(name, _)| field.name == *name)
+                    && found.iter().all(Option::is_some)
+                    && record.iter().enumerate().all(|(index, field)| {
+                        field.default.is_some() || found.contains(&Some(index))
                     }))
                 .then_some(Type::Named(index))
             })
@@ -539,16 +621,67 @@ impl Compiler<'_> {
         let TypeKind::Record(record) = kind.as_ref() else {
             return Err(self.error(span, "expected a record type"));
         };
-        let mut values = fields
-            .into_iter()
-            .map(|(name, node)| {
-                let field = record
-                    .iter()
-                    .find(|field| field.name == name)
-                    .ok_or_else(|| self.error(node.span, format!("unknown field `{name}`")))?;
-                Ok((name, self.argument(schema, node, Some(&field.r#type))?))
-            })
-            .collect::<Result<Vec<_>, Problem>>()?;
+        let mut values: Vec<(String, Argument)> = Vec::new();
+        for (entry, call) in entries.iter().zip(&entry_calls) {
+            let (field, value) = match record_entry(schema, record, call) {
+                Some(index) => {
+                    let field = &record[index];
+                    let value = match field.form {
+                        FieldForm::Checkbox => Argument {
+                            r#type: field.r#type.clone(),
+                            value: ExpressionValue::Literal(Value::Variant {
+                                shape: "true".into(),
+                                arguments: Vec::new(),
+                            }),
+                        },
+                        _ => match &field.r#type {
+                            // A field with several slots holds a value for each.
+                            Type::Tuple(slots) => Argument {
+                                r#type: field.r#type.clone(),
+                                value: ExpressionValue::Tuple(
+                                    slots
+                                        .iter()
+                                        .zip(&call.arguments)
+                                        .map(|(slot, argument)| {
+                                            self.argument(schema, argument, Some(slot))
+                                        })
+                                        .collect::<Result<_, _>>()?,
+                                ),
+                            },
+                            r#type => self.argument(schema, &call.arguments[0], Some(r#type))?,
+                        },
+                    };
+                    (field, value)
+                }
+                // An `@` entry whose value is a call of the shell's, found
+                // by its type.
+                None if call.name_text() == "@ _" => {
+                    let value = self.argument(schema, &call.arguments[0], None)?;
+                    let field = record
+                        .iter()
+                        .find(|field| {
+                            field.form == FieldForm::Unnamed && field.r#type == value.r#type
+                        })
+                        .ok_or_else(|| {
+                            self.error(
+                                entry.span,
+                                "expected a value of one of the record's `@` fields",
+                            )
+                        })?;
+                    let value = self.check(schema, entry.span, value, Some(&field.r#type))?;
+                    (field, value)
+                }
+                None => {
+                    return Err(
+                        self.error(entry.span, format!("unknown field `{}`", call.name_text()))
+                    );
+                }
+            };
+            if values.iter().any(|(name, _)| *name == field.name) {
+                return Err(self.error(entry.span, format!("duplicate field `{}`", field.name)));
+            }
+            values.push((field.name.clone(), value));
+        }
         for field in record {
             if !values.iter().any(|(name, _)| *name == field.name) {
                 if let Some(value) = &field.default {
@@ -559,7 +692,7 @@ impl Compiler<'_> {
                             value: ExpressionValue::Literal(value.clone()),
                         },
                     ));
-                } else if field.default.is_none() {
+                } else {
                     return Err(
                         self.error(span, format!("missing required field `{}`", field.name))
                     );
@@ -676,6 +809,12 @@ fn transfer(
         ),
         Type::List(item) => Type::List(Box::new(transfer(origin, target, item, visited)?)),
         Type::Map(item) => Type::Map(Box::new(transfer(origin, target, item, visited)?)),
+        Type::Tuple(slots) => Type::Tuple(
+            slots
+                .iter()
+                .map(|slot| transfer(origin, target, slot, visited))
+                .collect::<Option<Vec<_>>>()?,
+        ),
         Type::Named(index) | Type::Generic(index, _) => {
             let definition = &origin.types[*index];
             let other = target.types.iter().position(|other| {
@@ -731,4 +870,13 @@ fn transfer(
         }
         _ => r#type.clone(),
     })
+}
+
+/// The field of `record` a braces entry fills, by its shape, or for `@`
+/// by its value's outermost form.
+fn record_entry(schema: &Schema, record: &[Field], call: &anyx::Call) -> Option<usize> {
+    match call.name_text().as_str() {
+        "@ _" => schema.unnamed_field(record, &Written::of(&call.arguments[0])?),
+        shape => schema.shaped_field(record, shape),
+    }
 }

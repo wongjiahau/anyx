@@ -11,6 +11,7 @@ mod hover;
 pub use completion::{Completion, Completions, TabStop};
 pub use hover::ArgumentInfo;
 pub mod boolean;
+pub mod command;
 pub mod environment;
 #[allow(unused_imports)]
 mod shell_grammar;
@@ -37,6 +38,16 @@ pub trait Tool {
 pub struct Interpreter {
     tools: BTreeMap<String, Box<dyn Tool>>,
     opened: BTreeSet<String>,
+    /// The program each tool brought in with `USE … FROM COMMAND` runs.
+    commands: BTreeMap<String, String>,
+}
+
+/// A tool brought in while preparing a document, and the tool it replaced,
+/// to put back if the document fails.
+struct Staged {
+    scope: String,
+    program: String,
+    replaced: Option<(Box<dyn Tool>, String)>,
 }
 
 /// Results up to the first execution failure. `output` is an anyx document
@@ -74,35 +85,124 @@ impl Interpreter {
     }
 
     /// Prepares the whole document before changing session state. A syntax,
-    /// scope, method or argument error means none of the calls run.
+    /// scope, method or argument error means none of the calls run, and no
+    /// tool it brings in stays.
     pub fn execute(&mut self, source: &str) -> Result<Execution, Problem> {
         let parsed = anyx::parse(source);
         if let Some(error) = parsed.errors.first() {
             return Err(at(source, error.span.start, error.message.clone()));
         }
+        let mut staged = Vec::new();
+        let prepared = match self.prepare(source, &parsed.syntax.nodes(), &mut staged) {
+            Ok(prepared) => prepared,
+            Err(problem) => {
+                for staged in staged.into_iter().rev() {
+                    self.tools.remove(&staged.scope);
+                    self.commands.remove(&staged.scope);
+                    if let Some((tool, program)) = staged.replaced {
+                        self.tools.insert(staged.scope.clone(), tool);
+                        self.commands.insert(staged.scope, program);
+                    }
+                }
+                return Err(problem);
+            }
+        };
+        self.run(source, prepared)
+    }
+
+    fn prepare(
+        &mut self,
+        source: &str,
+        nodes: &[anyx::Node],
+        staged: &mut Vec<Staged>,
+    ) -> Result<Vec<PreparedStatement>, Problem> {
         let mut opened = self.opened.clone();
         let mut prepared = Vec::new();
-        for node in parsed.syntax.nodes() {
-            if let Ok(opening) = shell_grammar::decode_opening(&node) {
-                let scope = opening.scope.name.text;
-                if !self.tools.contains_key(&scope) {
-                    return Err(at(
-                        source,
-                        opening.scope.span.start,
-                        format!("unknown tool scope `{scope}`"),
-                    ));
+        for node in nodes {
+            match shell_grammar::decode_directive(node) {
+                Ok(shell_grammar::Directive::Opening(opening)) => {
+                    let scope = opening.scope.name.text;
+                    if !self.tools.contains_key(&scope) {
+                        return Err(at(
+                            source,
+                            opening.scope.span.start,
+                            format!("unknown tool scope `{scope}`"),
+                        ));
+                    }
+                    opened.insert(scope.clone());
+                    prepared.push(PreparedStatement::Opening(scope));
                 }
-                opened.insert(scope.clone());
-                prepared.push(PreparedStatement::Opening(scope));
-            } else {
-                let compiler = Compiler {
-                    interpreter: self,
-                    source,
-                    opened: &opened,
-                };
-                prepared.push(PreparedStatement::Call(compiler.element(&node)?));
+                Ok(shell_grammar::Directive::Import(import)) => {
+                    let scope = import.scope.name.text;
+                    let program = import.program.value.value;
+                    staged.push(
+                        self.import(&scope, &program)
+                            .map_err(|message| at(source, import.span.start, message))?,
+                    );
+                }
+                Err(_) => {
+                    let compiler = Compiler {
+                        interpreter: self,
+                        source,
+                        opened: &opened,
+                    };
+                    prepared.push(PreparedStatement::Call(compiler.element(node)?));
+                }
             }
         }
+        Ok(prepared)
+    }
+
+    /// Brings in `program` as the tool `scope`. Bringing in the same program
+    /// under the same name again asks it for its schema again.
+    fn import(&mut self, scope: &str, program: &str) -> Result<Staged, String> {
+        let replaced = match self.commands.get(scope) {
+            Some(existing) if existing == program => {
+                let tool = self.tools.remove(scope).expect("a command has a tool");
+                Some((tool, self.commands.remove(scope).expect("checked")))
+            }
+            Some(existing) => {
+                return Err(format!(
+                    "the tool scope `{scope}` is already the program `{existing}`"
+                ));
+            }
+            None if self.tools.contains_key(scope) => {
+                return Err(format!("the tool scope `{scope}` is already registered"));
+            }
+            None => None,
+        };
+        let staged = Staged {
+            scope: scope.to_string(),
+            program: program.to_string(),
+            replaced,
+        };
+        let tool = match command::CommandTool::open(program) {
+            Ok(tool) => tool,
+            Err(message) => {
+                if let Some((tool, program)) = staged.replaced {
+                    self.tools.insert(scope.to_string(), tool);
+                    self.commands.insert(scope.to_string(), program);
+                }
+                return Err(message);
+            }
+        };
+        if let Err(message) = self.register(scope, tool) {
+            if let Some((tool, program)) = staged.replaced {
+                self.tools.insert(scope.to_string(), tool);
+                self.commands.insert(scope.to_string(), program);
+            }
+            return Err(message);
+        }
+        self.commands
+            .insert(staged.scope.clone(), staged.program.clone());
+        Ok(staged)
+    }
+
+    fn run(
+        &mut self,
+        source: &str,
+        prepared: Vec<PreparedStatement>,
+    ) -> Result<Execution, Problem> {
         let mut execution = Execution::default();
         let mut written = Vec::new();
         for prepared in prepared {
@@ -113,7 +213,7 @@ impl Interpreter {
                 }
                 PreparedStatement::Call(call) => call,
             };
-            match self.evaluate_call(&prepared) {
+            match self.evaluate_call(source, &prepared) {
                 Ok(Value::Nothing) => {}
                 Ok(value) => {
                     let schema = self.tools[&prepared.scope].schema();
@@ -151,11 +251,11 @@ impl Interpreter {
         Ok(execution)
     }
 
-    fn evaluate_call(&mut self, prepared: &PreparedCall) -> Result<Value, String> {
+    fn evaluate_call(&mut self, source: &str, prepared: &PreparedCall) -> Result<Value, String> {
         let arguments = prepared
             .arguments
             .iter()
-            .map(|argument| self.evaluate(argument))
+            .map(|argument| self.evaluate(source, argument))
             .collect::<Result<Vec<_>, _>>()?;
         let call = Call {
             method: prepared.method,
@@ -178,10 +278,17 @@ impl Interpreter {
             anyx_protocol::refinement::validate(schema, &parameter.r#type, value)
                 .map_err(|_| "INTERNAL ERROR\n".to_string())?;
         }
-        let outcome = if call.method == schema.introspection() {
-            anyx_protocol::server::introspect(schema)
-        } else {
-            tool.invoke(&call)
+        // The call is the shell's, so a `REQUIRES` its computed arguments
+        // fail is a mistake in the document, not in a tool.
+        anyx_protocol::refinement::check_precondition(
+            schema,
+            schema.method_at(call.method),
+            &call.arguments,
+        )
+        .map_err(|message| diagnostic(at(source, prepared.span.start, message)))?;
+        let outcome = match anyx_protocol::server::built_in(schema, &call) {
+            Some(outcome) => outcome,
+            None => tool.invoke(&call),
         };
         let schema = tool.schema();
         let response = Response::Outcomes(vec![outcome]);
@@ -200,35 +307,41 @@ impl Interpreter {
         }
     }
 
-    fn evaluate(&mut self, argument: &Argument) -> Result<Value, String> {
+    fn evaluate(&mut self, source: &str, argument: &Argument) -> Result<Value, String> {
         Ok(match &argument.value {
             ExpressionValue::Literal(value) => value.clone(),
-            ExpressionValue::Call(call) => self.evaluate_call(call)?,
+            ExpressionValue::Call(call) => self.evaluate_call(source, call)?,
             ExpressionValue::List(items) => Value::List(
                 items
                     .iter()
-                    .map(|item| self.evaluate(item))
+                    .map(|item| self.evaluate(source, item))
                     .collect::<Result<_, _>>()?,
             ),
             ExpressionValue::Record(fields) => Value::Record(
                 fields
                     .iter()
-                    .map(|(name, value)| Ok((name.clone(), self.evaluate(value)?)))
+                    .map(|(name, value)| Ok((name.clone(), self.evaluate(source, value)?)))
                     .collect::<Result<_, String>>()?,
             ),
             ExpressionValue::Map(fields) => Value::Map(
                 fields
                     .iter()
-                    .map(|(name, value)| Ok((name.clone(), self.evaluate(value)?)))
+                    .map(|(name, value)| Ok((name.clone(), self.evaluate(source, value)?)))
                     .collect::<Result<_, String>>()?,
             ),
             ExpressionValue::Variant(shape, arguments) => Value::Variant {
                 shape: shape.clone(),
                 arguments: arguments
                     .iter()
-                    .map(|argument| self.evaluate(argument))
+                    .map(|argument| self.evaluate(source, argument))
                     .collect::<Result<_, _>>()?,
             },
+            ExpressionValue::Tuple(slots) => Value::Tuple(
+                slots
+                    .iter()
+                    .map(|slot| self.evaluate(source, slot))
+                    .collect::<Result<_, _>>()?,
+            ),
         })
     }
 }

@@ -10,7 +10,7 @@ TYPE Probability: Float . WHERE [0 <= _ <= 1],
 TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE Limit: (Integer) WHERE [10 <= _ < 30],
 TYPE Short Text: Text . WHERE [1 <= (_ length) <= 3],
-RECORD Summary { path: Score Path, revision: Revision, limit: Limit DEFAULT 10 },
+RECORD Summary { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
 METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
@@ -94,7 +94,7 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
         assert!(decode_request(&s, wire).is_err());
     }
     let invalid = Schema::parse(
-        "TYPE Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit: Limit DEFAULT 30 }",
+        "TYPE Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit (Limit) DEFAULT limit 30 }",
     )
     .unwrap_err();
     assert!(

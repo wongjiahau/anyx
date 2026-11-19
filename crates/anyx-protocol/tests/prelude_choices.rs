@@ -11,7 +11,8 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 #[test]
 fn prelude_choices_are_checked_schema_definitions() {
     let schema =
-        Schema::parse("RECORD Example { flag: Boolean, note: Text? DEFAULT null }").unwrap();
+        Schema::parse("RECORD Example { flag: Boolean, note (Text?) DEFAULT note (null) }")
+            .unwrap();
     let boolean = schema
         .types
         .iter()
@@ -51,7 +52,7 @@ fn prelude_choices_are_checked_schema_definitions() {
 
 #[test]
 fn nullable_and_omittable_are_independent() {
-    let schema = Schema::parse("RECORD Example { required: Text?, note: Text? DEFAULT null, count: Integer DEFAULT 0, flag: Boolean DEFAULT false }").unwrap();
+    let schema = Schema::parse("RECORD Example { required: Text?, note (Text?) DEFAULT note (null), count (Integer) DEFAULT count 0, flag (Boolean) DEFAULT flag (false) }").unwrap();
     let decode =
         |source: &str| anyx_protocol::codec::decode_value(&schema, &Type::Named(0), source);
     assert!(decode("{}").is_err());
@@ -94,7 +95,8 @@ fn boolean_inference_uses_ordinary_choice_ambiguity() {
 #[test]
 fn generic_fields_may_default_to_a_parameter_independent_variant() {
     let schema =
-        Schema::parse("RECORD Box of (item: Type) { content: item? DEFAULT null }").unwrap();
+        Schema::parse("RECORD Box of (item: Type) { content (item?) DEFAULT content (null) }")
+            .unwrap();
     let ty = Type::Generic(0, vec![Type::Text]);
     let value = anyx_protocol::codec::decode_value(&schema, &ty, "{}").unwrap();
     assert_eq!(
@@ -113,7 +115,9 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
             .into()
         )
     );
-    assert!(Schema::parse("RECORD Box of (item: Type) { content: item DEFAULT 3 }").is_err());
+    assert!(
+        Schema::parse("RECORD Box of (item: Type) { content (item) DEFAULT content 3 }").is_err()
+    );
 }
 
 #[cfg(feature = "json")]
@@ -121,9 +125,10 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
 fn json_uses_ordinary_choice_values_and_only_omission_uses_defaults() {
     use anyx_protocol::json::{from_json, to_json};
     use serde_json::json;
-    let schema =
-        Schema::parse("RECORD Example { note: Text? DEFAULT null, flag: Boolean DEFAULT false }")
-            .unwrap();
+    let schema = Schema::parse(
+        "RECORD Example { note (Text?) DEFAULT note (null), flag (Boolean) DEFAULT flag (false) }",
+    )
+    .unwrap();
     let ty = Type::Named(0);
     let value = from_json(&schema, &ty, &json!({})).unwrap();
     assert_eq!(

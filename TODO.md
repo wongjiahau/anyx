@@ -113,3 +113,203 @@ result grows with the data is the schema's job, not the batch's.
 - [ ] More conditions for `ANYFIX CALL` and `ANY WORD` as needs come up
 - [ ] A `build.rs` library entry point, later
 - [ ] Output in languages other than Rust, later
+
+## Protocol tools from other programs: `fd` first, then `rg`
+
+A tool is any program that answers `--anyx-protocol`: the shell writes one
+request to its standard input, closes it, and reads the response from its
+standard output. The tool is written against the libraries a command is
+built on, never by running the command. `fd` comes first because it brings
+in the new plumbing with the smallest domain, and `rg` then selects files by
+calling it: `rg / search "TODO" in (fd / …)`.
+
+### Protocol
+
+- [x] Check whether a condition accepts a choice's variants as constants,
+      `REQUIRES [settings has at most one of [any case, smart case]]`;
+      support it if not
+- [x] Prelude: `(items: LIST Type) has no repeats` and
+      `(items: LIST Type) has at most one of (choices: LIST Type)`, with
+      tests and `PROTOCOL.md`
+- [x] A built-in call that returns the schema's files, since `SCHEMA`
+      returns the guide; choose its name
+- [x] Decide how a path that is not Unicode is returned: an error, `Bytes`,
+      or a lossy conversion (an error, `(path) is not unicode`, for now)
+- [ ] Generic functions in the prelude, in place of the special word `Type`
+      in `LIST Type`, which links no use of it to another. Decided:
+      - `FOR ANY [ … ]` right after `FUNCTION` declares the type parameters,
+        before the shape that uses them, in the `(name: marker)` form of a
+        record's slots; the shape refers to them by name. `FOR ANY` won over
+        `FOR ALL` (correct, but reads as logic) and `FOR EVERY`; it can't be
+        confused with "at least one", as in `any match of`, since it only
+        follows `FUNCTION`.
+      - Declared up front, not at their first use inside a parameter
+        (`(items: LIST: (item: Type))`), since one parameter can be used by
+        several parameters.
+      - A `Choice` marker beside `Type`, for a parameter that must be a
+        `CHOICE`.
+      - `VARIANT OF item`, the type of a variant shape with `_` in each slot,
+        such as `max depth _`, so the checker types `has at most one of`
+        and the special case for it in `refinement.rs` goes.
+
+      ```anyx
+      FUNCTION FOR ANY [(item: Type)]
+          (items: LIST: item) has no repeats
+          RETURNS (holds: Boolean),
+
+      FUNCTION FOR ANY [(item: Choice)]
+          (items: LIST: item) has at most one of (variants: LIST: VARIANT OF item)
+          RETURNS (holds: Boolean),
+
+      FUNCTION FOR ANY [(item: Type)] (value: LIST: item) length RETURNS (size: Integer),
+      ```
+
+### Records whose fields are anyfix shapes, and `@` fields
+
+fd's settings were a `LIST Setting` with a 13-line `REQUIRES` block copied
+into six methods. The block spelled out what a record gives by structure
+(each field at most once, some options mutually exclusive), but a record
+entry had to be `name value`, so a record couldn't read like
+`{hidden, (any) case}`.
+
+Decided:
+- Every field is a shape whose slots hold types, and a value writes it as
+  declared, in any order. There is no separate "named" kind: `path: Text`
+  is `path (Text)`, written `path "a"`. The field is named by its words
+  (`at least (Size?) bytes` is `at least bytes`).
+
+  ```anyx
+  RECORD Search {
+      @(case: Case) DEFAULT @smart case,
+      @(pattern: Syntax) DEFAULT @regex pattern,
+      hidden,
+      max depth (Depth?) DEFAULT max depth (null),
+      at least (Size?) bytes DEFAULT at least (null) bytes,
+      only (LIST Kind) DEFAULT only [],
+  },
+  ```
+  ```anyx
+  fd / find "*.md" in ["docs"] with { @glob pattern, @any case, max depth (value 3), hidden }
+  ```
+  - Words alone are a checkbox: a `Boolean`, true when written, false when
+    left out, and never with a `DEFAULT`.
+  - A choice only one field uses carries the field's word in every variant
+    and is an `@` field: `CHOICE Case { smart case, any case, exact case }`,
+    written `@any case`. A choice several uses share keeps the word in the
+    shape, `(any) case`.
+  - A field with several slots holds a tuple, a value for each:
+    `between (Integer) and (Integer)`, written `between 1 and 3`, is `[1, 3]`
+    in JSON and TypeScript and `(i64, i64)` in Rust. A tuple has no syntax
+    of its own.
+  - `DEFAULT` takes the whole field, `_ DEFAULT _` at the root, and holds
+    the entry the field takes when left out, written as a value writes it:
+    `age (Integer) DEFAULT age 0`. A default is read as an entry of its
+    field, so one entry covers every slot. With a `:`, the field goes in
+    parentheses: `(age: Integer) DEFAULT age 0`.
+  - A nullable value is written with its constructor, `max depth (value 3)`:
+    no syntax sugar without the owner's approval.
+  - A value before the words keeps its parentheses, `(any) case`: `any case`
+    is one call. Readability over writability; the decoder hints at it.
+- `@(name: T)` is a field written as `@` and its value alone, `@by name`,
+  for choices whose variants are self-describing phrases that share no word.
+  `@` makes it distinct at the call site from a shaped field, and the
+  declaration has the same syntax as the call site. A symbol, not a keyword,
+  so it costs one character to write: `UNNAMED` would have had to appear
+  at the call site too.
+- An `@` entry finds its field by its value's outermost form alone: a
+  variant's shape, a string, a number, a list, braces or a duration. No two
+  `@` fields may share a form, even one variant's shape, and `Integer` and
+  `Float` share the number's form, `Text` and `Instant` the string's. So
+  decoding never tries a field and backs out: no graph search. One of a type
+  parameter is an error.
+- The guideline is in `PROTOCOL.md` under Records: checkbox, separate fields
+  for options that combine, a shape by default, the shared word in the
+  shape, and `@` only when a word would stutter. fd uses no `@` field.
+- The encoder writes each field in its shape, leaves out a `null` default,
+  a false checkbox and an `@` field at its default, and writes other
+  defaults out. The formatter hugs a leading symbol to a word, string or
+  group: `@by name`, `@"src"`, but `@ 3`.
+- Mutual exclusion is one choice field: `{ @glob pattern, @fixed text
+  pattern }` is the duplicate-field error. fd's `exact depth` went: it is
+  `{ min depth (value 2), max depth (value 2) }`.
+- "A needs B" is nesting, A inside B's value. A need that isn't a tree is a
+  `REQUIRES`.
+- The prelude keeps `has no repeats` and `has at most one of`: fd no longer
+  uses them, but they still serve a method that takes a list.
+
+Tried and ruled out:
+- `UNNAMED name: T` as a keyword: heavy, and nothing marked the value at the
+  call site.
+- A parameter in a field's slot, `max depth (depth: Depth?)`: a lowercase
+  slot name is ambiguous with a generic's type parameter
+  (`other: item of (Text)` read as a parameter). The words name the field,
+  so the slot holds a type.
+- `DEFAULT` after the shape with a bare value, `(Case) case DEFAULT smart`,
+  and then `DEFAULT` in the slot, `(Case DEFAULT smart) case`: a slot's
+  default left a field with several slots needing a default on every slot
+  or none. The whole field's entry after `DEFAULT` says it once.
+- A nullable field written as its item, `max depth 3` for `Depth?`: an
+  implicit `value _` that the call tree didn't show.
+- Any choice field writable by its variant without a marker, and an
+  `@` field found by trying each field's type: both make decoding a search.
+- `OPTIONS` as a new kind of type, groups by `|`, `REPEATABLE`, `NEEDS` and
+  bundles like fd's `-u`.
+
+- [x] Fields as shapes, checkboxes and `@` in `protocol.grammar.anyx`, with
+      the checker's one-field-per-form rule for `@` fields
+- [x] Decode, encode and format the literal; the shell's compiler
+- [x] Generated TypeScript
+- [x] `PROTOCOL.md` and the guide
+- [x] Rework `fd.protocol.anyx`: `RECORD Search` in place of `LIST Setting`
+      and every `REQUIRES`
+- [ ] The shell's completion and hover inside a record's braces
+
+### Shell
+
+- [x] `USE fd FROM COMMAND "anyx-fd"` in `shell.grammar.anyx`, the source a
+      choice so that `URL "…"` can follow; `USE ALL FROM` keeps taking a name
+- [x] Ask for the schema on the `USE` line, and report a missing program or a
+      broken schema there, before any call runs
+- [ ] Run a request: start the program with `--anyx-protocol` in the shell's
+      working directory, write the request, close standard input, read the
+      response; standard error goes to the log (done, except the log: the
+      shell has none yet, so standard error is shown only when `USE` fails)
+- [x] A program that exits with a failure, is killed, or answers something
+      unreadable gives `INTERNAL ERROR`
+- [x] Check the response against the schema before its values reach another
+      call
+- [x] Completion and argument hints from the fetched schema
+
+### The `fd` tool (`crates/anyx-fd`, program `anyx-fd`)
+
+- [x] Account for every flag of `fd` 10.2:
+  - sentence parts: the pattern and the search paths
+  - settings, `with [hidden, follow links, "*.pyc" excluded, …]`: `-H`,
+    `-I`, `--no-ignore-vcs`, `--no-ignore-parent`, `--no-require-git`,
+    `-u`, `-s`/`-i` (smart case by default), `-g`/`--regex`, `-F`, `-p`,
+    `-L`, `-d`/`--min-depth`/`--exact-depth`, `-E`, `--prune`, `-t`, `-e`,
+    `-S`, `--changed-within`/`--changed-before`, `-o`, `--ignore-file`,
+    `--one-file-system`, `--and`, `--max-results`
+  - methods of their own: `-l` (files with details, another result type),
+    `-q` (`any file …`, a `Boolean`)
+  - nothing to do, since results are typed values: `-a`, `-0`, `-c`,
+    `--hyperlink`, `--format`, `--path-separator`, `--strip-cwd-prefix`,
+    `--show-errors` (unreadable folders are a field of the result)
+  - replaced by the shell: `-x`/`-X`/`--batch-size` by nested calls,
+    `--base-directory` by the working directory, `--search-path` by the
+    paths
+  - left to the tool: `-j`
+- [x] `fd.protocol.anyx`: the methods, the settings choice, its `REQUIRES`,
+      the errors (bad pattern, missing path), `READ ONLY`, `EXAMPLES`
+- [x] Implement with `ignore::WalkBuilder`, `globset` and `regex`
+- [x] Tests: the schema loads, its examples hold, conflicting settings are
+      `INVALID REQUEST`, and a session runs `USE fd FROM COMMAND "anyx-fd"`
+      end to end
+
+### The `rg` tool, after `fd`
+
+- [ ] `rg.protocol.anyx`: `search _` and `search _ in _`, settings for how a
+      line matches, a method for each kind of result (lines, counts, files
+      with matches, replacements), pages of matches
+- [ ] Implement with `grep-searcher`, `grep-regex` and `grep-matcher`
+- [ ] The demo: `rg / search "TODO" in (fd / …)`

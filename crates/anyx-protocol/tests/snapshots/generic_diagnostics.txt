@@ -44,10 +44,10 @@ schema:1:131: found the type parameter `unused` of `other of (diagnostic) and (u
                                                                                                                                     ^^^^^^
 
 == a default on a field whose type holds a parameter
-PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item DEFAULT 3, size: Integer DEFAULT 3 },
-schema:1:72: in the `DEFAULT` of `value`: found the number `3`; expected a value of a type in place of the type parameter `item`
-  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item DEFAULT 3, size: Integer DEFAULT 3 },
-                                                                         ^
+PROTOCOL a VERSION 1, RECORD box of (item: Type) { value (item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
+schema:1:79: in the `DEFAULT` of `value`: found the number `3`; expected a value of a type in place of the type parameter `item`
+  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value (item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
+                                                                                ^
 
 == a parameter with a type in a slot
 PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item, other: item of (Text) },
@@ -83,12 +83,12 @@ schema:1:104: found `prson`, which is not a type of this schema; expected a buil
                                                                                                          ^^^^^
 
 == a generic type holding itself through an argument
-PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next: ((item) chain)? DEFAULT null },
+PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next (((item) chain)?) DEFAULT next (null) },
 schema:1:74: found the type `Tree` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next: ((item) chain)? DEFAULT null },
+  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next (((item) chain)?) DEFAULT next (null) },
                                                                            ^^^^
 schema:1:125: found the type `(item) chain` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next: ((item) chain)? DEFAULT null },
+  PROTOCOL a VERSION 1, RECORD box of (item: Type) { value: item }, RECORD Tree { child: box of (Tree) }, RECORD (item: Type) chain { value: item, next (((item) chain)?) DEFAULT next (null) },
                                                                                                                               ^^^^^
 
 == a generic type using itself with other arguments, directly or through another

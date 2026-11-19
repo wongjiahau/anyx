@@ -25,9 +25,14 @@ duration: ANYFIX CALL [
 ],
 count: NUMBER [WRITTEN INTEGER],
 value call: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: value],
+## In braces, a map's entry is a key and a value. A record's entry is a
+## value, and the checker reads from the record's fields which one it
+## fills: `path "a"` is the call `path _`, `hidden` a checkbox,
+## `changed more than (1 hour) ago` a field's shape, and `@by name` an `@`
+## field's value.
 entry: ONE OF [
   map: ANYFIX CALL [key: STRING, value],
-  field: ANYFIX CALL [name: WORDS [NO KEYWORD], value],
+  value,
 ],
 
 ## These rules are the schema language's type rules, including generic

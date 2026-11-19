@@ -102,6 +102,7 @@ pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> 
             .collect(),
         comments: &comments,
         start: None,
+        after_dot: false,
         breaks: kept_ids
             .iter()
             .enumerate()
@@ -481,6 +482,9 @@ struct Builder<'a> {
     start: Option<bool>,
     /// The kept tokens a line may break before, from the [`Layout`].
     breaks: HashSet<usize>,
+    /// Set while formatting the run after a `.`, whose symbol word is an
+    /// operator spaced from what follows, `.+ c`, rather than a prefix.
+    after_dot: bool,
 }
 
 impl Builder<'_> {
@@ -516,6 +520,7 @@ impl Builder<'_> {
     fn expression(&mut self, expression: &Expression) -> Doc {
         match expression {
             Expression::Run(run) => {
+                let hugs = !std::mem::take(&mut self.after_dot) && prefix_hugs(&run.items);
                 let breaks: Vec<bool> = run
                     .items
                     .iter()
@@ -537,7 +542,7 @@ impl Builder<'_> {
                         true => &mut tail,
                         false => &mut head,
                     };
-                    if i > 0 {
+                    if i > 0 && !(i == 1 && hugs) {
                         parts.push(match breaks[i] {
                             true => Doc::Line,
                             false => Doc::Text(" ".into()),
@@ -576,7 +581,9 @@ impl Builder<'_> {
                     if !starts_with_symbol_word(&binary.right) {
                         rest.push(Doc::Text(" ".into()));
                     }
+                    self.after_dot = true;
                     rest.push(self.expression(&binary.right));
+                    self.after_dot = false;
                 }
                 chain_group(Doc::Concat(vec![first, indent(Doc::Concat(rest))]))
             }
@@ -708,6 +715,26 @@ impl Builder<'_> {
         parts.push(self.trailing(k));
         Doc::Concat(parts)
     }
+}
+
+/// A symbol word that starts a run hugs a name word, string or group
+/// after it, as a prefix: `@glob`, `@"src"`. A number stays apart, since
+/// `-` and a digit would read as a negative number.
+fn prefix_hugs(items: &[Item]) -> bool {
+    let [Item::Atom(first), second, ..] = items else {
+        return false;
+    };
+    first.kind == TokenKind::Word
+        && is_symbol_word(&first.text)
+        && match second {
+            Item::Group(_) => true,
+            Item::Atom(token) => match token.kind {
+                TokenKind::Word => !is_symbol_word(&token.text),
+                TokenKind::String(_) => true,
+                _ => false,
+            },
+            Item::Skipped(_) => false,
+        }
 }
 
 /// A `.` hugs a symbol word after it: `1 .+ 2`.

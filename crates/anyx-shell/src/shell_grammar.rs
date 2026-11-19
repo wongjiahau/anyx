@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use anyx::{Node, Span};
+use anyx::{Node, Span, StringLiteral};
 pub use support::{CallName, DecodeError, Spanned};
 
 static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -11,26 +11,57 @@ static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
-    pub opening: Vec<Opening>,
+    pub directive: Vec<Directive>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Directive {
+    Opening(Opening),
+    Import(Import),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Opening {
-    pub scope: OpeningScope,
+    pub scope: ToolName,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct OpeningScope {
+pub struct Import {
+    pub scope: ToolName,
+    pub program: Spanned<StringLiteral>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolName {
     pub name: CallName,
     pub arguments: Vec<Node>,
     pub span: Span,
 }
 
+impl Directive {
+    pub fn span(&self) -> Span {
+        match self {
+            Directive::Opening(value) => value.span,
+            Directive::Import(value) => value.span,
+        }
+    }
+}
+
 impl support::Errors for Document {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.opening, found);
+        support::Errors::errors(&self.directive, found);
+    }
+}
+
+impl support::Errors for Directive {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Directive::Opening(value) => support::Errors::errors(value, found),
+            Directive::Import(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -40,7 +71,14 @@ impl support::Errors for Opening {
     }
 }
 
-impl support::Errors for OpeningScope {
+impl support::Errors for Import {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.scope, found);
+        support::Errors::errors(&self.program, found);
+    }
+}
+
+impl support::Errors for ToolName {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
@@ -50,19 +88,40 @@ impl support::Errors for OpeningScope {
 pub fn decode_document(nodes: &[Node]) -> Result<Document, DecodeError> {
     let mut elements = support::document(nodes);
     let decoded = Document {
-        opening: elements.one_or_more(decode_opening, "an opening")?,
+        directive: elements.one_or_more(decode_directive, "a directive")?,
         span: support::document_span(nodes),
     };
     elements.finish()?;
     Ok(decoded)
 }
 
+pub fn decode_directive(node: &Node) -> Result<Directive, DecodeError> {
+    decode_opening(node)
+        .map(Directive::Opening)
+        .or_else(|error| error.or(decode_import(node).map(Directive::Import)))
+}
+
 pub fn decode_opening(node: &Node) -> Result<Opening, DecodeError> {
     let mut parts = support::call(node, "the call `USE ALL FROM _`")?;
     let decoded = Opening {
-        scope: parts.word("USE")?.word("ALL")?.word("FROM")?.one(
-            decode_opening_scope,
-            "a call whose name matches the regex `^[a-z][a-z0-9]*$`",
+        scope: parts
+            .word("USE")?
+            .word("ALL")?
+            .word("FROM")?
+            .one(decode_tool_name, "a tool name")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_import(node: &Node) -> Result<Import, DecodeError> {
+    let mut parts = support::call(node, "the call `USE _ FROM COMMAND _`")?;
+    let decoded = Import {
+        scope: parts.word("USE")?.one(decode_tool_name, "a tool name")?,
+        program: parts.word("FROM")?.word("COMMAND")?.one(
+            |node| support::string(node, |_| true, "a string"),
+            "a string",
         )?,
         span: node.span,
     };
@@ -70,13 +129,13 @@ pub fn decode_opening(node: &Node) -> Result<Opening, DecodeError> {
     Ok(decoded)
 }
 
-fn decode_opening_scope(node: &Node) -> Result<OpeningScope, DecodeError> {
+pub fn decode_tool_name(node: &Node) -> Result<ToolName, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| REGEX_1.is_match(name),
         "a call whose name matches the regex `^[a-z][a-z0-9]*$`",
     )?;
-    Ok(OpeningScope {
+    Ok(ToolName {
         name,
         arguments: arguments.to_vec(),
         span: node.span,

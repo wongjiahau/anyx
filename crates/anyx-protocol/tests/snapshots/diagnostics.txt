@@ -107,16 +107,16 @@ schema:1:30: found the type `Node` holding itself; expected a type that holds it
                                ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },
+PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },
 schema:1:30: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },
+  PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },
                                ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },
-schema:1:64: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
-  PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },
-                                                                 ^^
+PROTOCOL a VERSION 1, RECORD Example { a (MAP: Integer) DEFAULT a [] },
+schema:1:67: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, RECORD Example { a (MAP: Integer) DEFAULT a [] },
+                                                                    ^^
 
 == a cycle through a choice
 PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },

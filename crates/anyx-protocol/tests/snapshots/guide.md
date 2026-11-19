@@ -11,15 +11,16 @@ shape of one of the methods below, with a value in each `(name: Type)` slot:
 
 Every call runs, in order, and the response has one result per call.
 
-`SCHEMA` is a call every server answers, with this guide.
+`SCHEMA` is a call every server answers, with this guide, and
+`SCHEMA FILES` with the files of the schema, the entry first.
 
 ## Effects
 
 Words before `METHOD` say what a call of it may do, and decide when it is
 safe to send without asking:
 
-- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` is
-  read only.
+- `READ ONLY METHOD`: it changes nothing, so call it freely. `SCHEMA` and
+  `SCHEMA FILES` are read only.
 - `IDEMPOTENT METHOD`: calling it again with the same arguments changes
   nothing more, so it is safe to retry when a response was lost. A retry may
   still answer differently, such as with an error saying it is already done,
@@ -65,10 +66,16 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `{ "hymn": done }`.
-- A RECORD is its fields in braces, each its name and value, in any order:
-  `{ path "a", revision 3 }`. A field with a `DEFAULT` may be left out
-  and then holds that value. When a value is words, put `:`
-  after the field's name: `{ status: done }`, `{ timeout: 5 minutes }`.
+- A RECORD is its fields in braces, each written in its declared shape with
+  a value in each slot, in any order: `{ path "a", revision 3 }`,
+  `{ (any) case, between 1 and 3 }`. A value before a field's words
+  keeps its parentheses. A field of words alone is a checkbox, true when
+  written: `{ hidden }`. An `@` field is `@` and its value alone:
+  `{ @by name }`. A nullable value is `null` or `value _`:
+  `{ max depth (value 3) }`. A field with a `DEFAULT` may be left out and
+  then holds the entry after `DEFAULT`. When a value is words
+  and the slot is last, put `:` after the field's words:
+  `{ status: done }`, `{ timeout: 5 minutes }`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 - A generic RECORD or CHOICE has a type parameter in each slot of its
@@ -102,6 +109,13 @@ CHOICE Boolean { false, true },
 CHOICE (item: Type) ? {
     null,
     value (item),
+},
+
+# A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
+# as the schema's `USE` lines reach it, and its source.
+RECORD Schema File {
+    path: Text,
+    source: Text,
 },
 ```
 

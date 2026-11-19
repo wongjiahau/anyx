@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind};
+use anyx_protocol::schema::{Field, FieldForm, Method, ShapePart, Shaped, Type, TypeKind, Written};
 
 use crate::names::camel_case;
 use crate::{
@@ -67,7 +67,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
             )
         })
         .collect();
-    let introspection = "  /** `SCHEMA`, returning the guide to the schema. */\n  schema(): Promise<Outcome<string, never>> {\n    return this.call(\"SCHEMA\", []);\n  }\n".to_string();
+    let introspection = "  /** `SCHEMA`, returning the guide to the schema. */\n  schema(): Promise<Outcome<string, never>> {\n    return this.call(\"SCHEMA\", []);\n  }\n\n  /** `SCHEMA FILES`, returning the files of the schema, the entry first. */\n  schemaFiles(): Promise<Outcome<SchemaFile[], never>> {\n    return this.call(\"SCHEMA FILES\", []);\n  }\n".to_string();
     out.push_str(
         &root_methods
             .into_iter()
@@ -217,6 +217,14 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
             )
         }
         Type::Parameter(name) => parameter_name(schema, name),
+        Type::Tuple(slots) => format!(
+            "[{}]",
+            slots
+                .iter()
+                .map(|slot| ts_type(schema, slot))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -257,7 +265,7 @@ fn method_doc(method: &Method) -> Option<String> {
 /// it.
 fn effects(out: &mut String, schema: &Schema) {
     out.push_str(EFFECTS);
-    for method in &schema.methods {
+    for method in schema.methods.iter().chain(&schema.built_ins) {
         let undone_by = match &method.undone_by {
             Some(undo) => format!("{:?}", undo.text),
             None => "null".to_string(),
@@ -271,7 +279,7 @@ fn effects(out: &mut String, schema: &Schema) {
         )
         .unwrap();
     }
-    out.push_str("  SCHEMA: { readOnly: true, idempotent: true, undoneBy: null },\n};\n");
+    out.push_str("};\n");
 }
 
 const EFFECTS: &str = r#"
@@ -386,6 +394,36 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 }
 
 // Compact, schema-specific descriptors consumed by the native runtime.
+/// A field's slots for the native codec: a type for each, and a nullable
+/// one's item, which it is written as.
+fn native_slots(field: &anyx_protocol::schema::Field) -> String {
+    let slots: Vec<&Type> = match (&field.form, &field.r#type) {
+        (FieldForm::Checkbox, _) => Vec::new(),
+        (_, Type::Tuple(slots)) => slots.iter().collect(),
+        (_, r#type) => vec![r#type],
+    };
+    format!(
+        ", slots:[{}]",
+        slots
+            .iter()
+            .map(|slot| native_type(slot))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
+/// How the native codec names a form an `@` field's values are written in.
+fn native_form(form: &Written) -> String {
+    match form {
+        Written::Call(shape) => format!("call:{}", ShapePart::text(shape)),
+        Written::String => "string".into(),
+        Written::Number => "number".into(),
+        Written::List => "list".into(),
+        Written::Braces => "braces".into(),
+        Written::Duration => "duration".into(),
+    }
+}
+
 fn native_type(ty: &Type) -> String {
     match ty {
         Type::Refined(base, predicate) => format!(
@@ -407,6 +445,10 @@ fn native_type(ty: &Type) -> String {
             args.iter().map(native_type).collect::<Vec<_>>().join(",")
         ),
         Type::Parameter(name) => format!("{{k:'parameter', name:{name:?}}}"),
+        Type::Tuple(slots) => format!(
+            "{{k:'tuple', args:[{}]}}",
+            slots.iter().map(native_type).collect::<Vec<_>>().join(",")
+        ),
     }
 }
 
@@ -457,10 +499,33 @@ fn native_schema(schema: &Schema) -> String {
                     fields
                         .iter()
                         .map(|f| format!(
-                            "{{wire:{:?}, name:{:?}, type:{}{}}}",
-                            f.name,
+                            "{{wire:{:?}, form:{:?}, name:{:?}, type:{}{}{}{}}}",
+                            match &f.form {
+                                FieldForm::Shape(shape) => shape.as_str(),
+                                FieldForm::Checkbox => f.name.as_str(),
+                                FieldForm::Unnamed => "@ _",
+                            },
+                            match &f.form {
+                                FieldForm::Shape(_) => "shape",
+                                FieldForm::Checkbox => "checkbox",
+                                FieldForm::Unnamed => "unnamed",
+                            },
                             camel_case(&f.name),
                             native_type(&f.r#type),
+                            native_slots(f),
+                            match f.form {
+                                FieldForm::Unnamed => format!(
+                                    ", forms:[{}]",
+                                    schema
+                                        .written_forms(&f.r#type)
+                                        .unwrap_or_default()
+                                        .iter()
+                                        .map(|form| format!("{:?}", native_form(form)))
+                                        .collect::<Vec<_>>()
+                                        .join(",")
+                                ),
+                                _ => String::new(),
+                            },
                             f.default.as_ref().map_or(String::new(), |v| format!(
                                 ", defaultValue:()=>{}",
                                 native_default(schema, &f.r#type, v)
@@ -485,6 +550,7 @@ fn native_schema(schema: &Schema) -> String {
     let methods = schema
         .methods
         .iter()
+        .chain(&schema.built_ins)
         .map(|m| {
             format!(
                 "[{:?}]:{{shape:{}, returns:{}, errors:[{}]}}",
@@ -503,9 +569,8 @@ fn native_schema(schema: &Schema) -> String {
         })
         .collect::<Vec<_>>()
         .join(",\n");
-    let separator = if methods.is_empty() { "" } else { "," };
     format!(
-        "const definitions: Definition[] = [{definitions}];\nconst methods: Record<string, MethodDescriptor> = {{{methods}{separator} SCHEMA:{{shape:{{text:'SCHEMA',kind:'schema',params:[]}}, returns:{{k:'text'}}, errors:[]}}}};\n"
+        "const definitions: Definition[] = [{definitions}];\nconst methods: Record<string, MethodDescriptor> = {{{methods}}};\n"
     )
 }
 
@@ -533,6 +598,20 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
                 values
                     .iter()
                     .map(|v| native_default(schema, item, v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        Value::Tuple(values) => {
+            let Type::Tuple(slots) = schema.underlying(ty) else {
+                unreachable!()
+            };
+            format!(
+                "[{}]",
+                slots
+                    .iter()
+                    .zip(values)
+                    .map(|(slot, v)| native_default(schema, slot, v))
                     .collect::<Vec<_>>()
                     .join(",")
             )
