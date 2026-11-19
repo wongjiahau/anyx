@@ -1,28 +1,38 @@
-//! Named types: `TYPE File Id: Text` gives a type a name of its own, and is
-//! written on the wire exactly like the type underneath.
+//! Named types: `NAMED TYPE File Id (Text)` makes a type of its own, which
+//! no other type fits. Its name is a shape whose slots hold types, and its
+//! values are written with that shape: `File Id "a"`.
 
 mod common;
 
-use anyx_protocol::schema::{Type, TypeKind};
+use anyx_protocol::schema::{ShapePart, Type, TypeKind};
 use anyx_protocol::{Call, Value, decode_request, decode_response, encode_request};
 use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 
 const SHARING: &str = "PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
-TYPE Tags: LIST Text,
+TYPE ALIAS Tags: LIST Text,
 
 RECORD File Link { file id: File Id, tags: Tags },
 
-TYPE Link: File Link,
-
-METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: Link) ERRORS [missing (id: File Id)],
+METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [missing (id: File Id)],
 ";
 
+fn file_id(id: &str) -> Value {
+    Value::Variant {
+        shape: "File Id _".to_string(),
+        arguments: vec![Value::Text(id.to_string())],
+    }
+}
+
+fn word(word: &str) -> ShapePart {
+    ShapePart::Word(word.to_string())
+}
+
 #[test]
-fn a_named_type_reads_with_its_doc_and_the_type_underneath() {
+fn a_named_type_reads_with_its_doc_constructor_and_slots() {
     let schema = schema(SHARING);
     let file_id = &schema.types[0];
     assert_eq!(file_id.name, "File Id");
@@ -30,34 +40,32 @@ fn a_named_type_reads_with_its_doc_and_the_type_underneath() {
         file_id.doc.as_deref(),
         Some("Which file, among every account's.")
     );
-    assert_eq!(file_id.kind, TypeKind::Distinct(Type::Text));
     assert_eq!(
-        schema.types[1].kind,
-        TypeKind::Distinct(Type::List(Box::new(Type::Text)))
+        file_id.kind,
+        TypeKind::Distinct {
+            constructor: vec![word("File"), word("Id"), ShapePart::Slot],
+            underlying: Type::Text,
+        }
     );
-    assert_eq!(schema.types[3].kind, TypeKind::Distinct(Type::Named(2)));
-    assert_eq!(schema.underlying(&Type::Named(3)), &Type::Named(2));
-    assert_eq!(schema.underlying(&Type::Named(0)), &Type::Text);
+    // A named type stops `underlying`: it is not the type it holds.
+    assert_eq!(schema.underlying(&Type::Named(0)), &Type::Named(0));
     assert_eq!(schema.type_name(&Type::Named(0)), "File Id");
 }
 
 #[test]
-fn a_named_type_is_written_like_the_type_underneath() {
+fn a_named_value_is_written_with_its_name() {
     let schema = schema(SHARING);
     let call = Call {
         method: 0,
         arguments: vec![
-            Value::Text("a".to_string()),
+            file_id("a"),
             Value::List(vec![Value::Text("hymn".to_string())]),
         ],
     };
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
-    assert_eq!(
-        request,
-        "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n"
-    );
+    assert_eq!(request, "share (File Id \"a\") tagged [\"hymn\"]\n");
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
-    let response = "RETURNS { file id \"a\", tags [\"hymn\"] }";
+    let response = "RETURNS { file id (File Id \"a\"), tags [\"hymn\"] }";
     let anyx_protocol::Response::Outcomes(outcomes) =
         decode_response(&schema, &[0], response).unwrap()
     else {
@@ -66,55 +74,144 @@ fn a_named_type_is_written_like_the_type_underneath() {
     let anyx_protocol::Outcome::Value(Value::Record(fields)) = &outcomes[0] else {
         panic!("expected a record, found {outcomes:?}");
     };
-    assert_eq!(fields["file id"], Value::Text("a".to_string()));
-    assert_eq!(
-        decode_request(&schema, "share 3 tagged []")
+    assert_eq!(fields["file id"], file_id("a"));
+    assert_snapshot(
+        "tests/snapshots/named_value_without_its_name.txt",
+        &decode_request(&schema, "share \"a\" tagged []")
             .unwrap_err()
             .to_string(),
-        "1:7: in `id` of `share _ tagged _`: found the number `3`; expected a string, as in `\"text\"`"
+    );
+}
+
+#[test]
+fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
+    let schema = schema(
+        "PROTOCOL shapes VERSION 1,
+NAMED TYPE Range from (Integer) to (Integer),
+NAMED TYPE Unit,
+NAMED TYPE (UNION [red, blue]) Color,
+METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING,
+",
+    );
+    let call = Call {
+        method: 0,
+        arguments: vec![
+            Value::Variant {
+                shape: "Range from _ to _".to_string(),
+                arguments: vec![Value::Integer(1), Value::Integer(3)],
+            },
+            Value::Variant {
+                shape: "_ Color".to_string(),
+                arguments: vec![Value::Variant {
+                    shape: "red".to_string(),
+                    arguments: vec![],
+                }],
+            },
+            Value::Variant {
+                shape: "Unit".to_string(),
+                arguments: vec![],
+            },
+        ],
+    };
+    let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
+    assert_eq!(
+        request,
+        "paint (Range from 1 to 3) with ((red) Color) and (Unit)\n"
+    );
+    assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
+}
+
+#[test]
+fn a_union_of_named_types_picks_its_member_by_name() {
+    let schema = schema(
+        "PROTOCOL sharing VERSION 1,
+NAMED TYPE File Id (Text),
+NAMED TYPE Share Id (Text),
+METHOD open (id: UNION [File Id, Share Id]) RETURNS NOTHING,
+",
+    );
+    let share = Value::Variant {
+        shape: "Share Id _".to_string(),
+        arguments: vec![Value::Text("b".to_string())],
+    };
+    assert_eq!(
+        decode_request(&schema, "open (Share Id \"b\")").unwrap(),
+        vec![Call {
+            method: 0,
+            arguments: vec![share],
+        }]
+    );
+    assert_eq!(
+        decode_request(&schema, "open (File Id \"a\")").unwrap(),
+        vec![Call {
+            method: 0,
+            arguments: vec![file_id("a")],
+        }]
     );
 }
 
 #[cfg(feature = "json")]
 #[test]
-fn a_named_type_is_the_type_underneath_in_json() {
+fn a_named_value_is_under_its_tag_in_json() {
     use anyx_protocol::json::{decode_response_json, encode_request_json};
     let schema = schema(SHARING);
     assert_eq!(
-        encode_request_json(&schema, "share _ tagged _", r#"["a", ["hymn"]]"#).unwrap(),
-        "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n"
+        encode_request_json(
+            &schema,
+            "share _ tagged _",
+            r#"[{"FileId": "a"}, ["hymn"]]"#
+        )
+        .unwrap(),
+        "share (File Id \"a\") tagged [\"hymn\"]\n"
     );
+    assert!(encode_request_json(&schema, "share _ tagged _", r#"["a", ["hymn"]]"#).is_err());
     assert_eq!(
-        decode_response_json(&schema, "share _ tagged _", "ERROR missing \"a\"").unwrap(),
-        r#"{"error":{"id":"a","kind":"missing"},"kind":"error"}"#
+        decode_response_json(&schema, "share _ tagged _", "ERROR missing (File Id \"a\")").unwrap(),
+        r#"{"error":{"id":{"FileId":"a"},"kind":"missing"},"kind":"error"}"#
     );
     assert_eq!(
         decode_response_json(
             &schema,
             "share _ tagged _",
-            "RETURNS { file id \"a\", tags [] }"
+            "RETURNS { file id (File Id \"a\"), tags [] }"
         )
         .unwrap(),
-        r#"{"kind":"value","value":{"fileId":"a","tags":[]}}"#
+        r#"{"kind":"value","value":{"fileId":{"FileId":"a"},"tags":[]}}"#
+    );
+    let shapes = self::schema(
+        "PROTOCOL shapes VERSION 1,
+NAMED TYPE Range from (Integer) to (Integer),
+NAMED TYPE Unit,
+NAMED TYPE File Id (Text),
+NAMED TYPE Share Id (Text),
+METHOD mark (range: Range from to) and (unit: Unit) for (id: UNION [File Id, Share Id]) RETURNS NOTHING,
+",
+    );
+    assert_eq!(
+        encode_request_json(
+            &shapes,
+            "mark _ and _ for _",
+            r#"[{"RangeFromTo": [1, 3]}, {"Unit": []}, {"ShareId": "b"}]"#
+        )
+        .unwrap(),
+        "mark (Range from 1 to 3) and (Unit) for (Share Id \"b\")\n"
     );
 }
 
 #[test]
-fn the_guide_names_each_named_type_and_the_type_underneath() {
+fn the_guide_names_each_named_type_and_what_it_holds() {
     let guide = anyx_protocol::guide(&schema(SHARING), "");
     assert!(
         guide.contains(
-            "- A named TYPE is written exactly like the type it names, but holds
-  only what its name says:
-  - `File Id`: `Text`. Which file, among every account's.
-  - `Tags`: `LIST Text`.
-  - `Link`: `File Link`.
+            "- A NAMED TYPE is a type of its own, written with its name and a
+  value in each slot, as in `File Id \"a\"`:
+  - `File Id …`, holding a `Text`. Which file, among every account's.
 "
         ),
         "{guide}"
     );
     assert!(
-        guide.contains("    share (\"a\" AS: File Id) tagged ([…] AS: Tags)\n"),
+        guide.contains("    share (File Id \"a\") tagged […]\n"),
         "{guide}"
     );
 }
@@ -128,7 +225,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC TYPE File Id: Text, TYPE Secret: Text,",
+            "PUBLIC NAMED TYPE File Id (Text), NAMED TYPE Secret (Text),",
         ),
         (
             "files.protocol.anyx",
@@ -141,8 +238,6 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         schema.type_name(&read.shape.parameters[0].r#type),
         "File Id"
     );
-    let guide = anyx_protocol::guide(&schema, "");
-    assert!(guide.contains("  - `File Id`: `Text`.\n"), "{guide}");
     let files = [
         files[0],
         files[1],
@@ -164,24 +259,24 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
 fn mistakes_in_named_types_are_diagnosed() {
     let cases = [
         (
-            "a named type referring to itself",
-            "PROTOCOL a VERSION 1, TYPE Alpha: LIST: Alpha, TYPE Beta: Gamma, TYPE Gamma: Beta,",
+            "a bare TYPE, which is neither an alias nor a named type",
+            "PROTOCOL a VERSION 1, TYPE File Id: Text,",
+        ),
+        (
+            "a named type holding itself",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Alpha),",
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, TYPE Alpha: Row,",
+            "PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, NAMED TYPE Alpha (Row),",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, TYPE Alpha: Text, RECORD Alpha { b: Text },",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), RECORD Alpha { b: Text },",
         ),
         (
             "a named type over an unknown type",
-            "PROTOCOL a VERSION 1, TYPE Alpha: thing,",
-        ),
-        (
-            "a named type over an optional type",
-            "PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT \"\",",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (thing),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -195,38 +290,24 @@ fn mistakes_in_named_types_are_diagnosed() {
 }
 
 #[test]
-fn a_named_type_may_be_an_instant_a_map_or_have_a_default() {
+fn a_named_type_may_hold_itself_through_a_list() {
     let schema = schema(
-        "PROTOCOL visits VERSION 1,
-TYPE Opened At: Instant,
-TYPE Openings: MAP: Opened At,
-TYPE Label: Text,
-RECORD Visit { at: Opened At, by person: Openings, label (Label) DEFAULT label \"none\" },
-METHOD visits RETURNS (visits: LIST: Visit),
+        "PROTOCOL trees VERSION 1,
+NAMED TYPE Tree (LIST Tree),
+METHOD plant (tree: Tree) RETURNS NOTHING,
 ",
     );
-    let response =
-        "RETURNS [{ at \"1970-01-01T00:00:01Z\", by person { \"ann\" \"1970-01-01T00:00:02Z\" } }]";
-    let anyx_protocol::Response::Outcomes(outcomes) =
-        decode_response(&schema, &[0], response).unwrap()
-    else {
-        panic!("expected outcomes");
+    let leaf = Value::Variant {
+        shape: "Tree _".to_string(),
+        arguments: vec![Value::List(vec![])],
     };
-    let anyx_protocol::Outcome::Value(Value::List(visits)) = &outcomes[0] else {
-        panic!("expected a list, found {outcomes:?}");
+    let call = Call {
+        method: 0,
+        arguments: vec![Value::Variant {
+            shape: "Tree _".to_string(),
+            arguments: vec![Value::List(vec![leaf])],
+        }],
     };
-    let Value::Record(fields) = &visits[0] else {
-        panic!("expected a record, found {visits:?}");
-    };
-    assert_eq!(fields["label"], Value::Text("none".to_string()));
-    assert!(matches!(fields["at"], Value::Instant(_)));
-    assert_eq!(
-        diagnostics(
-            "PROTOCOL visits VERSION 1,
-TYPE Label: Text,
-RECORD Visit { label (Label) DEFAULT label 3 },
-"
-        ),
-        "schema:3:44: in the `DEFAULT` of `label`: found the number `3`; expected a string, as in `\"text\"`\n  RECORD Visit { label (Label) DEFAULT label 3 },\n                                             ^"
-    );
+    let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
+    assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
 }

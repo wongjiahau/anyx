@@ -822,9 +822,14 @@ fn transfer(
             })?;
             if visited.insert((*index, other)) {
                 let fits = match (&definition.kind, &target.types[other].kind) {
-                    (TypeKind::Distinct(left), TypeKind::Distinct(right)) => {
-                        transfer(origin, target, left, visited)? == *right
-                    }
+                    (
+                        TypeKind::Distinct {
+                            underlying: left, ..
+                        },
+                        TypeKind::Distinct {
+                            underlying: right, ..
+                        },
+                    ) => transfer(origin, target, left, visited)? == *right,
                     (TypeKind::Record(left), TypeKind::Record(right)) => {
                         left.len() == right.len()
                             && left.iter().zip(right).all(|(left, right)| {

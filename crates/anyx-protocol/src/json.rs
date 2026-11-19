@@ -10,7 +10,9 @@ use serde_json::{Map, Value as Json, json};
 
 use crate::codec::{Call, Outcome, Response, decode_request, encode_request};
 use crate::response::{decode_response, encode_response};
-use crate::schema::{Field, JsonForm, Schema, Shape, Type, TypeKind};
+use crate::schema::{
+    Field, JsonForm, Schema, Shape, ShapePart, Type, TypeKind, json_tag, slot_types,
+};
 use crate::value::Value;
 
 pub use crate::schema::camel_case;
@@ -344,6 +346,13 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                 return variant_to_json(schema, &[own.as_ref()], shape, arguments);
             }
             let kind = schema.instance(r#type).map(|(_, kind)| kind);
+            if let Some(TypeKind::Distinct {
+                constructor,
+                underlying,
+            }) = kind.as_deref()
+            {
+                return named_to_json(schema, constructor, underlying, arguments);
+            }
             let variants = match kind.as_deref() {
                 Some(TypeKind::Choice(variants)) => {
                     variants.iter().map(|variant| &variant.shape).collect()
@@ -353,6 +362,67 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
             variant_to_json(schema, &variants, shape, arguments)
         }
     }
+}
+
+/// A named type's value under its tag: its one slot's value,
+/// `{ "FileId": "a" }`, or an array of its slots' values,
+/// `{ "RangeFromTo": [1, 3] }`, `{ "Unit": [] }`.
+fn named_to_json(
+    schema: &Schema,
+    constructor: &[ShapePart],
+    underlying: &Type,
+    arguments: &[Value],
+) -> Json {
+    let slots = slot_types(constructor, underlying);
+    let mut values: Vec<Json> = slots
+        .iter()
+        .zip(arguments)
+        .map(|(slot, value)| to_json(schema, slot, value))
+        .collect();
+    let held = match (slots.len(), values.len()) {
+        (1, 1) => values.remove(0),
+        _ => Json::Array(values),
+    };
+    json!({ json_tag(constructor): held })
+}
+
+/// Reads a named type's value from under its tag.
+fn named_from_json(
+    schema: &Schema,
+    constructor: &[ShapePart],
+    underlying: &Type,
+    json: &Json,
+) -> Result<Value, String> {
+    let tag = json_tag(constructor);
+    let held = match json {
+        Json::Object(object) if object.len() == 1 => object.get(&tag),
+        _ => None,
+    };
+    let Some(held) = held else {
+        return Err(format!(
+            "found {json}; expected an object whose one key is \"{tag}\", the tag of `{}`",
+            ShapePart::words(constructor)
+        ));
+    };
+    let slots = slot_types(constructor, underlying);
+    let arguments = match (slots.as_slice(), held) {
+        ([slot], held) => vec![from_json(schema, slot, held)?],
+        (slots, Json::Array(items)) if items.len() == slots.len() => slots
+            .iter()
+            .zip(items)
+            .map(|(slot, json)| from_json(schema, slot, json))
+            .collect::<Result<_, _>>()?,
+        (slots, _) => {
+            return Err(format!(
+                "found {held} under \"{tag}\"; expected an array of {} values, one for each slot",
+                slots.len()
+            ));
+        }
+    };
+    Ok(Value::Variant {
+        shape: ShapePart::text(constructor),
+        arguments,
+    })
 }
 
 /// A variant or an error as `{ "kind": "conflictAtRevision", "revision": 4 }`.
@@ -467,6 +537,13 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
             let Some((definition, kind)) = schema.instance(r#type) else {
                 unreachable!("a named or generic type is a record or a choice underneath")
             };
+            if let TypeKind::Distinct {
+                constructor,
+                underlying,
+            } = kind.as_ref()
+            {
+                return named_from_json(schema, constructor, underlying, json);
+            }
             let Json::Object(object) = json else {
                 return mismatch(&format!("an object for `{}`", definition.shape()));
             };
@@ -479,7 +556,7 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                         variants.iter().map(|variant| &variant.shape).collect();
                     variant_from_json(schema, &shapes, object)
                 }
-                TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
+                TypeKind::Distinct { .. } => unreachable!("read above"),
             }
         }
         Type::Union(_) => {
@@ -493,11 +570,21 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 },
                 Json::Null | Json::Bool(_) => JsonForm::Object,
             };
-            let member = r#type.members().into_iter().find(|member| {
-                schema
-                    .json_forms(member)
-                    .is_some_and(|forms| forms.contains(&found))
-            });
+            // An object of one key may be a named type's, under its tag.
+            let tag = match json {
+                Json::Object(object) if object.len() == 1 => {
+                    object.keys().next().map(|key| JsonForm::Tag(key.clone()))
+                }
+                _ => None,
+            };
+            let holds = |form: &JsonForm| {
+                r#type.members().into_iter().find(|member| {
+                    schema
+                        .json_forms(member)
+                        .is_some_and(|forms| forms.contains(form))
+                })
+            };
+            let member = tag.as_ref().and_then(holds).or_else(|| holds(&found));
             match member {
                 Some(member) => from_json(schema, member, json),
                 None => mismatch(&format!(

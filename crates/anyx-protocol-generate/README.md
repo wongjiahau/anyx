@@ -26,13 +26,20 @@ the file.
   `Record<string, T>` in TypeScript.
 - A field with a `DEFAULT` may be omitted on input. The reader fills in
   its default, so generated records always contain the field.
-- A struct around the type underneath per named `TYPE`, with `From` both
-  ways: `TYPE File Id: Text` is `pub struct FileId(pub String)`, so a
-  `FileId` can't be passed where a `ShareId` goes.
-- A named `TYPE` with a `WHERE` refinement has a private field, a checked
-  `new` constructor and `TryFrom`, and `get` / `into_inner` accessors. Its
-  `FromValue` conversion checks the predicate too. Inline refinements use
-  the base Rust type and are checked by the codec on input and output.
+- A tuple struct per `NAMED TYPE`, with a field for each slot:
+  `NAMED TYPE File Id (Text)` is `pub struct FileId(pub String)`, so a
+  `FileId` can't be passed where a `ShareId` goes, and
+  `NAMED TYPE Span from (Integer) to (Integer)` is
+  `pub struct SpanFromTo(pub i64, pub i64)`. One with a single slot has
+  `From` both ways. In TypeScript it is a branded type, a tuple for several
+  slots or none, with a function of its name that makes one.
+- A `NAMED TYPE` whose slot has a `WHERE` refinement has private fields, a
+  checked `new` constructor, and `get` / `into_inner` accessors and
+  `TryFrom` for a single slot. Its `FromValue` conversion checks the
+  predicate too.
+- A `TYPE ALIAS` is only another name for its type, so the generated code
+  uses that type. Refinements on it and inline refinements use the base
+  Rust type and are checked by the codec on input and output.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its

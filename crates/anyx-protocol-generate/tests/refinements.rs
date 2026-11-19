@@ -1,7 +1,7 @@
 #[path = "generated/refined.rs"]
 mod refined;
 use anyx_protocol::{FromValue, IntoValue, Outcome, Response, Schema, Value};
-use refined::{BoxOf, Limit, Names, Probability, Revision, ScorePath, Server, Summary};
+use refined::{BoxOf, Names, Probability, ScorePath, Server, Summary};
 use std::{
     cell::Cell,
     pin::pin,
@@ -11,15 +11,24 @@ use std::{
 
 #[test]
 fn rust_newtypes_have_checked_constructors_and_checked_value_conversions() {
-    assert_eq!(*Revision::new(1).unwrap().get(), 1);
-    assert!(Revision::new(0).unwrap_err().contains("at least 1"));
-    assert!(Limit::try_from(10).is_ok());
-    assert!(Limit::try_from(29).is_ok());
-    assert!(Limit::try_from(30).is_err());
-    assert!(Revision::from_value(Value::Integer(0)).is_none());
-    assert_eq!(Revision::new(3).unwrap().into_value(), Value::Integer(3));
-    assert_eq!(Revision::new(3).unwrap().into_inner(), 3);
-    assert!(ScorePath::new("a.poentaro".into()).is_ok());
+    assert_eq!(
+        ScorePath::new("a.poentaro".into()).unwrap().get(),
+        "a.poentaro"
+    );
+    assert!(ScorePath::try_from("bad.txt".to_string()).is_err());
+    let path = |text: &str| Value::Variant {
+        shape: "Score Path _".to_string(),
+        arguments: vec![Value::Text(text.to_string())],
+    };
+    assert!(ScorePath::from_value(path("bad.txt")).is_none());
+    assert_eq!(
+        ScorePath::new("a.poentaro".into()).unwrap().into_value(),
+        path("a.poentaro")
+    );
+    assert_eq!(
+        ScorePath::new("a.poentaro".into()).unwrap().into_inner(),
+        "a.poentaro"
+    );
     assert!(ScorePath::new("bad.txt".into()).is_err());
     assert!(Probability::new(0.5).is_ok());
     assert!(Probability::new(1.1).is_err());
@@ -32,13 +41,9 @@ struct Handler {
 }
 impl Server for Handler {
     type Error = std::convert::Infallible;
-    async fn write_at(&self, _: ScorePath, revision: Revision) -> Result<Revision, Self::Error> {
+    async fn write_at(&self, _: ScorePath, revision: i64) -> Result<i64, Self::Error> {
         self.calls.set(self.calls.get() + 1);
-        Ok(if self.bad_return {
-            Revision::new(9).unwrap()
-        } else {
-            revision
-        })
+        Ok(if self.bad_return { 9 } else { revision })
     }
     async fn limit(&self, value: i64) -> Result<i64, Self::Error> {
         self.calls.set(self.calls.get() + 1);
@@ -47,10 +52,8 @@ impl Server for Handler {
     async fn summary(&self, value: Summary) -> Result<Summary, Self::Error> {
         Ok(value)
     }
-    async fn boxed(&self, value: BoxOf<i64>) -> Result<BoxOf<Limit>, Self::Error> {
-        Ok(BoxOf {
-            value: Limit::new(value.value).unwrap(),
-        })
+    async fn boxed(&self, value: BoxOf<i64>) -> Result<BoxOf<i64>, Self::Error> {
+        Ok(value)
     }
     async fn score(&self, value: Probability) -> Result<Probability, Self::Error> {
         Ok(value)
@@ -74,7 +77,8 @@ fn generated_server_rejects_the_whole_invalid_batch_before_running_any_call() {
         calls: Cell::new(0),
         bad_return: false,
     };
-    let request = "write (\"a.poentaro\" AS: Score Path) at (1 AS: Revision), limit (30 AS: (Integer) WHERE [10 <= _ < 30])";
+    let request =
+        "write (Score Path \"a.poentaro\") at 1, limit (30 AS: (Integer) WHERE [10 <= _ < 30])";
     let response = run(refined::handle(&server, request, |e| match e {}));
     assert!(response.starts_with("INVALID REQUEST"), "{response}");
     assert_eq!(server.calls.get(), 0);
@@ -85,7 +89,8 @@ fn a_broken_returned_refinement_stops_the_generated_server() {
         calls: Cell::new(0),
         bad_return: true,
     };
-    let request = "limit (10 AS: (Integer) WHERE [10 <= _ < 30]), write (\"a.poentaro\" AS: Score Path) at (1 AS: Revision)";
+    let request =
+        "limit (10 AS: (Integer) WHERE [10 <= _ < 30]), write (Score Path \"a.poentaro\") at 1";
     let response = run(refined::handle(&server, request, |e| match e {}));
     assert_eq!(
         anyx_protocol::decode_response(refined::schema(), &[1, 0], &response).unwrap(),
@@ -99,8 +104,8 @@ fn method_contracts_gate_generated_handler_execution() {
         calls: Cell::new(0),
         bad_return: true,
     };
-    let valid = "write (\"a.poentaro\" AS: Score Path) at (1 AS: Revision)";
-    let invalid = "write (\"a.poentaro\" AS: Score Path) at (10 AS: Revision)";
+    let valid = "write (Score Path \"a.poentaro\") at 1";
+    let invalid = "write (Score Path \"a.poentaro\") at 10";
     let rejected = run(refined::handle(
         &server,
         &format!("{valid}, {invalid}"),

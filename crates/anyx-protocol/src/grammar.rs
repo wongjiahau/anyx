@@ -36,7 +36,9 @@ pub struct Protocol {
 pub enum Definition {
     Record(Record),
     Choice(Choice),
+    IntrinsicType(IntrinsicType),
     NamedType(NamedType),
+    UntaggedType(UntaggedType),
     TypeAlias(TypeAlias),
     Errors(Errors),
     Method(Method),
@@ -137,25 +139,41 @@ pub enum ChoicePart {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct IntrinsicType {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Span,
+    pub name: TypeName,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct NamedType {
     pub doc: Option<Spanned<StringLiteral>>,
-    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: NamedTypeBody,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum NamedTypeBody {
-    Typed {
-        name: Spanned<String>,
-        r#type: Type,
-        span: Span,
-    },
-    Bare {
-        name: Spanned<String>,
-        span: Span,
-    },
+pub struct NamedTypeBody {
+    pub name: CallName,
+    pub arguments: Vec<Type>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UntaggedType {
+    pub doc: Option<Spanned<StringLiteral>>,
+    pub public: Option<Span>,
+    pub body: UntaggedTypeBody,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UntaggedTypeBody {
+    pub name: Spanned<String>,
+    pub r#type: Type,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -350,7 +368,9 @@ impl Definition {
         match self {
             Definition::Record(value) => value.span,
             Definition::Choice(value) => value.span,
+            Definition::IntrinsicType(value) => value.span,
             Definition::NamedType(value) => value.span,
+            Definition::UntaggedType(value) => value.span,
             Definition::TypeAlias(value) => value.span,
             Definition::Errors(value) => value.span,
             Definition::Method(value) => value.span,
@@ -408,14 +428,6 @@ impl ChoicePart {
         match self {
             ChoicePart::Variants(value) => value.span,
             ChoicePart::TypeParameter(value) => value.span,
-        }
-    }
-}
-
-impl NamedTypeBody {
-    pub fn span(&self) -> Span {
-        match self {
-            NamedTypeBody::Typed { span, .. } | NamedTypeBody::Bare { span, .. } => *span,
         }
     }
 }
@@ -508,7 +520,9 @@ impl support::Errors for Definition {
         match self {
             Definition::Record(value) => support::Errors::errors(value, found),
             Definition::Choice(value) => support::Errors::errors(value, found),
+            Definition::IntrinsicType(value) => support::Errors::errors(value, found),
             Definition::NamedType(value) => support::Errors::errors(value, found),
+            Definition::UntaggedType(value) => support::Errors::errors(value, found),
             Definition::TypeAlias(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
@@ -627,10 +641,17 @@ impl support::Errors for ChoicePart {
     }
 }
 
-impl support::Errors for NamedType {
+impl support::Errors for IntrinsicType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
         support::Errors::errors(&self.intrinsic, found);
+        support::Errors::errors(&self.name, found);
+    }
+}
+
+impl support::Errors for NamedType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.doc, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -638,15 +659,23 @@ impl support::Errors for NamedType {
 
 impl support::Errors for NamedTypeBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            NamedTypeBody::Typed { name, r#type, .. } => {
-                support::Errors::errors(name, found);
-                support::Errors::errors(r#type, found);
-            }
-            NamedTypeBody::Bare { name, .. } => {
-                support::Errors::errors(name, found);
-            }
-        }
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for UntaggedType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.public, found);
+        support::Errors::errors(&self.body, found);
+    }
+}
+
+impl support::Errors for UntaggedTypeBody {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.r#type, found);
     }
 }
 
@@ -901,7 +930,9 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
     decode_record(node)
         .map(Definition::Record)
         .or_else(|error| error.or(decode_choice(node).map(Definition::Choice)))
+        .or_else(|error| error.or(decode_intrinsic_type(node).map(Definition::IntrinsicType)))
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
+        .or_else(|error| error.or(decode_untagged_type(node).map(Definition::UntaggedType)))
         .or_else(|error| error.or(decode_type_alias(node).map(Definition::TypeAlias)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
@@ -1115,18 +1146,60 @@ fn decode_choice_part_variants(node: &Node) -> Result<Spanned<Vec<Variant>>, Dec
     })
 }
 
+pub fn decode_intrinsic_type(node: &Node) -> Result<IntrinsicType, DecodeError> {
+    let mut parts = support::call(node, "the call `_? INTRINSIC TYPE _`")?;
+    let decoded = IntrinsicType {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: parts.word_span("INTRINSIC")?,
+        name: parts.word("TYPE")?.one(decode_type_name, "a type name")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
 pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
-    let mut parts = support::call(node, "the call `_? TYPE _`")?;
+    let mut parts = support::call(node, "the call `_? NAMED TYPE _`")?;
     let decoded = NamedType {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        intrinsic: if parts
-            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+        public: if parts
+            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
         {
-            Some(parts.word_span("INTRINSIC")?)
+            Some(parts.word_span("PUBLIC")?)
         } else {
             None
         },
+        body: parts
+            .word("NAMED")?
+            .word("TYPE")?
+            .one(decode_named_type_body, "a named type body")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = NamedTypeBody {
+        name,
+        arguments: arguments.zero_or_more(decode_type),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_untagged_type(node: &Node) -> Result<UntaggedType, DecodeError> {
+    let mut parts = support::call(node, "the call `_? TYPE _`")?;
+    let decoded = UntaggedType {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1137,38 +1210,21 @@ pub fn decode_named_type(node: &Node) -> Result<NamedType, DecodeError> {
         },
         body: parts
             .word("TYPE")?
-            .one(decode_named_type_body, "a named type body")?,
+            .one(decode_untagged_type_body, "an untagged type body")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
 }
 
-pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError> {
-    decode_named_type_body_typed(node).or_else(|error| error.or(decode_named_type_body_bare(node)))
-}
-
-fn decode_named_type_body_typed(node: &Node) -> Result<NamedTypeBody, DecodeError> {
+pub fn decode_untagged_type_body(node: &Node) -> Result<UntaggedTypeBody, DecodeError> {
     let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = NamedTypeBody::Typed {
+    let decoded = UntaggedTypeBody {
         name: parts.words(
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
         )?,
         r#type: parts.one(decode_type, "a type")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_named_type_body_bare(node: &Node) -> Result<NamedTypeBody, DecodeError> {
-    let mut parts = support::call(node, "the call `…`")?;
-    let decoded = NamedTypeBody::Bare {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
         span: node.span,
     };
     parts.finish()?;

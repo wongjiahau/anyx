@@ -169,7 +169,10 @@ pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
                     .flat_map(|variant| &variant.shape.parameters)
                     .map(|parameter| &parameter.r#type),
             ),
-            TypeKind::Distinct(underneath) => types.push(underneath),
+            TypeKind::Distinct {
+                underlying: underneath,
+                ..
+            } => types.push(underneath),
         }
     }
     for method in &schema.methods {
@@ -389,7 +392,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                     )
                 }),
             )?,
-            TypeKind::Distinct(_) => {}
+            TypeKind::Distinct { .. } => {}
         }
     }
     for method in &schema.methods {
@@ -416,7 +419,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                     TypeKind::Choice(variants) => {
                         variants.iter().map(|variant| &variant.shape).collect()
                     }
-                    TypeKind::Record(_) | TypeKind::Distinct(_) => Vec::new(),
+                    TypeKind::Record(_) | TypeKind::Distinct { .. } => Vec::new(),
                 }),
         )
     {

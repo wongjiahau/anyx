@@ -291,17 +291,17 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
             ),
             (
                 "files.protocol.anyx",
-                "TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),",
+                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text),",
             ),
             (
                 "shares.anyx",
-                "TYPE Share Id: Text, METHOD open (id: Share Id) RETURNS (text: Text),",
+                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text),",
             ),
         ],
     )
     .unwrap();
-    let file = anyx_protocol::decode_request(&schema, "open (\"abc\" AS File Id)").unwrap();
-    let share = anyx_protocol::decode_request(&schema, "open (\"abc\" AS Share Id)").unwrap();
+    let file = anyx_protocol::decode_request(&schema, "open (File Id \"abc\")").unwrap();
+    let share = anyx_protocol::decode_request(&schema, "open (Share Id \"abc\")").unwrap();
     assert_ne!(file[0].method, share[0].method);
     assert_eq!(
         schema.call_name(schema.method_at(file[0].method)),
@@ -309,19 +309,25 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
     );
     assert_eq!(
         anyx_protocol::encode_request(&schema, &file).unwrap(),
-        "open (\"abc\" AS File Id)\n"
+        "open (File Id \"abc\")\n"
     );
     assert!(anyx_protocol::decode_request(&schema, "open (\"abc\" AS files/File Id)").is_err());
     #[cfg(feature = "json")]
     assert_eq!(
-        anyx_protocol::json::encode_request_json(&schema, "open (File Id)", "[\"abc\"]").unwrap(),
-        "open (\"abc\" AS File Id)\n"
+        anyx_protocol::json::encode_request_json(
+            &schema,
+            "open (File Id)",
+            r#"[{"FileId": "abc"}]"#
+        )
+        .unwrap(),
+        "open (File Id \"abc\")\n"
     );
 }
 
 #[test]
 fn moving_an_imported_file_does_not_change_wire_names() {
-    let declaration = "PUBLIC TYPE File Id: Text, METHOD open (id: File Id) RETURNS (text: Text),";
+    let declaration =
+        "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text),";
     let before = load(
         "entry.protocol.anyx",
         &[
@@ -344,7 +350,7 @@ fn moving_an_imported_file_does_not_change_wire_names() {
         ],
     )
     .unwrap();
-    let request = "open (\"abc\" AS File Id)";
+    let request = "open (File Id \"abc\")";
     assert_eq!(
         anyx_protocol::decode_request(&before, request).unwrap(),
         anyx_protocol::decode_request(&after, request).unwrap()

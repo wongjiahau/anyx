@@ -2,20 +2,20 @@
 PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
-TYPE Share Id: Text,
+NAMED TYPE Share Id (Text),
 
-TYPE Tags: LIST Text,
+TYPE ALIAS Tags: LIST Text,
 
 RECORD File Link { share id: Share Id, file id: File Id, tags: Tags },
 
 # A link someone may open.
-TYPE Link: File Link,
+TYPE ALIAS Link: File Link,
 
 CHOICE Access { read, write },
 
-TYPE Level: Access,
+TYPE ALIAS Level: Access,
 
 METHOD share (id: File Id) tagged (tags: Tags)
     RETURNS (link: Link)
@@ -30,11 +30,19 @@ READ ONLY METHOD links RETURNS (ids: LIST: Share Id),
 
 METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level),
 
+# Lines of a file, counted from 1.
+NAMED TYPE Span from (Integer) to (Integer),
+
+# Everyone with the link.
+NAMED TYPE Everyone,
+
+METHOD show (span: Span from to) to (who: Everyone) RETURNS (shown: Span from to),
+
 # When a link was last opened.
-TYPE Opened At: Instant,
+TYPE ALIAS Opened At: Instant,
 
-TYPE Openings: MAP: Opened At,
+TYPE ALIAS Openings: MAP: Opened At,
 
-RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label "none" },
+RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label (Share Id "none") },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit),

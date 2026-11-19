@@ -2,7 +2,7 @@
 //! No predicate evaluates application code or applies operator precedence.
 use crate::Value;
 use crate::prelude::{self, Arithmetic, BooleanOperation, Function};
-use crate::schema::{Diagnostic, Schema, Type, TypeKind};
+use crate::schema::{Diagnostic, Schema, ShapePart, Type, TypeKind};
 use anyx::{NamePart, Node, NodeKind, Span};
 
 #[derive(Clone, Debug)]
@@ -79,7 +79,7 @@ impl Predicate {
     }
 
     pub(crate) fn check_type(&self, schema: &Schema, base: &Type) -> Result<(), String> {
-        let base = schema.underlying(base);
+        let base = schema.held_type(base);
         for test in &self.tests {
             if base != &Type::Float && test.has_fractional_constant() {
                 return Err("fractional constants require Float; use whole-number constants for integers and lengths".into());
@@ -197,7 +197,7 @@ impl Predicate<usize> {
         schema: &Schema,
         parameters: &[&crate::schema::Parameter],
     ) -> Result<(), String> {
-        let ty = |index: &usize| schema.underlying(&parameters[*index].r#type);
+        let ty = |index: &usize| schema.held_type(&parameters[*index].r#type);
         for test in &self.tests {
             test.check_types(&ty, schema)?;
         }
@@ -910,6 +910,27 @@ fn node_text(node: &Node) -> String {
     }
 }
 
+/// The value a predicate on `type` reads: past named types of one slot,
+/// the value in it, as `15` in `Info 15`.
+fn held<'v>(schema: &Schema, r#type: &Type, value: &'v Value) -> &'v Value {
+    let mut r#type = r#type;
+    let mut value = value;
+    loop {
+        match (schema.underlying(r#type), value) {
+            (Type::Named(index), Value::Variant { arguments, .. }) => {
+                match &schema.types[*index].kind {
+                    TypeKind::Distinct { underlying, .. } if arguments.len() == 1 => {
+                        r#type = underlying;
+                        value = &arguments[0];
+                    }
+                    _ => return value,
+                }
+            }
+            _ => return value,
+        }
+    }
+}
+
 /// Checks a value's shape and all refinements, including nested fields and items.
 /// Used by decoders, encoders, and generated checked constructors.
 pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), String> {
@@ -917,7 +938,7 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
         match ty {
             Type::Refined(base, predicate) => {
                 walk(schema, base, value, label)?;
-                if let Some(failed) = predicate.failure(value) {
+                if let Some(failed) = predicate.failure(held(schema, base, value)) {
                     return Err(format!(
                         "value `{}` is not a `{label}`; expected {} {} (`{}`); failed bound or test: {failed}",
                         value_text(value),
@@ -929,11 +950,25 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                 Ok(())
             }
             Type::Named(_) | Type::Generic(..) => {
-                // instance reads past distinct types, so preserve them explicitly first.
+                // A named type's value is a call of its constructor, with a
+                // value of each slot's type.
                 if let Type::Named(index) = ty
-                    && let TypeKind::Distinct(base) = &schema.types[*index].kind
+                    && let TypeKind::Distinct {
+                        constructor,
+                        underlying,
+                    } = &schema.types[*index].kind
                 {
-                    return walk(schema, base, value, label);
+                    let Value::Variant { shape, arguments } = value else {
+                        return Err(format!("expected a `{}`", schema.types[*index].name));
+                    };
+                    let slots = crate::schema::slot_types(constructor, underlying);
+                    if *shape != ShapePart::text(constructor) || slots.len() != arguments.len() {
+                        return Err(format!("expected a `{}`", schema.types[*index].name));
+                    }
+                    for (slot, argument) in slots.into_iter().zip(arguments) {
+                        walk(schema, slot, argument, label)?;
+                    }
+                    return Ok(());
                 }
                 let (definition, kind) = schema.instance(ty).ok_or("expected a known type")?;
                 match (kind.as_ref(), value) {
@@ -1050,7 +1085,10 @@ fn value_text(value: &Value) -> String {
     }
 }
 
-pub(crate) fn check_schema(schema: &Schema) -> Vec<Diagnostic> {
+/// Checks each predicate in the schema's types, methods and errors, and in
+/// `aliases`, the types its aliases stand for. Each is reported once,
+/// however many uses reach it.
+pub(crate) fn check_schema(schema: &Schema, aliases: &[&Type]) -> Vec<Diagnostic> {
     fn check(schema: &Schema, ty: &Type, errors: &mut Vec<Diagnostic>) {
         match ty {
             Type::Refined(base, predicate) => {
@@ -1081,7 +1119,9 @@ pub(crate) fn check_schema(schema: &Schema) -> Vec<Diagnostic> {
     let mut errors = Vec::new();
     for definition in &schema.types {
         match &definition.kind {
-            TypeKind::Distinct(base) => check(schema, base, &mut errors),
+            TypeKind::Distinct {
+                underlying: base, ..
+            } => check(schema, base, &mut errors),
             TypeKind::Record(fields) => {
                 for f in fields {
                     check(schema, &f.r#type, &mut errors);
@@ -1109,7 +1149,16 @@ pub(crate) fn check_schema(schema: &Schema) -> Vec<Diagnostic> {
             check(schema, &p.r#type, &mut errors);
         }
     }
-    errors
+    for alias in aliases {
+        check(schema, alias, &mut errors);
+    }
+    let mut reported: Vec<Diagnostic> = Vec::new();
+    for error in errors {
+        if !reported.contains(&error) {
+            reported.push(error);
+        }
+    }
+    reported
 }
 
 /// Whether this type contains any predicate, including those of named types.
@@ -1131,7 +1180,9 @@ pub fn has_refinements(schema: &Schema, ty: &Type) -> bool {
                 }
                 seen.push(*index);
                 let found = match &schema.types[*index].kind {
-                    TypeKind::Distinct(base) => walk(schema, base, seen),
+                    TypeKind::Distinct {
+                        underlying: base, ..
+                    } => walk(schema, base, seen),
                     TypeKind::Record(fields) => {
                         fields.iter().any(|f| walk(schema, &f.r#type, seen))
                     }
@@ -1203,7 +1254,7 @@ pub(crate) fn example(schema: &Schema, ty: &Type) -> Option<Value> {
                     gather(test, &mut numbers, &mut text_parts);
                 }
                 let (prefix, middle, suffix) = text_parts;
-                match schema.underlying(base) {
+                match schema.held_type(base) {
                     ty if schema.type_name(ty) == "Boolean" => {
                         values.extend([true, false].map(crate::IntoValue::into_value));
                     }
@@ -1213,14 +1264,14 @@ pub(crate) fn example(schema: &Schema, ty: &Type) -> Option<Value> {
                                 .into_iter()
                                 .flatten()
                             {
-                                values.push(if schema.underlying(base) == &Type::Integer {
+                                values.push(if schema.held_type(base) == &Type::Integer {
                                     Value::Integer(n)
                                 } else {
                                     Value::Float(n as f64)
                                 });
                             }
                         }
-                        if schema.underlying(base) == &Type::Float {
+                        if schema.held_type(base) == &Type::Float {
                             values.push(Value::Float(0.5));
                         }
                     }
@@ -1253,11 +1304,27 @@ pub(crate) fn example(schema: &Schema, ty: &Type) -> Option<Value> {
                     .filter(|v| validate(schema, ty, v).is_ok())
                     .collect()
             }
-            Type::Named(index) if matches!(schema.types[*index].kind, TypeKind::Distinct(_)) => {
-                let TypeKind::Distinct(base) = &schema.types[*index].kind else {
+            Type::Named(index)
+                if matches!(schema.types[*index].kind, TypeKind::Distinct { .. }) =>
+            {
+                let TypeKind::Distinct {
+                    constructor,
+                    underlying,
+                } = &schema.types[*index].kind
+                else {
                     unreachable!()
                 };
-                candidates(schema, base, depth + 1)
+                // Values for a named type of one slot; others are skipped.
+                match crate::schema::slot_types(constructor, underlying).as_slice() {
+                    [slot] => candidates(schema, slot, depth + 1)
+                        .into_iter()
+                        .map(|value| Value::Variant {
+                            shape: ShapePart::text(constructor),
+                            arguments: vec![value],
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                }
             }
             Type::Integer => vec![Value::Integer(3)],
             Type::Float => vec![Value::Float(1.5)],

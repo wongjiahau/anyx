@@ -1,6 +1,6 @@
 == an unknown type
 PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
-schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
                                      ^^^^^
 
@@ -17,9 +17,9 @@ schema:1:52: found `TEXT`; expected `Text`, its name since the built-in types ar
                                                      ^^^^
 
 == INTRINSIC in a schema
-PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,
+PROTOCOL a VERSION 1, INTRINSIC TYPE Money,
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,
+  PROTOCOL a VERSION 1, INTRINSIC TYPE Money,
                         ^^^^^^^^^
 
 == INTRINSIC on a record in a schema
@@ -40,11 +40,11 @@ schema:1:30: found a type named `Integer`, which the prelude already declares as
   PROTOCOL a VERSION 1, RECORD Integer { a: Text },
                                ^^^^^^^
 
-== a named type without a type
-PROTOCOL a VERSION 1, TYPE Money,
-schema:1:28: found `TYPE Money` without a type; expected the type it names after a `:`, as in `TYPE Money: Text`
-  PROTOCOL a VERSION 1, TYPE Money,
-                             ^^^^^
+== a type alias without a type
+PROTOCOL a VERSION 1, TYPE ALIAS Money,
+schema:1:39: found the end of the call; expected an alias part
+  PROTOCOL a VERSION 1, TYPE ALIAS Money,
+                                        ^
 
 == an unnamed return
 PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
@@ -89,10 +89,10 @@ schema:1:58: found a second method `f` with the same parameter types as one befo
                                                            ^
 
 == overloads with the same parameter types
-PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
-schema:1:136: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
-                                                                                                                                         ^^^
+PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+schema:1:143: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
+                                                                                                                                                ^^^
 
 == overloads that differ only in what they return
 PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),

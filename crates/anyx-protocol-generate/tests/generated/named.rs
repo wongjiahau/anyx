@@ -12,20 +12,20 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
-TYPE Share Id: Text,
+NAMED TYPE Share Id (Text),
 
-TYPE Tags: LIST Text,
+TYPE ALIAS Tags: LIST Text,
 
 RECORD File Link { share id: Share Id, file id: File Id, tags: Tags },
 
 # A link someone may open.
-TYPE Link: File Link,
+TYPE ALIAS Link: File Link,
 
 CHOICE Access { read, write },
 
-TYPE Level: Access,
+TYPE ALIAS Level: Access,
 
 METHOD share (id: File Id) tagged (tags: Tags)
     RETURNS (link: Link)
@@ -40,12 +40,20 @@ READ ONLY METHOD links RETURNS (ids: LIST: Share Id),
 
 METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level),
 
+# Lines of a file, counted from 1.
+NAMED TYPE Span from (Integer) to (Integer),
+
+# Everyone with the link.
+NAMED TYPE Everyone,
+
+METHOD show (span: Span from to) to (who: Everyone) RETURNS (shown: Span from to),
+
 # When a link was last opened.
-TYPE Opened At: Instant,
+TYPE ALIAS Opened At: Instant,
 
-TYPE Openings: MAP: Opened At,
+TYPE ALIAS Openings: MAP: Opened At,
 
-RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label "none" },
+RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label (Share Id "none") },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit),
 "#,
@@ -71,6 +79,29 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FileId(pub String);
 
+impl IntoValue for FileId {
+    fn into_value(self) -> Value {
+        let FileId(slot_0) = self;
+        Value::Variant {
+            shape: "File Id _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for FileId {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments } if shape == "File Id _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(FileId(slot_0))
+            }
+            _ => None,
+        }
+    }
+}
+
 impl From<String> for FileId {
     fn from(value: String) -> Self {
         Self(value)
@@ -83,20 +114,33 @@ impl From<FileId> for String {
     }
 }
 
-impl IntoValue for FileId {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for FileId {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShareId(pub String);
+
+impl IntoValue for ShareId {
+    fn into_value(self) -> Value {
+        let ShareId(slot_0) = self;
+        Value::Variant {
+            shape: "Share Id _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for ShareId {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Share Id _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(ShareId(slot_0))
+            }
+            _ => None,
+        }
+    }
+}
 
 impl From<String> for ShareId {
     fn from(value: String) -> Self {
@@ -110,50 +154,11 @@ impl From<ShareId> for String {
     }
 }
 
-impl IntoValue for ShareId {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for ShareId {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Tags(pub Vec<String>);
-
-impl From<Vec<String>> for Tags {
-    fn from(value: Vec<String>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<Tags> for Vec<String> {
-    fn from(value: Tags) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Tags {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Tags {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct FileLink {
     pub share_id: ShareId,
     pub file_id: FileId,
-    pub tags: Tags,
+    pub tags: Vec<String>,
 }
 
 impl IntoValue for FileLink {
@@ -179,34 +184,6 @@ impl FromValue for FileLink {
             file_id: fields.field("file id")?,
             tags: fields.field("tags")?,
         })
-    }
-}
-
-/// A link someone may open.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Link(pub FileLink);
-
-impl From<FileLink> for Link {
-    fn from(value: FileLink) -> Self {
-        Self(value)
-    }
-}
-
-impl From<Link> for FileLink {
-    fn from(value: Link) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Link {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Link {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
     }
 }
 
@@ -245,92 +222,67 @@ impl FromValue for Access {
     }
 }
 
+/// Lines of a file, counted from 1.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Level(pub Access);
+pub struct SpanFromTo(pub i64, pub i64);
 
-impl From<Access> for Level {
-    fn from(value: Access) -> Self {
-        Self(value)
-    }
-}
-
-impl From<Level> for Access {
-    fn from(value: Level) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Level {
+impl IntoValue for SpanFromTo {
     fn into_value(self) -> Value {
-        self.0.into_value()
+        let SpanFromTo(slot_0, slot_1) = self;
+        Value::Variant {
+            shape: "Span from _ to _".to_string(),
+            arguments: vec![slot_0.into_value(), slot_1.into_value()],
+        }
     }
 }
 
-impl FromValue for Level {
+impl FromValue for SpanFromTo {
     fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Span from _ to _" && arguments.len() == 2 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                let slot_1 = FromValue::from_value(arguments.next()?)?;
+                Some(SpanFromTo(slot_0, slot_1))
+            }
+            _ => None,
+        }
     }
 }
 
-/// When a link was last opened.
+/// Everyone with the link.
 #[derive(Clone, Debug, PartialEq)]
-pub struct OpenedAt(pub ::std::time::SystemTime);
+pub struct Everyone;
 
-impl From<::std::time::SystemTime> for OpenedAt {
-    fn from(value: ::std::time::SystemTime) -> Self {
-        Self(value)
-    }
-}
-
-impl From<OpenedAt> for ::std::time::SystemTime {
-    fn from(value: OpenedAt) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for OpenedAt {
+impl IntoValue for Everyone {
     fn into_value(self) -> Value {
-        self.0.into_value()
+        let Everyone = self;
+        Value::Variant {
+            shape: "Everyone".to_string(),
+            arguments: vec![],
+        }
     }
 }
 
-impl FromValue for OpenedAt {
+impl FromValue for Everyone {
     fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
-    }
-}
+        match value {
+            Value::Variant { shape, arguments } if shape == "Everyone" && arguments.len() == 0 => {
+                let mut arguments = arguments.into_iter();
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Openings(pub ::std::collections::BTreeMap<String, OpenedAt>);
-
-impl From<::std::collections::BTreeMap<String, OpenedAt>> for Openings {
-    fn from(value: ::std::collections::BTreeMap<String, OpenedAt>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<Openings> for ::std::collections::BTreeMap<String, OpenedAt> {
-    fn from(value: Openings) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Openings {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Openings {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
+                Some(Everyone)
+            }
+            _ => None,
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Visit {
-    pub at: OpenedAt,
-    pub by_person: Openings,
+    pub at: ::std::time::SystemTime,
+    pub by_person: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
     pub label: ShareId,
 }
 
@@ -472,8 +424,8 @@ pub trait Server {
     async fn share_tagged(
         &self,
         id: FileId,
-        tags: Tags,
-    ) -> Result<Result<Link, ShareTaggedError>, Self::Error>;
+        tags: Vec<String>,
+    ) -> Result<Result<FileLink, ShareTaggedError>, Self::Error>;
 
     /// `revoke _`, returning nothing.
     ///
@@ -495,7 +447,12 @@ pub trait Server {
     /// `grant _ on _`, returning `granted`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn grant_on(&self, level: Level, id: FileId) -> Result<Level, Self::Error>;
+    async fn grant_on(&self, level: Access, id: FileId) -> Result<Access, Self::Error>;
+
+    /// `show _ to _`, returning `shown`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn show_to(&self, span: SpanFromTo, who: Everyone) -> Result<SpanFromTo, Self::Error>;
 
     /// `visits`, returning `visits`.
     ///
@@ -556,7 +513,15 @@ pub async fn handle<S: Server>(
                 )
                 .await,
             ),
-            5 => anyx_protocol::server::value(<S as Server>::visits(implementation).await),
+            5 => anyx_protocol::server::value(
+                <S as Server>::show_to(
+                    implementation,
+                    anyx_protocol::server::argument(&mut arguments),
+                    anyx_protocol::server::argument(&mut arguments),
+                )
+                .await,
+            ),
+            6 => anyx_protocol::server::value(<S as Server>::visits(implementation).await),
             _ => Ok::<_, <S as Server>::Error>(
                 anyx_protocol::server::built_in(schema, call)
                     .expect("the codec read a method of the schema"),
@@ -594,8 +559,8 @@ impl<T: Transport> Client<T> {
     pub async fn share_tagged(
         &self,
         id: FileId,
-        tags: Tags,
-    ) -> Result<Link, CallError<ShareTaggedError, T::Error>> {
+        tags: Vec<String>,
+    ) -> Result<FileLink, CallError<ShareTaggedError, T::Error>> {
         anyx_protocol::client::call(
             &self.transport,
             schema(),
@@ -641,14 +606,31 @@ impl<T: Transport> Client<T> {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn grant_on(
         &self,
-        level: Level,
+        level: Access,
         id: FileId,
-    ) -> Result<Level, CallError<::std::convert::Infallible, T::Error>> {
+    ) -> Result<Access, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(
             &self.transport,
             schema(),
             4,
             vec![level.into_value(), id.into_value()],
+        )
+        .await
+    }
+
+    /// `show _ to _`, returning `shown`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn show_to(
+        &self,
+        span: SpanFromTo,
+        who: Everyone,
+    ) -> Result<SpanFromTo, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(
+            &self.transport,
+            schema(),
+            5,
+            vec![span.into_value(), who.into_value()],
         )
         .await
     }
@@ -659,19 +641,19 @@ impl<T: Transport> Client<T> {
     pub async fn visits(
         &self,
     ) -> Result<Vec<Visit>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
     }
 
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
     }
 
     /// `SCHEMA FILES`, returning the files of the schema, the entry first.
     pub async fn schema_files(
         &self,
     ) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 8, vec![]).await
     }
 }
 
@@ -705,6 +687,13 @@ pub const LINKS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client:
 
 /// What a call of `grant _ on _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
 pub const GRANT_ON_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `show _ to _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const SHOW_TO_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: false,
     undone_by: None,

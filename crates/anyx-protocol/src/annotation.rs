@@ -7,14 +7,14 @@ use anyx::{NamePart, Node};
 
 use crate::grammar as ast;
 use crate::request_grammar::{self as request, Entry, Value as Syntax};
-use crate::schema::{Schema, Type, TypeKind};
+use crate::schema::{Schema, ShapePart, Type, TypeKind};
 
 /// The type `node` has of its own, read from how it is written and the
 /// schema's types, never from its methods, so adding an overload never
 /// changes how a call reads:
 ///
 /// - a number: `Integer` without a point or an exponent, else `Float`;
-/// - a string: `Text` (a `Bytes`, `Instant` or named type is annotated);
+/// - a string: `Text` (a `Bytes` or `Instant` is annotated);
 /// - `true` or `false`: `Boolean`;
 /// - whole numbers each with a unit: `Duration`;
 /// - a list: `LIST` of its items' type, when it has items and they all have
@@ -23,7 +23,8 @@ use crate::schema::{Schema, Type, TypeKind};
 /// - braces of fields: the one record of the schema, not generic, that has
 ///   each field written and is missing none it requires;
 /// - a variant: the one choice of the schema, not generic, with a variant
-///   of its shape.
+///   of its shape;
+/// - a named type's constructor, `File Id "a"`: that named type.
 ///
 /// Anything else has none: `[]`, `{}`, a value of a generic type, and a
 /// record or variant that several types fit.
@@ -89,20 +90,27 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
             if crate::time::parse_duration(&pairs).is_ok() {
                 return Some(Type::Duration);
             }
-            choice_of(schema, &duration.name.text)
+            constructed_by(schema, &duration.name.text)
         }
         Syntax::Call(call) => {
             let text = &call.name.text;
-            choice_of(schema, text)
+            constructed_by(schema, text)
         }
     }
 }
 
-fn choice_of(schema: &Schema, text: &str) -> Option<Type> {
+/// The one type, not generic, that a call of the shape `text` constructs:
+/// a choice with a variant of that shape, or a named type of that name.
+fn constructed_by(schema: &Schema, text: &str) -> Option<Type> {
     only(schema.types.iter().enumerate().filter(|(_, definition)| {
         definition.parameters.is_empty()
-            && matches!(&definition.kind, TypeKind::Choice(variants)
-                if variants.iter().any(|variant| variant.shape.text == text))
+            && match &definition.kind {
+                TypeKind::Choice(variants) => {
+                    variants.iter().any(|variant| variant.shape.text == text)
+                }
+                TypeKind::Distinct { constructor, .. } => ShapePart::text(constructor) == text,
+                TypeKind::Record(_) => false,
+            }
     }))
 }
 

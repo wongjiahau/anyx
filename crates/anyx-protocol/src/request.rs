@@ -165,7 +165,25 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
                     value,
                     &format!("a variant of `{}`", definition.shape()),
                 ),
-                TypeKind::Distinct(_) => unreachable!("underlying reads past named types"),
+                TypeKind::Distinct {
+                    constructor,
+                    underlying,
+                } => {
+                    let text = ShapePart::text(constructor);
+                    match value {
+                        Syntax::Call(call) if call.name.text == text => variant(
+                            schema,
+                            &[&crate::schema::constructor_shape(constructor, underlying)],
+                            value,
+                            "",
+                        ),
+                        _ => Err(mismatch(format!(
+                            "a `{}`, written with its name: `{}`",
+                            definition.name,
+                            text.replace('_', "…")
+                        ))),
+                    }
+                }
             }
         }
         (Type::Union(_), _) => match schema.member_written_as(expected, &written(value)) {

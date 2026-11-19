@@ -7,13 +7,13 @@
 PROTOCOL fd VERSION 1,
 
 # A depth below a search path: its entries are at depth 1.
-TYPE Depth: Integer . WHERE [0 <= _],
+TYPE ALIAS Depth: Integer . WHERE [0 <= _],
 
 # A count of bytes.
-TYPE Size: Integer . WHERE [0 <= _],
+TYPE ALIAS Size: Integer . WHERE [0 <= _],
 
 # A count of results, at least one.
-TYPE Count: Integer . WHERE [1 <= _],
+TYPE ALIAS Count: Integer . WHERE [1 <= _],
 
 # What a file is, for `only _`.
 CHOICE Kind {

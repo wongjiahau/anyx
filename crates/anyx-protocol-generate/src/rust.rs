@@ -3,7 +3,9 @@
 
 use std::fmt::Write;
 
-use anyx_protocol::schema::{Field, Method, Parameter, Schema, Shape, Shaped, Type, TypeKind};
+use anyx_protocol::schema::{
+    Field, Method, Parameter, Schema, Shape, ShapePart, Shaped, Type, TypeKind, slot_types,
+};
 
 use crate::names::{doc_comment, pascal_case, raw_string, snake_case};
 use crate::{Error, error_enum_name, method_words, rust_type_taken, type_parameter_name};
@@ -60,14 +62,17 @@ pub fn schema_files(schema: &Schema) -> String {
 
 /// Every declaration in the generated module.
 fn body(out: &mut String, schema: &Schema) {
-    for definition in schema.types.iter() {
+    for (index, definition) in schema.types.iter().enumerate() {
         let name = pascal_case(&definition.name);
         let doc = doc_comment(&definition.doc, "///");
         let generics = Generics::new(schema, &definition.parameters);
         match &definition.kind {
             TypeKind::Record(fields) => record(out, schema, &doc, &name, &generics, fields),
             TypeKind::Choice(variants) => choice(out, schema, &doc, &name, &generics, variants),
-            TypeKind::Distinct(underlying) => newtype(out, schema, &doc, &name, underlying),
+            TypeKind::Distinct {
+                constructor,
+                underlying,
+            } => newtype(out, schema, &doc, &name, index, constructor, underlying),
         }
     }
     let methods: Vec<_> = schema.methods.iter().enumerate().collect();
@@ -226,32 +231,97 @@ fn record(
     .unwrap();
 }
 
-/// A named type: a struct around the type underneath, which converts to and
-/// from it, and is written on the wire exactly like it.
-fn newtype(out: &mut String, schema: &Schema, doc: &str, name: &str, underlying: &Type) {
-    if anyx_protocol::refinement::has_refinements(schema, underlying) {
-        let index = schema
-            .types
-            .iter()
-            .position(|definition| pascal_case(&definition.name) == name)
-            .unwrap();
-        let inner = rust_type(schema, underlying);
-        write!(out, "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name}({inner});\n\n\
-            impl {name} {{\n    pub fn new(value: {inner}) -> Result<Self, String> {{\n        let wire = value.clone().into_value();\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &wire)?;\n        Ok(Self(value))\n    }}\n    pub fn get(&self) -> &{inner} {{ &self.0 }}\n    pub fn into_inner(self) -> {inner} {{ self.0 }}\n}}\n\n\
-            impl TryFrom<{inner}> for {name} {{\n    type Error = String;\n    fn try_from(value: {inner}) -> Result<Self, Self::Error> {{ Self::new(value) }}\n}}\n\n\
-            impl From<{name}> for {inner} {{\n    fn from(value: {name}) -> Self {{ value.0 }}\n}}\n\n\
-            impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{ self.0.into_value() }}\n}}\n\n\
-            impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &value).ok()?;\n        FromValue::from_value(value).map(Self)\n    }}\n}}\n\n").unwrap();
-        return;
-    }
-    let underlying = rust_type(schema, underlying);
+/// A named type: a tuple struct with a field for each slot, written as a
+/// value of its constructor's shape, `File Id "a"`. With one slot it
+/// converts to and from what that slot holds. A refined slot keeps its
+/// fields private, so a value is only made through `new`, which checks it.
+fn newtype(
+    out: &mut String,
+    schema: &Schema,
+    doc: &str,
+    name: &str,
+    index: usize,
+    constructor: &[ShapePart],
+    underlying: &Type,
+) {
+    let slots: Vec<String> = slot_types(constructor, underlying)
+        .into_iter()
+        .map(|slot| rust_type(schema, slot))
+        .collect();
+    let shape = ShapePart::text(constructor);
+    let refined = anyx_protocol::refinement::has_refinements(schema, underlying);
+    let visibility = if refined { "" } else { "pub " };
+    let fields = slots
+        .iter()
+        .map(|slot| format!("{visibility}{slot}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let declared = match slots.is_empty() {
+        true => format!("pub struct {name};"),
+        false => format!("pub struct {name}({fields});"),
+    };
+    let bound: Vec<String> = (0..slots.len())
+        .map(|slot| format!("slot_{slot}"))
+        .collect();
+    let pattern = match slots.is_empty() {
+        true => name.to_string(),
+        false => format!("{name}({})", bound.join(", ")),
+    };
+    let into = bound
+        .iter()
+        .map(|slot| format!("{slot}.into_value()"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let read = bound
+        .iter()
+        .map(|slot| format!("let {slot} = FromValue::from_value(arguments.next()?)?;"))
+        .collect::<Vec<_>>()
+        .join("\n                ");
+    let check = match refined {
+        true => format!(
+            "anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &value).ok()?;\n        "
+        ),
+        false => String::new(),
+    };
     write!(
         out,
-        "{doc}#[derive(Clone, Debug, PartialEq)]\npub struct {name}(pub {underlying});\n\n\
-         impl From<{underlying}> for {name} {{\n    fn from(value: {underlying}) -> Self {{\n        Self(value)\n    }}\n}}\n\n\
-         impl From<{name}> for {underlying} {{\n    fn from(value: {name}) -> Self {{\n        value.0\n    }}\n}}\n\n\
-         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        self.0.into_value()\n    }}\n}}\n\n\
-         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        FromValue::from_value(value).map(Self)\n    }}\n}}\n\n"
+        "{doc}#[derive(Clone, Debug, PartialEq)]\n{declared}\n\n\
+         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        let {pattern} = self;\n        Value::Variant {{ shape: {shape:?}.to_string(), arguments: vec![{into}] }}\n    }}\n}}\n\n\
+         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        {check}match value {{\n            Value::Variant {{ shape, arguments }} if shape == {shape:?} && arguments.len() == {count} => {{\n                let mut arguments = arguments.into_iter();\n                {read}\n                Some({pattern})\n            }}\n            _ => None,\n        }}\n    }}\n}}\n\n",
+        count = slots.len(),
+    )
+    .unwrap();
+    let parameters = slots
+        .iter()
+        .zip(&bound)
+        .map(|(slot, bound)| format!("{bound}: {slot}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if refined {
+        write!(
+            out,
+            "impl {name} {{\n    pub fn new({parameters}) -> Result<Self, String> {{\n        let value = {pattern};\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &value.clone().into_value())?;\n        Ok(value)\n    }}\n}}\n\n"
+        )
+        .unwrap();
+    }
+    let [inner] = slots.as_slice() else {
+        return;
+    };
+    match refined {
+        true => write!(
+            out,
+            "impl {name} {{\n    pub fn get(&self) -> &{inner} {{\n        &self.0\n    }}\n    pub fn into_inner(self) -> {inner} {{\n        self.0\n    }}\n}}\n\n\
+             impl TryFrom<{inner}> for {name} {{\n    type Error = String;\n    fn try_from(value: {inner}) -> Result<Self, Self::Error> {{\n        Self::new(value)\n    }}\n}}\n\n"
+        ),
+        false => write!(
+            out,
+            "impl From<{inner}> for {name} {{\n    fn from(value: {inner}) -> Self {{\n        Self(value)\n    }}\n}}\n\n"
+        ),
+    }
+    .unwrap();
+    write!(
+        out,
+        "impl From<{name}> for {inner} {{\n    fn from(value: {name}) -> Self {{\n        value.0\n    }}\n}}\n\n"
     )
     .unwrap();
 }
