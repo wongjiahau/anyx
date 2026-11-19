@@ -79,7 +79,7 @@ the account, such as by sending or sharing it.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 - A generic RECORD or CHOICE has a type parameter in each slot of its
-  name, which its fields or variants use as a type: `CHOICE (item: Type) ?`.
+  name, which its fields or variants use as a type: `CHOICE (Item: TYPE) ?`.
   A use puts a type in each slot, in parentheses, `(Text) ?`, and its value
   is written with those types in place of the parameters.
 - In a slot, a value written as words goes in parentheses so that it doesn't
@@ -105,10 +105,10 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 # `true` or `false`.
 CHOICE Boolean { false, true },
 
-# A nullable item: `null`, or `value (item)` containing a value.
-CHOICE (item: Type) ? {
+# A nullable item: `null`, or `value (item: Item)` containing a value.
+CHOICE (Item: TYPE) ? {
     null,
-    value (item),
+    value (item: Item),
 },
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,

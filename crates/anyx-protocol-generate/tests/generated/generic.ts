@@ -55,7 +55,7 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item)` containing a value. */
+/** A nullable item: `null`, or `value (item: Item)` containing a value. */
 export type Nullable<Item> =
   | { kind: "null" }
   | { kind: "value"; item: Item };
@@ -516,16 +516,16 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:["item"],kind:'record', fields:[{wire:"items _", form:"shape", name:"items", type:{k:'list', item:{k:'parameter', name:"item"}}, slots:[{k:'list', item:{k:'parameter', name:"item"}}]},{wire:"next _", form:"shape", name:"next", type:{k:'named', index:9, args:[{k:'text'}]}, slots:[{k:'named', index:9, args:[{k:'text'}]}], defaultValue:()=>{kind:"null"}},{wire:"total _", form:"shape", name:"total", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>0n}]},
-{parameters:["value","problem"],kind:'choice', variants:[{text:"done _", kind:"done", params:[{name:"value", type:{k:'parameter', name:"value"}, annotation:"value"}]},{text:"failed _", kind:"failed", params:[{name:"problem", type:{k:'parameter', name:"problem"}, annotation:"problem"}]}]},
-{parameters:["item"],kind:'record', fields:[{wire:"item _", form:"shape", name:"item", type:{k:'parameter', name:"item"}, slots:[{k:'parameter', name:"item"}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]}]},
-{parameters:["item"],kind:'record', fields:[{wire:"value _", form:"shape", name:"value", type:{k:'parameter', name:"item"}, slots:[{k:'parameter', name:"item"}]},{wire:"children _", form:"shape", name:"children", type:{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"item"}]}}, slots:[{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"item"}]}}]}]},
-{parameters:["key","value"],kind:'record', fields:[{wire:"keys _", form:"shape", name:"keys", type:{k:'list', item:{k:'parameter', name:"key"}}, slots:[{k:'list', item:{k:'parameter', name:"key"}}]},{wire:"values _", form:"shape", name:"values", type:{k:'list', item:{k:'parameter', name:"value"}}, slots:[{k:'list', item:{k:'parameter', name:"value"}}]}]},
+const definitions: Definition[] = [{parameters:["Item"],kind:'record', fields:[{wire:"items _", form:"shape", name:"items", type:{k:'list', item:{k:'parameter', name:"Item"}}, slots:[{k:'list', item:{k:'parameter', name:"Item"}}]},{wire:"next _", form:"shape", name:"next", type:{k:'named', index:9, args:[{k:'text'}]}, slots:[{k:'named', index:9, args:[{k:'text'}]}], defaultValue:()=>{kind:"null"}},{wire:"total _", form:"shape", name:"total", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>0n}]},
+{parameters:["Value","Problem"],kind:'choice', variants:[{text:"done _", kind:"done", params:[{name:"value", type:{k:'parameter', name:"Value"}, annotation:"Value"}]},{text:"failed _", kind:"failed", params:[{name:"problem", type:{k:'parameter', name:"Problem"}, annotation:"Problem"}]}]},
+{parameters:["Item"],kind:'record', fields:[{wire:"item _", form:"shape", name:"item", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]}]},
+{parameters:["Item"],kind:'record', fields:[{wire:"value _", form:"shape", name:"value", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]},{wire:"children _", form:"shape", name:"children", type:{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"Item"}]}}, slots:[{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"Item"}]}}]}]},
+{parameters:["Key","Value"],kind:'record', fields:[{wire:"keys _", form:"shape", name:"keys", type:{k:'list', item:{k:'parameter', name:"Key"}}, slots:[{k:'list', item:{k:'parameter', name:"Key"}}]},{wire:"values _", form:"shape", name:"values", type:{k:'list', item:{k:'parameter', name:"Value"}}, slots:[{k:'list', item:{k:'parameter', name:"Value"}}]}]},
 {parameters:[],kind:'record', fields:[{wire:"amount _", form:"shape", name:"amount", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]}]},
 {parameters:[],kind:'choice', variants:[{text:"insufficient funds", kind:"insufficientFunds", params:[]},{text:"card expired", kind:"cardExpired", params:[]}]},
 {parameters:[],kind:'distinct', type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
+{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _", kind:"pay", params:[{name:"amount", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}, errors:[]},
 ["pay all _"]:{shape:{text:"pay all _", kind:"payAll", params:[{name:"amounts", type:{k:'list', item:{k:'integer'}}, annotation:"LIST Integer"}]}, returns:{k:'named', index:0, args:[{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}]}, errors:[]},

@@ -251,7 +251,7 @@ fn nested_diagnostics_point_to_the_original_document() {
 fn generic_records_and_defaults_can_contain_computed_fields() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("generic", Identity(Schema::parse(
-        "PROTOCOL generic VERSION 1, RECORD Box of (item: Type) { value: item, count (Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text))"
+        "PROTOCOL generic VERSION 1, RECORD Box of (Item: TYPE) { value: Item, count (Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text))"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("generic / identity ({ value: (example / text) } AS: Box of (Text))")

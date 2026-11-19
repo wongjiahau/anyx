@@ -60,6 +60,26 @@ struct Listed {
     span: Span,
 }
 
+/// A `TYPE ALIAS`: a name for a type, which each use stands for.
+struct Alias<'a> {
+    declared: Declared,
+    /// Its type parameters, in the order of their slots.
+    parameters: Vec<ast::Spanned<String>>,
+    /// The type it stands for, as written: `None` when it is missing,
+    /// which is reported where it is declared.
+    written: Option<&'a ast::Type>,
+    resolved: Resolved,
+}
+
+/// How far an alias's type has been read.
+enum Resolved {
+    No,
+    /// Being read, so a use of the alias now leads back to it.
+    Reading,
+    /// Read, or `None` when it leads back to the alias.
+    Yes(Option<Type>),
+}
+
 /// A type reference read as its plain shape.
 struct Path {
     name: String,
@@ -126,6 +146,73 @@ fn named_type_name(body: &ast::NamedTypeBody) -> &ast::Spanned<String> {
     }
 }
 
+/// A `TYPE ALIAS`'s name read as a shape: `TYPE ALIAS (Item: TYPE) Pair:
+/// LIST Item` is the shape `_ Pair` with the parameter `Item`, standing for
+/// `LIST Item`.
+struct AliasShape<'b> {
+    /// The shape without the last slot, the type's: `_ Pair`, spanned from
+    /// its first word to its last.
+    name: ast::Spanned<String>,
+    /// Its words alone: `Pair`.
+    words: ast::Spanned<String>,
+    parameters: Vec<&'b ast::TypeParameter>,
+    /// The type it stands for, when it fills the last slot.
+    r#type: Option<&'b ast::Type>,
+    /// Types in any other slot, which only a type parameter may fill.
+    misplaced: Vec<Span>,
+}
+
+/// An alias's shape with its parameters in their slots: `(Item) Pair`.
+fn alias_shown(alias: &Alias) -> String {
+    let mut parameters = alias.parameters.iter();
+    alias
+        .declared
+        .name
+        .split(' ')
+        .map(|word| match word {
+            "_" => format!(
+                "({})",
+                parameters
+                    .next()
+                    .map_or("_", |parameter| parameter.value.as_str())
+            ),
+            word => word.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn alias_shape(body: &ast::AliasBody) -> AliasShape<'_> {
+    let mut parts: Vec<&ast::AliasPart> = body.arguments.iter().collect();
+    let mut name_parts = body.name.parts.clone();
+    let r#type = match (parts.last(), name_parts.last()) {
+        (Some(ast::AliasPart::Type(r#type)), Some(NamePart::Slot)) => {
+            parts.pop();
+            name_parts.pop();
+            Some(r#type)
+        }
+        _ => None,
+    };
+    let mut parameters = Vec::new();
+    let mut misplaced = Vec::new();
+    for part in parts {
+        match part {
+            ast::AliasPart::Type(r#type) => misplaced.push(r#type.span()),
+            ast::AliasPart::TypeParameter(parameter) => parameters.push(parameter),
+        }
+    }
+    AliasShape {
+        name: ast::Spanned {
+            value: crate::schema::ShapePart::text(&crate::schema::ShapePart::of(&name_parts)),
+            span: body.name.span,
+        },
+        words: spanned_words(&body.name),
+        parameters,
+        r#type,
+        misplaced,
+    }
+}
+
 /// A slot of a `RECORD`'s or `CHOICE`'s name, as written: the braces of its
 /// fields or variants, or a type parameter.
 enum Part<'b, T> {
@@ -133,7 +220,7 @@ enum Part<'b, T> {
     Parameter(&'b ast::TypeParameter),
 }
 
-/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (item: Type)
+/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (Item: TYPE)
 /// { … }` is the shape `page of _` with the parameter `item`, and its fields.
 struct TypeShape<'b, T> {
     /// The shape without the slot of the braces, `page of _`, spanned from
@@ -263,6 +350,7 @@ pub(crate) struct Checker<'a> {
     /// which its fields and variants may use as types.
     parameters: Vec<String>,
     groups: Vec<Group<'a>>,
+    aliases: Vec<Alias<'a>>,
     /// Each error, in the order of the schema's errors.
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
@@ -308,6 +396,7 @@ impl<'a> Checker<'a> {
                 ast::Definition::Record(d) => Some(record(d).body.name.value),
                 ast::Definition::Choice(d) => Some(choice(d).body.name.value),
                 ast::Definition::NamedType(d) => Some(named_type_name(&d.body).value.clone()),
+                ast::Definition::TypeAlias(d) => Some(alias_shape(&d.body).name.value),
                 _ => None,
             })
             .collect();
@@ -345,6 +434,7 @@ impl<'a> Checker<'a> {
                         self.declare_type(name, found.public);
                         self.declare_type_parameters(&[]);
                     }
+                    ast::Definition::TypeAlias(found) => self.declare_alias(found),
                     ast::Definition::Errors(found) => {
                         let found = errors(found);
                         self.check_intrinsic(found.intrinsic);
@@ -418,12 +508,18 @@ impl<'a> Checker<'a> {
                             kind: TypeKind::Distinct(underlying),
                         });
                     }
-                    ast::Definition::Errors(_)
+                    ast::Definition::TypeAlias(_)
+                    | ast::Definition::Errors(_)
                     | ast::Definition::Method(_)
                     | ast::Definition::Function(_)
                     | ast::Definition::Import(_) => {}
                 }
             }
+        }
+        for index in 0..self.aliases.len() {
+            // Reports mistakes in an alias once, used or not.
+            self.alias_type(index);
+            self.check_alias_parameters_used(index);
         }
         for index in 0..self.groups.len() {
             let declared = &self.groups[index].declared;
@@ -765,7 +861,7 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (item: Type)`"
+                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (Item: TYPE)`"
                 ),
             );
         } else {
@@ -779,7 +875,7 @@ impl<'a> Checker<'a> {
         if shape.body.is_none() && shape.misplaced.is_empty() {
             let declared: Vec<String> = parameters
                 .iter()
-                .map(|parameter| format!("{parameter}: Type"))
+                .map(|parameter| format!("{parameter}: TYPE"))
                 .collect();
             self.error(
                 shape.name.span,
@@ -794,7 +890,7 @@ impl<'a> Checker<'a> {
             self.error(
                 *span,
                 format!(
-                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(item: Type)` in the name's other slots"
+                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(Item: TYPE)` in the name's other slots"
                 ),
             );
         }
@@ -832,7 +928,7 @@ impl<'a> Checker<'a> {
     }
 
     /// The type at `index` with its parameters in its slots, as a message
-    /// shows it: `page of (item)`.
+    /// shows it: `page of (Item)`.
     fn type_shown(&self, index: usize) -> String {
         fill_slots(&self.types[index].name, &self.parameter_names(index))
     }
@@ -840,9 +936,18 @@ impl<'a> Checker<'a> {
     /// Declares the type parameters in the slots of the type just declared,
     /// each a name once.
     fn declare_type_parameters(&mut self, written: &[&ast::TypeParameter]) {
+        let names = self.type_parameter_names(written);
+        self.type_parameters.push(names);
+    }
+
+    /// The names of type parameters, each in Title Case and once.
+    fn type_parameter_names(
+        &mut self,
+        written: &[&ast::TypeParameter],
+    ) -> Vec<ast::Spanned<String>> {
         let mut names: Vec<ast::Spanned<String>> = Vec::new();
         for parameter in written {
-            self.check_words(&parameter.name, "a type parameter");
+            self.check_type_parameter_words(&parameter.name);
             if names
                 .iter()
                 .any(|known| known.value == parameter.name.value)
@@ -858,7 +963,188 @@ impl<'a> Checker<'a> {
             }
             names.push(parameter.name.clone());
         }
-        self.type_parameters.push(names);
+        names
+    }
+
+    /// A type parameter stands for a type, so its name is Title Case, as a
+    /// type's is: `Item`, `Sort Key`.
+    fn check_type_parameter_words(&mut self, name: &ast::Spanned<String>) {
+        let fits = name.value.split(' ').all(|word| {
+            word.starts_with(|c: char| c.is_ascii_uppercase())
+                && word
+                    .bytes()
+                    .skip(1)
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        });
+        if !fits {
+            self.error(
+                name.span,
+                format!(
+                    "found `{}` as the name of a type parameter; expected words in Title Case, such as `Item`, since a type parameter stands for a type; rename it",
+                    name.value
+                ),
+            );
+        }
+    }
+
+    /// Declares a `TYPE ALIAS` by its shape, after checking that the type
+    /// it stands for fills the last slot and type parameters the others.
+    fn declare_alias(&mut self, alias: &'a ast::TypeAlias) {
+        let shape = alias_shape(&alias.body);
+        if shape.words.value.is_empty() {
+            self.error(
+                shape.name.span,
+                "found a `TYPE ALIAS` whose name has no words; expected at least one word to name it, as in `TYPE ALIAS Paths: LIST Text`",
+            );
+        } else {
+            let slots = !shape.parameters.is_empty() || !shape.misplaced.is_empty();
+            self.check_type_words(&shape.words, slots);
+        }
+        if shape.r#type.is_none() {
+            self.error(
+                alias.body.span,
+                format!(
+                    "found the `TYPE ALIAS` `{}` without the type it stands for; expected it last, after a colon, as in `TYPE ALIAS {}: LIST Text`",
+                    shape.name.value, shape.name.value
+                ),
+            );
+        }
+        for span in &shape.misplaced {
+            self.error(
+                *span,
+                "found a type in the name of a `TYPE ALIAS`, before its end; expected only type parameters such as `(Item: TYPE)` there, and the type it stands for last",
+            );
+        }
+        if self.file != self.prelude_file
+            && (crate::prelude::find(&shape.name.value).is_some()
+                || self.prelude_names.contains(&shape.name.value))
+        {
+            self.error(
+                shape.name.span,
+                format!(
+                    "found a type named `{}`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it",
+                    shape.name.value
+                ),
+            );
+        }
+        let user_shadow = self.file == self.prelude_file
+            && self.aliases.iter().any(|known| {
+                known.declared.file != self.prelude_file && known.declared.name == shape.name.value
+            });
+        if !user_shadow {
+            self.check_duplicate_name(&shape.name);
+        }
+        let declared = self.declared(&shape.name, alias.public.is_some());
+        let parameters = self.type_parameter_names(&shape.parameters);
+        self.aliases.push(Alias {
+            declared,
+            parameters,
+            written: shape.r#type,
+            resolved: Resolved::No,
+        });
+    }
+
+    /// The type the alias at `index` stands for, with its type parameters
+    /// in it, read once. `None` when it leads back to the alias, or is
+    /// missing; both are reported once.
+    fn alias_type(&mut self, index: usize) -> Option<Type> {
+        match &self.aliases[index].resolved {
+            Resolved::Yes(r#type) => return r#type.clone(),
+            Resolved::Reading => {
+                let declared = &self.aliases[index].declared;
+                let (file, span, name) = (declared.file, declared.span, declared.name.clone());
+                self.within(file, |checker| {
+                    checker.error(
+                        span,
+                        format!(
+                            "found the type alias `{name}` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or `CHOICE` that holds them through a `LIST`"
+                        ),
+                    )
+                });
+                self.aliases[index].resolved = Resolved::Yes(None);
+                return None;
+            }
+            Resolved::No => {}
+        }
+        self.aliases[index].resolved = Resolved::Reading;
+        let alias = &self.aliases[index];
+        let (file, written) = (alias.declared.file, alias.written);
+        let names: Vec<String> = alias
+            .parameters
+            .iter()
+            .map(|parameter| parameter.value.clone())
+            .collect();
+        let shadowing = alias.parameters.clone();
+        let owner = format!("the type alias `{}`", alias_shown(alias));
+        let read = self.within(file, |checker| {
+            for parameter in &shadowing {
+                checker.check_parameter_shadows(parameter, &owner);
+            }
+            let outer = std::mem::replace(&mut checker.parameters, names);
+            let read = written.map(|written| checker.r#type(written));
+            checker.parameters = outer;
+            read
+        });
+        // A use within its own type has already reported the cycle.
+        if let Resolved::Reading = self.aliases[index].resolved {
+            self.aliases[index].resolved = Resolved::Yes(read.clone());
+            return read;
+        }
+        None
+    }
+
+    /// Reports each type parameter of the alias at `index` that the type
+    /// it stands for doesn't use.
+    fn check_alias_parameters_used(&mut self, index: usize) {
+        let Resolved::Yes(Some(r#type)) = &self.aliases[index].resolved else {
+            return;
+        };
+        let used: Vec<String> = r#type
+            .parameters()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let alias = &self.aliases[index];
+        let (file, shown) = (alias.declared.file, alias_shown(alias));
+        let unused: Vec<ast::Spanned<String>> = alias
+            .parameters
+            .iter()
+            .filter(|parameter| !used.contains(&parameter.value))
+            .cloned()
+            .collect();
+        self.within(file, |checker| {
+            for parameter in unused {
+                checker.error(
+                    parameter.span,
+                    format!(
+                        "found the type parameter `{parameter}` of the type alias `{shown}`, which the type it stands for doesn't use; expected each parameter in that type, such as `LIST {parameter}`; use it or remove it",
+                        parameter = parameter.value,
+                    ),
+                );
+            }
+        });
+    }
+
+    /// Reports a type parameter with the name of a type visible here, since
+    /// its name would then mean either.
+    fn check_parameter_shadows(&mut self, parameter: &ast::Spanned<String>, owner: &str) {
+        let shadowed: Vec<String> = self
+            .types
+            .iter()
+            .chain(self.aliases.iter().map(|alias| &alias.declared))
+            .filter(|known| known.name == parameter.value && self.accessible(known))
+            .map(|known| format!("`{}`", known.name))
+            .collect();
+        if !shadowed.is_empty() {
+            self.error(
+                parameter.span,
+                format!(
+                    "found the type parameter `{name}` of {owner}, which has the name of the type {}; expected a name that no type visible here has, since `{name}` there would then mean either; rename the parameter",
+                    shadowed.join(", "),
+                    name = parameter.value,
+                ),
+            );
+        }
     }
 
     fn parameter_names(&self, index: usize) -> Vec<String> {
@@ -1053,6 +1339,7 @@ impl<'a> Checker<'a> {
             .types
             .iter()
             .chain(self.groups.iter().map(|group| &group.declared))
+            .chain(self.aliases.iter().map(|alias| &alias.declared))
             .find(|known| known.name == name.value)
         {
             self.error(name.span, format!("duplicate declaration `{}` in `{}` and `{}`; every type and error group must have a unique name in the protocol", name.value, self.paths[known.file], self.paths[self.file]));
@@ -1115,7 +1402,13 @@ impl<'a> Checker<'a> {
                 in_scope(&self.types[*index]) && words(&self.types[*index].name) == wanted
             })
             .collect();
-        if !same_words.is_empty() {
+        let aliases_with_words: Vec<String> = self
+            .aliases
+            .iter()
+            .filter(|alias| in_scope(&alias.declared) && words(&alias.declared.name) == wanted)
+            .map(|alias| format!("`{}`", alias_shown(alias)))
+            .collect();
+        if !same_words.is_empty() || !aliases_with_words.is_empty() {
             let count = match arguments {
                 0 => "no type in a slot".to_string(),
                 1 => "a type in 1 slot".to_string(),
@@ -1125,7 +1418,12 @@ impl<'a> Checker<'a> {
                 span,
                 format!(
                     "found `{written}`, with {count}, but {scope} has no type of that shape; the types with its words are {}; expected one of them, with a type in parentheses in each slot it has",
-                    shown(self, &same_words)
+                    [shown(self, &same_words)]
+                        .into_iter()
+                        .filter(|shown| !shown.is_empty())
+                        .chain(aliases_with_words)
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             );
             return None;
@@ -1152,7 +1450,7 @@ impl<'a> Checker<'a> {
         };
         let similar = similar + &parameter;
         let message = format!(
-            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE` or `TYPE` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
+            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
             built_in = crate::prelude::intrinsics()
                 .iter()
                 .map(|intrinsic| format!("`{}`", intrinsic.name))
@@ -1463,13 +1761,6 @@ impl<'a> Checker<'a> {
                     ),
                 ),
                 ast::VariantSlot::Parameter(parameter) => parameters.push(parameter.clone()),
-                ast::VariantSlot::Unnamed { name, .. } => {
-                    let reference = ast::Reference {
-                        name: ast::CallName { text: name.value.clone(), parts: name.value.split(' ').map(|text| NamePart::Word { text: text.into(), span: name.span }).collect(), span: name.span },
-                        arguments: Vec::new(), span: name.span,
-                    };
-                    parameters.push(ast::Parameter { name: name.clone(), r#type: ast::Type::Named(reference), span: name.span });
-                }
             }
         }
         let mut name = variant.name.clone();
@@ -1833,6 +2124,25 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|argument| self.r#type(argument))
             .collect();
+        if let Some(alias) = self
+            .aliases
+            .iter()
+            .position(|alias| alias.declared.name == path.name)
+        {
+            let known = &self.aliases[alias].declared;
+            if !self.accessible(known) {
+                let (name, file, public) = (known.name.clone(), known.file, known.public);
+                self.unavailable(reference.span, &name, file, public);
+            }
+            let parameters: Vec<String> = self.aliases[alias]
+                .parameters
+                .iter()
+                .map(|parameter| parameter.value.clone())
+                .collect();
+            return self.alias_type(alias).map_or(Type::Text, |r#type| {
+                r#type.substitute(&parameters, &arguments)
+            });
+        }
         let Some(index) = self.resolve_type(reference.span, &path, arguments.len()) else {
             return Type::Text;
         };
@@ -2001,9 +2311,9 @@ impl<'a> Checker<'a> {
     }
 
     /// A generic type that uses itself, directly or through other generic
-    /// types, must pass its own parameters as they are: `nest of (item)`
-    /// within `nest of (item: Type)`. With other arguments, such as
-    /// `nest of (LIST: item)`, each use would need another, without end.
+    /// types, must pass its own parameters as they are: `nest of (Item)`
+    /// within `nest of (Item: TYPE)`. With other arguments, such as
+    /// `nest of (LIST: Item)`, each use would need another, without end.
     fn check_generic_recursion(&mut self, schema: &Schema) {
         /// The generic types `type` uses, anywhere in it, with their
         /// arguments.

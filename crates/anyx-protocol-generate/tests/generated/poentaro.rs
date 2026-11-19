@@ -244,7 +244,7 @@ impl FromValue for Boolean {
     }
 }
 
-/// A nullable item: `null`, or `value (item)` containing a value.
+/// A nullable item: `null`, or `value (item: Item)` containing a value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Nullable<Item> {
     Null,

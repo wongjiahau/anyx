@@ -29,13 +29,13 @@ fn prelude_choices_are_checked_schema_definitions() {
             .collect::<Vec<_>>(),
         ["false", "true"]
     );
-    assert_eq!(schema.types[nullable].parameters, ["item"]);
+    assert_eq!(schema.types[nullable].parameters, ["Item"]);
     let TypeKind::Choice(variants) = &schema.types[nullable].kind else {
         panic!("? is a choice")
     };
     assert_eq!(
         variants[1].shape.parameters[0].r#type,
-        Type::Parameter("item".into())
+        Type::Parameter("Item".into())
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
         panic!()
@@ -80,7 +80,7 @@ fn nullable_and_omittable_are_independent() {
 #[test]
 fn ordinary_prelude_names_cannot_be_redeclared() {
     assert!(Schema::parse("CHOICE Boolean { maybe }").is_err());
-    assert!(Schema::parse("CHOICE (item: Type) ? { empty, full (item) }").is_err());
+    assert!(Schema::parse("CHOICE (Item: TYPE) ? { empty, full (Item) }").is_err());
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn boolean_inference_uses_ordinary_choice_ambiguity() {
 #[test]
 fn generic_fields_may_default_to_a_parameter_independent_variant() {
     let schema =
-        Schema::parse("RECORD Box of (item: Type) { content (item?) DEFAULT content (null) }")
+        Schema::parse("RECORD Box of (Item: TYPE) { content (Item?) DEFAULT content (null) }")
             .unwrap();
     let ty = Type::Generic(0, vec![Type::Text]);
     let value = anyx_protocol::codec::decode_value(&schema, &ty, "{}").unwrap();
@@ -116,7 +116,7 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
         )
     );
     assert!(
-        Schema::parse("RECORD Box of (item: Type) { content (item) DEFAULT content 3 }").is_err()
+        Schema::parse("RECORD Box of (Item: TYPE) { content (Item) DEFAULT content 3 }").is_err()
     );
 }
 
