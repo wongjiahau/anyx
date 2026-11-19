@@ -54,7 +54,21 @@ The protocol's type system:
   refinements by base and identical predicate, records and choices by
   structure, no intersections or inference.
 
-Ruled out: `A | B | C` for unions, since three members make the flat call
+- A union member must be a named type, an intrinsic, or a refinement of
+  one (written as its base). Records, lists, maps, choices and unions must
+  be named first. So only intrinsics can clash (Integer/Float, Text/Instant,
+  two refinements of one base), and `Depth??` is rejected where declared.
+  A type parameter in a union is checked where it is filled.
+- Refinements are anonymous: `TYPE ALIAS Depth: Integer WHERE [0 <= _]`;
+  `Depth` and `Size` with the same predicate are one type.
+- JSON always tags a named type's value; `Null` is plain `null`.
+- A record with fewer fields fits where more are expected if each missing
+  one has a `DEFAULT`; extra fields never fit.
+- One generated enum per `CHOICE`, even for identical ones.
+- Renaming a named type breaks the wire; accepted while unstable.
+
+Ruled out: flattening nested unions so `Depth??` is `Depth?` (a smart
+coercion; the user declined). `A | B | C` for unions, since three members make the flat call
 `_ | _ | _`; a list keeps one call for any count. Lowercase type parameters.
 
 Tracked in https://github.com/wongjiahau/anyx/issues/51.
