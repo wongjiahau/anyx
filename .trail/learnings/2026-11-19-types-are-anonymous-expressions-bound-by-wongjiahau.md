@@ -22,7 +22,7 @@ The protocol's type system:
   slots, so declaration and value read alike:
   `NAMED TYPE (CHOICE { red, blue }) Color` is written `red . Color`;
   `NAMED TYPE Info (Integer WHERE [_ > 10])` is written `Info 15`.
-- `CHOICE X { ... }` and `RECORD X { ... }` stay, as shorthand for
+- (Superseded for `CHOICE`, below.) `CHOICE X { ... }` and `RECORD X { ... }` stay, as shorthand for
   `TYPE ALIAS X: CHOICE { ... }` and `TYPE ALIAS X: RECORD { ... }`, not
   for `NAMED TYPE`: their values keep no constructor (`{ hidden }`,
   `newest first`), so records and choices are structural. A `NAMED TYPE`
@@ -67,7 +67,33 @@ The protocol's type system:
 - One generated enum per `CHOICE`, even for identical ones.
 - Renaming a named type breaks the wire; accepted while unstable.
 
-Ruled out: flattening nested unions so `Depth??` is `Depth?` (a smart
+- `CHOICE` goes. Case tells what a word is: lowercase words are a variant,
+  which is a type of its own; Title Case is a type, a named type's
+  constructor or a type parameter; all caps is a keyword. A choice is
+  `UNION [smart, any, exact]`, as with OCaml's polymorphic variants but
+  marked by case, not a backtick.
+- A union member is a variant, a named type, an intrinsic or refinement,
+  or another union. `UNION []` is allowed, the identity. Forms may not
+  repeat anywhere in the nesting, in anyx or in JSON; repeats are errors,
+  never merged.
+- Unions are associative and commutative: the checker normalizes a union
+  into a flat set keyed by form, stopping at named types, intrinsics and
+  variants. Generated code keeps a named alias member nested
+  (`Option<Shade>`), flattens inline members.
+- `ERRORS [File Errors, too large]` takes a list of union members; absent
+  is `ERRORS []`. No spread marker: case tells a group from a variant. The
+  `ERRORS` declaration and `+` go.
+- `Boolean` is `TYPE ALIAS Boolean: UNION [false, true]`. `Boolean?` is
+  allowed (banning it would special-case one alias); `PROTOCOL.md` advises
+  named variants for a third state.
+- JSON tags `Duration` and `Instant` like named types:
+  `{"Duration": 3600000}`, `{"Instant": "…"}`.
+- Lists, maps, `?` and generic slots are covariant. A record with extra
+  fields never fits a smaller one.
+
+Ruled out: a spread marker (`...File Errors`) in `ERRORS`, since `.` is
+the grouping operator and case already tells a type from a variant.
+Banning `Boolean?`. Flattening nested unions so `Depth??` is `Depth?` (a smart
 coercion; the user declined). `A | B | C` for unions, since three members make the flat call
 `_ | _ | _`; a list keeps one call for any count. Lowercase type parameters.
 
