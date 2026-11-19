@@ -9,7 +9,8 @@ use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
     DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, FieldForm, Method, Parameter,
-    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written, fill_slots,
+    Schema, Shape, ShapePart, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written,
+    fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
@@ -137,15 +138,6 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Varian
     }
 }
 
-fn named_type(named: &ast::NamedType) -> Declaration<'_, &ast::NamedTypeBody> {
-    Declaration {
-        doc: &named.doc,
-        intrinsic: named.intrinsic,
-        public: named.public.is_some(),
-        body: &named.body,
-    }
-}
-
 fn errors(errors: &ast::Errors) -> Declaration<'_, &ast::ErrorList> {
     Declaration {
         doc: &errors.doc,
@@ -155,10 +147,18 @@ fn errors(errors: &ast::Errors) -> Declaration<'_, &ast::ErrorList> {
     }
 }
 
-/// The name a `TYPE` declares, with or without the type it names.
-fn named_type_name(body: &ast::NamedTypeBody) -> &ast::Spanned<String> {
-    match body {
-        ast::NamedTypeBody::Typed { name, .. } | ast::NamedTypeBody::Bare { name, .. } => name,
+/// A named type's constructor and the type it holds: `NAMED TYPE Range
+/// from (Integer) to (Integer)` is written `Range from _ to _` and holds
+/// a tuple of two `Integer`s.
+fn constructor_kind(constructor: Vec<ShapePart>, mut slots: Vec<Type>) -> TypeKind {
+    let underlying = if slots.len() == 1 {
+        slots.remove(0)
+    } else {
+        Type::Tuple(slots)
+    };
+    TypeKind::Distinct {
+        constructor,
+        underlying,
     }
 }
 
@@ -219,7 +219,7 @@ fn alias_shape(body: &ast::AliasBody) -> AliasShape<'_> {
     }
     AliasShape {
         name: ast::Spanned {
-            value: crate::schema::ShapePart::text(&crate::schema::ShapePart::of(&name_parts)),
+            value: ShapePart::text(&ShapePart::of(&name_parts)),
             span: body.name.span,
         },
         words: spanned_words(&body.name),
@@ -412,7 +412,9 @@ impl<'a> Checker<'a> {
             .filter_map(|definition| match definition {
                 ast::Definition::Record(d) => Some(record(d).body.name.value),
                 ast::Definition::Choice(d) => Some(choice(d).body.name.value),
-                ast::Definition::NamedType(d) => Some(named_type_name(&d.body).value.clone()),
+                ast::Definition::IntrinsicType(d) => Some(spanned_words(&d.name.name).value),
+                ast::Definition::NamedType(d) => Some(spanned_words(&d.body.name).value),
+                ast::Definition::UntaggedType(d) => Some(d.body.name.value.clone()),
                 ast::Definition::TypeAlias(d) => Some(alias_shape(&d.body).name.value),
                 _ => None,
             })
@@ -434,21 +436,32 @@ impl<'a> Checker<'a> {
                         self.check_intrinsic(found.intrinsic);
                         self.declare_shaped_type(&found.body, found.public, "CHOICE", "variants");
                     }
+                    ast::Definition::IntrinsicType(found) => {
+                        self.check_intrinsic(Some(found.intrinsic));
+                        let name = spanned_words(&found.name.name);
+                        self.check_type_words(&name, false);
+                        self.declare_type(&name, false);
+                        self.declare_type_parameters(&[]);
+                    }
                     ast::Definition::NamedType(found) => {
-                        let found = named_type(found);
-                        self.check_intrinsic(found.intrinsic);
-                        let name = named_type_name(found.body);
-                        if let ast::NamedTypeBody::Bare { name, span } = found.body {
-                            self.error(
-                                *span,
-                                format!(
-                                    "found `TYPE {name}` without a type; expected the type it names after a `:`, as in `TYPE {name}: Text`",
-                                    name = name.value
-                                ),
-                            );
-                        }
+                        let name = spanned_words(&found.body.name);
+                        // A slot's word may be lowercase, as `from` in
+                        // `Range from (Integer) to (Integer)`.
+                        self.check_type_words(&name, !found.body.arguments.is_empty());
+                        self.declare_type(&name, found.public.is_some());
+                        self.declare_type_parameters(&[]);
+                    }
+                    ast::Definition::UntaggedType(found) => {
+                        let name = &found.body.name;
+                        self.error(
+                            name.span,
+                            format!(
+                                "found `TYPE {name}: …`; expected `TYPE ALIAS {name}: …`, the same type under another name, or `NAMED TYPE {name} (…)`, a type of its own whose values are written `{name} …`",
+                                name = name.value
+                            ),
+                        );
                         self.check_type_words(name, false);
-                        self.declare_type(name, found.public);
+                        self.declare_type(name, found.public.is_some());
                         self.declare_type_parameters(&[]);
                     }
                     ast::Definition::TypeAlias(found) => self.declare_alias(found),
@@ -510,19 +523,46 @@ impl<'a> Checker<'a> {
                             kind,
                         });
                     }
+                    // Reported when it was declared, and read as a named type
+                    // so that its uses aren't reported too.
+                    ast::Definition::IntrinsicType(found) => types.push(TypeDefinition {
+                        public: false,
+                        doc: doc(&found.doc),
+                        name: spanned_words(&found.name.name).value,
+                        parameters: Vec::new(),
+                        kind: constructor_kind(ShapePart::of(&found.name.name.parts), Vec::new()),
+                    }),
                     ast::Definition::NamedType(found) => {
-                        let found = named_type(found);
-                        let underlying = match found.body {
-                            ast::NamedTypeBody::Typed { r#type, .. } => self.r#type(r#type),
-                            // Reported when it was declared.
-                            ast::NamedTypeBody::Bare { .. } => Type::Text,
-                        };
+                        let slots = found
+                            .body
+                            .arguments
+                            .iter()
+                            .map(|r#type| self.r#type(r#type))
+                            .collect();
                         types.push(TypeDefinition {
-                            public: found.public || self.file == self.prelude_file,
-                            doc: doc(found.doc),
-                            name: named_type_name(found.body).value.clone(),
+                            public: found.public.is_some() || self.file == self.prelude_file,
+                            doc: doc(&found.doc),
+                            name: spanned_words(&found.body.name).value,
                             parameters: Vec::new(),
-                            kind: TypeKind::Distinct(underlying),
+                            kind: constructor_kind(ShapePart::of(&found.body.name.parts), slots),
+                        });
+                    }
+                    ast::Definition::UntaggedType(found) => {
+                        let mut constructor: Vec<ShapePart> = found
+                            .body
+                            .name
+                            .value
+                            .split(' ')
+                            .map(|word| ShapePart::Word(word.to_string()))
+                            .collect();
+                        constructor.push(ShapePart::Slot);
+                        let slots = vec![self.r#type(&found.body.r#type)];
+                        types.push(TypeDefinition {
+                            public: found.public.is_some(),
+                            doc: doc(&found.doc),
+                            name: found.body.name.value.clone(),
+                            parameters: Vec::new(),
+                            kind: constructor_kind(constructor, slots),
                         });
                     }
                     ast::Definition::TypeAlias(_)
@@ -632,8 +672,18 @@ impl<'a> Checker<'a> {
         self.check_forms(&schema);
         self.check_unions(&schema);
         if self.diagnostics.is_empty() {
+            // An alias makes no type in the schema, so its type is checked
+            // here, used or not.
+            let aliases: Vec<&Type> = self
+                .aliases
+                .iter()
+                .filter_map(|alias| match &alias.resolved {
+                    Resolved::Yes(Some(read)) => Some(read),
+                    _ => None,
+                })
+                .collect();
             self.diagnostics
-                .extend(crate::refinement::check_schema(&schema));
+                .extend(crate::refinement::check_schema(&schema, &aliases));
             self.diagnostics
                 .extend(crate::refinement::check_methods(&schema));
         }
@@ -788,7 +838,10 @@ impl<'a> Checker<'a> {
                         .flat_map(|variant| &variant.shape.parameters)
                         .map(|parameter| &parameter.r#type)
                         .collect(),
-                    TypeKind::Distinct(underneath) => vec![underneath],
+                    TypeKind::Distinct {
+                        underlying: underneath,
+                        ..
+                    } => vec![underneath],
                 };
                 for held in held {
                     self.check_instance(schema, held, &definition.parameters, &inner, span, seen);
@@ -1353,7 +1406,7 @@ impl<'a> Checker<'a> {
                 .flat_map(|variant| &variant.shape.parameters)
                 .map(|parameter| &parameter.r#type)
                 .collect(),
-            TypeKind::Distinct(underlying) => vec![underlying],
+            TypeKind::Distinct { underlying, .. } => vec![underlying],
         };
         let used: Vec<&str> = types
             .iter()
@@ -1609,7 +1662,7 @@ impl<'a> Checker<'a> {
         };
         let similar = similar + &parameter;
         let message = format!(
-            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
+            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
             built_in = crate::prelude::intrinsics()
                 .iter()
                 .map(|intrinsic| format!("`{}`", intrinsic.name))
@@ -2367,63 +2420,8 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A named type that leads back to itself, as in `TYPE a: LIST: a` or
-    /// `TYPE a: b, TYPE b: a`, names no type at all. Returns the types it
-    /// reported.
-    fn check_named_cycles(&mut self, schema: &Schema) -> Vec<usize> {
-        fn mentioned(r#type: &Type, found: &mut Vec<usize>) {
-            match r#type {
-                Type::Named(index) => found.push(*index),
-                Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
-                    mentioned(item, found)
-                }
-                Type::Tuple(slots) | Type::Union(slots) => {
-                    slots.iter().for_each(|slot| mentioned(slot, found))
-                }
-                Type::Variant(shape) => shape
-                    .parameters
-                    .iter()
-                    .for_each(|parameter| mentioned(&parameter.r#type, found)),
-                Type::Generic(index, arguments) => {
-                    found.push(*index);
-                    arguments
-                        .iter()
-                        .for_each(|argument| mentioned(argument, found));
-                }
-                _ => {}
-            }
-        }
-        let edges: Vec<Vec<usize>> = schema
-            .types
-            .iter()
-            .map(|definition| {
-                let mut found = Vec::new();
-                if let TypeKind::Distinct(underlying) = &definition.kind {
-                    mentioned(underlying, &mut found);
-                }
-                found
-                    .into_iter()
-                    .filter(|index| matches!(schema.types[*index].kind, TypeKind::Distinct(_)))
-                    .collect()
-            })
-            .collect();
-        let cycles = cycles(&edges);
-        for start in &cycles {
-            let declared = &self.types[*start];
-            let (file, span, name) = (declared.file, declared.span, declared.name.clone());
-            self.file = file;
-            self.error(
-                span,
-                format!(
-                    "found the named type `{name}` referring to itself; expected a `TYPE` over a type that doesn't lead back to it, such as `TYPE {name}: Text`; to hold values of its own kind, name a `RECORD` or `CHOICE` that holds them through a `LIST`"
-                ),
-            );
-        }
-        cycles
-    }
-
     /// A type that holds itself, other than through a `LIST` or a `MAP`, has
-    /// no finite value. A named type holds the type underneath it, and a
+    /// no finite value. A named type holds the types in its slots, and a
     /// use of a generic type holds the arguments of the parameters that the
     /// generic type holds, so the rule holds for every use.
     fn check_recursion(&mut self, schema: &Schema) {
@@ -2477,10 +2475,9 @@ impl<'a> Checker<'a> {
                     .flat_map(|variant| &variant.shape.parameters)
                     .map(|parameter| &parameter.r#type)
                     .collect(),
-                TypeKind::Distinct(underlying) => vec![underlying],
+                TypeKind::Distinct { underlying, .. } => vec![underlying],
             }
         }
-        let reported = self.check_named_cycles(schema);
         // Which of its parameters each generic type holds, found by
         // repeating until nothing changes, since generic types hold each
         // other.
@@ -2530,9 +2527,6 @@ impl<'a> Checker<'a> {
             })
             .collect();
         for start in cycles(&edges) {
-            if reported.contains(&start) {
-                continue;
-            }
             let name = self.type_shown(start);
             let declared = &self.types[start];
             let (file, span) = (declared.file, declared.span);
@@ -2597,7 +2591,7 @@ impl<'a> Checker<'a> {
                     .iter()
                     .flat_map(|variant| &variant.shape.parameters)
                     .for_each(|parameter| uses(&parameter.r#type, &mut found)),
-                TypeKind::Distinct(underlying) => uses(underlying, &mut found),
+                TypeKind::Distinct { underlying, .. } => uses(underlying, &mut found),
             }
             for (index, used) in found {
                 let own: Vec<Type> = schema.types[index]

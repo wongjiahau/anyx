@@ -3,68 +3,47 @@
 /** Which file, among every account's. */
 export type FileId = string & { readonly __brand: "File Id" };
 
-/** Makes a `FileId` of a value, which the schema writes as its own. */
+/** Makes a `FileId`, which the schema writes as `File Id …`. */
 export function FileId(value: string): FileId {
-  return value as FileId;
+  return value as unknown as FileId;
 }
 
 export type ShareId = string & { readonly __brand: "Share Id" };
 
-/** Makes a `ShareId` of a value, which the schema writes as its own. */
+/** Makes a `ShareId`, which the schema writes as `Share Id …`. */
 export function ShareId(value: string): ShareId {
-  return value as ShareId;
-}
-
-export type Tags = string[] & { readonly __brand: "Tags" };
-
-/** Makes a `Tags` of a value, which the schema writes as its own. */
-export function Tags(value: string[]): Tags {
-  return value as Tags;
+  return value as unknown as ShareId;
 }
 
 export interface FileLink {
   shareId: ShareId;
   fileId: FileId;
-  tags: Tags;
-}
-
-/** A link someone may open. */
-export type Link = FileLink & { readonly __brand: "Link" };
-
-/** Makes a `Link` of a value, which the schema writes as its own. */
-export function Link(value: FileLink): Link {
-  return value as Link;
+  tags: string[];
 }
 
 export type Access =
   | { kind: "read" }
   | { kind: "write" };
 
-export type Level = Access & { readonly __brand: "Level" };
+/** Lines of a file, counted from 1. */
+export type SpanFromTo = readonly [bigint, bigint] & { readonly __brand: "Span from to" };
 
-/** Makes a `Level` of a value, which the schema writes as its own. */
-export function Level(value: Access): Level {
-  return value as Level;
+/** Makes a `SpanFromTo`, which the schema writes as `Span from to …`. */
+export function SpanFromTo(...value: [bigint, bigint]): SpanFromTo {
+  return value as unknown as SpanFromTo;
 }
 
-/** When a link was last opened. */
-export type OpenedAt = Date & { readonly __brand: "Opened At" };
+/** Everyone with the link. */
+export type Everyone = readonly [] & { readonly __brand: "Everyone" };
 
-/** Makes a `OpenedAt` of a value, which the schema writes as its own. */
-export function OpenedAt(value: Date): OpenedAt {
-  return value as OpenedAt;
-}
-
-export type Openings = Record<string, OpenedAt> & { readonly __brand: "Openings" };
-
-/** Makes a `Openings` of a value, which the schema writes as its own. */
-export function Openings(value: Record<string, OpenedAt>): Openings {
-  return value as Openings;
+/** Makes a `Everyone`, which the schema writes as `Everyone …`. */
+export function Everyone(...value: []): Everyone {
+  return value as unknown as Everyone;
 }
 
 export interface Visit {
-  at: OpenedAt;
-  byPerson: Openings;
+  at: Date;
+  byPerson: Record<string, Date>;
   label: ShareId;
 }
 
@@ -97,7 +76,10 @@ type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor
 // value for each. An `@` field has the `forms` its values are written in,
 // which find it.
 type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
-type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+// A `distinct` definition is a named type: its constructor's `shape`, `File
+// Id _`, and each slot's type. Its value is its one slot's value, or an
+// array of its slots' values.
+type Definition = { name?: string; parameters: string[]; kind: string; shape?: string; slots?: TypeDescriptor[]; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
 
@@ -171,7 +153,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return encodeValue(def.type!, value, env); }
+        try { return encodeNamed(def, value, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
       }
       const obj = object(value);
@@ -232,6 +214,24 @@ function isDurationCall(node: Syntax): boolean {
 function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
   const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
   return f.slots.length === 1 ? values[0] : values;
+}
+// A named type's value written in its constructor's shape, `File Id "a"`.
+function encodeNamed(def: Definition, value: unknown, bindings: Bindings): string {
+  const slots = def.slots!;
+  const values = slots.length === 1 ? [value] : Array.isArray(value) && value.length === slots.length ? value : fail(`expected ${slots.length} slot values`);
+  let i = 0;
+  return def.shape!.split(" ").map(word => word === "_" ? `(${encodeValue(slots[i], values[i++], bindings)})` : word).join(" ");
+}
+const invalid = Symbol("invalid");
+// A named type's value read from its constructor's shape, or `invalid` when
+// the node is written in another shape.
+function decodeNamed(def: Definition, node: Syntax, bindings: Bindings): unknown {
+  const tokens = parts(node), words = def.shape!.split(" "), slots = def.slots!;
+  if (tokens.length !== words.length) return invalid;
+  if (words.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return invalid;
+  const values: unknown[] = [];
+  words.forEach((part, i) => { if (part === "_") values.push(decodeValue(slots[values.length], tokens[i], bindings)); });
+  return slots.length === 1 ? values[0] : values;
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -475,8 +475,12 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return decodeValue(def.type!, node, env); }
+        let value: unknown;
+        try { value = decodeNamed(def, node, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
+        if (value !== invalid) return value;
+        const name = def.shape!.split(" ").filter(part => part !== "_").join(" ");
+        return fail(`expected a \`${name}\`, written with its name: \`${def.shape!.replace(/_/g, "…")}\``);
       }
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
@@ -540,26 +544,24 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text'}},
-{parameters:[],kind:'distinct', type:{k:'text'}},
-{parameters:[],kind:'distinct', type:{k:'list', item:{k:'text'}}},
-{parameters:[],kind:'record', fields:[{wire:"share id _", form:"shape", name:"shareId", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}]},{wire:"file id _", form:"shape", name:"fileId", type:{k:'named', index:0, args:[]}, slots:[{k:'named', index:0, args:[]}]},{wire:"tags _", form:"shape", name:"tags", type:{k:'named', index:2, args:[]}, slots:[{k:'named', index:2, args:[]}]}]},
-{parameters:[],kind:'distinct', type:{k:'named', index:3, args:[]}},
+const definitions: Definition[] = [{parameters:[],kind:'distinct', shape:"File Id _", slots:[{k:'text'}]},
+{parameters:[],kind:'distinct', shape:"Share Id _", slots:[{k:'text'}]},
+{parameters:[],kind:'record', fields:[{wire:"share id _", form:"shape", name:"shareId", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}]},{wire:"file id _", form:"shape", name:"fileId", type:{k:'named', index:0, args:[]}, slots:[{k:'named', index:0, args:[]}]},{wire:"tags _", form:"shape", name:"tags", type:{k:'list', item:{k:'text'}}, slots:[{k:'list', item:{k:'text'}}]}]},
 {parameters:[],kind:'choice', variants:[{text:"read", kind:"read", params:[]},{text:"write", kind:"write", params:[]}]},
-{parameters:[],kind:'distinct', type:{k:'named', index:5, args:[]}},
-{parameters:[],kind:'distinct', type:{k:'instant'}},
-{parameters:[],kind:'distinct', type:{k:'map', item:{k:'named', index:7, args:[]}}},
-{parameters:[],kind:'record', fields:[{wire:"at _", form:"shape", name:"at", type:{k:'named', index:7, args:[]}, slots:[{k:'named', index:7, args:[]}]},{wire:"by person _", form:"shape", name:"byPerson", type:{k:'named', index:8, args:[]}, slots:[{k:'named', index:8, args:[]}]},{wire:"label _", form:"shape", name:"label", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], defaultValue:()=>("none")}]},
+{parameters:[],kind:'distinct', shape:"Span from _ to _", slots:[{k:'integer'},{k:'integer'}]},
+{parameters:[],kind:'distinct', shape:"Everyone", slots:[]},
+{parameters:[],kind:'record', fields:[{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"by person _", form:"shape", name:"byPerson", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}]},{wire:"label _", form:"shape", name:"label", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], defaultValue:()=>("none")}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
-const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{text:"share _ tagged _", kind:"shareTagged", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"},{name:"tags", type:{k:'named', index:2, args:[]}, annotation:"Tags"}]}, returns:{k:'named', index:4, args:[]}, errors:[{text:"missing _", kind:"missing", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
+const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{text:"share _ tagged _", kind:"shareTagged", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"},{name:"tags", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'named', index:2, args:[]}, errors:[{text:"missing _", kind:"missing", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["revoke _"]:{shape:{text:"revoke _", kind:"revoke", params:[{name:"id", type:{k:'named', index:1, args:[]}, annotation:"Share Id"}]}, returns:null, errors:[]},
 ["restore _"]:{shape:{text:"restore _", kind:"restore", params:[{name:"id", type:{k:'named', index:1, args:[]}, annotation:"Share Id"}]}, returns:null, errors:[]},
 ["links"]:{shape:{text:"links", kind:"links", params:[]}, returns:{k:'list', item:{k:'named', index:1, args:[]}}, errors:[]},
-["grant _ on _"]:{shape:{text:"grant _ on _", kind:"grantOn", params:[{name:"level", type:{k:'named', index:6, args:[]}, annotation:"Level"},{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:{k:'named', index:6, args:[]}, errors:[]},
-["visits"]:{shape:{text:"visits", kind:"visits", params:[]}, returns:{k:'list', item:{k:'named', index:9, args:[]}}, errors:[]},
+["grant _ on _"]:{shape:{text:"grant _ on _", kind:"grantOn", params:[{name:"level", type:{k:'named', index:3, args:[]}, annotation:"Access"},{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:{k:'named', index:3, args:[]}, errors:[]},
+["show _ to _"]:{shape:{text:"show _ to _", kind:"showTo", params:[{name:"span", type:{k:'named', index:4, args:[]}, annotation:"Span from to"},{name:"who", type:{k:'named', index:5, args:[]}, annotation:"Everyone"}]}, returns:{k:'named', index:4, args:[]}, errors:[]},
+["visits"]:{shape:{text:"visits", kind:"visits", params:[]}, returns:{k:'list', item:{k:'named', index:6, args:[]}}, errors:[]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:11, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:8, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -627,7 +629,7 @@ export class Client {
 
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  shareTagged(id: FileId, tags: Tags): Promise<Outcome<Link, ShareTaggedError>> {
+  shareTagged(id: FileId, tags: string[]): Promise<Outcome<FileLink, ShareTaggedError>> {
     return this.call("share _ tagged _", [id, tags]);
   }
 
@@ -651,8 +653,13 @@ export class Client {
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  grantOn(level: Level, id: FileId): Promise<Outcome<Level, never>> {
+  grantOn(level: Access, id: FileId): Promise<Outcome<Access, never>> {
     return this.call("grant _ on _", [level, id]);
+  }
+
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
+  showTo(span: SpanFromTo, who: Everyone): Promise<Outcome<SpanFromTo, never>> {
+    return this.call("show _ to _", [span, who]);
   }
 
   /** Read only: it changes nothing, so it is safe to call freely. */
@@ -694,6 +701,7 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "restore _": { readOnly: false, idempotent: true, undoneBy: null },
   "links": { readOnly: true, idempotent: true, undoneBy: null },
   "grant _ on _": { readOnly: false, idempotent: false, undoneBy: null },
+  "show _ to _": { readOnly: false, idempotent: false, undoneBy: null },
   "visits": { readOnly: true, idempotent: true, undoneBy: null },
   "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
   "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },

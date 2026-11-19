@@ -85,11 +85,17 @@ pub enum TypeKind {
     Record(Vec<Field>),
     /// Variants, each written in its own shape.
     Choice(Vec<Shaped>),
-    /// A named type, `TYPE File Id: Text`: the type underneath, under a name
-    /// of its own. Generated code keeps it distinct from that type and from
-    /// other named types over it; the wire and JSON write it exactly like
-    /// the type underneath.
-    Distinct(Type),
+    /// A named type, `NAMED TYPE File Id (Text)`: a type of its own, which no
+    /// other type fits. A value is written with its constructor, the shape
+    /// of its name with a value in each slot, `File Id "a"`, and holds the
+    /// values of its slots, as a variant of the constructor's shape does.
+    Distinct {
+        /// The shape of its name: `File Id _`.
+        constructor: Vec<ShapePart>,
+        /// The type of its one slot, or a tuple of its slots' types:
+        /// `Text` for `File Id (Text)`, `()` for a named type with none.
+        underlying: Type,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -184,6 +190,9 @@ pub enum JsonForm {
     Object,
     /// An object with this `kind`: a variant, such as `customHue`.
     Kind(String),
+    /// An object whose one key is this tag: a named type's value, such as
+    /// `{"FileId": "a"}`.
+    Tag(String),
 }
 
 impl std::fmt::Display for JsonForm {
@@ -194,7 +203,49 @@ impl std::fmt::Display for JsonForm {
             JsonForm::Array => f.write_str("an array"),
             JsonForm::Object => f.write_str("an object"),
             JsonForm::Kind(kind) => write!(f, "an object of the kind \"{kind}\""),
+            JsonForm::Tag(tag) => write!(f, "an object tagged \"{tag}\""),
         }
+    }
+}
+
+/// The key a named type's value goes under in JSON, its words in camel
+/// case, which start with a capital as its name does: `FileId` for `File
+/// Id _`, `RangeFromTo` for `Range from _ to _`.
+pub fn json_tag(constructor: &[ShapePart]) -> String {
+    camel_case(&ShapePart::words(constructor))
+}
+
+/// The types of a named type's slots, in order, from the type it holds:
+/// that type for one slot, and the tuple's for any other number.
+pub fn slot_types<'t>(constructor: &[ShapePart], underlying: &'t Type) -> Vec<&'t Type> {
+    match underlying {
+        Type::Tuple(slots)
+            if constructor
+                .iter()
+                .filter(|part| **part == ShapePart::Slot)
+                .count()
+                != 1 =>
+        {
+            slots.iter().collect()
+        }
+        one => vec![one],
+    }
+}
+
+/// A named type's constructor as a shape, with a parameter for each slot,
+/// so that a value of it is written and read as a variant of that shape
+/// is: `Value::Variant` with the shape `File Id _` and the slots' values.
+pub fn constructor_shape(constructor: &[ShapePart], underlying: &Type) -> Shape {
+    Shape {
+        text: ShapePart::text(constructor),
+        parts: constructor.to_vec(),
+        parameters: slot_types(constructor, underlying)
+            .into_iter()
+            .map(|r#type| Parameter {
+                name: ShapePart::words(constructor),
+                r#type: r#type.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -273,6 +324,18 @@ impl ShapePart {
     }
 
     /// The words with `_` for each slot, joined by spaces: `changed within _`.
+    /// The words alone, without the slots: `File Id` for `File Id _`.
+    pub fn words(parts: &[ShapePart]) -> String {
+        parts
+            .iter()
+            .filter_map(|part| match part {
+                ShapePart::Word(word) => Some(word.as_str()),
+                ShapePart::Slot => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub fn text(parts: &[ShapePart]) -> String {
         parts
             .iter()
@@ -575,9 +638,13 @@ impl TypeKind {
                     })
                     .collect(),
             ),
-            TypeKind::Distinct(underlying) => {
-                TypeKind::Distinct(underlying.substitute(parameters, arguments))
-            }
+            TypeKind::Distinct {
+                constructor,
+                underlying,
+            } => TypeKind::Distinct {
+                constructor: constructor.clone(),
+                underlying: underlying.substitute(parameters, arguments),
+            },
         }
     }
 }
@@ -899,7 +966,10 @@ impl Schema {
                         .iter()
                         .map(|variant| JsonForm::Kind(camel_case(&variant.shape.words())))
                         .collect(),
-                    _ => vec![JsonForm::Object],
+                    TypeKind::Distinct { constructor, .. } => {
+                        vec![JsonForm::Tag(json_tag(constructor))]
+                    }
+                    TypeKind::Record(_) => vec![JsonForm::Object],
                 },
                 None => vec![JsonForm::Object],
             },
@@ -935,10 +1005,21 @@ impl Schema {
         }
     }
 
-    /// `type` with every named type (`TYPE File Id: Text`) it stands for
-    /// replaced by the type underneath, which is how the wire and JSON
-    /// write it: `Text` for `file id`.
+    /// `type` without its refinements, which is how the wire and JSON write
+    /// it: `Integer` for `Integer WHERE [0 <= _]`. A named type is written
+    /// with its constructor, so it stays.
     pub fn underlying<'t>(&'t self, r#type: &'t Type) -> &'t Type {
+        let mut underlying = r#type;
+        while let Type::Refined(base, _) = underlying {
+            underlying = base;
+        }
+        underlying
+    }
+
+    /// The type a value of `type` holds, past refinements and named types:
+    /// `Text` for `File Id`, `NAMED TYPE File Id (Text)`. A refinement's
+    /// predicate reads a value as this type.
+    pub fn held_type<'t>(&'t self, r#type: &'t Type) -> &'t Type {
         let mut underlying = r#type;
         // The checker rejects named types that lead back to themselves, so
         // named transitions are bounded; inline refinements are finite trees.
@@ -952,7 +1033,9 @@ impl Schema {
                         break;
                     }
                     match &self.types[*index].kind {
-                        TypeKind::Distinct(inner) => underlying = inner,
+                        TypeKind::Distinct {
+                            underlying: inner, ..
+                        } => underlying = inner,
                         TypeKind::Record(_) | TypeKind::Choice(_) => break,
                     }
                 }
@@ -1021,7 +1104,10 @@ impl Schema {
                         .iter()
                         .map(|variant| Written::Call(variant.shape.parts.clone()))
                         .collect(),
-                    _ => vec![Written::Braces],
+                    TypeKind::Distinct { constructor, .. } => {
+                        vec![Written::Call(constructor.clone())]
+                    }
+                    TypeKind::Record(_) => vec![Written::Braces],
                 },
                 None => vec![Written::Braces],
             },

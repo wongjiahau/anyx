@@ -109,7 +109,7 @@ fn the_server_runs_the_overload_a_call_resolves_to() {
         ))
     };
     assert_eq!(response("tag [\"a\", \"b\"]"), "RETURNS 2\n");
-    assert_eq!(response("tag ([\"a\"] AS: LIST File Id)"), "RETURNS 101\n");
+    assert_eq!(response("tag [File Id \"a\"]"), "RETURNS 101\n");
     assert_eq!(response("scale 1.5"), "RETURNS 3.0\n");
     assert_eq!(response("scale 2"), "RETURNS 6\n");
     assert!(
@@ -133,7 +133,7 @@ fn the_client_annotates_what_its_arguments_leave_open() {
         *client.transport.requests.borrow(),
         [
             "tag ([] AS: LIST Text)\n",
-            "tag ([\"a\"] AS: LIST File Id)\n",
+            "tag [File Id \"a\"]\n",
             "scale 3.0\n",
             "scale 3\n",
             "paint (dark)\n",

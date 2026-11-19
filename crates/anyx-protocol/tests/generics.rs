@@ -31,7 +31,7 @@ RECORD Order { number: Integer, total: Integer },
 
 CHOICE Decline { insufficient funds, card expired },
 
-TYPE Orders: page of (Order),
+TYPE ALIAS Orders: page of (Order),
 
 METHOD list orders RETURNS (orders: page of (Order)),
 
@@ -102,10 +102,6 @@ fn a_generic_type_reads_with_its_parameters_and_each_use_with_its_arguments() {
     assert_eq!(fields[2].default, Some(Value::Integer(20)));
     assert_eq!(schema.types[1].name, "_ or _");
     assert_eq!(schema.types[1].parameters, ["Value", "Problem"]);
-    assert_eq!(
-        schema.types[4].kind,
-        TypeKind::Distinct(Type::Generic(0, vec![Type::Named(2)]))
-    );
     // Arguments are matched to the parameters by their slots.
     let pay_all = schema.method("pay all _").unwrap();
     let returns = &pay_all.returns.as_ref().unwrap().r#type;
@@ -689,7 +685,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a named type over a use of a generic type that holds it",
-            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, TYPE Boxed: box of (Boxed),",
+            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, TYPE ALIAS Boxed: box of (Boxed),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -743,7 +739,7 @@ fn the_generic_example_in_protocol_md_reads() {
     let schema = schema(&format!(
         "PROTOCOL shop VERSION 1,
 RECORD Order {{ number: Integer, total: Integer }},
-TYPE Order Id: Integer,
+NAMED TYPE Order Id (Integer),
 RECORD Receipt {{ number: Integer }},
 RECORD Document {{ title: Text }},
 RECORD Person {{ name: Text }},

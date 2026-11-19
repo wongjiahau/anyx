@@ -9,18 +9,18 @@ use anyx_protocol::{FieldsBuilder, FieldsReader, FromValue, IntoValue, Value};
 pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::SchemaFile {
     path: "schema.protocol.anyx",
     source: r#"PROTOCOL refined VERSION 1,
-TYPE Revision: Integer . WHERE [1 <= _],
-TYPE Limit: Integer . WHERE [10 <= _ < 30],
-TYPE Probability: Float . WHERE [0 <= _ <= 1],
-TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
-TYPE Short Text: Text . WHERE [1 <= (_ length) <= 3],
-TYPE Large: Integer . WHERE [9007199254740992 < _],
-TYPE Linear: Integer . WHERE [0 < (_ * 2), (_ + 1) <= 30],
-TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)],
-TYPE Contains Zero: Text . WHERE [_ contains "\u00001"],
-TYPE Outside Range: Integer . WHERE [not: 1 <= _ <= 3],
-TYPE True Only: Boolean . WHERE [_ and (true)],
-TYPE Names: (LIST Text) WHERE [1 <= (_ length) <= 3],
+TYPE ALIAS Revision: Integer . WHERE [1 <= _],
+TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30],
+NAMED TYPE Probability (Float . WHERE [0 <= _ <= 1]),
+NAMED TYPE Score Path (Text . WHERE [_ ends with ".poentaro"]),
+NAMED TYPE Short Text (Text . WHERE [1 <= (_ length) <= 3]),
+NAMED TYPE Large (Integer . WHERE [9007199254740992 < _]),
+NAMED TYPE Linear (Integer . WHERE [0 < (_ * 2), (_ + 1) <= 30]),
+NAMED TYPE Wide (Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)]),
+NAMED TYPE Contains Zero (Text . WHERE [_ contains "\u00001"]),
+NAMED TYPE Outside Range (Integer . WHERE [not: 1 <= _ <= 3]),
+NAMED TYPE True Only (Boolean . WHERE [_ and (true)]),
+NAMED TYPE Names ((LIST Text) WHERE [1 <= (_ length) <= 3]),
 RECORD Summary { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
 RECORD Box of (Item: TYPE) { value: Item },
 METHOD write (path: Score Path) at (revision: Revision)
@@ -52,122 +52,52 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Revision(i64);
-
-impl Revision {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(0),
-            &wire,
-        )?;
-        Ok(Self(value))
-    }
-    pub fn get(&self) -> &i64 {
-        &self.0
-    }
-    pub fn into_inner(self) -> i64 {
-        self.0
-    }
-}
-
-impl TryFrom<i64> for Revision {
-    type Error = String;
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl From<Revision> for i64 {
-    fn from(value: Revision) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Revision {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Revision {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(0),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Limit(i64);
-
-impl Limit {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(1),
-            &wire,
-        )?;
-        Ok(Self(value))
-    }
-    pub fn get(&self) -> &i64 {
-        &self.0
-    }
-    pub fn into_inner(self) -> i64 {
-        self.0
-    }
-}
-
-impl TryFrom<i64> for Limit {
-    type Error = String;
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl From<Limit> for i64 {
-    fn from(value: Limit) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Limit {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Limit {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(1),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct Probability(f64);
 
-impl Probability {
-    pub fn new(value: f64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for Probability {
+    fn into_value(self) -> Value {
+        let Probability(slot_0) = self;
+        Value::Variant {
+            shape: "Probability _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for Probability {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(2),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(0),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Probability _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Probability(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl Probability {
+    pub fn new(slot_0: f64) -> Result<Self, String> {
+        let value = Probability(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(0),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl Probability {
     pub fn get(&self) -> &f64 {
         &self.0
     }
@@ -189,37 +119,53 @@ impl From<Probability> for f64 {
     }
 }
 
-impl IntoValue for Probability {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Probability {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(2),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScorePath(String);
 
-impl ScorePath {
-    pub fn new(value: String) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for ScorePath {
+    fn into_value(self) -> Value {
+        let ScorePath(slot_0) = self;
+        Value::Variant {
+            shape: "Score Path _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for ScorePath {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(3),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(1),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Score Path _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(ScorePath(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl ScorePath {
+    pub fn new(slot_0: String) -> Result<Self, String> {
+        let value = ScorePath(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(1),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl ScorePath {
     pub fn get(&self) -> &String {
         &self.0
     }
@@ -241,37 +187,53 @@ impl From<ScorePath> for String {
     }
 }
 
-impl IntoValue for ScorePath {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for ScorePath {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(3),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShortText(String);
 
-impl ShortText {
-    pub fn new(value: String) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for ShortText {
+    fn into_value(self) -> Value {
+        let ShortText(slot_0) = self;
+        Value::Variant {
+            shape: "Short Text _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for ShortText {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(4),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(2),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Short Text _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(ShortText(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl ShortText {
+    pub fn new(slot_0: String) -> Result<Self, String> {
+        let value = ShortText(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(2),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl ShortText {
     pub fn get(&self) -> &String {
         &self.0
     }
@@ -293,37 +255,51 @@ impl From<ShortText> for String {
     }
 }
 
-impl IntoValue for ShortText {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for ShortText {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(4),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Large(i64);
 
-impl Large {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for Large {
+    fn into_value(self) -> Value {
+        let Large(slot_0) = self;
+        Value::Variant {
+            shape: "Large _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for Large {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(5),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(3),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments } if shape == "Large _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Large(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl Large {
+    pub fn new(slot_0: i64) -> Result<Self, String> {
+        let value = Large(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(3),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl Large {
     pub fn get(&self) -> &i64 {
         &self.0
     }
@@ -345,37 +321,51 @@ impl From<Large> for i64 {
     }
 }
 
-impl IntoValue for Large {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Large {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(5),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Linear(i64);
 
-impl Linear {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for Linear {
+    fn into_value(self) -> Value {
+        let Linear(slot_0) = self;
+        Value::Variant {
+            shape: "Linear _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for Linear {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(6),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(4),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments } if shape == "Linear _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Linear(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl Linear {
+    pub fn new(slot_0: i64) -> Result<Self, String> {
+        let value = Linear(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(4),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl Linear {
     pub fn get(&self) -> &i64 {
         &self.0
     }
@@ -397,37 +387,51 @@ impl From<Linear> for i64 {
     }
 }
 
-impl IntoValue for Linear {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Linear {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(6),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Wide(i64);
 
-impl Wide {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for Wide {
+    fn into_value(self) -> Value {
+        let Wide(slot_0) = self;
+        Value::Variant {
+            shape: "Wide _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for Wide {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(7),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(5),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments } if shape == "Wide _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Wide(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl Wide {
+    pub fn new(slot_0: i64) -> Result<Self, String> {
+        let value = Wide(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(5),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl Wide {
     pub fn get(&self) -> &i64 {
         &self.0
     }
@@ -449,37 +453,53 @@ impl From<Wide> for i64 {
     }
 }
 
-impl IntoValue for Wide {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Wide {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(7),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContainsZero(String);
 
-impl ContainsZero {
-    pub fn new(value: String) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for ContainsZero {
+    fn into_value(self) -> Value {
+        let ContainsZero(slot_0) = self;
+        Value::Variant {
+            shape: "Contains Zero _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for ContainsZero {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(8),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(6),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Contains Zero _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(ContainsZero(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl ContainsZero {
+    pub fn new(slot_0: String) -> Result<Self, String> {
+        let value = ContainsZero(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(6),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl ContainsZero {
     pub fn get(&self) -> &String {
         &self.0
     }
@@ -501,37 +521,53 @@ impl From<ContainsZero> for String {
     }
 }
 
-impl IntoValue for ContainsZero {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for ContainsZero {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(8),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct OutsideRange(i64);
 
-impl OutsideRange {
-    pub fn new(value: i64) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for OutsideRange {
+    fn into_value(self) -> Value {
+        let OutsideRange(slot_0) = self;
+        Value::Variant {
+            shape: "Outside Range _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for OutsideRange {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(9),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(7),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "Outside Range _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(OutsideRange(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl OutsideRange {
+    pub fn new(slot_0: i64) -> Result<Self, String> {
+        let value = OutsideRange(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(7),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl OutsideRange {
     pub fn get(&self) -> &i64 {
         &self.0
     }
@@ -553,37 +589,53 @@ impl From<OutsideRange> for i64 {
     }
 }
 
-impl IntoValue for OutsideRange {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for OutsideRange {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(9),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrueOnly(Boolean);
 
-impl TrueOnly {
-    pub fn new(value: Boolean) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for TrueOnly {
+    fn into_value(self) -> Value {
+        let TrueOnly(slot_0) = self;
+        Value::Variant {
+            shape: "True Only _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for TrueOnly {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(10),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(8),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments }
+                if shape == "True Only _" && arguments.len() == 1 =>
+            {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(TrueOnly(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl TrueOnly {
+    pub fn new(slot_0: Boolean) -> Result<Self, String> {
+        let value = TrueOnly(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(8),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl TrueOnly {
     pub fn get(&self) -> &Boolean {
         &self.0
     }
@@ -605,37 +657,51 @@ impl From<TrueOnly> for Boolean {
     }
 }
 
-impl IntoValue for TrueOnly {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for TrueOnly {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(10),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Names(Vec<String>);
 
-impl Names {
-    pub fn new(value: Vec<String>) -> Result<Self, String> {
-        let wire = value.clone().into_value();
+impl IntoValue for Names {
+    fn into_value(self) -> Value {
+        let Names(slot_0) = self;
+        Value::Variant {
+            shape: "Names _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for Names {
+    fn from_value(value: Value) -> Option<Self> {
         anyx_protocol::refinement::validate(
             schema(),
-            &anyx_protocol::schema::Type::Named(11),
-            &wire,
-        )?;
-        Ok(Self(value))
+            &anyx_protocol::schema::Type::Named(9),
+            &value,
+        )
+        .ok()?;
+        match value {
+            Value::Variant { shape, arguments } if shape == "Names _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Names(slot_0))
+            }
+            _ => None,
+        }
     }
+}
+
+impl Names {
+    pub fn new(slot_0: Vec<String>) -> Result<Self, String> {
+        let value = Names(slot_0);
+        anyx_protocol::refinement::validate(
+            schema(),
+            &anyx_protocol::schema::Type::Named(9),
+            &value.clone().into_value(),
+        )?;
+        Ok(value)
+    }
+}
+
+impl Names {
     pub fn get(&self) -> &Vec<String> {
         &self.0
     }
@@ -657,29 +723,11 @@ impl From<Names> for Vec<String> {
     }
 }
 
-impl IntoValue for Names {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Names {
-    fn from_value(value: Value) -> Option<Self> {
-        anyx_protocol::refinement::validate(
-            schema(),
-            &anyx_protocol::schema::Type::Named(11),
-            &value,
-        )
-        .ok()?;
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Summary {
     pub path: ScorePath,
-    pub revision: Revision,
-    pub limit: Limit,
+    pub revision: i64,
+    pub limit: i64,
 }
 
 impl IntoValue for Summary {
@@ -808,7 +856,7 @@ pub trait Server {
     /// `write _ at _`, returning `saved revision`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn write_at(&self, path: ScorePath, revision: Revision) -> Result<Revision, Self::Error>;
+    async fn write_at(&self, path: ScorePath, revision: i64) -> Result<i64, Self::Error>;
 
     /// `limit _`, returning `value`.
     ///
@@ -823,7 +871,7 @@ pub trait Server {
     /// `boxed _`, returning `value`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn boxed(&self, value: BoxOf<i64>) -> Result<BoxOf<Limit>, Self::Error>;
+    async fn boxed(&self, value: BoxOf<i64>) -> Result<BoxOf<i64>, Self::Error>;
 
     /// `score _`, returning `value`.
     ///
@@ -938,8 +986,8 @@ impl<T: Transport> Client<T> {
     pub async fn write_at(
         &self,
         path: ScorePath,
-        revision: Revision,
-    ) -> Result<Revision, CallError<::std::convert::Infallible, T::Error>> {
+        revision: i64,
+    ) -> Result<i64, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(
             &self.transport,
             schema(),
@@ -975,7 +1023,7 @@ impl<T: Transport> Client<T> {
     pub async fn boxed(
         &self,
         value: BoxOf<i64>,
-    ) -> Result<BoxOf<Limit>, CallError<::std::convert::Infallible, T::Error>> {
+    ) -> Result<BoxOf<i64>, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![value.into_value()]).await
     }
 

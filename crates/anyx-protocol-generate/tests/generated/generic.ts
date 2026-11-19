@@ -43,13 +43,6 @@ export type Decline =
   | { kind: "insufficientFunds" }
   | { kind: "cardExpired" };
 
-export type Payments = PageOf<Payment> & { readonly __brand: "Payments" };
-
-/** Makes a `Payments` of a value, which the schema writes as its own. */
-export function Payments(value: PageOf<Payment>): Payments {
-  return value as Payments;
-}
-
 /** `true` or `false`. */
 export type Boolean =
   | { kind: "false" }
@@ -75,7 +68,10 @@ type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor
 // value for each. An `@` field has the `forms` its values are written in,
 // which find it.
 type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
-type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+// A `distinct` definition is a named type: its constructor's `shape`, `File
+// Id _`, and each slot's type. Its value is its one slot's value, or an
+// array of its slots' values.
+type Definition = { name?: string; parameters: string[]; kind: string; shape?: string; slots?: TypeDescriptor[]; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
 
@@ -149,7 +145,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return encodeValue(def.type!, value, env); }
+        try { return encodeNamed(def, value, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
       }
       const obj = object(value);
@@ -210,6 +206,24 @@ function isDurationCall(node: Syntax): boolean {
 function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
   const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
   return f.slots.length === 1 ? values[0] : values;
+}
+// A named type's value written in its constructor's shape, `File Id "a"`.
+function encodeNamed(def: Definition, value: unknown, bindings: Bindings): string {
+  const slots = def.slots!;
+  const values = slots.length === 1 ? [value] : Array.isArray(value) && value.length === slots.length ? value : fail(`expected ${slots.length} slot values`);
+  let i = 0;
+  return def.shape!.split(" ").map(word => word === "_" ? `(${encodeValue(slots[i], values[i++], bindings)})` : word).join(" ");
+}
+const invalid = Symbol("invalid");
+// A named type's value read from its constructor's shape, or `invalid` when
+// the node is written in another shape.
+function decodeNamed(def: Definition, node: Syntax, bindings: Bindings): unknown {
+  const tokens = parts(node), words = def.shape!.split(" "), slots = def.slots!;
+  if (tokens.length !== words.length) return invalid;
+  if (words.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return invalid;
+  const values: unknown[] = [];
+  words.forEach((part, i) => { if (part === "_") values.push(decodeValue(slots[values.length], tokens[i], bindings)); });
+  return slots.length === 1 ? values[0] : values;
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -453,8 +467,12 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return decodeValue(def.type!, node, env); }
+        let value: unknown;
+        try { value = decodeNamed(def, node, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
+        if (value !== invalid) return value;
+        const name = def.shape!.split(" ").filter(part => part !== "_").join(" ");
+        return fail(`expected a \`${name}\`, written with its name: \`${def.shape!.replace(/_/g, "…")}\``);
       }
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
@@ -525,18 +543,17 @@ const definitions: Definition[] = [{parameters:["Item"],kind:'record', fields:[{
 {parameters:["Key","Value"],kind:'record', fields:[{wire:"keys _", form:"shape", name:"keys", type:{k:'list', item:{k:'parameter', name:"Key"}}, slots:[{k:'list', item:{k:'parameter', name:"Key"}}]},{wire:"values _", form:"shape", name:"values", type:{k:'list', item:{k:'parameter', name:"Value"}}, slots:[{k:'list', item:{k:'parameter', name:"Value"}}]}]},
 {parameters:[],kind:'record', fields:[{wire:"amount _", form:"shape", name:"amount", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]}]},
 {parameters:[],kind:'choice', variants:[{text:"insufficient funds", kind:"insufficientFunds", params:[]},{text:"card expired", kind:"cardExpired", params:[]}]},
-{parameters:[],kind:'distinct', type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _", kind:"pay", params:[{name:"amount", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}, errors:[]},
 ["pay all _"]:{shape:{text:"pay all _", kind:"payAll", params:[{name:"amounts", type:{k:'list', item:{k:'integer'}}, annotation:"LIST Integer"}]}, returns:{k:'named', index:0, args:[{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}]}, errors:[]},
-["payments"]:{shape:{text:"payments", kind:"payments", params:[]}, returns:{k:'named', index:7, args:[]}, errors:[]},
+["payments"]:{shape:{text:"payments", kind:"payments", params:[]}, returns:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"payments", type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}, annotation:"Page of (Payment)"}]}, returns:{k:'integer'}, errors:[]},
 ["categories"]:{shape:{text:"categories", kind:"categories", params:[]}, returns:{k:'named', index:3, args:[{k:'text'}]}, errors:[]},
 ["latest"]:{shape:{text:"latest", kind:"latest", params:[]}, returns:{k:'named', index:2, args:[{k:'text'}]}, errors:[]},
 ["prices"]:{shape:{text:"prices", kind:"prices", params:[]}, returns:{k:'named', index:4, args:[{k:'text'},{k:'integer'}]}, errors:[]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:9, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:8, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -614,7 +631,7 @@ export class Client {
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  payments(): Promise<Outcome<Payments, never>> {
+  payments(): Promise<Outcome<PageOf<Payment>, never>> {
     return this.call("payments", []);
   }
 

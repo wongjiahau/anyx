@@ -2,7 +2,7 @@
 //! such as an AI agent: how to write a request and read a response, then the
 //! schema as written.
 
-use crate::schema::{Method, Schema, Type, TypeKind, fill_slots};
+use crate::schema::{Method, Schema, ShapePart, Type, TypeKind, fill_slots};
 
 /// The guide to `schema`. `how_to_send` tells the reader where and how to
 /// send a request, such as the URL and the header to send it with; when it
@@ -83,14 +83,13 @@ the account, such as by sending or sharing it.
   `wait (5 minutes)`.
 
 An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST Text)`,
-`open (\"a\" AS: File Id)`. A value shows its type when it is a number, a
-string (`Text`), a duration, a list or map whose items
-show one type, or a record or variant that only one type of the schema
-fits. `[]`, `{{}}`, and a value of a named TYPE, a generic type, `Bytes`
-or `Instant` never do. Without its annotation, the request is invalid.
-Only a whole argument is annotated; a value inside it is read by the type
-around it. An annotation states the type; it doesn't convert the value.
+its parameter's type, in parentheses: `tag ([] AS: LIST Text)`. A value
+shows its type when it is a number, a string (`Text`), a duration, a list
+or map whose items show one type, a named type's value, written with its
+name, or a record or variant that only one type of the schema fits. `[]`,
+`{{}}`, and a value of a generic type, `Bytes` or `Instant` never do.
+Without its annotation, the request is invalid. Only a whole argument is
+annotated; a value inside it is read by the type around it. An annotation states the type; it doesn't convert the value.
 
 {prelude}
 {refinements}## Responses
@@ -297,7 +296,7 @@ fn generic_types(schema: &Schema) -> String {
     };
     let keyword = match definition.kind {
         TypeKind::Choice(_) => "CHOICE",
-        TypeKind::Record(_) | TypeKind::Distinct(_) => "RECORD",
+        TypeKind::Record(_) | TypeKind::Distinct { .. } => "RECORD",
     };
     let declared: Vec<String> = definition
         .parameters
@@ -312,30 +311,43 @@ fn generic_types(schema: &Schema) -> String {
     )
 }
 
-/// The rule for named types, and each of them with the type it is written
-/// as: "`file id`: `Text`", then its doc. Empty for a schema without any.
+/// The rule for named types, and each of them as a value writes it:
+/// "`File Id …`, holding a `Text`", then its doc. Empty for a schema
+/// without any.
 fn named_types(schema: &Schema) -> String {
     let named: Vec<String> = schema
         .types
         .iter()
         .filter_map(|definition| {
-            let TypeKind::Distinct(underlying) = &definition.kind else {
+            let TypeKind::Distinct {
+                constructor,
+                underlying,
+            } = &definition.kind
+            else {
                 return None;
             };
             let doc = definition.doc.as_deref().map_or(String::new(), |doc| {
                 format!(" {}", doc.split_whitespace().collect::<Vec<_>>().join(" "))
             });
+            let slots = crate::schema::slot_types(constructor, underlying)
+                .into_iter()
+                .map(|slot| format!("`{}`", schema.type_name(slot)))
+                .collect::<Vec<_>>();
+            let holding = match slots.as_slice() {
+                [] => String::new(),
+                [slot] => format!(", holding a {slot}"),
+                slots => format!(", holding {}", slots.join(", ")),
+            };
             Some(format!(
-                "  - `{}`: `{}`.{doc}\n",
-                definition.name.clone(),
-                schema.type_name(underlying)
+                "  - `{}`{holding}.{doc}\n",
+                ShapePart::text(constructor).replace('_', "…"),
             ))
         })
         .collect();
     match named.is_empty() {
         true => String::new(),
         false => format!(
-            "- A named TYPE is written exactly like the type it names, but holds\n  only what its name says:\n{}",
+            "- A NAMED TYPE is a type of its own, written with its name and a\n  value in each slot, as in `File Id \"a\"`:\n{}",
             named.concat()
         ),
     }
@@ -384,16 +396,19 @@ fn call_of(schema: &Schema, method: &Method) -> String {
 
 /// A call of `method` by its full name, with a sample value in each slot.
 fn sample_call(schema: &Schema, method: &Method) -> String {
-    let mut values = method.shape.parameters.iter().map(|parameter| {
-        match always_annotated(schema, &parameter.r#type) {
-            true => format!(
-                "({} AS: {})",
-                sample(schema, &parameter.r#type),
-                schema.type_name(&parameter.r#type)
-            ),
-            false => sample(schema, &parameter.r#type),
-        }
-    });
+    let mut values =
+        method
+            .shape
+            .parameters
+            .iter()
+            .map(|parameter| match always_annotated(&parameter.r#type) {
+                true => format!(
+                    "({} AS: {})",
+                    sample(schema, &parameter.r#type),
+                    schema.type_name(&parameter.r#type)
+                ),
+                false => sample(schema, &parameter.r#type),
+            });
     method
         .shape
         .text
@@ -407,17 +422,14 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
 }
 
 /// Whether no value of `type` shows it, so an argument of it is always
-/// annotated: a named type, a generic one, Bytes, Instant, and a list or a
+/// annotated: a generic type, Bytes, Instant, and a list or a
 /// map of one of them.
-fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
+fn always_annotated(r#type: &Type) -> bool {
     match r#type {
         Type::Bytes | Type::Instant | Type::Generic(..) => true,
-        Type::Refined(base, _) => always_annotated(schema, base),
-        Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
-        Type::List(item) | Type::Map(item) => always_annotated(schema, item),
-        Type::Tuple(slots) | Type::Union(slots) => {
-            slots.iter().any(|slot| always_annotated(schema, slot))
-        }
+        Type::Refined(base, _) => always_annotated(base),
+        Type::List(item) | Type::Map(item) => always_annotated(item),
+        Type::Tuple(slots) | Type::Union(slots) => slots.iter().any(always_annotated),
         _ => false,
     }
 }
@@ -445,10 +457,26 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
             .map(|slot| sample(schema, slot))
             .collect::<Vec<_>>()
             .join(" "),
-        Type::Named(index) | Type::Generic(index, _) => match schema.types[*index].kind {
+        Type::Named(index) | Type::Generic(index, _) => match &schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
             TypeKind::Choice(_) => "(…)".to_string(),
-            TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
+            TypeKind::Distinct {
+                constructor,
+                underlying,
+            } => {
+                let mut slots = crate::schema::slot_types(constructor, underlying).into_iter();
+                let written = constructor
+                    .iter()
+                    .map(|part| match part {
+                        ShapePart::Word(word) => word.clone(),
+                        ShapePart::Slot => slots
+                            .next()
+                            .map_or("…".to_string(), |slot| sample(schema, slot)),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("({written})")
+            }
         },
         Type::Parameter(_) => "…".to_string(),
         Type::Union(members) => members
@@ -489,7 +517,9 @@ fn refinements(schema: &Schema) -> String {
     let mut rows = Vec::new();
     for definition in &schema.types {
         match &definition.kind {
-            TypeKind::Distinct(base) => describe(schema, base, &definition.name, &mut rows),
+            TypeKind::Distinct {
+                underlying: base, ..
+            } => describe(schema, base, &definition.name, &mut rows),
             TypeKind::Record(fields) => {
                 for f in fields {
                     describe(

@@ -12,7 +12,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyx_protocol::client::Transport;
-use generic::{Client, Dated, Decline, Or, PageOf, Payment, Payments, Server, TableFromTo, TreeOf};
+use generic::{Client, Dated, Decline, Or, PageOf, Payment, Server, TableFromTo, TreeOf};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -68,12 +68,12 @@ impl Server for Shop {
         })
     }
 
-    async fn payments(&self) -> Result<Payments, Self::Error> {
-        Ok(Payments(PageOf {
+    async fn payments(&self) -> Result<PageOf<Payment>, Self::Error> {
+        Ok(PageOf {
             items: vec![payment(3)],
             next: Some("2".to_string()),
             total: 7,
-        }))
+        })
     }
 
     async fn count(&self, payments: PageOf<Payment>) -> Result<i64, Self::Error> {
@@ -166,7 +166,7 @@ fn uses_of_generic_types_reach_the_server_and_come_back() {
 fn a_named_type_over_a_generic_type_is_written_like_it() {
     let client = Client::new(InProcess);
     assert_eq!(
-        run(client.payments()).map(|payments| payments.0.items),
+        run(client.payments()).map(|payments| payments.items),
         Ok(vec![payment(3)])
     );
     let response = run(generic::handle(&Shop, "payments", |_| {}));

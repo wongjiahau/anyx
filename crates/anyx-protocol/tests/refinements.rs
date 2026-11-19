@@ -1,25 +1,35 @@
-use anyx_protocol::schema::{Type, TypeKind};
+use anyx_protocol::schema::Type;
 use anyx_protocol::{
     Call, Outcome, Response, Schema, Value, decode_request, decode_response, encode_request,
     encode_response,
 };
 
 const SOURCE: &str = r#"PROTOCOL checked VERSION 1,
-TYPE Revision: Integer . WHERE [1 <= _],
-TYPE Probability: Float . WHERE [0 <= _ <= 1],
-TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
-TYPE Limit: (Integer) WHERE [10 <= _ < 30],
-TYPE Short Text: Text . WHERE [1 <= (_ length) <= 3],
+TYPE ALIAS Revision: Integer . WHERE [1 <= _],
+TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
+TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
+TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
+TYPE ALIAS Short Text: Text . WHERE [1 <= (_ length) <= 3],
 RECORD Summary { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
 METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision),
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 METHOD summary (value: Summary) RETURNS (value: Summary),
+METHOD label (text: Short Text) RETURNS NOTHING,
 "#;
 fn schema() -> Schema {
     Schema::parse(SOURCE).unwrap()
 }
-fn ty(schema: &Schema, name: &str) -> Type {
-    Type::Named(schema.types.iter().position(|t| t.name == name).unwrap())
+/// The type `name` stands for in `source`, read through a method that
+/// takes it, since an alias makes no type of its own.
+fn ty(source: &str, name: &str) -> Type {
+    let source = source.trim_end().trim_end_matches(',');
+    let probed = Schema::parse(&format!(
+        "{source}, METHOD probe (value: {name}) RETURNS NOTHING"
+    ))
+    .unwrap();
+    probed.method("probe _").unwrap().shape.parameters[0]
+        .r#type
+        .clone()
 }
 
 #[test]
@@ -33,8 +43,8 @@ fn both_spellings_decode_to_the_same_refinement_and_annotations_round_trip() {
         let wire = encode_request(&schema, &calls).unwrap();
         assert_eq!(decode_request(&schema, &wire).unwrap(), calls, "{wire}");
     }
-    let a = Schema::parse("TYPE Limit: Integer . WHERE [10 <= _ < 30]").unwrap();
-    let b = Schema::parse("TYPE Limit: (Integer) WHERE [10 <= _ < 30]").unwrap();
+    let a = Schema::parse("TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30]").unwrap();
+    let b = Schema::parse("TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30]").unwrap();
     assert_eq!(a.types[0].kind, b.types[0].kind);
     let formatted = anyx_protocol::format_schema(SOURCE).unwrap();
     assert_eq!(Schema::parse(&formatted).unwrap().types, schema.types);
@@ -43,16 +53,13 @@ fn both_spellings_decode_to_the_same_refinement_and_annotations_round_trip() {
 #[test]
 fn failed_bound_names_value_type_predicate_argument_call_and_location() {
     let schema = schema();
-    let error=decode_request(&schema,"write (\"a.poentaro\" AS: Score Path) at (1 AS: Revision),\nwrite (\"b.poentaro\" AS: Score Path) at (0 AS: Revision)").unwrap_err();
+    let error = decode_request(
+        &schema,
+        "write \"a.poentaro\" at 1,\nwrite \"b.poentaro\" at 0",
+    )
+    .unwrap_err();
     assert_eq!(error.line, 2);
-    for text in [
-        "revision",
-        "write _ at _",
-        "`0`",
-        "Revision",
-        "1 <= _",
-        "at least 1",
-    ] {
+    for text in ["revision", "write _ at _", "`0`", "1 <= _", "at least 1"] {
         assert!(error.message.contains(text), "{error}");
     }
     for (n, expected) in [
@@ -82,8 +89,8 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
     };
     assert_eq!(fields["limit"], Value::Integer(10));
     for source in [
-        "TYPE Positive: Integer . WHERE [0 < _], RECORD Row { xs: LIST Positive }, METHOD read (r: Row) RETURNS NOTHING",
-        "TYPE Positive: Integer . WHERE [0 < _], RECORD Row { xs: MAP Positive }, METHOD read (r: Row) RETURNS NOTHING",
+        "TYPE ALIAS Positive: Integer . WHERE [0 < _], RECORD Row { xs: LIST Positive }, METHOD read (r: Row) RETURNS NOTHING",
+        "TYPE ALIAS Positive: Integer . WHERE [0 < _], RECORD Row { xs: MAP Positive }, METHOD read (r: Row) RETURNS NOTHING",
     ] {
         let s = Schema::parse(source).unwrap();
         let wire = if source.contains("LIST") {
@@ -94,7 +101,7 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
         assert!(decode_request(&s, wire).is_err());
     }
     let invalid = Schema::parse(
-        "TYPE Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit (Limit) DEFAULT limit 30 }",
+        "TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30], RECORD Row { limit (Limit) DEFAULT limit 30 }",
     )
     .unwrap_err();
     assert!(
@@ -149,25 +156,28 @@ fn predicates_are_typed_linear_and_do_not_guess_operator_precedence() {
         "Integer . WHERE [(_ length) < 4]",
     ] {
         assert!(
-            Schema::parse(&format!("TYPE Bad: {body}")).is_err(),
+            Schema::parse(&format!("TYPE ALIAS Bad: {body}")).is_err(),
             "{body}"
         );
     }
-    let s=Schema::parse("TYPE Linear: Integer . WHERE [(_ + 1) <= 30, 0 < (_ * 2)], TYPE Large: Integer . WHERE [9007199254740992 < _], TYPE Ends: Text . WHERE [_ starts with \"a\", _ contains \"b\", _ ends with \"c\"]").unwrap();
+    let s_source = "TYPE ALIAS Linear: Integer . WHERE [(_ + 1) <= 30, 0 < (_ * 2)], TYPE ALIAS Large: Integer . WHERE [9007199254740992 < _], TYPE ALIAS Ends: Text . WHERE [_ starts with \"a\", _ contains \"b\", _ ends with \"c\"]";
+    let s = Schema::parse(s_source).unwrap();
     for n in [1, 29] {
         assert!(
-            anyx_protocol::refinement::validate(&s, &ty(&s, "Linear"), &Value::Integer(n)).is_ok()
+            anyx_protocol::refinement::validate(&s, &ty(s_source, "Linear"), &Value::Integer(n))
+                .is_ok()
         );
     }
     for n in [0, 30] {
         assert!(
-            anyx_protocol::refinement::validate(&s, &ty(&s, "Linear"), &Value::Integer(n)).is_err()
+            anyx_protocol::refinement::validate(&s, &ty(s_source, "Linear"), &Value::Integer(n))
+                .is_err()
         );
     }
     assert!(
         anyx_protocol::refinement::validate(
             &s,
-            &ty(&s, "Large"),
+            &ty(s_source, "Large"),
             &Value::Integer(9007199254740993)
         )
         .is_ok()
@@ -175,13 +185,13 @@ fn predicates_are_typed_linear_and_do_not_guess_operator_precedence() {
     assert!(
         anyx_protocol::refinement::validate(
             &s,
-            &ty(&s, "Large"),
+            &ty(s_source, "Large"),
             &Value::Integer(9007199254740992)
         )
         .is_err()
     );
     assert!(
-        anyx_protocol::refinement::validate(&s, &ty(&s, "Ends"), &Value::Text("abc".into()))
+        anyx_protocol::refinement::validate(&s, &ty(s_source, "Ends"), &Value::Text("abc".into()))
             .is_ok()
     );
 }
@@ -189,11 +199,12 @@ fn predicates_are_typed_linear_and_do_not_guess_operator_precedence() {
 #[test]
 fn lengths_count_unicode_scalars_and_floats_check_both_bounds() {
     let s = schema();
+    let s_source = SOURCE;
     for text in ["a", "😀", "中文語"] {
         assert!(
             anyx_protocol::refinement::validate(
                 &s,
-                &ty(&s, "Short Text"),
+                &ty(s_source, "Short Text"),
                 &Value::Text(text.into())
             )
             .is_ok()
@@ -203,7 +214,7 @@ fn lengths_count_unicode_scalars_and_floats_check_both_bounds() {
         assert!(
             anyx_protocol::refinement::validate(
                 &s,
-                &ty(&s, "Short Text"),
+                &ty(s_source, "Short Text"),
                 &Value::Text(text.into())
             )
             .is_err()
@@ -211,13 +222,13 @@ fn lengths_count_unicode_scalars_and_floats_check_both_bounds() {
     }
     for n in [0.0, 0.5, 1.0] {
         assert!(
-            anyx_protocol::refinement::validate(&s, &ty(&s, "Probability"), &Value::Float(n))
+            anyx_protocol::refinement::validate(&s, &ty(s_source, "Probability"), &Value::Float(n))
                 .is_ok()
         );
     }
     for n in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
         assert!(
-            anyx_protocol::refinement::validate(&s, &ty(&s, "Probability"), &Value::Float(n))
+            anyx_protocol::refinement::validate(&s, &ty(s_source, "Probability"), &Value::Float(n))
                 .is_err()
         );
     }
@@ -227,7 +238,6 @@ fn lengths_count_unicode_scalars_and_floats_check_both_bounds() {
 fn guide_describes_the_predicates_in_words() {
     let guide = anyx_protocol::guide(&schema(), "");
     for text in [
-        "Revision",
         "at least 1",
         "at least 10 and less than 30",
         "ends with",
@@ -242,7 +252,8 @@ fn guide_describes_the_predicates_in_words() {
 fn json_preserves_primitives_and_reports_the_same_predicate_errors() {
     use anyx_protocol::json::{from_json, to_json};
     let s = schema();
-    let revision = ty(&s, "Revision");
+    let s_source = SOURCE;
+    let revision = ty(s_source, "Revision");
     assert_eq!(
         from_json(&s, &revision, &serde_json::json!(1)).unwrap(),
         Value::Integer(1)
@@ -252,12 +263,12 @@ fn json_preserves_primitives_and_reports_the_same_predicate_errors() {
         serde_json::json!(1)
     );
     let error = from_json(&s, &revision, &serde_json::json!(0)).unwrap_err();
-    for text in ["Revision", "`0`", "1 <= _", "at least 1"] {
+    for text in ["`0`", "1 <= _", "at least 1"] {
         assert!(error.contains(text), "{error}");
     }
     let error = from_json(
         &s,
-        &ty(&s, "Summary"),
+        &ty(s_source, "Summary"),
         &serde_json::json!({"path":"bad.txt","revision":1}),
     )
     .unwrap_err();
@@ -268,21 +279,22 @@ fn json_preserves_primitives_and_reports_the_same_predicate_errors() {
 #[test]
 fn refined_named_types_cannot_hide_recursive_cycles() {
     for source in [
-        "TYPE Loop: Loop . WHERE [0 < _]",
+        "TYPE ALIAS Loop: Loop . WHERE [0 < _]",
         "RECORD Loop { next: Loop . WHERE [0 < _] }",
     ] {
         assert!(Schema::parse(source).is_err());
     }
-    let s = Schema::parse("TYPE First: Second . WHERE [1 <= _], TYPE Second: Integer").unwrap();
-    let TypeKind::Distinct(_) = s.types[0].kind else {
-        panic!()
-    };
-    assert!(anyx_protocol::refinement::validate(&s, &ty(&s, "First"), &Value::Integer(0)).is_err());
+    let s_source = "TYPE ALIAS First: Second . WHERE [1 <= _], TYPE ALIAS Second: Integer";
+    let s = Schema::parse(s_source).unwrap();
+    assert!(
+        anyx_protocol::refinement::validate(&s, &ty(s_source, "First"), &Value::Integer(0))
+            .is_err()
+    );
 }
 
 #[test]
-fn imports_keep_predicate_diagnostic_locations_and_named_refinements() {
-    let library = "PUBLIC TYPE Bad: Text . WHERE [0 < _]";
+fn imports_keep_predicate_diagnostic_locations_and_aliased_refinements() {
+    let library = "PUBLIC TYPE ALIAS Bad: Text . WHERE [0 < _]";
     let errors = Schema::load("main.protocol.anyx", |path| -> Result<String, String> {
         Ok(match path {
             "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\"",
@@ -295,10 +307,10 @@ fn imports_keep_predicate_diagnostic_locations_and_named_refinements() {
     assert_eq!(errors[0].path, "library.protocol.anyx");
     assert_eq!(&library[errors[0].span.start..errors[0].span.end], "0 < _");
     let schema = Schema::load("main.protocol.anyx", |path| -> Result<String,String> {
-        Ok(match path { "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\", METHOD set (revision: Revision) RETURNS NOTHING", "library.protocol.anyx" => "PUBLIC TYPE Revision: Integer . WHERE [1 <= _]", _ => return Err(path.into()) }.into())
+        Ok(match path { "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\", METHOD set (revision: Revision) RETURNS NOTHING", "library.protocol.anyx" => "PUBLIC TYPE ALIAS Revision: Integer . WHERE [1 <= _]", _ => return Err(path.into()) }.into())
     }).unwrap();
     assert!(
-        decode_request(&schema, "set (0 AS: Revision)")
+        decode_request(&schema, "set 0")
             .unwrap_err()
             .message
             .contains("at least 1")
@@ -307,7 +319,8 @@ fn imports_keep_predicate_diagnostic_locations_and_named_refinements() {
 
 #[test]
 fn inline_refinements_work_inside_generic_arguments_and_container_constraints() {
-    let schema = Schema::parse("RECORD Box of (Item: TYPE) { value: Item }, TYPE Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING, METHOD batch (value: Batch) RETURNS NOTHING").unwrap();
+    let schema_source = "RECORD Box of (Item: TYPE) { value: Item }, TYPE ALIAS Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING, METHOD batch (value: Batch) RETURNS NOTHING";
+    let schema = Schema::parse(schema_source).unwrap();
     let call = Call {
         method: 0,
         arguments: vec![Value::Record([("value".into(), Value::Integer(10))].into())],
@@ -321,8 +334,8 @@ fn inline_refinements_work_inside_generic_arguments_and_container_constraints() 
         )
         .is_err()
     );
-    assert!(decode_request(&schema, "batch ([1,2] AS: Batch)").is_ok());
-    assert!(decode_request(&schema, "batch ([] AS: Batch)").is_err());
+    assert!(decode_request(&schema, "batch [1, 2]").is_ok());
+    assert!(decode_request(&schema, "batch [1, 2, 3, 4]").is_err());
     assert!(Schema::parse("METHOD set (value: Integer . WHERE [0 < _]) RETURNS NOTHING, METHOD set (value: Integer . WHERE [_ < 10]) RETURNS NOTHING").is_err());
 }
 
@@ -340,19 +353,28 @@ fn guide_example_satisfies_its_parameter_refinements() {
 
 #[test]
 fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
-    let schema=Schema::parse("TYPE Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE Pair Of Bytes: Bytes . WHERE [(_ length) = 2], TYPE Small Map: (MAP Integer) WHERE [(_ length) <= 1]").unwrap();
+    let schema_source = "TYPE ALIAS Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE ALIAS Pair Of Bytes: Bytes . WHERE [(_ length) = 2], TYPE ALIAS Small Map: (MAP Integer) WHERE [(_ length) <= 1]";
+    let schema = Schema::parse(schema_source).unwrap();
     assert!(
-        anyx_protocol::refinement::validate(&schema, &ty(&schema, "Wide"), &Value::Integer(1))
-            .is_ok()
-    );
-    assert!(
-        anyx_protocol::refinement::validate(&schema, &ty(&schema, "Wide"), &Value::Integer(3))
-            .is_err()
+        anyx_protocol::refinement::validate(
+            &schema,
+            &ty(schema_source, "Wide"),
+            &Value::Integer(1)
+        )
+        .is_ok()
     );
     assert!(
         anyx_protocol::refinement::validate(
             &schema,
-            &ty(&schema, "Pair Of Bytes"),
+            &ty(schema_source, "Wide"),
+            &Value::Integer(3)
+        )
+        .is_err()
+    );
+    assert!(
+        anyx_protocol::refinement::validate(
+            &schema,
+            &ty(schema_source, "Pair Of Bytes"),
             &Value::Bytes(vec![0, 255])
         )
         .is_ok()
@@ -360,7 +382,7 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
     assert!(
         anyx_protocol::refinement::validate(
             &schema,
-            &ty(&schema, "Pair Of Bytes"),
+            &ty(schema_source, "Pair Of Bytes"),
             &Value::Bytes(vec![0])
         )
         .is_err()
@@ -372,7 +394,10 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
         ]
         .into(),
     );
-    assert!(anyx_protocol::refinement::validate(&schema, &ty(&schema, "Small Map"), &map).is_err());
+    assert!(
+        anyx_protocol::refinement::validate(&schema, &ty(schema_source, "Small Map"), &map)
+            .is_err()
+    );
     assert!(anyx_protocol::decode_type(&schema, "Text . WHERE [0 < _]").is_err());
 }
 

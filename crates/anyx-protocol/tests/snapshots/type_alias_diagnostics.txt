@@ -27,7 +27,7 @@ schema:1:73: found a type in the name of a `TYPE ALIAS`, before its end; expecte
 
 == an alias over an unknown type
 PROTOCOL a VERSION 1, TYPE ALIAS Paths: LIST Path,
-schema:1:46: found `Path`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` defined here; define `Path`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:46: found `Path`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Path`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, TYPE ALIAS Paths: LIST Path,
                                                ^^^^
 

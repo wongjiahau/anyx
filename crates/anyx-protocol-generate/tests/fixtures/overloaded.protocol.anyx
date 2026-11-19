@@ -2,7 +2,7 @@
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
 CHOICE Shade { dark, light },
 

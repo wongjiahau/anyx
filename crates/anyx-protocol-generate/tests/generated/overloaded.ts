@@ -3,9 +3,9 @@
 /** Which file, among every account's. */
 export type FileId = string & { readonly __brand: "File Id" };
 
-/** Makes a `FileId` of a value, which the schema writes as its own. */
+/** Makes a `FileId`, which the schema writes as `File Id …`. */
 export function FileId(value: string): FileId {
-  return value as FileId;
+  return value as unknown as FileId;
 }
 
 export type Shade =
@@ -45,7 +45,10 @@ type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor
 // value for each. An `@` field has the `forms` its values are written in,
 // which find it.
 type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
-type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+// A `distinct` definition is a named type: its constructor's `shape`, `File
+// Id _`, and each slot's type. Its value is its one slot's value, or an
+// array of its slots' values.
+type Definition = { name?: string; parameters: string[]; kind: string; shape?: string; slots?: TypeDescriptor[]; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
 
@@ -119,7 +122,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return encodeValue(def.type!, value, env); }
+        try { return encodeNamed(def, value, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
       }
       const obj = object(value);
@@ -180,6 +183,24 @@ function isDurationCall(node: Syntax): boolean {
 function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
   const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
   return f.slots.length === 1 ? values[0] : values;
+}
+// A named type's value written in its constructor's shape, `File Id "a"`.
+function encodeNamed(def: Definition, value: unknown, bindings: Bindings): string {
+  const slots = def.slots!;
+  const values = slots.length === 1 ? [value] : Array.isArray(value) && value.length === slots.length ? value : fail(`expected ${slots.length} slot values`);
+  let i = 0;
+  return def.shape!.split(" ").map(word => word === "_" ? `(${encodeValue(slots[i], values[i++], bindings)})` : word).join(" ");
+}
+const invalid = Symbol("invalid");
+// A named type's value read from its constructor's shape, or `invalid` when
+// the node is written in another shape.
+function decodeNamed(def: Definition, node: Syntax, bindings: Bindings): unknown {
+  const tokens = parts(node), words = def.shape!.split(" "), slots = def.slots!;
+  if (tokens.length !== words.length) return invalid;
+  if (words.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return invalid;
+  const values: unknown[] = [];
+  words.forEach((part, i) => { if (part === "_") values.push(decodeValue(slots[values.length], tokens[i], bindings)); });
+  return slots.length === 1 ? values[0] : values;
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -423,8 +444,12 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
-        try { return decodeValue(def.type!, node, env); }
+        let value: unknown;
+        try { value = decodeNamed(def, node, env); }
         catch (error) { if (def.name) return fail(`in ${def.name}: ${String(error)}`); throw error; }
+        if (value !== invalid) return value;
+        const name = def.shape!.split(" ").filter(part => part !== "_").join(" ");
+        return fail(`expected a \`${name}\`, written with its name: \`${def.shape!.replace(/_/g, "…")}\``);
       }
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
@@ -488,7 +513,7 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text'}},
+const definitions: Definition[] = [{parameters:[],kind:'distinct', shape:"File Id _", slots:[{k:'text'}]},
 {parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];

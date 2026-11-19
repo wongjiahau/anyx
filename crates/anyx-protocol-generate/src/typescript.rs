@@ -3,7 +3,9 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, FieldForm, Method, ShapePart, Shaped, Type, TypeKind, Written};
+use anyx_protocol::schema::{
+    Field, FieldForm, Method, ShapePart, Shaped, Type, TypeKind, Written, slot_types,
+};
 
 use crate::names::camel_case;
 use crate::{
@@ -27,12 +29,15 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         match &definition.kind {
             TypeKind::Record(fields) => record(&mut out, schema, &generic, fields),
             TypeKind::Choice(variants) => union(&mut out, schema, &generic, variants),
-            TypeKind::Distinct(underlying) => branded(
+            TypeKind::Distinct {
+                constructor,
+                underlying,
+            } => branded(
                 &mut out,
                 schema,
                 &name,
-                &definition.name.clone(),
-                underlying,
+                &definition.name,
+                &slot_types(constructor, underlying),
             ),
         }
     }
@@ -359,30 +364,44 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
     out.push_str("}\n\n");
 }
 
-/// A named type: the type underneath, branded with the named type's full
-/// name so that another named type over the same type doesn't fit it, and a
-/// function of the same name that brands a value. The JSON is the value
-/// underneath.
-fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, underlying: &Type) {
-    let validation = if anyx_protocol::refinement::has_refinements(schema, underlying) {
-        let index = schema
-            .types
-            .iter()
-            .position(|definition| definition.name == full_name)
-            .unwrap();
-        format!("  encodeValue({{k:'named', index:{index}, args:[]}}, value);\n")
-    } else {
-        String::new()
+/// A named type: its one slot's type, or a tuple of its slots' types,
+/// branded with its name so that no other type fits it. Its function makes
+/// one, checking any refinement.
+fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, slots: &[&Type]) {
+    let refined = slots
+        .iter()
+        .any(|slot| anyx_protocol::refinement::has_refinements(schema, slot));
+    let validation = match refined {
+        true => {
+            let index = schema
+                .types
+                .iter()
+                .position(|definition| definition.name == full_name)
+                .unwrap();
+            format!("  encodeValue({{k:'named', index:{index}, args:[]}}, value);\n")
+        }
+        false => String::new(),
     };
-    let underlying = ts_type(schema, underlying);
+    let types: Vec<String> = slots.iter().map(|slot| ts_type(schema, slot)).collect();
+    let (held, parameters, value) = match types.as_slice() {
+        [one] => (one.clone(), format!("value: {one}"), "value"),
+        many => {
+            let tuple = format!("readonly [{}]", many.join(", "));
+            (
+                tuple.clone(),
+                format!("...value: [{}]", many.join(", ")),
+                "value",
+            )
+        }
+    };
     writeln!(
         out,
-        "export type {name} = {underlying} & {{ readonly __brand: {full_name:?} }};\n"
+        "export type {name} = {held} & {{ readonly __brand: {full_name:?} }};\n"
     )
     .unwrap();
     writeln!(
         out,
-        "/** Makes a `{name}` of a value, which the schema writes as its own. */\nexport function {name}(value: {underlying}): {name} {{\n{validation}  return value as {name};\n}}\n"
+        "/** Makes a `{name}`, which the schema writes as `{full_name} …`. */\nexport function {name}({parameters}): {name} {{\n{validation}  return {value} as unknown as {name};\n}}\n"
     )
     .unwrap();
 }
@@ -528,16 +547,24 @@ fn native_schema(schema: &Schema) -> String {
                 .collect::<Vec<_>>()
                 .join(",");
             let kind = match &d.kind {
-                TypeKind::Distinct(t) => {
-                    if anyx_protocol::refinement::has_refinements(schema, t) {
-                        format!(
-                            "kind:'distinct', name:{:?}, type:{}",
-                            d.name,
-                            native_type(t)
-                        )
-                    } else {
-                        format!("kind:'distinct', type:{}", native_type(t))
-                    }
+                TypeKind::Distinct {
+                    constructor,
+                    underlying,
+                } => {
+                    let slots = slot_types(constructor, underlying)
+                        .into_iter()
+                        .map(native_type)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let name = match anyx_protocol::refinement::has_refinements(schema, underlying)
+                    {
+                        true => format!(", name:{:?}", d.name),
+                        false => String::new(),
+                    };
+                    format!(
+                        "kind:'distinct'{name}, shape:{:?}, slots:[{slots}]",
+                        ShapePart::text(constructor)
+                    )
                 }
                 TypeKind::Record(fields) => format!(
                     "kind:'record', fields:[{}]",
@@ -723,6 +750,24 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
         }
         Value::Variant { shape, arguments } => {
             let (_, kind) = schema.instance(underlying).expect("choice");
+            // A named type's value is its one slot's, or an array of its
+            // slots' values.
+            if let TypeKind::Distinct {
+                constructor,
+                underlying: held,
+            } = kind.as_ref()
+            {
+                let slots = slot_types(constructor, held);
+                let values: Vec<String> = slots
+                    .iter()
+                    .zip(arguments)
+                    .map(|(slot, value)| native_default(schema, slot, value))
+                    .collect();
+                return match values.as_slice() {
+                    [one] if slots.len() == 1 => one.clone(),
+                    many => format!("[{}]", many.join(",")),
+                };
+            }
             let TypeKind::Choice(variants) = kind.as_ref() else {
                 unreachable!()
             };

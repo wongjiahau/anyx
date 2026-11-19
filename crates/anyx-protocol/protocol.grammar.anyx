@@ -20,7 +20,7 @@ protocol: ANYFIX CALL [
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [record, choice, named type, type alias, errors, method, function, import],
+definition: ONE OF [record, choice, intrinsic type, named type, untagged type, type alias, errors, method, function, import],
 
 import: ANYFIX CALL [WORD "USE", path: STRING],
 
@@ -97,23 +97,38 @@ choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice par
 
 choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
 
-## A named type gives a type its own name, `TYPE File Id: Text`, so values
-## that share a representation but mean different things can't be mixed up.
-## The checker requires a Title Case name. On the wire it is written
-## exactly like the type underneath.
-named type: ANYFIX CALL [
+## A type the implementation supplies, by its name alone, as the prelude
+## declares `INTRINSIC TYPE Integer`.
+intrinsic type: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
-  intrinsic: OPTIONAL: WORD "INTRINSIC",
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "TYPE", body: named type body,
+  intrinsic: WORD "INTRINSIC",
+  WORD "TYPE", name: type name,
 ],
 
-named type body: ONE OF [
-  typed: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
-  ## A name alone, `INTRINSIC TYPE Integer`: the implementation supplies
-  ## what it is. The schema checker reports one without `INTRINSIC`.
-  bare: ANYFIX CALL [name: WORDS [NO KEYWORD]],
+## A named type is a type of its own, which no other type fits, written
+## with its constructor so that a value shows which type it is. Its name is
+## a shape whose slots hold types, and its constructor is the same shape
+## with a value in each slot: `NAMED TYPE File Id (Text)` is written
+## `File Id "a"`, `NAMED TYPE (UNION [red, blue]) Color` is written
+## `red . Color`, and `NAMED TYPE Range from (Integer) to (Integer)` is
+## written `Range from 1 to 3`. One with no slots has one value, its name.
+named type: ANYFIX CALL [
+  doc: OPTIONAL: LINE STRING,
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "NAMED", WORD "TYPE", body: named type body,
 ],
+
+named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
+
+## `TYPE File Id: Text`, which is neither: read only so that the checker
+## can name the two that replace it, `TYPE ALIAS` and `NAMED TYPE`.
+untagged type: ANYFIX CALL [
+  doc: OPTIONAL: LINE STRING,
+  public: OPTIONAL: WORD "PUBLIC",
+  WORD "TYPE", body: untagged type body,
+],
+
+untagged type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 
 ## A type alias names a type without making a new one: the alias and the
 ## type it stands for are the same type, in the wire and in generated code.

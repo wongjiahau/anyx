@@ -23,7 +23,7 @@ CHOICE Shade { dark, light },
 CHOICE Colour { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
 ERRORS file errors [
     # The owner moved this file to the trash.
@@ -65,14 +65,28 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
   `Duration` (a length of time), declared in the [prelude](#the-prelude);
   `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
-  `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS`, and a use of a generic type,
+  `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS`, `UNION [A, B]`, and a
+  use of a generic type,
   `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
-- **`TYPE Name: T`** names a type, `TYPE File Id: Text`, so that values that
-  share a representation but mean different things can't be mixed up. It is
-  written exactly like `T`, on the wire and in JSON, and generated code
-  keeps it distinct from `T` and from other named types over `T`. `T` is any
-  type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
+- **`NAMED TYPE File Id (Text)`** makes a type of its own, which no other
+  type fits, so that values that hold the same thing but mean different
+  things can't be mixed up. Its name is a shape whose slots hold types, and
+  a value is written with that shape and a value in each slot: `File Id
+  "a"`. A slot may be anywhere among the words, and there may be several or
+  none: `NAMED TYPE (UNION [red, blue]) Color` is written `(red) Color`,
+  `NAMED TYPE Range from (Integer) to (Integer)` is written `Range from 1 to
+  3`, and `NAMED TYPE Unit` is written `Unit`. Since a value shows its type,
+  it needs no annotation, and a `UNION` of named types tells its members
+  apart by name. A use names it by its words, `Range from to`. In JSON a
+  value is an object whose one key is the type's words in camel case,
+  starting with a capital, holding its slot's value, or an array of its
+  slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3] }`, `{
+  "Unit": [] }`. Generated code keeps it distinct: a newtype in Rust, a
+  branded type in TypeScript. A slot's type may hold the named type only
+  through a `LIST` or a `MAP`. A bare `TYPE Name: T` is an error that names
+  both choices, since readers would otherwise have to guess which one it
+  means.
 - **`TYPE ALIAS Name: T`** names a type without making a new one:
   `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
   wire, in JSON, in the guide and in generated code, so an alias and its
@@ -82,8 +96,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   type it stands for comes last and can't lead back to the alias, since an
   alias is only another name; a type that holds itself is a `RECORD` or a
   `CHOICE`. `PUBLIC` shares an alias with direct importers, as it does a
-  type. Use `TYPE` when values should not mix with others of the same
-  representation, and `TYPE ALIAS` when a long type only needs a short name.
+  type. Use `NAMED TYPE` when values should not mix with others that hold
+  the same thing, and `TYPE ALIAS` when a long type only needs a short name.
 - **`RECORD Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
@@ -146,7 +160,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
       RETURNS (outcomes: Page of ((Receipt) or (Decline))),
   METHOD search (words: Text)
       RETURNS (results: Page of ((Document) signed by (Person))),
-  TYPE Orders: Page of (Order),
+  TYPE ALIAS Orders: Page of (Order),
   ```
 
   A slot may also sit between words in the middle of a name,
@@ -157,7 +171,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
   declarations of the same shape are an error. Only a `RECORD`, a
-  `CHOICE` or a `TYPE ALIAS` is generic, `TYPE Name: T` is not, and
+  `CHOICE` or a `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
   `PUBLIC RECORD Page of (Item: TYPE)` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
@@ -217,14 +231,14 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 ### Refinements
 
 `WHERE` narrows a type with a predicate. It is a type expression, the call
-`_ WHERE _`, so it works anywhere a type does: a named `TYPE`, a field, a
+`_ WHERE _`, so it works anywhere a type does: a `TYPE ALIAS`, a field, a
 parameter, a return, or an argument of a generic type.
 
 ```anyx
-TYPE Revision: Integer . WHERE [1 <= _],
-TYPE Probability: Float . WHERE [0 <= _ <= 1],
-TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
-TYPE Limit: (Integer) WHERE [10 <= _ < 30],
+TYPE ALIAS Revision: Integer . WHERE [1 <= _],
+TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
+TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
+TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
 RECORD Settings { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30]),
@@ -269,15 +283,16 @@ numerically. Refined types can still be passed as generic arguments, or
 used in a generic declaration's `LIST` length constraint. Type annotations
 compare the predicate's structure, ignoring its whitespace and source spans.
 Overloads cannot be distinguished solely by refinements of the same type;
-use distinct named `TYPE`s to identify them. Satisfiability, compatibility
+use distinct `NAMED TYPE`s to identify them. Satisfiability, compatibility
 checking, and relations between several method arguments or results are
 outside this feature.
 
-The wire and JSON keep the base type's representation. A named refined type
-still needs its annotation on a request argument, as any named type does:
-`write ("a.poentaro" AS: Score Path) at revision (1 AS: Revision)`. An inline
-refinement uses that whole type in `AS:` too. Generated clients write these
-annotations.
+The wire and JSON keep the base type's representation, and a value needs
+no annotation beyond its base type's: `write "a.poentaro" at revision 1`.
+An annotation names the refinement as written, `(… AS: Integer . WHERE [1
+<= _])`, since an alias makes no type of its own. A refinement in a `NAMED
+TYPE`'s slot applies to its slot's value: `NAMED TYPE Revision (Integer .
+WHERE [1 <= _])` is written `Revision 4`.
 
 A failed argument, including a nested field or item, rejects the whole
 request as `INVALID REQUEST` before any call runs. The diagnostic identifies
@@ -698,6 +713,7 @@ and base64 are checked in Rust.
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `{ path "a", revision 3, hidden, (any) case, @by name }`, each field in its shape, in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
+| a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `(red) Color`, `Unit` |
 | a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 
 A number's type is how it is written, as in Rust: `3` and `-1` are
@@ -728,7 +744,7 @@ is dropped, rounding down, for both types.
 ## Annotations and overloads
 
 `value AS: type` states the type of an argument whose value doesn't show
-it: `tag ([] AS: LIST Text)`, `open ("abc" AS: File Id)`. It is the call
+it: `tag ([] AS: LIST Text)`, `upload ("TVRoZA==" AS Bytes)`. It is the call
 `_ AS _`, so in a slot it goes in parentheses. `AS: x` is `AS (x)` by the
 `:` sugar, the same call as `AS x` wherever nothing would join; the `:`
 matters only before an all-caps type, where `AS LIST` would join into one
@@ -750,24 +766,24 @@ methods:
 | braces of string keys | `MAP` of its values' type, the same way |
 | braces of fields | the record of the schema, not generic, that has each field written and is missing none it requires, when only one does |
 | a variant | the choice of the schema, not generic, with a variant of its shape, when only one has one |
+| a named type's constructor, `File Id "abc"` | that named type |
 
 Anything else has no type of its own: `[]`, `{}`, a value of a generic
-type, and a record or variant that several types fit. A `Bytes`, an
-`Instant` and a value of a named `TYPE` are written like a string, or like
-the type underneath, so their own type is never theirs.
+type, and a record or variant that several types fit. A `Bytes` and an
+`Instant` are written like a string, so their own type is never theirs.
 
 **An argument of a call must have its parameter's type, of its own or by
 an annotation**, even when the method has no overloads:
 
 ```anyx
-read ("abc" AS: File Id),
+read (File Id "abc"),
 upload ("TVRoZA==" AS Bytes),
 tag ([] AS: LIST Text),
 ```
 
 Without it, the request is `INVALID REQUEST` and none of its calls run:
-"in `id` of `read _`: `"abc"` has the type Text of its own, not `File Id`;
-annotate it, as in `read ("abc" AS: File Id)`". So adding an overload never
+"in `content` of `upload _`: `"TVRoZA=="` has the type Text of its own, not `Bytes`;
+annotate it, as in `upload ("TVRoZA==" AS: Bytes)`". So adding an overload never
 breaks a call that worked: every call already states the types it depends
 on. Only a whole argument is annotated; a value inside one is read by the
 type around it, so `AS` inside a value is an error. The schema's
@@ -831,7 +847,10 @@ client calling the codec through wasm. Names are camelCase. A record is an
 object; a variant or an error is an object whose `kind` is its words in
 camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
-An `Instant` is its text, as on the wire, and a `Duration` its whole
+A named type's value is an object whose one key is the type's words in
+camel case, starting with a capital, holding its one slot's value or an
+array of its slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3]
+}`, `{ "Unit": [] }`. An `Instant` is its text, as on the wire, and a `Duration` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
 A field with a `DEFAULT` that is left out takes its default. An explicitly
 supplied value is always checked against the field's type.
@@ -848,7 +867,7 @@ that returns nothing), `{ "kind": "error",
 `{ "kind": "invalidRequest", "line": …, "column": …, "message": … }`.
 
 JSON names a method by its full name, `files/read _`. JSON can't tell
-`3` from `3.0`, nor a `File Id` from a `Text`, so an overload is named by
+`3` from `3.0`, nor a `Bytes` from a `Text`, so an overload is named by
 its full name with its parameters' types in its slots, as written in its
 namespace: `scale (Float)`, `tag (LIST File Id)`. Any method may be named
 that way; an overloaded one must be, and its full name alone is an error

@@ -208,7 +208,7 @@ fn an_at_field_of_a_type_parameter_is_diagnosed() {
 }
 
 const RANGE: &str = "PROTOCOL a VERSION 1,
-TYPE Depth: Integer . WHERE [0 <= _],
+TYPE ALIAS Depth: Integer . WHERE [0 <= _],
 RECORD Search {
     depth from (Depth) to (Depth?),
     between (Integer) and (Integer) bytes DEFAULT between 1 and 9 bytes,
@@ -241,7 +241,8 @@ fn each_slot_is_checked_against_its_own_type() {
     let schema = schema(RANGE);
     let error = decode_request(&schema, "find { depth from -1 to 3 }").unwrap_err();
     assert!(
-        format!("{error:?}").contains("in `depth from to`: value `-1` is not a `Depth`"),
+        format!("{error:?}")
+            .contains("in `depth from to`: value `-1` is not a `(Integer) WHERE [0 <= _]`"),
         "{error:?}"
     );
 }

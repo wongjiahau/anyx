@@ -126,12 +126,11 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
             continue;
         }
         let declared = match definition {
-            ast::Definition::NamedType(ast::NamedType {
+            ast::Definition::IntrinsicType(ast::IntrinsicType { doc, name, .. }) => Some((
                 doc,
-                intrinsic: Some(_),
-                body: ast::NamedTypeBody::Bare { name, .. },
-                ..
-            }) => Some((doc, name.value.clone(), Vec::new())),
+                name.name.words().collect::<Vec<_>>().join(" "),
+                Vec::new(),
+            )),
             ast::Definition::Choice(ast::Choice {
                 doc,
                 intrinsic: Some(_),
@@ -233,7 +232,7 @@ pub(crate) fn declarations() -> ast::Document {
 
 fn is_intrinsic(definition: &ast::Definition) -> bool {
     match definition {
-        ast::Definition::NamedType(d) => d.intrinsic.is_some(),
+        ast::Definition::IntrinsicType(_) => true,
         ast::Definition::Choice(d) => d.intrinsic.is_some(),
         ast::Definition::Record(d) => d.intrinsic.is_some(),
         ast::Definition::Errors(d) => d.intrinsic.is_some(),

@@ -1,6 +1,6 @@
 //! The generated Rust module of named types, compiled: each is a struct of
-//! its own around the type underneath, and the wire doesn't tell them apart
-//! from it.
+//! its own with a field for each slot, written on the wire with its name. A
+//! type alias is only another name for its type, so it vanishes.
 
 #[path = "generated/named.rs"]
 mod named;
@@ -11,16 +11,16 @@ use std::task::{Context, Poll, Waker};
 
 use anyx_protocol::client::{CallError, Transport};
 use named::{
-    Access, Client, FileId, FileLink, Level, Link, OpenedAt, Openings, Server, ShareId,
-    ShareTaggedError, Tags, Visit,
+    Access, Client, Everyone, FileId, FileLink, Server, ShareId, ShareTaggedError, SpanFromTo,
+    Visit,
 };
 
 /// A visit at one second after 1970, by one person.
 fn visit() -> Visit {
-    let at = OpenedAt(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1));
+    let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1);
     Visit {
-        at: at.clone(),
-        by_person: Openings([("ann".to_string(), at)].into()),
+        at,
+        by_person: [("ann".to_string(), at)].into(),
         label: ShareId("none".to_string()),
     }
 }
@@ -45,16 +45,16 @@ impl Server for Sharing {
     async fn share_tagged(
         &self,
         id: FileId,
-        tags: Tags,
-    ) -> Result<Result<Link, ShareTaggedError>, Self::Error> {
+        tags: Vec<String>,
+    ) -> Result<Result<FileLink, ShareTaggedError>, Self::Error> {
         if id.0 == "gone" {
             return Ok(Err(ShareTaggedError::Missing { id }));
         }
-        Ok(Ok(Link(FileLink {
+        Ok(Ok(FileLink {
             share_id: ShareId(format!("share of {}", id.0)),
             file_id: id,
             tags,
-        })))
+        }))
     }
 
     async fn revoke(&self, _id: ShareId) -> Result<(), Self::Error> {
@@ -69,8 +69,12 @@ impl Server for Sharing {
         Ok(vec![ShareId::from("a".to_string()), "b".to_string().into()])
     }
 
-    async fn grant_on(&self, level: Level, _id: FileId) -> Result<Level, Self::Error> {
+    async fn grant_on(&self, level: Access, _id: FileId) -> Result<Access, Self::Error> {
         Ok(level)
+    }
+
+    async fn show_to(&self, span: SpanFromTo, _who: Everyone) -> Result<SpanFromTo, Self::Error> {
+        Ok(SpanFromTo(span.0, span.1 + 1))
     }
 
     async fn visits(&self) -> Result<Vec<Visit>, Self::Error> {
@@ -103,20 +107,20 @@ fn client() -> Client<InProcess> {
 }
 
 #[test]
-fn named_types_cross_the_wire_as_the_types_underneath() {
+fn named_types_cross_the_wire_with_their_names() {
     let client = client();
-    let tags = Tags(vec!["hymn".to_string()]);
+    let tags = vec!["hymn".to_string()];
     assert_eq!(
         run(client.share_tagged(FileId("a".to_string()), tags.clone())),
-        Ok(Link(FileLink {
+        Ok(FileLink {
             share_id: ShareId("share of a".to_string()),
             file_id: FileId("a".to_string()),
             tags,
-        }))
+        })
     );
     assert_eq!(
-        run(client.grant_on(Level(Access::Write), FileId("a".to_string()))),
-        Ok(Level(Access::Write))
+        run(client.grant_on(Access::Write, FileId("a".to_string()))),
+        Ok(Access::Write)
     );
     assert_eq!(
         run(client.links()),
@@ -125,23 +129,39 @@ fn named_types_cross_the_wire_as_the_types_underneath() {
     assert_eq!(
         String::from(FileId("a".to_string())),
         "a",
-        "a named type converts back to the type underneath"
+        "a named type with one slot converts back to what it holds"
     );
     let exchanged = client.transport.exchanged.borrow();
     assert_eq!(
         exchanged[0],
         (
-            "share (\"a\" AS File Id) tagged ([\"hymn\"] AS Tags)\n".to_string(),
-            "RETURNS { share id \"share of a\", file id \"a\", tags [\"hymn\"] }\n".to_string()
+            "share (File Id \"a\") tagged [\"hymn\"]\n".to_string(),
+            "RETURNS { share id: Share Id \"share of a\", file id: File Id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );
     assert_eq!(exchanged[1].1, "RETURNS write\n");
 }
 
 #[test]
+fn a_named_type_may_have_several_slots_or_none() {
+    let client = client();
+    assert_eq!(
+        run(client.show_to(SpanFromTo(1, 3), Everyone)),
+        Ok(SpanFromTo(1, 4))
+    );
+    assert_eq!(
+        client.transport.exchanged.borrow()[0],
+        (
+            "show (Span from 1 to 3) to (Everyone)\n".to_string(),
+            "RETURNS Span from 1 to 4\n".to_string()
+        )
+    );
+}
+
+#[test]
 fn an_error_holds_its_named_type() {
     assert_eq!(
-        run(client().share_tagged(FileId("gone".to_string()), Tags(Vec::new()))),
+        run(client().share_tagged(FileId("gone".to_string()), Vec::new())),
         Err(CallError::Method(ShareTaggedError::Missing {
             id: FileId("gone".to_string())
         }))
@@ -149,12 +169,12 @@ fn an_error_holds_its_named_type() {
 }
 
 #[test]
-fn a_named_type_over_an_instant_or_a_map_crosses_the_wire() {
+fn a_record_with_a_named_default_crosses_the_wire() {
     let client = client();
     assert_eq!(run(client.visits()), Ok(vec![visit()]));
     assert_eq!(
         client.transport.exchanged.borrow()[0].1,
-        "RETURNS [\n    { at \"1970-01-01T00:00:01.000Z\", by person { \"ann\" \"1970-01-01T00:00:01.000Z\" }, label \"none\" },\n]\n"
+        "RETURNS [\n    {\n        at \"1970-01-01T00:00:01.000Z\",\n        by person { \"ann\" \"1970-01-01T00:00:01.000Z\" },\n        label: Share Id \"none\",\n    },\n]\n"
     );
 }
 

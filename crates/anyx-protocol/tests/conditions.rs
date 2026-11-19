@@ -252,7 +252,7 @@ fn list_tests_name_variants_of_a_choice_in_a_method_condition() {
             "expected variants in square brackets",
         ),
         (
-            "TYPE Names: LIST Text . WHERE [_ . has no repeats]",
+            "TYPE ALIAS Names: LIST Text . WHERE [_ . has no repeats]",
             "are for REQUIRES and ENSURES",
         ),
     ] {

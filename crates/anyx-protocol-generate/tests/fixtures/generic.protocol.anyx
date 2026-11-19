@@ -27,7 +27,7 @@ RECORD Payment { amount: Integer, at: Instant },
 
 CHOICE Decline { insufficient funds, card expired },
 
-TYPE Payments: Page of (Payment),
+TYPE ALIAS Payments: Page of (Payment),
 
 METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)),
 

@@ -12,7 +12,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 
 CHOICE Shade { dark, light },
 
@@ -64,6 +64,29 @@ pub fn schema() -> &'static anyx_protocol::Schema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FileId(pub String);
 
+impl IntoValue for FileId {
+    fn into_value(self) -> Value {
+        let FileId(slot_0) = self;
+        Value::Variant {
+            shape: "File Id _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl FromValue for FileId {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments } if shape == "File Id _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(FileId(slot_0))
+            }
+            _ => None,
+        }
+    }
+}
+
 impl From<String> for FileId {
     fn from(value: String) -> Self {
         Self(value)
@@ -73,18 +96,6 @@ impl From<String> for FileId {
 impl From<FileId> for String {
     fn from(value: FileId) -> Self {
         value.0
-    }
-}
-
-impl IntoValue for FileId {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for FileId {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
     }
 }
 

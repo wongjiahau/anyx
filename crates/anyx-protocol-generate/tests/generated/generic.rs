@@ -37,7 +37,7 @@ RECORD Payment { amount: Integer, at: Instant },
 
 CHOICE Decline { insufficient funds, card expired },
 
-TYPE Payments: Page of (Payment),
+TYPE ALIAS Payments: Page of (Payment),
 
 METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)),
 
@@ -306,33 +306,6 @@ impl FromValue for Decline {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Payments(pub PageOf<Payment>);
-
-impl From<PageOf<Payment>> for Payments {
-    fn from(value: PageOf<Payment>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<Payments> for PageOf<Payment> {
-    fn from(value: Payments) -> Self {
-        value.0
-    }
-}
-
-impl IntoValue for Payments {
-    fn into_value(self) -> Value {
-        self.0.into_value()
-    }
-}
-
-impl FromValue for Payments {
-    fn from_value(value: Value) -> Option<Self> {
-        FromValue::from_value(value).map(Self)
-    }
-}
-
 /// `true` or `false`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
@@ -421,7 +394,7 @@ pub trait Server {
     /// `payments`, returning `payments`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
-    async fn payments(&self) -> Result<Payments, Self::Error>;
+    async fn payments(&self) -> Result<PageOf<Payment>, Self::Error>;
 
     /// `count _`, returning `count`.
     ///
@@ -547,7 +520,7 @@ impl<T: Transport> Client<T> {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn payments(
         &self,
-    ) -> Result<Payments, CallError<::std::convert::Infallible, T::Error>> {
+    ) -> Result<PageOf<Payment>, CallError<::std::convert::Infallible, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 2, vec![]).await
     }
 

@@ -169,7 +169,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "INTRINSIC in a schema",
-            "PROTOCOL a VERSION 1, INTRINSIC TYPE Money: Integer,",
+            "PROTOCOL a VERSION 1, INTRINSIC TYPE Money,",
         ),
         (
             "INTRINSIC on a record in a schema",
@@ -184,8 +184,8 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, RECORD Integer { a: Text },",
         ),
         (
-            "a named type without a type",
-            "PROTOCOL a VERSION 1, TYPE Money,",
+            "a type alias without a type",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Money,",
         ),
         (
             "an unnamed return",
@@ -217,7 +217,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "overloads with the same parameter types",
-            "PROTOCOL a VERSION 1, TYPE Id: Text, METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,",
         ),
         (
             "overloads that differ only in what they return",
@@ -348,7 +348,7 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a type",
-            "PROTOCOL a VERSION 1, \"A path.\" TYPE Path: Text,",
+            "PROTOCOL a VERSION 1, \"A path.\" TYPE ALIAS Path: Text,",
         ),
         (
             "a quoted doc on a group of errors",
@@ -595,7 +595,7 @@ fn the_request_decoder_is_what_its_grammar_generates() {
 #[test]
 fn simple_type_names_use_title_case() {
     schema(
-        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { pdf }, TYPE Some Format: File Format,",
+        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { pdf }, TYPE ALIAS Some Format: File Format,",
     );
     for name in ["file summary", "FileSummary", "File summary"] {
         for declaration in [

@@ -1,8 +1,8 @@
 # A local tool for trying refinement checks in the shell.
 PROTOCOL refinement demo VERSION 1,
 
-TYPE Revision: Integer . WHERE [1 <= _],
-TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
+TYPE ALIAS Revision: Integer . WHERE [1 <= _],
+TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 
 # Echoes an integer from 10 inclusive to 30 exclusive.
 READ ONLY METHOD limit (value: Integer . WHERE [10 <= _ < 30])

@@ -1,5 +1,5 @@
 PROTOCOL native VERSION 1,
-TYPE Identifier: Integer,
+NAMED TYPE Identifier (Integer),
 CHOICE Selection { none, selected (item: Text) },
 RECORD Packet {
   text: Text,

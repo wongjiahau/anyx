@@ -31,15 +31,21 @@ fn rejects_values_that_do_not_fit_the_type() {
 #[test]
 fn standalone_arguments_synthesize_types_without_a_method() {
     use anyx_protocol::{decode_argument, decode_type, decode_value};
-    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE File Id: Text").unwrap();
+    let schema = Schema::parse("PROTOCOL example VERSION 1, NAMED TYPE File Id (Text)").unwrap();
     assert_eq!(
         decode_argument(&schema, "42").unwrap(),
         (Type::Integer, Value::Integer(42))
     );
     let named = decode_type(&schema, "File Id").unwrap();
     assert_eq!(
-        decode_argument(&schema, "(\"path\" AS: File Id)").unwrap(),
-        (named, Value::Text("path".into()))
+        decode_argument(&schema, "(File Id \"path\")").unwrap(),
+        (
+            named,
+            Value::Variant {
+                shape: "File Id _".into(),
+                arguments: vec![Value::Text("path".into())],
+            }
+        )
     );
     assert!(decode_argument(&schema, "[]").is_err());
     assert_eq!(

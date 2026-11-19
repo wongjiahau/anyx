@@ -9,7 +9,7 @@ use anyx_protocol::{Call, Value, decode_request, encode_request};
 use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 CHOICE Shade { dark, light },
 CHOICE Colour { dark, red },
 CHOICE Mood { calm, wild },
@@ -33,6 +33,13 @@ METHOD read (id: File Id) RETURNS NOTHING,";
 
 fn text(value: &str) -> Value {
     Value::Text(value.to_string())
+}
+
+fn file_id(id: &str) -> Value {
+    Value::Variant {
+        shape: "File Id _".to_string(),
+        arguments: vec![text(id)],
+    }
 }
 
 fn list(items: Vec<Value>) -> Value {
@@ -72,10 +79,10 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
         [(1, vec![list(vec![])])]
     );
     assert_eq!(calls("open \"a\""), [(2, vec![text("a")])]);
-    assert_eq!(calls("open (\"a\" AS: File Id)"), [(3, vec![text("a")])]);
+    assert_eq!(calls("open (File Id \"a\")"), [(3, vec![file_id("a")])]);
     assert_eq!(
-        calls("open (\"a\" AS File Id)"),
-        [(3, vec![text("a")])],
+        calls("tag ([] AS (LIST Text))"),
+        [(0, vec![list(vec![])])],
         "`AS: x` is `AS (x)`"
     );
     assert_eq!(calls("scale 3.0"), [(4, vec![Value::Float(3.0)])]);
@@ -99,11 +106,11 @@ fn a_value_with_no_type_of_its_own_needs_an_annotation() {
     // breaks a call.
     assert_eq!(
         message("read \"a\""),
-        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`"
+        "in `id` of `read _`: found a string; expected a `File Id`, written with its name: `File Id …`",
     );
     assert_eq!(
         message("feel (calm), read \"a\""),
-        "in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`",
+        "in `id` of `read _`: found a string; expected a `File Id`, written with its name: `File Id …`",
         "the whole request is invalid, so none of its calls run"
     );
 }
@@ -139,7 +146,7 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
 fn a_call_no_overload_fits_lists_them() {
     assert_eq!(
         message("tag [1.5]"),
-        "found `tag _` with an argument of the type `LIST Float`; expected the types of one of its overloads: `tag (names: LIST Text)`, `tag (ids: LIST Integer)`; a value of a named type, or of `Bytes` or `Instant`, is written like another type's, so annotate it, as in `(\"abc\" AS: File Id)`"
+        "found `tag _` with an argument of the type `LIST Float`; expected the types of one of its overloads: `tag (names: LIST Text)`, `tag (ids: LIST Integer)`; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`"
     );
 }
 
@@ -181,7 +188,7 @@ fn a_request_states_the_types_it_depends_on() {
         },
         Call {
             method: 3,
-            arguments: vec![text("a")],
+            arguments: vec![file_id("a")],
         },
         Call {
             method: 4,
@@ -207,7 +214,7 @@ fn a_request_states_the_types_it_depends_on() {
         request,
         "tag ([] AS: LIST Text),
 tag [1],
-open (\"a\" AS File Id),
+open (File Id \"a\"),
 scale 3.0,
 paint (dark AS Shade),
 feel (calm),
@@ -220,7 +227,7 @@ feel (calm),
 fn undone_by_names_one_overload() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-TYPE File Id: Text,
+NAMED TYPE File Id (Text),
 METHOD hide (path: Text) RETURNS NOTHING UNDONE BY show (path: Text),
 METHOD hide (id: File Id) RETURNS NOTHING UNDONE BY show (id: File Id),
 METHOD show (path: Text) RETURNS NOTHING,
@@ -243,23 +250,23 @@ METHOD show (id: File Id) RETURNS NOTHING,",
 #[test]
 fn an_example_annotates_as_a_request_does() {
     let parsed = anyx_protocol::Schema::parse(
-        "PROTOCOL a VERSION 1, TYPE File Id: Text,
-METHOD read (id: File Id) RETURNS NOTHING EXAMPLES [read (\"a\" AS: File Id) RETURNS NOTHING],",
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
+METHOD read (id: File Id) RETURNS NOTHING EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
     );
     assert!(parsed.is_ok(), "{parsed:?}");
     let unannotated = common::diagnostics(
-        "PROTOCOL a VERSION 1, TYPE File Id: Text,
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
 METHOD read (id: File Id) RETURNS NOTHING EXAMPLES [read \"a\" RETURNS NOTHING],",
     );
     assert!(
         unannotated.contains(
-            "in an example of `read _`: in `id` of `read _`: `\"a\"` has the type Text of its own, not `File Id`; annotate it, as in `read (\"a\" AS: File Id)`"
+            "in an example of `read _`: in `id` of `read _`: found a string; expected a `File Id`, written with its name: `File Id …`"
         ),
         "{unannotated}"
     );
 }
 
-/// JSON can't tell `3` from `3.0`, nor a `file id` from a `Text`, so it
+/// JSON can't tell `3` from `3.0`, nor a list of `Text` from one of `Integer`, so it
 /// names an overload by its typed name, `scale (Float)`.
 #[cfg(feature = "json")]
 #[test]
@@ -275,8 +282,8 @@ fn json_names_an_overload_with_its_parameters_types() {
         "scale 3\n"
     );
     assert_eq!(
-        encode_request_json(&schema, "open (File Id)", "[\"a\"]").unwrap(),
-        "open (\"a\" AS File Id)\n"
+        encode_request_json(&schema, "open (File Id)", r#"[{"FileId": "a"}]"#).unwrap(),
+        "open (File Id \"a\")\n"
     );
     assert_eq!(
         encode_request_json(&schema, "scale _", "[3]").unwrap_err(),
@@ -284,20 +291,16 @@ fn json_names_an_overload_with_its_parameters_types() {
     );
     // A method with no overloads goes by its full name, or its typed one.
     assert_eq!(
-        encode_request_json(&schema, "read _", "[\"a\"]").unwrap(),
-        "read (\"a\" AS File Id)\n"
+        encode_request_json(&schema, "read _", r#"[{"FileId": "a"}]"#).unwrap(),
+        "read (File Id \"a\")\n"
     );
     assert_eq!(
-        encode_request_json(&schema, "read (File Id)", "[\"a\"]").unwrap(),
-        "read (\"a\" AS File Id)\n"
+        encode_request_json(&schema, "read (File Id)", r#"[{"FileId": "a"}]"#).unwrap(),
+        "read (File Id \"a\")\n"
     );
     assert_eq!(
-        decode_request_json(
-            &schema,
-            "tag ([] AS: LIST Integer), read (\"a\" AS: File Id)"
-        )
-        .unwrap(),
-        r#"[{"arguments":[[]],"method":"tag (LIST Integer)"},{"arguments":["a"],"method":"read _"}]"#
+        decode_request_json(&schema, "tag ([] AS: LIST Integer), read (File Id \"a\")").unwrap(),
+        r#"[{"arguments":[[]],"method":"tag (LIST Integer)"},{"arguments":[{"FileId":"a"}],"method":"read _"}]"#
     );
 }
 

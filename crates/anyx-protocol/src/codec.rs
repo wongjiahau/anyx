@@ -398,7 +398,7 @@ fn choose(
     Err(Mismatch {
         span,
         message: format!(
-            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of a named type, or of `Bytes` or `Instant`, is written like another type's, so annotate it, as in `(\"abc\" AS: File Id)`",
+            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`",
             match types.len() {
                 1 => "an argument of the type",
                 _ => "arguments of the types",
@@ -618,7 +618,9 @@ pub(crate) fn layout(text: String) -> String {
 
 /// Writes a call of `method` in a request: its words, with `arguments` in
 /// its slots, each annotated with its parameter's type, `([] AS: LIST:
-/// Text)`, unless it has that type of its own as written.
+/// Text)`, unless the type it has of its own as written fits the
+/// parameter, as a decoder reads it: `File Id "a"` for a `UNION [File Id,
+/// Share Id]`.
 fn write_call(
     schema: &Schema,
     method: &Method,
@@ -642,7 +644,7 @@ fn write_call(
             Ok([node]) => own_type(schema, node),
             _ => None,
         };
-        match own.as_ref() == Some(&parameter.r#type) {
+        match own.is_some_and(|own| parameter.r#type.accepts_argument_type(&own)) {
             true => write_slot(schema, &parameter.r#type, value, out)?,
             false => out.push_str(&format!(
                 "({written} AS: {})",
@@ -815,6 +817,17 @@ pub(crate) fn write(
             let Some((_, kind)) = schema.instance(r#type) else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };
+            if let TypeKind::Distinct {
+                constructor,
+                underlying,
+            } = kind.as_ref()
+            {
+                let own = crate::schema::constructor_shape(constructor, underlying);
+                if own.text != *shape {
+                    return Err(mismatched(schema, r#type, &format!("`{shape}`")));
+                }
+                return write_shape(schema, &own, arguments, out);
+            }
             let TypeKind::Choice(variants) = kind.as_ref() else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };
