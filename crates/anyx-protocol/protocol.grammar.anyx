@@ -56,16 +56,16 @@ type marker: ONE OF [WORD "TYPE"],
 ## - `(Case) case`, written `(any) case`;
 ## - `between (Integer) and (Integer)`, written `between 1 and 3`, holds a
 ##   value for each slot;
-## - `hidden`, words alone: a `Boolean`, `true` when written and `false`
-##   when left out;
+## - `hidden`, words alone: a `Boolean`, `` `true `` when written and
+##   `` `false `` when left out;
 ## - `@(order: Order)`, the shape with no words, so a parameter names it.
-##   It is written as its value after `@`: `@newest first`. The checker
+##   It is written as its value after `@`: `` @(`newest first) ``. The checker
 ##   finds which `@` field an entry fills by the value's outermost form
 ##   alone.
 ##
 ## A field that may be left out says what it is then, as an entry written
 ## as a value writes it: `age (Integer) DEFAULT age 0`,
-## `(path: Text) DEFAULT path "a"`, `@(order: Order) DEFAULT @newest first`.
+## `(path: Text) DEFAULT path "a"`, `` @(order: Order) DEFAULT @(`newest first) ``.
 ## The `DEFAULT` takes the whole field, so `path: Text DEFAULT path "a"`
 ## puts it in the slot, where no type has one.
 field: ONE OF [
@@ -109,8 +109,8 @@ intrinsic type: ANYFIX CALL [
 ## with its constructor so that a value shows which type it is. Its name is
 ## a shape whose slots hold types, and its constructor is the same shape
 ## with a value in each slot: `NAMED TYPE File Id (Text)` is written
-## `File Id "a"`, `NAMED TYPE (UNION [red, blue]) Color` is written
-## `red . Color`, and `NAMED TYPE Range from (Integer) to (Integer)` is
+## `File Id "a"`, `` NAMED TYPE (UNION [`red, `blue]) Color `` is written
+## `` (`red) Color ``, and `NAMED TYPE Range from (Integer) to (Integer)` is
 ## written `Range from 1 to 3`. One with no slots has one value, its name.
 named type: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
@@ -146,11 +146,13 @@ alias body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ONE OR MORE: alias part],
 
 alias part: ONE OF [type parameter, type],
 
-## A variant is written in the shape it takes on the wire. Its doc comes
-## first, so it fills the call's first slot.
-variant: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: variant slot],
+## A variant is written with a backtick, then in the shape it takes on the
+## wire: `` `missing (id: File Id) ``, `` `((left: Integer) + (right:
+## Integer)) ``. The backtick tells it from a function call and, in a
+## union, from a type. Its doc comes first, before the backtick.
+variant: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", body: variant body],
 
-variant slot: ONE OF [doc: LINE STRING, parameter],
+variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
 
 ## A group of errors that methods share: its name and its own errors, then
 ## other groups joined with `+`, as in
@@ -196,7 +198,7 @@ function: ANYFIX CALL [
   WORD "RETURNS", returns,
 ] FORMAT [BREAK BEFORE WORD "RETURNS"],
 
-condition: SQUARE BRACKET [predicate: ONE OR MORE: ANY NODE],
+condition: SQUARE BRACKET [predicate: ONE OR MORE: term],
 
 ## The call that undoes a method, written like a shape whose slots are the
 ## method's own parameters: `UNDONE BY move (new path: Text) to (path: Text)`.
@@ -253,7 +255,25 @@ type: ONE OF [
   named: reference,
 ],
 
-refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
+refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: term]],
+
+## A predicate's term: the value it tests, `_`, a parameter's name, a
+## constant, or a function of terms. Which function a call means, such as
+## `_ <= _ < _` or `_ ends with _`, the checker reads from the prelude's
+## `FUNCTION`s: `[10 <= _ < 30]`, `` [_ and (`true)] ``,
+## `` [items . has at most one of [`any case, `_ encoding]] ``.
+term: ONE OF [
+  subject: UNDERSCORE,
+  integer: NUMBER [WRITTEN INTEGER],
+  float: NUMBER [WRITTEN FLOAT],
+  text: STRING,
+  variants: SQUARE BRACKET [ZERO OR MORE: term variant],
+  variant: term variant,
+  call: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS: ZERO OR MORE: term],
+],
+## A variant in a predicate, `` `true ``, or a variant's shape with `_` in
+## each slot, `` `_ encoding ``.
+term variant: ANYFIX CALL [WORD "`", body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: UNDERSCORE]],
 
 list type: ANYFIX CALL [WORD "LIST", item: type],
 
@@ -261,24 +281,20 @@ list type: ANYFIX CALL [WORD "LIST", item: type],
 map type: ANYFIX CALL [WORD "MAP", value: type],
 
 ## Values of any of its members, each written as that member writes it:
-## `UNION [Integer, none]` holds `3` and `none`. A value's form tells its
+## `` UNION [Integer, `none] `` holds `3` and `` `none ``. A value's form tells its
 ## member, so the checker rejects two members written alike.
 union type: ANYFIX CALL [WORD "UNION", members: SQUARE BRACKET [ZERO OR MORE: union member]],
 
-## A member of a union. Case tells which: a variant's first word is
-## lowercase, as in `null` or `custom hue (hue: Float)`, and a type's name
-## starts otherwise, as in `Integer`, `Text?` or `(Text) Pair`. So a
-## generic type whose name starts lowercase needs an alias to be a member.
-## A list or a map is named first, as a record is: `TYPE ALIAS Paths: LIST
-## Text`, then `UNION [Paths, none]`.
+## A member of a union. The backtick tells which: a variant is marked, as
+## in `` `null `` or `` `custom hue (hue: Float) ``, and a type is not, as
+## in `Integer`, `Text?` or `(Text) Pair`. A list or a map is named first,
+## as a record is: `TYPE ALIAS Paths: LIST Text`, then
+## `` UNION [Paths, `none] ``.
 union member: ONE OF [
-  variant: ANYFIX CALL [
-    NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[a-z]"],
-    ARGUMENTS: ZERO OR MORE: parameter,
-  ],
+  variant: variant,
   refined: refined type,
   union: union type,
-  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^a-z_]"], ARGUMENTS: ZERO OR MORE: type],
+  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^`_]"], ARGUMENTS: ZERO OR MORE: type],
 ],
 
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a

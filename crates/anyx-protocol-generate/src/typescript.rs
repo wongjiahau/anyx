@@ -457,6 +457,7 @@ fn native_slots(field: &anyx_protocol::schema::Field) -> String {
 fn native_form(form: &Written) -> String {
     match form {
         Written::Call(shape) => format!("call:{}", ShapePart::text(shape)),
+        Written::Variant(shape) => format!("variant:{}", ShapePart::text(shape)),
         Written::String => "string".into(),
         Written::Number => "number".into(),
         Written::List => "list".into(),

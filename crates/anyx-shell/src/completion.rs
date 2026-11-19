@@ -241,7 +241,6 @@ impl Interpreter {
                     || !typed.iter().zip(matched).all(|(token, part)| {
                         if *part == "_" {
                             token.kind != TokenKind::Word
-                                || matches!(token.text.as_str(), "true" | "false")
                         } else {
                             token.kind == TokenKind::Word && token.text == *part
                         }
@@ -333,7 +332,7 @@ fn method_completion(
             "ERRORS [\n{}\n]",
             errors
                 .iter()
-                .map(|error| format!("  {},", schema.typed_shape(&error.shape)))
+                .map(|error| format!("  `{},", schema.typed_shape(&error.shape)))
                 .collect::<Vec<_>>()
                 .join("\n")
         )

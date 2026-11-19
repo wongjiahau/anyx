@@ -12,7 +12,7 @@ export type Shade =
   | { kind: "dark" }
   | { kind: "light" };
 
-/** `true` or `false`. */
+/** `` `true `` or `` `false ``. */
 export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
@@ -116,7 +116,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
     case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
-    case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings); }
+    case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return `\`${encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings)}`; }
     // The checker keeps a union's members apart, so a value fits one at most.
     case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
     case "named": {
@@ -133,7 +133,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       }
       const variant = def.variants!.find(v => v.kind === obj.kind);
       if (!variant) return fail("unknown choice variant");
-      return encodeShape(variant, variant.params.map(p => obj[p.name]), env);
+      return `\`${encodeShape(variant, variant.params.map(p => obj[p.name]), env)}`;
     }
   }
   return fail(`invalid ${type.k} value`);
@@ -153,7 +153,8 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
   if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
   const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
   const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
-  if (f.form === "unnamed") return [`@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
+  // A variant after `@` takes parentheses: `@(\`by name)`.
+  if (f.form === "unnamed") return [texts[0].startsWith("`") ? `@(${texts[0]})` : `@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
   const words = f.wire.split(" ");
   if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
   let next = 0;
@@ -162,6 +163,8 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
 // A node's outermost form, which finds the `@` field it fills.
 function formOf(node: Syntax): string {
   node = ungroup(node);
+  const body = marked(node);
+  if (body) return `variant:${parts(body).map(t => t.tag === "word" ? t.text : "_").join(" ")}`;
   switch (node.tag) {
     case "number": return "number";
     case "text": return "string";
@@ -375,8 +378,17 @@ function fromParts(nodes: Syntax[]): Syntax {
   if (!nodes.length) return fail("missing value");
   return nodes.length === 1 ? nodes[0] : { tag: "call", parts: nodes };
 }
+// The shape of a variant, the call `\` _` as the parser gave it: `\`red`.
+function marked(node: Syntax): Syntax | null {
+  const p = parts(node);
+  return p.length === 2 && word(p[0], "`") ? p[1] : null;
+}
+// A variant's value, read from a node marked with a backtick and written in
+// its shape, or `null` when it is not.
 function shapeValue(shape: ShapeDescriptor, node: Syntax, bindings: Bindings): Record<string, unknown> | null {
-  const tokens = parts(node), shapeParts = shape.text.split(" ");
+  const body = marked(node);
+  if (!body) return null;
+  const tokens = parts(body), shapeParts = shape.text.split(" ");
   if (tokens.length !== shapeParts.length) return null;
   if (shapeParts.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return null;
   const out: Record<string, unknown> = { kind: shape.kind };

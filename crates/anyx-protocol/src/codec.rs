@@ -10,7 +10,7 @@ use anyx::{Node, NodeKind, Span, line_column};
 
 use crate::annotation::{own_syntax_type, own_type, request_type};
 use crate::request_grammar as request;
-use crate::schema::{Field, FieldForm, Method, Schema, Shape, Type, TypeKind};
+use crate::schema::{Field, FieldForm, Method, Schema, Shape, Type, TypeKind, code};
 use crate::value::Value;
 
 /// One call of a request: which method, and its arguments in order.
@@ -159,8 +159,8 @@ fn decode_call(schema: &Schema, source: &str, syntax: &request::Call) -> Result<
         return Err(Mismatch {
             span,
             message: format!(
-                "found the call `{}`; expected one of the methods {}; a word in a slot, such as a choice's variant or `true`, goes in parentheses",
-                text,
+                "found the call {}; expected one of the methods {}; a word or a variant in a slot goes in parentheses, as in `` set (`true) ``",
+                code(text),
                 all_methods()
             ),
         });
@@ -247,8 +247,16 @@ fn decode_arguments(
         .map(|(index, (parameter, argument))| {
             let in_parameter = |mismatch: Mismatch| Mismatch {
                 message: if crate::refinement::has_refinements(schema, &parameter.r#type) {
-                    format!("in `{}` of `{}` (`{text}`): {}", parameter.name, &source[call.span.start..call.span.end], mismatch.message)
-                } else { format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message) },
+                    format!(
+                        "in `{}` of `{}` ({}): {}",
+                        parameter.name,
+                        &source[call.span.start..call.span.end],
+                        code(text),
+                        mismatch.message
+                    )
+                } else {
+                    format!("in `{}` of `{text}`: {}", parameter.name, mismatch.message)
+                },
                 ..mismatch
             };
             if let Some(annotated) = argument
@@ -268,13 +276,17 @@ fn decode_arguments(
             }
             let value = crate::request::decode(schema, &parameter.r#type, argument.value)
                 .map_err(in_parameter)?;
-            if !argument.stated().is_some_and(|stated| parameter.r#type.accepts_argument_type(stated)) {
+            if !argument
+                .stated()
+                .is_some_and(|stated| parameter.r#type.accepts_argument_type(stated))
+            {
                 let fix = fix(schema, source, method, call, index);
-                let written = written(source, argument.value.span());
+                let written = code(&written(source, argument.value.span()));
+                let fix = code(&fix);
                 let message = match &argument.own {
-                    None => format!("`{written}` has no type of its own; annotate it, as in `{fix}`"),
+                    None => format!("{written} has no type of its own; annotate it, as in {fix}"),
                     Some(own) => format!(
-                        "`{written}` has the type {} of its own, not `{}`; annotate it, as in `{fix}`",
+                        "{written} has the type {} of its own, not `{}`; annotate it, as in {fix}",
                         schema.type_name(own),
                         schema.type_name(&parameter.r#type)
                     ),
@@ -289,7 +301,7 @@ fn decode_arguments(
         .collect::<Result<_, _>>()?;
     crate::refinement::check_precondition(schema, method, &values).map_err(|message| Mismatch {
         span,
-        message: format!("in `{}`: {message}", written(source, span)),
+        message: format!("in {}: {message}", code(&written(source, span))),
     })?;
     Ok((chosen, values))
 }
@@ -384,16 +396,16 @@ fn choose(
         return Err(Mismatch {
             span: arguments[index].span,
             message: format!(
-                "in `{text}`: `{}` has no type of its own, so no overload of `{text}` can be chosen by it; annotate it with the type of the one to call, as in `{}`; the overloads are {all}",
-                written(source, arguments[index].value.span()),
-                fix(schema, source, example, call, index)
+                "in `{text}`: {} has no type of its own, so no overload of `{text}` can be chosen by it; annotate it with the type of the one to call, as in {}; the overloads are {all}",
+                code(&written(source, arguments[index].value.span())),
+                code(&fix(schema, source, example, call, index))
             ),
         });
     }
     let types: Vec<String> = arguments
         .iter()
         .filter_map(|argument| argument.stated())
-        .map(|stated| format!("`{}`", schema.type_name(stated)))
+        .map(|stated| code(&schema.type_name(stated)))
         .collect();
     Err(Mismatch {
         span,
@@ -466,7 +478,7 @@ pub(crate) fn describe(node: &Node) -> String {
     match &node.kind {
         NodeKind::Number(text) => format!("the number `{text}`"),
         NodeKind::String(_) => "a string".to_string(),
-        NodeKind::Call(call) => format!("the call `{}`", call.name_text()),
+        NodeKind::Call(call) => format!("the call {}", code(&call.name_text())),
         NodeKind::Parens(_) => "parentheses".to_string(),
         NodeKind::Brackets(_) => "a list `[…]`".to_string(),
         NodeKind::Braces(_) => "braces `{…}`".to_string(),
@@ -502,8 +514,8 @@ fn syntax_mismatch(error: request::DecodeError) -> Mismatch {
 pub(crate) const INSTANT_EXAMPLE: &str = "2026-11-14T06:00:08.000Z";
 pub(crate) const DURATION_EXAMPLE: &str = "1 hour 30 minutes";
 
-/// Reads `node` as one of `shapes`, written as a variant: `missing`,
-/// `conflict at revision 4`.
+/// Reads `node` as one of `shapes`, written as a variant: `` `missing ``,
+/// `` `conflict at revision 4 ``.
 pub(crate) fn decode_variant(
     schema: &Schema,
     shapes: &[&Shape],
@@ -812,6 +824,7 @@ pub(crate) fn write(
             if let Type::Variant(own) = r#type
                 && own.text == *shape
             {
+                out.push('`');
                 return write_shape(schema, own, arguments, out);
             }
             let Some((_, kind)) = schema.instance(r#type) else {
@@ -839,6 +852,7 @@ pub(crate) fn write(
                     ),
                 });
             };
+            out.push('`');
             write_shape(schema, &variant.shape, arguments, out)?;
         }
     }
@@ -927,8 +941,12 @@ fn write_fields(
                 let mut value = String::new();
                 write(schema, r#type, item, &mut value)?;
                 entry.push('@');
-                // `@-3` would read as the symbol word `@-`.
-                if value.starts_with(|c: char| !c.is_alphanumeric() && !"\"([{".contains(c)) {
+                if value.starts_with('`') {
+                    // `` @`x `` would read as the symbol word `` @` ``.
+                    value = format!("({value})");
+                } else if value.starts_with(|c: char| !c.is_alphanumeric() && !"\"([{".contains(c))
+                {
+                    // `@-3` would read as the symbol word `@-`.
                     entry.push(' ');
                 }
                 entry.push_str(&value);

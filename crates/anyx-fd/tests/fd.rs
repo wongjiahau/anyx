@@ -55,17 +55,20 @@ fn a_search_changes_how_fd_searches() {
             r#"[".hidden.rs", "src/deep/inner.rs", "src/lib.rs", "src/main.rs", "target/build.rs"]"#,
         ),
         (
-            r#"find "*.md" with { @glob pattern }"#,
+            r#"find "*.md" with { @(`glob pattern) }"#,
             r#"["README.md", "src/Notes.md"]"#,
         ),
-        (r#"find "NOTES" with { @any case }"#, r#"["src/Notes.md"]"#),
-        (r#"find "notes" with { @exact case }"#, "[]"),
         (
-            r#"find "." with { @fixed text pattern, max depth 1 }"#,
+            r#"find "NOTES" with { @(`any case) }"#,
+            r#"["src/Notes.md"]"#,
+        ),
+        (r#"find "notes" with { @(`exact case) }"#, "[]"),
+        (
+            r#"find "." with { @(`fixed text pattern), max depth 1 }"#,
             r#"["README.md"]"#,
         ),
         (
-            r#"find "" with { only [directory] }"#,
+            r#"find "" with { only [`directory] }"#,
             r#"["src", "src/deep"]"#,
         ),
         (
@@ -73,7 +76,7 @@ fn a_search_changes_how_fd_searches() {
             r#"["README.md", "src/Notes.md"]"#,
         ),
         (
-            r#"find "" with { min depth 2, max depth 2, only [file] }"#,
+            r#"find "" with { min depth 2, max depth 2, only [`file] }"#,
             r#"["src/Notes.md", "src/lib.rs", "src/main.rs"]"#,
         ),
         (
@@ -81,7 +84,7 @@ fn a_search_changes_how_fd_searches() {
             r#"["src/deep/inner.rs"]"#,
         ),
         (
-            r#"find "" with { only [empty] }"#,
+            r#"find "" with { only [`empty] }"#,
             r#"["src/deep/inner.rs"]"#,
         ),
         (r#"find "" with { excluding ["src"] }"#, r#"["README.md"]"#),
@@ -97,7 +100,7 @@ fn a_search_changes_how_fd_searches() {
         (r#"find "" with { at most 1 results }"#, r#"["README.md"]"#),
         (r#"find "^s" with { prune }"#, r#"["src"]"#),
         (
-            r#"find "" with { changed within (1 hour), only [file], at most 1 results }"#,
+            r#"find "" with { changed within (1 hour), only [`file], at most 1 results }"#,
             r#"["README.md"]"#,
         ),
         (r#"find "" with { changed more than (1 hour) ago }"#, "[]"),
@@ -122,7 +125,7 @@ fn paths_are_searched_and_written_as_given() {
     );
     assert_eq!(
         answer(directory.path(), r#"find "x" in ["missing"]"#),
-        "ERROR \"missing\" does not exist\n"
+        "ERROR `\"missing\" does not exist\n"
     );
 }
 
@@ -131,16 +134,16 @@ fn details_and_any_match() {
     let directory = tree();
     let details = answer(directory.path(), r#"details of "lib""#);
     assert!(
-        details.starts_with("RETURNS [{ path \"src/lib.rs\", kind: file, size 14, modified \""),
+        details.starts_with("RETURNS [{ path \"src/lib.rs\", kind: `file, size 14, modified \""),
         "{details}"
     );
     assert_eq!(
         answer(directory.path(), r#"any match of "main""#),
-        "RETURNS true\n"
+        "RETURNS `true\n"
     );
     assert_eq!(
         answer(directory.path(), r#"any match of "main" in ["src/deep"]"#),
-        "RETURNS false\n"
+        "RETURNS `false\n"
     );
 }
 
@@ -149,16 +152,16 @@ fn mistakes_are_errors_or_invalid_requests() {
     let directory = tree();
     assert_eq!(
         answer(directory.path(), r#"find "(""#),
-        "ERROR invalid pattern \"unclosed group\"\n"
+        "ERROR `invalid pattern \"unclosed group\"\n"
     );
     assert!(
-        answer(directory.path(), r#"find "[" with { @glob pattern }"#)
-            .starts_with("ERROR invalid glob \"")
+        answer(directory.path(), r#"find "[" with { @(`glob pattern) }"#)
+            .starts_with("ERROR `invalid glob \"")
     );
     // A search says each thing once, so it can't contradict itself.
     for (request, expected) in [
         (
-            r#"find "x" with { @glob pattern, @fixed text pattern }"#,
+            r#"find "x" with { @(`glob pattern), @(`fixed text pattern) }"#,
             "pattern",
         ),
         (r#"find "x" with { hidden, hidden }"#, "hidden"),
@@ -179,7 +182,7 @@ fn every_call_of_a_request_runs() {
     let directory = tree();
     assert_eq!(
         answer(directory.path(), r#"find "(", any match of "lib""#),
-        "ERROR invalid pattern \"unclosed group\",\nRETURNS true,\n"
+        "ERROR `invalid pattern \"unclosed group\",\nRETURNS `true,\n"
     );
 }
 
@@ -234,7 +237,7 @@ fn the_shell_brings_in_the_program_and_calls_it() {
     let mut shell = anyx_shell::Interpreter::new();
     let source = format!(
         "USE fd FROM COMMAND {program:?},\n\
-         fd / find \"lib\" in [{root:?}] with {{ only [file] }},\n\
+         fd / find \"lib\" in [{root:?}] with {{ only [`file] }},\n\
          USE ALL FROM fd,\n\
          any match of \"main\" in [{root:?}] with {{ max depth 2 }},\n"
     );
@@ -242,7 +245,7 @@ fn the_shell_brings_in_the_program_and_calls_it() {
     assert_eq!(execution.error, None);
     assert_eq!(
         execution.output,
-        format!("[{:?}],\ntrue,\n", format!("{root}/src/lib.rs"))
+        format!("[{:?}],\n`true,\n", format!("{root}/src/lib.rs"))
     );
     // A call the schema rules out never reaches the program.
     let problem = shell
@@ -257,7 +260,7 @@ fn the_shell_brings_in_the_program_and_calls_it() {
     let execution = shell.execute("find \"(\"").unwrap();
     assert_eq!(
         execution.error.as_deref(),
-        Some("ERROR invalid pattern \"unclosed group\"\n")
+        Some("ERROR `invalid pattern \"unclosed group\"\n")
     );
 }
 

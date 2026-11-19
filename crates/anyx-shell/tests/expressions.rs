@@ -22,7 +22,7 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
                 schema: Schema::parse(
                     "PROTOCOL example VERSION 1,
             RECORD Envelope { items: LIST Text },
-            CHOICE Message { message (text: Text) },
+            CHOICE Message { `message (text: Text) },
             METHOD text RETURNS (value: Text),
             METHOD integer RETURNS (value: Integer),
             METHOD names RETURNS (names: LIST Text),
@@ -153,7 +153,7 @@ fn nested_failure_skips_remaining_arguments_and_parent() {
         .unwrap();
     assert_eq!(
         execution.error.as_deref(),
-        Some("ERROR variable does not exist\n")
+        Some("ERROR `variable does not exist\n")
     );
     assert!(execution.values.is_empty());
     assert!(calls.borrow().is_empty());
@@ -166,7 +166,7 @@ fn expressions_work_in_lists_records_maps_and_choice_arguments() {
         "example / handle [(example / text)]",
         "example / envelope { items: [(example / text), (example / text)] }",
         "example / mapping { \"key\": (example / text) }",
-        "example / message (message (example / text))",
+        "example / message (`message (example / text))",
         "example / handle ((example / names) AS: LIST Text)",
     ] {
         let execution = interpreter
@@ -186,7 +186,7 @@ fn anyx_sugar_groups_argument_expressions() {
         .unwrap();
     assert_eq!(execution.values, vec![Value::Text("Text".into())]);
     let execution = interpreter
-        .execute("example / message ((example / text) . message _)")
+        .execute("example / message: `message: example / text")
         .unwrap();
     assert!(execution.error.is_none());
     assert_eq!(
@@ -323,7 +323,7 @@ fn argument_failure_keeps_effects_of_preceding_arguments() {
         .unwrap();
     assert_eq!(
         execution.error.as_deref(),
-        Some("ERROR variable does not exist\n")
+        Some("ERROR `variable does not exist\n")
     );
     assert_eq!(*calls.borrow(), ["text"]);
     assert!(execution.output.is_empty());
@@ -529,10 +529,10 @@ fn opened_mixfix_calls_follow_anyx_grouping() {
         .register("boolean", anyx_shell::boolean::Boolean)
         .unwrap();
     let execution = interpreter
-        .execute("USE ALL FROM boolean, true .and (false .and (true))")
+        .execute("USE ALL FROM boolean, `true .and (`false .and (`true))")
         .unwrap();
-    assert_eq!(execution.output, "false\n");
-    let source = "true .an";
+    assert_eq!(execution.output, "`false\n");
+    let source = "`true .an";
     assert!(
         interpreter
             .completions(source, source.len())
@@ -542,7 +542,11 @@ fn opened_mixfix_calls_follow_anyx_grouping() {
                 && item.detail.starts_with("boolean / "))
     );
 
-    assert!(interpreter.execute("true and (false) and (true)").is_err());
+    assert!(
+        interpreter
+            .execute("`true and (`false) and (`true)")
+            .is_err()
+    );
 }
 
 #[test]

@@ -23,7 +23,7 @@ fn null_shape() -> anyx_protocol::schema::Shape {
 #[test]
 fn prelude_choices_are_checked_schema_definitions() {
     let schema =
-        Schema::parse("RECORD Example { flag: Boolean, note (Text?) DEFAULT note (null) }")
+        Schema::parse("RECORD Example { flag: Boolean, note (Text?) DEFAULT note (`null) }")
             .unwrap();
     let boolean = schema
         .types
@@ -60,47 +60,47 @@ fn prelude_choices_are_checked_schema_definitions() {
 
 #[test]
 fn nullable_and_omittable_are_independent() {
-    let schema = Schema::parse("RECORD Example { required: Text?, note (Text?) DEFAULT note (null), count (Integer) DEFAULT count 0, flag (Boolean) DEFAULT flag (false) }").unwrap();
+    let schema = Schema::parse("RECORD Example { required: Text?, note (Text?) DEFAULT note (`null), count (Integer) DEFAULT count 0, flag (Boolean) DEFAULT flag (`false) }").unwrap();
     let decode =
         |source: &str| anyx_protocol::codec::decode_value(&schema, &Type::Named(0), source);
     assert!(decode("{}").is_err());
-    let Value::Record(fields) = decode("{ required: null }").unwrap() else {
+    let Value::Record(fields) = decode("{ required: `null }").unwrap() else {
         panic!()
     };
     assert_eq!(fields["required"], variant("null", vec![]));
     assert_eq!(fields["note"], variant("null", vec![]));
     assert_eq!(fields["count"], Value::Integer(0));
     assert_eq!(fields["flag"], variant("false", vec![]));
-    let Value::Record(fields) = decode("{ required \"hello\", flag: true }").unwrap() else {
+    let Value::Record(fields) = decode("{ required \"hello\", flag: `true }").unwrap() else {
         panic!()
     };
     assert_eq!(fields["required"], Value::Text("hello".into()));
     assert_eq!(fields["flag"], variant("true", vec![]));
     assert!(decode("{ required 3 }").is_err());
     assert!(decode("{ required: value (\"hello\") }").is_err());
-    assert!(decode("{ required: null, count: null }").is_err());
+    assert!(decode("{ required: `null, count: `null }").is_err());
     assert!(Schema::parse("RECORD Example { note: OPTIONAL Text }").is_err());
 }
 
 #[test]
 fn ordinary_prelude_names_cannot_be_redeclared() {
-    assert!(Schema::parse("CHOICE Boolean { maybe }").is_err());
-    assert!(Schema::parse("CHOICE (Item: TYPE) ? { empty, full (Item) }").is_err());
+    assert!(Schema::parse("CHOICE Boolean { `maybe }").is_err());
+    assert!(Schema::parse("CHOICE (Item: TYPE) ? { `empty, `full (Item) }").is_err());
 }
 
 #[test]
 fn boolean_inference_uses_ordinary_choice_ambiguity() {
     let schema =
-        Schema::parse("CHOICE Another { true }, METHOD set (flag: Boolean) RETURNS NOTHING")
+        Schema::parse("CHOICE Another { `true }, METHOD set (flag: Boolean) RETURNS NOTHING")
             .unwrap();
-    assert!(anyx_protocol::codec::decode_request(&schema, "set (true)").is_err());
-    assert!(anyx_protocol::codec::decode_request(&schema, "set (true AS Boolean)").is_ok());
+    assert!(anyx_protocol::codec::decode_request(&schema, "set (`true)").is_err());
+    assert!(anyx_protocol::codec::decode_request(&schema, "set (`true AS Boolean)").is_ok());
 }
 
 #[test]
 fn generic_fields_may_default_to_a_parameter_independent_variant() {
     let schema =
-        Schema::parse("RECORD Box of (Item: TYPE) { content (Item?) DEFAULT content (null) }")
+        Schema::parse("RECORD Box of (Item: TYPE) { content (Item?) DEFAULT content (`null) }")
             .unwrap();
     let ty = Type::Generic(0, vec![Type::Text]);
     let value = anyx_protocol::codec::decode_value(&schema, &ty, "{}").unwrap();
@@ -124,7 +124,7 @@ fn json_uses_ordinary_choice_values_and_only_omission_uses_defaults() {
     use anyx_protocol::json::{from_json, to_json};
     use serde_json::json;
     let schema = Schema::parse(
-        "RECORD Example { note (Text?) DEFAULT note (null), flag (Boolean) DEFAULT flag (false) }",
+        "RECORD Example { note (Text?) DEFAULT note (`null), flag (Boolean) DEFAULT flag (`false) }",
     )
     .unwrap();
     let ty = Type::Named(0);

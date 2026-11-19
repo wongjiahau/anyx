@@ -32,8 +32,8 @@ Standard output:
 ```anyx
 { name "EDITOR", value "helix" },
 "helix",
-true,
-false,
+`true,
+`false,
 ```
 
 An empty collection is a list `[]`; an empty document or a
@@ -47,11 +47,11 @@ available without a qualifier, including inside nested arguments.
 
 ```anyx
 USE ALL FROM boolean,
-true .and (false .and (true)),
-boolean / not (true),
+`true .and (`false .and (`true)),
+boolean / not (`true),
 ```
 
-Both calls return `false`. An opening takes effect for subsequent calls and
+Both calls return `` `false ``. An opening takes effect for subsequent calls and
 persists for the rest of an interactive session. A standalone invocation starts
 with its own set of openings. A submission that fails validation applies none
 of its openings. If multiple opened methods fit, qualify the call with
@@ -264,14 +264,14 @@ against that same schema. Additional tools need no changes to routing.
 ## Boolean operations
 
 The `boolean` tool uses the protocol prelude's `Boolean` type. It provides
-`not`, `and`, `or` and `xor`. Put Boolean literals in parentheses when
-passing them as arguments:
+`not`, `and`, `or` and `xor`. A Boolean is a variant, `` `true `` or
+`` `false ``, and goes in parentheses when passed as an argument:
 
 ```anyx
-boolean / not (false),
-boolean / (true) and (false),
-boolean / (true) or (false),
-boolean / (true) xor (true),
+boolean / not (`false),
+boolean / (`true) and (`false),
+boolean / (`true) or (`false),
+boolean / (`true) xor (`true),
 ```
 
 ## Environment example
@@ -305,7 +305,7 @@ is not a transaction. Standard output contains earlier returned values, and
 standard error contains an anyx error expression, such as:
 
 ```anyx
-ERROR variable does not exist
+ERROR `variable does not exist
 ```
 
 Input and validation failures use `INVALID REQUEST { line, column, message }`,

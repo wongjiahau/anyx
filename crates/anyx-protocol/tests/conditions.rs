@@ -8,7 +8,7 @@ METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer
     REQUIRES [0 < revision < limit, path . ends with ".txt"]
     RETURNS (new revision: Integer)
     ENSURES [new revision =: revision + 1]
-    ERRORS [conflict]
+    ERRORS [`conflict]
     EXAMPLES [write "a.txt" at revision 2 before 4 RETURNS 3],
 METHOD ping RETURNS NOTHING,
 "#;
@@ -73,7 +73,7 @@ fn producer_checks_successful_results_against_their_own_arguments() {
     });
     assert_eq!(
         server::respond(&schema, &calls[..1], vec![error]),
-        "ERROR conflict\n"
+        "ERROR `conflict\n"
     );
 }
 
@@ -168,15 +168,15 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
         METHOD admit (start: Integer) before (end: Integer) when (enabled: Boolean)
             REQUIRES [(start < end) and: enabled]
             RETURNS (admitted: Boolean)
-            ENSURES [(not (not (admitted))) xor: false],
+            ENSURES [(not (not (admitted))) xor: `false],
         METHOD match (text: Text) with (prefix: Text) or (allowed: Boolean)
             REQUIRES [(text . starts with (prefix)) or: allowed]
             RETURNS NOTHING,
         "#,
     );
-    let calls = decode_request(&schema, "admit 1 before 2 when (true)").unwrap();
-    assert!(decode_request(&schema, "admit 2 before 1 when (true)").is_err());
-    assert!(decode_request(&schema, "admit 1 before 2 when (false)").is_err());
+    let calls = decode_request(&schema, "admit 1 before 2 when (`true)").unwrap();
+    assert!(decode_request(&schema, "admit 2 before 1 when (`true)").is_err());
+    assert!(decode_request(&schema, "admit 1 before 2 when (`false)").is_err());
     assert_eq!(
         server::respond(
             &schema,
@@ -185,29 +185,29 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
         ),
         "INTERNAL ERROR\n"
     );
-    assert!(decode_request(&schema, r#"match "abc" with "a" or (false)"#).is_ok());
-    assert!(decode_request(&schema, r#"match "abc" with "z" or (true)"#).is_ok());
-    assert!(decode_request(&schema, r#"match "abc" with "z" or (false)"#).is_err());
+    assert!(decode_request(&schema, r#"match "abc" with "a" or (`false)"#).is_ok());
+    assert!(decode_request(&schema, r#"match "abc" with "z" or (`true)"#).is_ok());
+    assert!(decode_request(&schema, r#"match "abc" with "z" or (`false)"#).is_err());
 }
 
 #[test]
 fn list_tests_rule_out_repeats_and_contradicting_settings() {
     let schema = common::schema(
         r#"
-        CHOICE Setting { any case, smart case, hidden, (encoding: Text) encoding },
+        CHOICE Setting { `any case, `smart case, `hidden, `(encoding: Text) encoding },
         METHOD find (pattern: Text) with (settings: LIST Setting)
             REQUIRES [
                 settings . has no repeats,
-                settings . has at most one of [any case, smart case],
-                settings . has at most one of [_ encoding],
+                settings . has at most one of [`any case, `smart case],
+                settings . has at most one of [`_ encoding],
             ]
             RETURNS NOTHING,
         "#,
     );
     for accepted in [
         r#"find "a" with ([] AS: LIST Setting)"#,
-        r#"find "a" with [any case, hidden]"#,
-        r#"find "a" with ["utf-8" encoding, smart case]"#,
+        r#"find "a" with [`any case, `hidden]"#,
+        r#"find "a" with [`"utf-8" encoding, `smart case]"#,
     ] {
         if let Err(error) = decode_request(&schema, accepted) {
             panic!("{accepted}: {error}");
@@ -215,16 +215,16 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
     }
     for (rejected, expected) in [
         (
-            r#"find "a" with [hidden, hidden]"#,
+            r#"find "a" with [`hidden, `hidden]"#,
             "settings has no repeats",
         ),
         (
-            r#"find "a" with [any case, smart case]"#,
-            "settings has at most one of [any case, smart case]",
+            r#"find "a" with [`any case, `smart case]"#,
+            "settings has at most one of [`any case, `smart case]",
         ),
         (
-            r#"find "a" with ["utf-8" encoding, "latin1" encoding]"#,
-            "settings has at most one of [_ encoding]",
+            r#"find "a" with [`"utf-8" encoding, `"latin1" encoding]"#,
+            "settings has at most one of [`_ encoding]",
         ),
     ] {
         let error = decode_request(&schema, rejected).unwrap_err().to_string();
@@ -236,11 +236,11 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
 fn list_tests_name_variants_of_a_choice_in_a_method_condition() {
     for (source, expected) in [
         (
-            "CHOICE Case { any case, smart case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [exact case]] RETURNS NOTHING",
+            "CHOICE Case { `any case, `smart case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING",
             "`exact case` is not a variant of Case",
         ),
         (
-            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [a]] RETURNS NOTHING",
+            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [`a]] RETURNS NOTHING",
             "tests a LIST of a CHOICE",
         ),
         (
@@ -248,7 +248,7 @@ fn list_tests_name_variants_of_a_choice_in_a_method_condition() {
             "`has no repeats` tests a LIST",
         ),
         (
-            "CHOICE Case { any case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
+            "CHOICE Case { `any case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
             "expected variants in square brackets",
         ),
         (

@@ -1,6 +1,7 @@
 ## Fixed wire syntax, independent of the methods and types in a schema.
 ## Calls and value calls keep their words and slots neutral: the checker
-## decides which method, variant, or duration they mean.
+## decides which method, named type, or duration they mean. A variant is
+## marked with a backtick, `` `red ``, so a value call is never one.
 ENTRY [ONE OR MORE: call],
 
 call: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: argument],
@@ -15,20 +16,27 @@ value: ONE OF [
   text: STRING,
   list: SQUARE BRACKET [ZERO OR MORE: value],
   braces: CURLY BRACE [ZERO OR MORE: entry],
+  variant: variant,
   call: value call,
 ],
-## This is also a possible choice shape. The checker chooses the reading
-## that fits its expected type; time.rs checks order, repeats and overflow.
+## A variant, written with a backtick before its shape: `` `red ``,
+## `` `missing (File Id "a") ``, `` `(1 + 1) ``. The backtick is a symbol
+## word, so in an argument the variant is parenthesized: `` paint (`red) ``.
+variant: ANYFIX CALL [WORD "`", body: value call],
+## A duration, `1 hours 30 minutes`; time.rs checks order, repeats and
+## overflow.
 duration: ANYFIX CALL [
   NAME [MATCHING REGEX "^(_ (days?|hours?|minutes?|seconds?|milliseconds?))( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$"],
   ARGUMENTS: ONE OR MORE: count,
 ],
 count: NUMBER [WRITTEN INTEGER],
-value call: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: value],
+## A call that isn't marked as a variant: a named type's constructor,
+## `File Id "a"`, a record's field, or a function.
+value call: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS: ZERO OR MORE: value],
 ## In braces, a map's entry is a key and a value. A record's entry is a
 ## value, and the checker reads from the record's fields which one it
 ## fills: `path "a"` is the call `path _`, `hidden` a checkbox,
-## `changed more than (1 hour) ago` a field's shape, and `@by name` an `@`
+## `changed more than (1 hour) ago` a field's shape, and `` @(`by name) `` an `@`
 ## field's value.
 entry: ONE OF [
   map: ANYFIX CALL [key: STRING, value],
@@ -45,7 +53,25 @@ type: ONE OF [
   map: map type,
   named: reference,
 ],
-refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
+refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: term]],
+
+## A predicate's term: the value it tests, `_`, a parameter's name, a
+## constant, or a function of terms. Which function a call means, such as
+## `_ <= _ < _` or `_ ends with _`, the checker reads from the prelude's
+## `FUNCTION`s: `[10 <= _ < 30]`, `` [_ and (`true)] ``,
+## `` [items . has at most one of [`any case, `_ encoding]] ``.
+term: ONE OF [
+  subject: UNDERSCORE,
+  integer: NUMBER [WRITTEN INTEGER],
+  float: NUMBER [WRITTEN FLOAT],
+  text: STRING,
+  variants: SQUARE BRACKET [ZERO OR MORE: term variant],
+  variant: term variant,
+  call: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS: ZERO OR MORE: term],
+],
+## A variant in a predicate, `` `true ``, or a variant's shape with `_` in
+## each slot, `` `_ encoding ``.
+term variant: ANYFIX CALL [WORD "`", body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: UNDERSCORE]],
 list type: ANYFIX CALL [WORD "LIST", item: type],
 map type: ANYFIX CALL [WORD "MAP", value: type],
 reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],

@@ -248,7 +248,7 @@ fn every_call_runs_even_after_a_method_error() {
     ));
     assert_eq!(
         response,
-        "ERROR missing,\nRETURNS 1,\nRETURNS { path \"a\", revision 1, content \"1\" },\n"
+        "ERROR `missing,\nRETURNS 1,\nRETURNS { path \"a\", revision 1, content \"1\" },\n"
     );
 }
 

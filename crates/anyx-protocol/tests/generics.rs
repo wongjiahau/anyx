@@ -23,13 +23,13 @@ RECORD page of (Item: TYPE) {
 
 # What came of an attempt.
 CHOICE (Value: TYPE) or (Problem: TYPE) {
-    done (value: Value),
-    failed (problem: Problem),
+    `done (value: Value),
+    `failed (problem: Problem),
 },
 
 RECORD Order { number: Integer, total: Integer },
 
-CHOICE Decline { insufficient funds, card expired },
+CHOICE Decline { `insufficient funds, `card expired },
 
 TYPE ALIAS Orders: page of (Order),
 
@@ -37,8 +37,8 @@ METHOD list orders RETURNS (orders: page of (Order)),
 
 METHOD pay (order: Integer) RETURNS (outcome: (Text) or (Decline))
     EXAMPLES [
-        pay 7 RETURNS done \"receipt 1\",
-        pay 8 RETURNS failed: card expired,
+        pay 7 RETURNS `done \"receipt 1\",
+        pay 8 RETURNS `failed (`card expired),
     ],
 
 METHOD pay all (orders: LIST Integer)
@@ -142,7 +142,7 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
     let nested = returned(
         &schema,
         2,
-        "RETURNS { items [done \"receipt 1\", failed: insufficient funds] }",
+        "RETURNS { items [`done \"receipt 1\", `failed (`insufficient funds)] }",
     );
     assert_eq!(
         nested,
@@ -201,7 +201,7 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
         decode_response_json(
             &schema,
             "pay all _",
-            "RETURNS { items [failed: card expired] }"
+            "RETURNS { items [`failed (`card expired)] }"
         )
         .unwrap(),
         r#"{"kind":"value","value":{"items":[{"kind":"failed","problem":{"kind":"cardExpired"}}],"next":"","size":20}}"#
@@ -341,7 +341,7 @@ RECORD page of (Item: TYPE) { items: LIST: Item },
 ## A slot, then the words.
 RECORD (Item: TYPE) history { versions: LIST: Item },
 ## A slot, a word, a slot.
-CHOICE (Left: TYPE) or (Right: TYPE) { first (value: Left), second (value: Right) },
+CHOICE (Left: TYPE) or (Right: TYPE) { `first (value: Left), `second (value: Right) },
 ## Slots between words.
 RECORD table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, rows: LIST: Value },
 ## A slot first, then words, then a slot.
@@ -484,17 +484,17 @@ fn a_value_of_each_placement_is_written_like_its_type_with_the_arguments() {
         )
     );
     assert_eq!(
-        returned(&schema, method("parse _"), "RETURNS second \"x\""),
+        returned(&schema, method("parse _"), "RETURNS `second \"x\""),
         Value::Variant {
             shape: "second _".to_string(),
             arguments: vec![Value::Text("x".to_string())],
         }
     );
     assert_eq!(
-        decode_response(&schema, &[method("parse _")], "RETURNS first \"x\"")
+        decode_response(&schema, &[method("parse _")], "RETURNS `first \"x\"")
             .unwrap_err()
             .to_string(),
-        "1:15: in `value` of `first _`: found a string; expected a whole number, as in `3`"
+        "1:16: in `value` of `first _`: found a string; expected a whole number, as in `3`"
     );
     assert_eq!(
         returned(
@@ -546,7 +546,7 @@ fn a_value_of_each_placement_is_written_like_its_type_with_the_arguments() {
         returned(
             &schema,
             method("nested"),
-            "RETURNS [{ items [first { items [1] }, second { \"k\" { versions [\"v\"] } }] }]"
+            "RETURNS [{ items [`first { items [1] }, `second { \"k\" { versions [\"v\"] } }] }]"
         ),
         Value::List(vec![Value::Record(
             [(
@@ -609,7 +609,7 @@ fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
         "{formatted}"
     );
     assert!(
-        formatted.contains("CHOICE (Value: TYPE) or (Problem: TYPE) { done (value: Value), failed (problem: Problem) },"),
+        formatted.contains("CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) },"),
         "{formatted}"
     );
     assert!(
@@ -649,7 +649,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a shape twice, while the same words without the slot are another type",
-            "PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, CHOICE Page of (Other: TYPE) { one (value: Other) },",
+            "PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, CHOICE Page of (Other: TYPE) { `one (value: Other) },",
         ),
         (
             "a parameter twice and an unused parameter",
@@ -669,7 +669,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "the wrong number of arguments, or the slots in the wrong places",
-            "PROTOCOL a VERSION 1, CHOICE (Value: TYPE) or (Problem: TYPE) { done (value: Value), failed (problem: Problem) }, METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),",
+            "PROTOCOL a VERSION 1, CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) }, METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),",
         ),
         (
             "a type argument that names no type",
@@ -677,7 +677,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a generic type holding itself through an argument",
-            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Tree { child: box of (Tree) }, RECORD (Item: TYPE) chain { value: Item, next (((Item) chain)?) DEFAULT next (null) },",
+            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Tree { child: box of (Tree) }, RECORD (Item: TYPE) chain { value: Item, next (((Item) chain)?) DEFAULT next (`null) },",
         ),
         (
             "a generic type using itself with other arguments, directly or through another",
@@ -743,7 +743,7 @@ NAMED TYPE Order Id (Integer),
 RECORD Receipt {{ number: Integer }},
 RECORD Document {{ title: Text }},
 RECORD Person {{ name: Text }},
-CHOICE Decline {{ insufficient funds, card expired }},
+CHOICE Decline {{ `insufficient funds, `card expired }},
 {example}"
     ));
     let pay_all = schema.method("pay all _").unwrap();

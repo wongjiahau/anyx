@@ -1,4 +1,4 @@
-//! Unions: `UNION [Integer, none]` holds a value of any of its members,
+//! Unions: `UNION [Integer, `none]` holds a value of any of its members,
 //! written as that member writes it, so a value's form tells its member.
 
 mod common;
@@ -18,8 +18,8 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 fn mixed() -> (anyx_protocol::Schema, Type) {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        CHOICE Shade { dark, light },
-        TYPE ALIAS Mixed: UNION [Integer, Text, Shade, none, custom hue (hue: Float), (Integer) Pair],
+        CHOICE Shade { `dark, `light },
+        TYPE ALIAS Mixed: UNION [Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair],
         TYPE ALIAS (Item: TYPE) Pair: LIST Item,
         METHOD f (x: Mixed) RETURNS NOTHING,",
     );
@@ -35,14 +35,14 @@ fn a_value_is_read_as_the_member_its_form_tells() {
     let read = |source: &str| decode_value(&schema, &r#type, source).unwrap();
     assert_eq!(read("3"), Value::Integer(3));
     assert_eq!(read("\"a\""), Value::Text("a".into()));
-    assert_eq!(read("dark"), variant("dark", vec![]));
-    assert_eq!(read("none"), variant("none", vec![]));
+    assert_eq!(read("`dark"), variant("dark", vec![]));
+    assert_eq!(read("`none"), variant("none", vec![]));
     assert_eq!(
-        read("custom hue 0.5"),
+        read("`custom hue 0.5"),
         variant("custom hue _", vec![Value::Float(0.5)])
     );
     assert_eq!(read("[]"), Value::List(vec![]));
-    for value in ["3", "\"a\"", "dark", "none", "custom hue 0.5", "[]"] {
+    for value in ["3", "\"a\"", "`dark", "`none", "`custom hue 0.5", "[]"] {
         let decoded = read(value);
         let written = encode_value(&schema, &r#type, &decoded).unwrap();
         assert_eq!(read(&written), decoded, "{value} written as {written}");
@@ -86,7 +86,7 @@ fn json_writes_a_member_as_that_member_does() {
 fn a_nullable_value_is_null_or_a_value_of_its_item() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        RECORD Limits { max depth (Integer?) DEFAULT max depth (null) },
+        RECORD Limits { max depth (Integer?) DEFAULT max depth (`null) },
         METHOD f (limits: Limits) RETURNS NOTHING,",
     );
     let limits = Type::Named(limits_index(&schema));
@@ -120,20 +120,20 @@ fn an_empty_union_and_nested_unions_are_allowed() {
         "PROTOCOL p VERSION 1,
         TYPE ALIAS Nothing: UNION [],
         TYPE ALIAS Depth: Integer?,
-        METHOD f (x: UNION [Nothing, Depth, UNION [Text, none]]) RETURNS NOTHING,",
+        METHOD f (x: UNION [Nothing, Depth, UNION [Text, `none]]) RETURNS NOTHING,",
     );
     let r#type = &schema.method("f _").unwrap().shape.parameters[0].r#type;
     assert_eq!(r#type.members().len(), 4);
     assert_eq!(
         schema.type_name(r#type),
-        "UNION [UNION [], Integer?, UNION [Text, none]]"
+        "UNION [UNION [], Integer?, UNION [Text, `none]]"
     );
     assert_eq!(
-        decode_value(&schema, r#type, "none").unwrap(),
+        decode_value(&schema, r#type, "`none").unwrap(),
         variant("none", vec![])
     );
     assert_eq!(
-        decode_value(&schema, r#type, "null").unwrap(),
+        decode_value(&schema, r#type, "`null").unwrap(),
         variant("null", vec![])
     );
 }
@@ -164,7 +164,7 @@ fn mistakes_in_unions_are_diagnosed() {
     let cases = [
         (
             "two members written alike",
-            "PROTOCOL a VERSION 1, CHOICE Shade { dark, none }, TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, none], TYPE ALIAS Blobs: UNION [Text, Bytes],",
+            "PROTOCOL a VERSION 1, CHOICE Shade { `dark, `none }, TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],",
         ),
         (
             "two members written alike only in JSON",
@@ -172,7 +172,7 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "a nullable nullable, and a nullable choice with null",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, CHOICE Gap { null, some }, METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, CHOICE Gap { `null, `some }, METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,",
         ),
         (
             "a repeat made by a generic type's argument",
@@ -180,7 +180,7 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "a list or a map as a member",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Paths: UNION [LIST Text, none],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Paths: UNION [LIST Text, `none],",
         ),
     ];
     let rendered: Vec<String> = cases

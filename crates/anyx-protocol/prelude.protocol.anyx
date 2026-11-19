@@ -28,8 +28,8 @@ INTRINSIC TYPE Integer,
 # `1e3`. `3` is an `Integer`, so it doesn't fit a `Float`; write `3.0`.
 INTRINSIC TYPE Float,
 
-# `true` or `false`.
-CHOICE Boolean { false, true },
+# `` `true `` or `` `false ``.
+CHOICE Boolean { `false, `true },
 
 # A point in time, in UTC to the millisecond, as a string:
 # `"2026-11-14T06:00:08.000Z"`.
@@ -38,11 +38,11 @@ INTRINSIC TYPE Instant,
 # A length of time, to the millisecond: whole numbers each followed by its
 # unit, the largest first, as in `90 seconds` or `1 hour 30 minutes`. A
 # unit is in the plural for any count but 1: `1 day 1 second`.
-INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
+INTRINSIC CHOICE Duration { `day, `hour, `minute, `second, `millisecond },
 
-# A nullable item: `null`, or a value of the item written as it is, as in
-# `3` for `Integer?`.
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
+# A nullable item: `` `null ``, or a value of the item written as it is,
+# as in `3` for `Integer?`.
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
@@ -102,6 +102,6 @@ FUNCTION (text: Text) contains (pattern: Text) RETURNS (holds: Boolean),
 ## Tests of a list, for method conditions only. `has no repeats` holds when
 ## no two items are equal. `has at most one of` holds when at most one item is
 ## a variant of the given shapes, each written by its words with `_` in each
-## slot: `settings . has at most one of [any case, smart case, _ encoding]`.
+## slot: `` settings . has at most one of [`any case, `smart case, `_ encoding] ``.
 FUNCTION (items: LIST Type) has no repeats RETURNS (holds: Boolean),
 FUNCTION (items: LIST Type) has at most one of (variants: LIST Type) RETURNS (holds: Boolean),

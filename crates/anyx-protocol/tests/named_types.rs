@@ -17,7 +17,7 @@ TYPE ALIAS Tags: LIST Text,
 
 RECORD File Link { file id: File Id, tags: Tags },
 
-METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [missing (id: File Id)],
+METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [`missing (id: File Id)],
 ";
 
 fn file_id(id: &str) -> Value {
@@ -89,7 +89,7 @@ fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
         "PROTOCOL shapes VERSION 1,
 NAMED TYPE Range from (Integer) to (Integer),
 NAMED TYPE Unit,
-NAMED TYPE (UNION [red, blue]) Color,
+NAMED TYPE (UNION [`red, `blue]) Color,
 METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING,
 ",
     );
@@ -116,7 +116,7 @@ METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
     assert_eq!(
         request,
-        "paint (Range from 1 to 3) with ((red) Color) and (Unit)\n"
+        "paint (Range from 1 to 3) with ((`red) Color) and (Unit)\n"
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
 }
@@ -166,7 +166,12 @@ fn a_named_value_is_under_its_tag_in_json() {
     );
     assert!(encode_request_json(&schema, "share _ tagged _", r#"["a", ["hymn"]]"#).is_err());
     assert_eq!(
-        decode_response_json(&schema, "share _ tagged _", "ERROR missing (File Id \"a\")").unwrap(),
+        decode_response_json(
+            &schema,
+            "share _ tagged _",
+            "ERROR `missing (File Id \"a\")"
+        )
+        .unwrap(),
         r#"{"error":{"id":{"FileId":"a"},"kind":"missing"},"kind":"error"}"#
     );
     assert_eq!(

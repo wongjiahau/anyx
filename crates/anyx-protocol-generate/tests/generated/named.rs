@@ -23,13 +23,13 @@ RECORD File Link { share id: Share Id, file id: File Id, tags: Tags },
 # A link someone may open.
 TYPE ALIAS Link: File Link,
 
-CHOICE Access { read, write },
+CHOICE Access { `read, `write },
 
 TYPE ALIAS Level: Access,
 
 METHOD share (id: File Id) tagged (tags: Tags)
     RETURNS (link: Link)
-    ERRORS [missing (id: File Id)],
+    ERRORS [`missing (id: File Id)],
 
 IDEMPOTENT METHOD revoke (id: Share Id) RETURNS NOTHING UNDONE BY restore (id: Share Id),
 
@@ -312,7 +312,7 @@ impl FromValue for Visit {
     }
 }
 
-/// `true` or `false`.
+/// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     False,

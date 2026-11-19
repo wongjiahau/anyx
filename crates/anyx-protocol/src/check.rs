@@ -10,7 +10,7 @@ use crate::grammar as ast;
 use crate::schema::{
     DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, FieldForm, Method, Parameter,
     Schema, Shape, ShapePart, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written,
-    fill_slots,
+    code, fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
@@ -22,7 +22,7 @@ struct Declared {
     public: bool,
 }
 
-/// An `ERRORS` group: `ERRORS file errors [trashed, missing] + other`.
+/// An `ERRORS` group: `` ERRORS file errors [`trashed, `missing] + other ``.
 struct Group<'a> {
     declared: Declared,
     /// Its own errors, as written.
@@ -887,9 +887,10 @@ impl<'a> Checker<'a> {
                 self.error(
                     span,
                     format!(
-                        "found {form} as a value of both `{}` and `{}` in `{union}`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own",
-                        schema.type_name(&members[other]),
-                        schema.type_name(member),
+                        "found {form} as a value of both {} and {} in {}; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own",
+                        code(&schema.type_name(&members[other])),
+                        code(&schema.type_name(member)),
+                        code(&union),
                     ),
                 );
             }
@@ -1444,7 +1445,7 @@ impl<'a> Checker<'a> {
         let Some(name) = terms.name else {
             self.error(
                 error_terms::span(list),
-                "found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `ERRORS file errors [trashed, missing]`",
+                "found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `` ERRORS file errors [`trashed, `missing] ``",
             );
             return;
         };
@@ -1503,7 +1504,7 @@ impl<'a> Checker<'a> {
                 {
                     let line = anyx::line_column(&self.sources[other.file], other.span.start).line;
                     self.error(
-                        error.name.span,
+                        error.body.name.span,
                         format!(
                             "found a second error `{words}` in {}, after the one on line {line}; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`",
                             self.this_schema()
@@ -1513,7 +1514,7 @@ impl<'a> Checker<'a> {
                 let declared = self.declared(
                     &ast::Spanned {
                         value: words,
-                        span: error.name.span,
+                        span: error.body.name.span,
                     },
                     public,
                 );
@@ -1940,7 +1941,7 @@ impl<'a> Checker<'a> {
                 .any(|known| known.shape.words() == shaped.shape.words())
             {
                 self.error(
-                    variant.name.span,
+                    variant.body.name.span,
                     format!(
                         "found a second variant named `{}`; expected each variant's words once; rename or remove one of them",
                         shaped.shape.words()
@@ -1952,35 +1953,10 @@ impl<'a> Checker<'a> {
         checked
     }
 
-    /// A variant or an error: its doc, then its shape.
+    /// A variant or an error: its doc, then its shape after the backtick.
     fn shaped(&mut self, variant: &ast::Variant, what: &str) -> Shaped {
-        let mut slots = variant.arguments.iter().peekable();
-        // A doc fills the call's first slot, before the first word.
-        let doc = match (variant.name.parts.first(), slots.peek()) {
-            (Some(NamePart::Slot), Some(ast::VariantSlot::Doc(doc))) => {
-                slots.next();
-                Some(doc.value.value.clone())
-            }
-            _ => None,
-        };
-        let mut parameters = Vec::new();
-        for slot in slots {
-            match slot {
-                ast::VariantSlot::Doc(doc) => self.error(
-                    doc.span,
-                    format!(
-                        "found a string in {what}'s slot; expected a parameter, as in `(revision: Integer)`; {what}'s `#` doc goes on the lines before it"
-                    ),
-                ),
-                ast::VariantSlot::Parameter(parameter) => parameters.push(parameter.clone()),
-            }
-        }
-        let mut name = variant.name.clone();
-        if doc.is_some() {
-            name.parts.remove(0);
-            name.text = name.text.trim_start_matches('_').trim_start().to_string();
-        }
-        let shape = self.shape(&name, &parameters, what);
+        let doc = variant.doc.as_ref().map(|doc| doc.value.value.clone());
+        let shape = self.shape(&variant.body.name, &variant.body.arguments, what);
         Shaped { doc, shape }
     }
 
@@ -2068,7 +2044,7 @@ impl<'a> Checker<'a> {
                 self.error(
                     name.span,
                     format!(
-                        "found the name `{}` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `ERRORS [missing] + file errors`",
+                        "found the name `{}` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `` ERRORS [`missing] + file errors ``",
                         name.value
                     ),
                 );
@@ -2076,7 +2052,7 @@ impl<'a> Checker<'a> {
             let own = self.declare_errors(terms.own, false, found);
             listed.extend(terms.own.iter().zip(own).map(|(error, index)| Listed {
                 index,
-                span: error.name.span,
+                span: error.body.name.span,
             }));
             for reference in &terms.groups {
                 let Some(group) = self.resolve_group(reference) else {
@@ -2299,9 +2275,11 @@ impl<'a> Checker<'a> {
             .value
             .iter()
             .map(|member| match member {
-                ast::UnionMember::Variant {
-                    name, arguments, ..
-                } => Type::Variant(Box::new(self.shape(name, arguments, "a variant"))),
+                ast::UnionMember::Variant(variant) => Type::Variant(Box::new(self.shape(
+                    &variant.body.name,
+                    &variant.body.arguments,
+                    "a variant",
+                ))),
                 ast::UnionMember::Refined(refined) => self.refined(refined),
                 ast::UnionMember::Union(union) => self.union(union),
                 ast::UnionMember::Named {

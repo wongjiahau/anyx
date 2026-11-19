@@ -53,15 +53,15 @@ schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: Type)`, 
                                               ^
 
 == a bad error after RETURNS NOTHING, which is not an unnamed return
-PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],
-schema:1:61: found the number `3`; expected the call `… _`, a `#` line string or the end of the call
-  PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],
-                                                              ^
+PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [`gone 3],
+schema:1:62: found the number `3`; expected the call `… _` or the end of the call
+  PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [`gone 3],
+                                                               ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },
+PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },
 schema:1:58: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },
+  PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },
                                                            ^^^^^^^
 
 == a field twice
@@ -71,10 +71,10 @@ schema:1:49: found a second field named `a`; expected each field once; rename or
                                                   ^
 
 == a variant twice
-PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },
-schema:1:43: found a second variant named `a`; expected each variant's words once; rename or remove one of them
-  PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },
-                                            ^
+PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },
+schema:1:45: found a second variant named `a`; expected each variant's words once; rename or remove one of them
+  PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },
+                                              ^
 
 == a parameter twice
 PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
@@ -107,9 +107,9 @@ schema:1:30: found the type `Node` holding itself; expected a type that holds it
                                ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },
+PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (`null) }, RECORD Tree { children: MAP: Tree },
 schema:1:30: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },
+  PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (`null) }, RECORD Tree { children: MAP: Tree },
                                ^^^^
 
 == a map default that is not a map
@@ -119,12 +119,12 @@ schema:1:67: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of In
                                                                     ^^
 
 == a cycle through a choice
-PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
 schema:1:30: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
                                ^^^^^
 schema:1:56: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
                                                          ^^^^
 
 == names that are not lowercase ASCII
@@ -137,10 +137,10 @@ schema:1:52: found `café` as the name of a field; expected words of lowercase A
                                                      ^^^^
 
 == a parameter named kind
-PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },
-schema:1:43: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
-  PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },
-                                            ^^^^
+PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },
+schema:1:44: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
+  PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },
+                                             ^^^^
 
 == a keyword in a name
 PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },
@@ -155,81 +155,81 @@ schema:1:57: found `gone`, which is not a visible error group; expected the name
                                                           ^^^^
 
 == an error where a group goes
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
-schema:1:83: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,
-                                                                                    ^^^^
+PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,
+schema:1:85: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
+  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,
+                                                                                      ^^^^
 
 == groups joining each other
-PROTOCOL a VERSION 1, ERRORS x [a] + y, ERRORS y [b] + x,
+PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,
 schema:1:30: found the error group `x` joining itself; expected a group to join only groups that don't lead back to it
-  PROTOCOL a VERSION 1, ERRORS x [a] + y, ERRORS y [b] + x,
+  PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,
                                ^
 
 == an error listed twice through a group
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS x + x,
-schema:1:78: found the error `gone` twice among this method's errors, counting those of its groups; expected each error once; remove one
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS x + x,
-                                                                               ^
+PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,
+schema:1:79: found the error `gone` twice among this method's errors, counting those of its groups; expected each error once; remove one
+  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,
+                                                                                ^
 
 == an error defined twice in a scope
-PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
-schema:1:75: found a second error `gone` in this schema, after the one on line 1; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`
-  PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],
-                                                                            ^^^^
+PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],
+schema:1:77: found a second error `gone` in this schema, after the one on line 1; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`
+  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],
+                                                                              ^^^^
 
 == a group joining an unknown group
-PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
-schema:1:38: found `lost`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
-  PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
-                                       ^^^^
+PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
+schema:1:39: found `lost`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
+  PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
+                                        ^^^^
 
 == a group without a name
-PROTOCOL a VERSION 1, ERRORS [gone],
-schema:1:30: found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `ERRORS file errors [trashed, missing]`
-  PROTOCOL a VERSION 1, ERRORS [gone],
-                               ^^^^^^
+PROTOCOL a VERSION 1, ERRORS [`gone],
+schema:1:30: found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `` ERRORS file errors [`trashed, `missing] ``
+  PROTOCOL a VERSION 1, ERRORS [`gone],
+                               ^^^^^^^
 
 == a group defined twice
-PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
-schema:1:44: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],
-                                             ^
+PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],
+schema:1:45: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+  PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],
+                                              ^
 
 == a name before a method's errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [gone],
-schema:1:57: found the name `mine` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `ERRORS [missing] + file errors`
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [gone],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],
+schema:1:57: found the name `mine` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `` ERRORS [`missing] + file errors ``
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],
                                                           ^^^^
 
 == errors in brackets after a group
-PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS x + [b],
-schema:1:75: found errors in brackets after a `+`; expected the errors in brackets first, then the groups joined with `+`, such as `[missing] + file errors`
-  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS x + [b],
-                                                                            ^^^
+PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],
+schema:1:77: found the word `b`; expected the word `` ` ``
+  PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],
+                                                                              ^
 
 == an operator other than `+` among errors
-PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS [b] - x,
-schema:1:71: found `[b] - x` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`
-  PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS [b] - x,
-                                                                        ^^^^^^^
+PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,
+schema:1:72: found `[`b] - x` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`
+  PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,
+                                                                         ^^^^^^^^
 
 == an error defined on its own
-PROTOCOL a VERSION 1, ERROR gone,
-schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: Text) RETURNS (file: File) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`
-  PROTOCOL a VERSION 1, ERROR gone,
+PROTOCOL a VERSION 1, ERROR `gone,
+schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an `ERRORS` group that methods share by joining it with `+`: `` ERRORS file errors [`trashed, `missing] ``
+  PROTOCOL a VERSION 1, ERROR `gone,
                         ^^^^^
 
 == a string inside an error
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [gone (a: Text) # doc
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [`gone (a: Text) # doc
 ],
-schema:1:73: found a string in an error's slot; expected a parameter, as in `(revision: Integer)`; an error's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [gone (a: Text) # doc
-                                                                          ^^^^^
+schema:1:74: found the string "doc"; expected the call `… _` or the end of the call
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [`gone (a: Text) # doc
+                                                                           ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc
+PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc
 },
-schema:1:52: found a string in a variant's slot; expected a parameter, as in `(revision: Integer)`; a variant's `#` doc goes on the lines before it
-  PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc
-                                                     ^^^^^
+schema:1:53: found the string "doc"; expected the call `… _` or the end of the call
+  PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc
+                                                      ^^^^^

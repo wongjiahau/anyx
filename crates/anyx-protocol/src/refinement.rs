@@ -1,9 +1,10 @@
 //! Checked predicates shared by type refinements and method conditions.
 //! No predicate evaluates application code or applies operator precedence.
 use crate::Value;
+use crate::grammar::{Term, TermVariant};
 use crate::prelude::{self, Arithmetic, BooleanOperation, Function};
 use crate::schema::{Diagnostic, Schema, ShapePart, Type, TypeKind};
-use anyx::{NamePart, Node, NodeKind, Span};
+use anyx::{NamePart, Span};
 
 #[derive(Clone, Debug)]
 pub struct Predicate<B = ()> {
@@ -54,21 +55,18 @@ pub enum TextOperand<B> {
 }
 
 impl Predicate {
-    pub(crate) fn parse(nodes: &[Node], source: &str) -> Result<Self, String> {
-        let mut predicate = Self::from_nodes(nodes)?;
+    pub(crate) fn parse(terms: &[Term], source: &str) -> Result<Self, String> {
+        let mut predicate = Self::from_terms(terms)?;
         predicate.source = source.trim().to_string();
         Ok(predicate)
     }
 
-    pub(crate) fn from_nodes(nodes: &[Node]) -> Result<Self, String> {
+    pub(crate) fn from_terms(terms: &[Term]) -> Result<Self, String> {
         Self::read(
-            nodes,
-            &|node| {
-                if matches!(node.kind, NodeKind::Underscore) {
-                    Ok(())
-                } else {
-                    Err(unsupported())
-                }
+            terms,
+            &|term| match term {
+                Term::Subject(_) => Ok(()),
+                _ => Err(unsupported()),
             },
             false,
         )
@@ -111,16 +109,16 @@ impl Predicate {
 
 impl<B: Clone> Predicate<B> {
     fn read(
-        nodes: &[Node],
-        binding: &impl Fn(&Node) -> Result<B, String>,
+        terms: &[Term],
+        binding: &impl Fn(&Term) -> Result<B, String>,
         method: bool,
     ) -> Result<Self, String> {
-        if nodes.is_empty() {
+        let (Some(first), Some(last)) = (terms.first(), terms.last()) else {
             return Err("expected at least one predicate inside brackets".into());
-        }
-        let tests = nodes
+        };
+        let tests = terms
             .iter()
-            .map(|node| Test::read(node, binding, method))
+            .map(|term| Test::read(term, binding, method))
             .collect::<Result<Vec<_>, _>>()?;
         if !tests.iter().any(Test::uses_value) {
             return Err(if method {
@@ -131,10 +129,10 @@ impl<B: Clone> Predicate<B> {
             .into());
         }
         Ok(Self {
-            source: nodes.iter().map(node_text).collect::<Vec<_>>().join(", "),
+            source: terms.iter().map(term_text).collect::<Vec<_>>().join(", "),
             tests,
             path: String::new(),
-            span: Span::new(nodes[0].span.start, nodes.last().unwrap().span.end),
+            span: Span::new(first.span().start, last.span().end),
         })
     }
 
@@ -149,26 +147,29 @@ impl<B: Clone> Predicate<B> {
 
 impl Predicate<usize> {
     pub(crate) fn method(
-        nodes: &[Node],
+        terms: &[Term],
         source: &str,
         parameters: &[crate::schema::Parameter],
         returns: Option<&crate::schema::Parameter>,
     ) -> Result<Self, String> {
         let mut predicate = Self::read(
-            nodes,
-            &|node| {
-                let NodeKind::Call(call) = &node.kind else {
+            terms,
+            &|term| {
+                let Term::Call {
+                    name, arguments, ..
+                } = term
+                else {
                     return Err("expected a named method argument or result".into());
                 };
-                if !call.arguments.is_empty() {
+                if !arguments.is_empty() {
                     return Err(unsupported());
                 }
-                let name = call.name_text();
+                let name = &name.text;
                 let mut matches = parameters
                     .iter()
                     .chain(returns)
                     .enumerate()
-                    .filter(|(_, parameter)| parameter.name == name);
+                    .filter(|(_, parameter)| parameter.name == *name);
                 let (index, _) = matches.next().ok_or_else(|| {
                     format!(
                         "unknown value `{name}`; use only the method's arguments{}",
@@ -241,9 +242,10 @@ impl Predicate<usize> {
                                         |text| text.trim_end().to_string(),
                                     );
                             format!(
-                                "`{}` ({}) = `{written}`",
+                                "`{}` ({}) = {}",
                                 parameter.name,
                                 schema.type_name(&parameter.r#type),
+                                crate::schema::code(&written),
                             )
                         })
                     })
@@ -318,24 +320,19 @@ fn unsupported() -> String {
     "unsupported predicate; expected a comparison chain such as `10 <= _ < 30`, a text test such as `_ ends with \".poentaro\"`, or a comparison of `(_ length)`; group nested calls with parentheses, dot, or colon, as in `(_ + 1) <= 30` or `30 >=: _ + 1`".into()
 }
 
-fn expr<B>(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result<Expr<B>, String> {
-    Ok(match &node.kind {
-        NodeKind::Parens(items) if items.len() == 1 => return expr(&items[0], binding),
-        NodeKind::Number(text) => {
-            if let Ok(n) = text.parse::<i64>() {
-                Expr::Integer(n)
-            } else {
-                let n = text.parse::<f64>().map_err(|_| unsupported())?;
-                if !n.is_finite() {
-                    return Err(unsupported());
-                }
-                Expr::Float(n)
+fn expr<B>(term: &Term, binding: &impl Fn(&Term) -> Result<B, String>) -> Result<Expr<B>, String> {
+    Ok(match term {
+        Term::Integer(n) => Expr::Integer(n.value.parse().map_err(|_| unsupported())?),
+        Term::Float(n) => {
+            let n = n.value.parse::<f64>().map_err(|_| unsupported())?;
+            if !n.is_finite() {
+                return Err(unsupported());
             }
+            Expr::Float(n)
         }
-        NodeKind::Call(call) => match (
-            prelude::function(&call.name_text()),
-            call.arguments.as_slice(),
-        ) {
+        Term::Call {
+            name, arguments, ..
+        } => match (prelude::function(&name.text), arguments.as_slice()) {
             (Some(Function::Length), [subject]) => Expr::Length(binding(subject)?),
             (Some(Function::Arithmetic(op)), [left, right]) => {
                 let a = Box::new(expr(left, binding)?);
@@ -347,10 +344,10 @@ fn expr<B>(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result
                     _ => return Err(unsupported()),
                 }
             }
-            (None, []) => Expr::Value(binding(node)?),
+            (None, []) => Expr::Value(binding(term)?),
             _ => return Err(unsupported()),
         },
-        _ => Expr::Value(binding(node)?),
+        _ => Expr::Value(binding(term)?),
     })
 }
 
@@ -482,15 +479,25 @@ fn compare<T: PartialOrd>(a: T, op: &str, b: T) -> bool {
 }
 impl<B: Clone> Test<B> {
     fn read(
-        node: &Node,
-        binding: &impl Fn(&Node) -> Result<B, String>,
+        term: &Term,
+        binding: &impl Fn(&Term) -> Result<B, String>,
         named: bool,
     ) -> Result<Self, String> {
-        let NodeKind::Call(call) = &node.kind else {
-            return Ok(Self::Flag(binding(node)?));
+        let (shape, args) = match term {
+            Term::Call {
+                name, arguments, ..
+            } => (name.text.clone(), arguments.as_slice()),
+            Term::Variant(variant) => {
+                return match variant.body.name.text.as_str() {
+                    "true" => Ok(Self::Literal(true)),
+                    "false" => Ok(Self::Literal(false)),
+                    shape => Err(format!(
+                        "found the variant `` `{shape} ``; expected a Boolean, `` `true `` or `` `false ``"
+                    )),
+                };
+            }
+            _ => return Ok(Self::Flag(binding(term)?)),
         };
-        let shape = call.name_text();
-        let args = call.arguments.as_slice();
         Ok(match (prelude::function(&shape), args) {
             (Some(Function::Compare(operators)), args) => {
                 let expressions = args
@@ -529,47 +536,40 @@ impl<B: Clone> Test<B> {
             }
             (Some(_), _) => return Err("a predicate must return Boolean".into()),
             (None, []) if matches!(shape.as_str(), "true" | "false") => {
-                Self::Literal(shape == "true")
+                return Err(format!(
+                    "`{shape}` is not a function; did you mean the variant `` `{shape} ``?"
+                ));
             }
-            (None, []) if named => Self::Flag(binding(node)?),
+            (None, []) if named => Self::Flag(binding(term)?),
             _ => return Err(unsupported()),
         })
     }
 }
 
-/// The shapes of `[any case, _ encoding]`: each a variant written by its
-/// words, with `_` in each of its slots.
-fn variant_shapes(node: &Node) -> Result<Vec<String>, String> {
-    let NodeKind::Brackets(items) = &node.kind else {
-        return Err("expected variants in square brackets, as in `[any case, smart case]`".into());
-    };
-    if items.is_empty() {
-        return Err("expected at least one variant in the square brackets".into());
+/// The shapes of `` [`any case, `_ encoding] ``: each a variant's shape,
+/// with `_` in each of its slots.
+fn variant_shapes(term: &Term) -> Result<Vec<String>, String> {
+    match term {
+        Term::Variants(variants) if variants.value.is_empty() => {
+            Err("expected at least one variant in the square brackets".into())
+        }
+        Term::Variants(variants) => Ok(variants
+            .value
+            .iter()
+            .map(|variant| variant.body.name.text.clone())
+            .collect()),
+        _ => Err(format!(
+            "found `{}`; expected variants in square brackets, as in `` [`any case, `_ encoding] ``",
+            term_text(term)
+        )),
     }
-    items
-        .iter()
-        .map(|item| match &item.kind {
-            NodeKind::Call(call)
-                if call
-                    .arguments
-                    .iter()
-                    .all(|argument| matches!(argument.kind, NodeKind::Underscore)) =>
-            {
-                Ok(call.name_text())
-            }
-            _ => Err(format!(
-                "found `{}`; expected a variant written by its words with `_` in each slot, as in `any case` or `_ encoding`",
-                node_text(item)
-            )),
-        })
-        .collect()
 }
 
 impl<B> TextOperand<B> {
-    fn read(node: &Node, binding: &impl Fn(&Node) -> Result<B, String>) -> Result<Self, String> {
-        match &node.kind {
-            NodeKind::String(text) => Ok(Self::Literal(text.value.clone())),
-            _ => binding(node).map(Self::Value),
+    fn read(term: &Term, binding: &impl Fn(&Term) -> Result<B, String>) -> Result<Self, String> {
+        match term {
+            Term::Text(text) => Ok(Self::Literal(text.value.value.clone())),
+            _ => binding(term).map(Self::Value),
         }
     }
 
@@ -829,12 +829,16 @@ impl<B> Test<B> {
                 .collect::<Vec<_>>()
                 .join(" and "),
             Self::Flag(binding) => format!("{} is true", name(binding)),
-            Self::Literal(value) => value.to_string(),
+            Self::Literal(value) => format!("`{value}"),
             Self::NoRepeats(binding) => format!("{} has no repeats", name(binding)),
             Self::AtMostOneOf(binding, shapes) => format!(
                 "{} has at most one of [{}]",
                 name(binding),
-                shapes.join(", ")
+                shapes
+                    .iter()
+                    .map(|shape| format!("`{shape}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             Self::Compare(a, op, b) => {
                 let (subject, op, bound) = if !a.constant() && b.constant() {
@@ -878,36 +882,47 @@ impl Test {
     }
 }
 
-fn node_text(node: &Node) -> String {
-    match &node.kind {
-        NodeKind::Underscore => "_".into(),
-        NodeKind::Number(s) => s.clone(),
-        NodeKind::String(s) => quote(&s.value),
-        NodeKind::Parens(nodes) => format!(
-            "({})",
-            nodes.iter().map(node_text).collect::<Vec<_>>().join(", ")
+/// A term as written, with its calls' arguments in parentheses.
+fn term_text(term: &Term) -> String {
+    match term {
+        Term::Subject(_) => "_".into(),
+        Term::Integer(n) | Term::Float(n) => n.value.clone(),
+        Term::Text(text) => quote(&text.value.value),
+        Term::Variants(variants) => format!(
+            "[{}]",
+            variants
+                .value
+                .iter()
+                .map(variant_text)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
-        NodeKind::Call(call) => {
-            let mut args = call.arguments.iter();
-            call.name
+        Term::Variant(variant) => variant_text(variant),
+        Term::Call {
+            name, arguments, ..
+        } => {
+            let mut arguments = arguments.iter();
+            name.parts
                 .iter()
                 .map(|part| match part {
                     NamePart::Word { text, .. } => text.clone(),
                     NamePart::Slot => {
-                        let arg = args.next().unwrap();
-                        let text = node_text(arg);
-                        if matches!(arg.kind, NodeKind::Call(_)) {
-                            format!("({text})")
-                        } else {
-                            text
+                        let argument = arguments.next().expect("a slot has its argument");
+                        let text = term_text(argument);
+                        match argument {
+                            Term::Call { .. } | Term::Variant(_) => format!("({text})"),
+                            _ => text,
                         }
                     }
                 })
                 .collect::<Vec<_>>()
                 .join(" ")
         }
-        _ => "…".into(),
     }
+}
+
+fn variant_text(variant: &TermVariant) -> String {
+    format!("`{}", variant.body.name.text)
 }
 
 /// The value a predicate on `type` reads: past named types of one slot,

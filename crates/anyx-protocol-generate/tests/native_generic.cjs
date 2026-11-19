@@ -4,7 +4,7 @@ const {Client} = require(process.argv[2]);
   const responses = [
     'RETURNS { value "root", children [{ value "leaf", children [] }] }',
     'RETURNS { items [{ amount 9223372036854775807, at "2026-11-14T06:00:08Z" }] }',
-    'RETURNS failed (insufficient funds)',
+    'RETURNS `failed (`insufficient funds)',
     'RETURNS { items [], next "2" }',
   ];
   const client = new Client(async () => responses.shift());

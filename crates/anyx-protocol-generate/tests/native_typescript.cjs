@@ -13,7 +13,7 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
   assert.equal(unwrapOutcome(result).tea, 9007199254740993n);
   const largestDuration = 18446744073709551615n;
   assert.equal((await client.snoozeFor(reminder, largestDuration)).kind, 'error');
-  const duration = await new Client(async () => 'RETURNS every (18446744073709551615 milliseconds)').remind(reminder);
+  const duration = await new Client(async () => 'RETURNS `every (18446744073709551615 milliseconds)').remind(reminder);
   assert.equal(duration.value.period, largestDuration);
   await assert.rejects(client.snoozeFor(reminder, largestDuration + 1n));
   const declared = await client.snoozeFor(reminder, 1000n);

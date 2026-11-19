@@ -451,7 +451,12 @@ impl Compiler<'_> {
                 })
             }
             NodeKind::Braces(entries) => self.braces(schema, node.span, entries, expected),
-            NodeKind::Call(call) => {
+            // A variant is marked with a backtick, `` `custom hue (x) ``,
+            // and its slots hold expressions of the shell's.
+            NodeKind::Call(marked) if marked.name_text() == "` _" => {
+                let NodeKind::Call(call) = &marked.arguments[0].kind else {
+                    return Err(literal_error);
+                };
                 let name = call.name_text();
                 let candidates: Vec<_> = schema.types.iter().enumerate().filter_map(|(index, definition)| {
                     if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Choice(variants) if variants.iter().any(|variant| variant.shape.text == name)) {

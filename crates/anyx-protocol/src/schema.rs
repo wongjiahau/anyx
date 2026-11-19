@@ -113,11 +113,14 @@ pub struct Field {
 }
 
 /// A value's outermost form, which finds the `@` field an entry fills:
-/// `@newest first` is the call `newest first`, `@"src"` a string.
+/// `` @(`newest first) `` is the variant `newest first`, `@"src"` a string.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Written {
-    /// A call of this shape, such as `changed within _` or `hidden`.
+    /// A call of this shape that isn't marked as a variant, such as a named
+    /// type's constructor `File Id _`, or a field `changed within _`.
     Call(Vec<ShapePart>),
+    /// A variant of this shape, marked with a backtick: `` `newest first ``.
+    Variant(Vec<ShapePart>),
     String,
     Number,
     List,
@@ -129,6 +132,7 @@ impl std::fmt::Display for Written {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Written::Call(shape) => write!(f, "`{}`", ShapePart::text(shape)),
+            Written::Variant(shape) => write!(f, "`` `{} ``", ShapePart::text(shape)),
             Written::String => f.write_str("a string"),
             Written::Number => f.write_str("a number"),
             Written::List => f.write_str("a list `[…]`"),
@@ -141,7 +145,8 @@ impl std::fmt::Display for Written {
 impl Written {
     /// Whether an entry written as `found` may be a value of a type
     /// written as `self`, or the two clash as `@` fields: the same form, or
-    /// a variant shaped like a duration against a `Duration`.
+    /// a named type's constructor shaped like a duration against a
+    /// `Duration`.
     pub fn admits(&self, found: &Written) -> bool {
         match (self, found) {
             (Written::Duration, Written::Call(parts)) => crate::time::is_duration_shape(parts),
@@ -149,16 +154,21 @@ impl Written {
         }
     }
 
-    /// A node's outermost form, `None` for one no value is written as.
+    /// A node's outermost form, read with the request grammar, `None` for
+    /// one no value is written as.
     pub fn of(node: &anyx::Node) -> Option<Written> {
-        Some(match &node.kind {
-            anyx::NodeKind::Number(_) => Written::Number,
-            anyx::NodeKind::String(_) => Written::String,
-            anyx::NodeKind::Brackets(_) => Written::List,
-            anyx::NodeKind::Braces(_) => Written::Braces,
-            anyx::NodeKind::Call(call) => Written::Call(ShapePart::of(&call.name)),
-            _ => return None,
-        })
+        crate::request_grammar::decode_value(node)
+            .ok()
+            .map(|value| crate::request::written(&value))
+    }
+}
+
+/// `text` quoted as code: `` `Text` ``, or with two backticks around text
+/// that holds one, as `` `null ``.
+pub(crate) fn code(text: &str) -> String {
+    match text.contains('`') {
+        true => format!("`` {text} ``"),
+        false => format!("`{text}`"),
     }
 }
 
@@ -258,7 +268,7 @@ pub enum FieldForm {
     /// Its words alone, for `true`: `hidden`. Its type is `Boolean`, and
     /// it is `false` when left out.
     Checkbox,
-    /// `@` and its value, `@newest first`, found by the value's outermost
+    /// `@` and its value, `` @(`newest first) ``, found by the value's outermost
     /// form. The field's name is its parameter's.
     Unnamed,
 }
@@ -496,7 +506,7 @@ pub enum Type {
     /// so a value is never of this type.
     Parameter(String),
     /// Values of any of its members, each written as that member writes
-    /// it: `UNION [Integer, null]` holds `3` and `null`. Its members are as
+    /// it: `` UNION [Integer, `null] `` holds `3` and `null`. Its members are as
     /// written; [`Schema::members`] reads through nested unions. A value's
     /// form tells its member, so the checker rejects two members written
     /// alike.
@@ -508,7 +518,7 @@ pub enum Type {
 
 impl Type {
     /// The members of a union, reading through the unions among them, in
-    /// order: `UNION [Text, UNION [null, none]]` has `Text`, `null` and
+    /// order: `` UNION [Text, UNION [`null, `none]] `` has `Text`, `null` and
     /// `none`. Any other type is its own one member.
     pub fn members(&self) -> Vec<&Type> {
         match self {
@@ -873,7 +883,7 @@ impl Schema {
                         .join(", ")
                 ),
             },
-            Type::Variant(shape) => self.shape_name(shape),
+            Type::Variant(shape) => format!("`{}", self.shape_name(shape)),
         }
     }
 
@@ -929,7 +939,7 @@ impl Schema {
                 return r#type.members().into_iter().find(|member| {
                     self.written_forms(member).is_some_and(|forms| {
                         forms.iter().any(|form| {
-                            matches!(form, Written::Call(parts) if ShapePart::text(parts) == *shape)
+                            matches!(form, Written::Call(parts) | Written::Variant(parts) if ShapePart::text(parts) == *shape)
                         })
                     })
                 });
@@ -1045,7 +1055,7 @@ impl Schema {
         underlying
     }
 
-    /// `item` for the nullable `item?`, `UNION [item, null]`.
+    /// `item` for the nullable `item?`, `` UNION [item, `null] ``.
     pub fn nullable_item<'t>(&'t self, r#type: &'t Type) -> Option<&'t Type> {
         match self.underlying(r#type) {
             Type::Union(members) => match members.as_slice() {
@@ -1090,7 +1100,7 @@ impl Schema {
             Type::List(_) => vec![Written::List],
             Type::Map(_) => vec![Written::Braces],
             Type::Parameter(_) => return None,
-            Type::Variant(shape) => vec![Written::Call(shape.parts.clone())],
+            Type::Variant(shape) => vec![Written::Variant(shape.parts.clone())],
             Type::Union(members) => {
                 let mut forms = Vec::new();
                 for member in members {
@@ -1102,7 +1112,7 @@ impl Schema {
                 Some(kind) => match kind.as_ref() {
                     TypeKind::Choice(variants) => variants
                         .iter()
-                        .map(|variant| Written::Call(variant.shape.parts.clone()))
+                        .map(|variant| Written::Variant(variant.shape.parts.clone()))
                         .collect(),
                     TypeKind::Distinct { constructor, .. } => {
                         vec![Written::Call(constructor.clone())]
@@ -1379,7 +1389,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
             (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `METHOD read (path: Text) RETURNS (file: File) ERRORS [missing]`, or of an `ERRORS` group that methods share by joining it with `+`: `ERRORS file errors [trashed, missing]`".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an `ERRORS` group that methods share by joining it with `+`: `` ERRORS file errors [`trashed, `missing] ``".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]

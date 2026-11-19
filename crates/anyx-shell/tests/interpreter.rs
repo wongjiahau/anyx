@@ -27,7 +27,7 @@ fn example_returns_values_without_response_envelopes() {
     assert!(execution.error.is_none());
     assert_eq!(
         execution.output,
-        "{ name \"ANYX_EXAMPLE\", value \"hello\" },\n\"hello\",\ntrue,\nfalse,\n"
+        "{ name \"ANYX_EXAMPLE\", value \"hello\" },\n\"hello\",\n`true,\n`false,\n"
     );
     assert_eq!(execution.values.len(), 4);
 }
@@ -85,7 +85,7 @@ fn declared_error_stops_execution_and_keeps_earlier_effects() {
     assert_eq!(result.values.len(), 1);
     assert_eq!(
         result.error.as_deref(),
-        Some("ERROR variable does not exist\n")
+        Some("ERROR `variable does not exist\n")
     );
     assert_eq!(
         run(&mut interpreter, "environment / read variable \"kept\""),
@@ -267,9 +267,9 @@ fn preconditions_are_checked_before_a_call_runs() {
             SettingsTool(
                 Schema::parse(
                     r#"PROTOCOL example VERSION 1,
-                    CHOICE Setting { any case, exact case, hidden },
+                    CHOICE Setting { `any case, `exact case, `hidden },
                     METHOD echo (settings: LIST Setting)
-                        REQUIRES [settings . has at most one of [any case, exact case]]
+                        REQUIRES [settings . has at most one of [`any case, `exact case]]
                         RETURNS (settings: LIST Setting),
                     METHOD both RETURNS (settings: LIST Setting),"#,
                 )
@@ -281,7 +281,7 @@ fn preconditions_are_checked_before_a_call_runs() {
     // so nothing runs.
     let problem = interpreter
         .execute(
-            "environment / set variable \"x\" to \"1\",\nexample / echo [any case, exact case]",
+            "environment / set variable \"x\" to \"1\",\nexample / echo [`any case, `exact case]",
         )
         .unwrap_err();
     assert_eq!(problem.line, 2);
@@ -298,7 +298,7 @@ fn preconditions_are_checked_before_a_call_runs() {
     );
     // Computed, they are checked just before the call.
     let execution = interpreter
-        .execute("example / echo [hidden], example / echo (example / both)")
+        .execute("example / echo [`hidden], example / echo (example / both)")
         .unwrap();
     assert_eq!(execution.values.len(), 1);
     let error = execution.error.unwrap();

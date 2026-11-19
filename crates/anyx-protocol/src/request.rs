@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::codec::{DURATION_EXAMPLE, INSTANT_EXAMPLE, Mismatch};
 use crate::request_grammar::{Entry, Value as Syntax};
-use crate::schema::{Field, FieldForm, Schema, Shape, ShapePart, Type, TypeKind, Written};
+use crate::schema::{Field, FieldForm, Schema, Shape, ShapePart, Type, TypeKind, Written, code};
 use crate::value::Value;
 
 fn describe(value: &Syntax) -> String {
@@ -12,8 +12,9 @@ fn describe(value: &Syntax) -> String {
         Syntax::Text(_) => "a string".into(),
         Syntax::List(_) => "a list `[…]`".into(),
         Syntax::Braces(_) => "braces `{…}`".into(),
-        Syntax::Duration(duration) => format!("the call `{}`", duration.name.text),
-        Syntax::Call(call) => format!("the call `{}`", call.name.text),
+        Syntax::Duration(duration) => format!("the call {}", code(&duration.name.text)),
+        Syntax::Variant(variant) => format!("the variant `` `{} ``", variant.body.name.text),
+        Syntax::Call(call) => format!("the call {}", code(&call.name.text)),
     }
 }
 
@@ -170,45 +171,74 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
                     underlying,
                 } => {
                     let text = ShapePart::text(constructor);
-                    match value {
-                        Syntax::Call(call) if call.name.text == text => variant(
-                            schema,
-                            &[&crate::schema::constructor_shape(constructor, underlying)],
-                            value,
-                            "",
-                        ),
-                        _ => Err(mismatch(format!(
-                            "a `{}`, written with its name: `{}`",
-                            definition.name,
-                            text.replace('_', "…")
-                        ))),
+                    let call = match value {
+                        Syntax::Duration(duration) => Some(duration_call(duration)),
+                        Syntax::Call(call) => Some(Syntax::Call(call.clone())),
+                        _ => None,
+                    };
+                    match &call {
+                        Some(Syntax::Call(call)) if call.name.text == text => Ok(Value::Variant {
+                            shape: text,
+                            arguments: arguments(
+                                schema,
+                                &crate::schema::constructor_shape(constructor, underlying),
+                                call,
+                            )?,
+                        }),
+                        _ => Err(mismatch(match value {
+                            Syntax::Variant(variant) if variant.body.name.text == text => format!(
+                                "a `{}`, written with its name and no backtick, since its constructor is a function: `{}`",
+                                definition.name,
+                                text.replace('_', "…")
+                            ),
+                            _ => format!(
+                                "a `{}`, written with its name: `{}`",
+                                definition.name,
+                                text.replace('_', "…")
+                            ),
+                        })),
                     }
                 }
             }
         }
         (Type::Union(_), _) => match schema.member_written_as(expected, &written(value)) {
             Some(member) => decode(schema, member, value),
-            None => Err(mismatch(format!(
-                "a value of one of {}",
-                expected
-                    .members()
-                    .iter()
-                    .map(|member| format!("`{}`", schema.type_name(member)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))),
+            None => Err(match unmarked_variant(schema, expected, value) {
+                Some(text) => Mismatch {
+                    span: value.span(),
+                    message: format!(
+                        "`{text}` is not a function; did you mean the variant `` `{text} ``?"
+                    ),
+                },
+                None => mismatch(format!(
+                    "a value of one of {}",
+                    expected
+                        .members()
+                        .iter()
+                        .map(|member| crate::schema::code(&schema.type_name(member)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            }),
         },
-        (Type::Variant(shape), _) => variant(
-            schema,
-            &[shape.as_ref()],
-            value,
-            &format!("`{}`", schema.shape_name(shape)),
-        ),
+        (Type::Variant(shape), _) => variant(schema, &[shape.as_ref()], value, "the variant"),
         (Type::Refined(..), _) => unreachable!("underlying removes refinements"),
         (Type::Parameter(name), _) => Err(mismatch(format!(
             "a value of a type in place of the type parameter `{name}`"
         ))),
     }
+}
+
+/// The shape of `value`, a call not marked as a variant, when a member of
+/// the union `expected` is a variant of that shape: `null` for
+/// `` UNION [Text, `null] ``.
+fn unmarked_variant(schema: &Schema, expected: &Type, value: &Syntax) -> Option<String> {
+    let Written::Call(parts) = written(value) else {
+        return None;
+    };
+    schema
+        .member_written_as(expected, &Written::Variant(parts.clone()))
+        .map(|_| ShapePart::text(&parts))
 }
 
 pub(crate) fn duration_pairs(
@@ -232,35 +262,36 @@ pub(crate) fn duration_pairs(
         .collect()
 }
 
+/// A variant of one of `shapes`, marked with a backtick: `` `red ``. An
+/// unmarked call of a variant's shape is a function call, which no variant
+/// is, so the error shows the marked form.
 pub(crate) fn variant(
     schema: &Schema,
     shapes: &[&Shape],
     value: &Syntax,
     what: &str,
 ) -> Result<Value, Mismatch> {
-    if let Syntax::Duration(duration) = value {
-        return variant(schema, shapes, &duration_call(duration), what);
-    }
-    if let Syntax::Call(call) = value
-        && let Some(shape) = shapes.iter().find(|shape| shape.text == call.name.text)
-    {
-        let arguments = shape
-            .parameters
+    if let Syntax::Variant(variant) = value
+        && let Some(shape) = shapes
             .iter()
-            .zip(&call.arguments)
-            .map(|(parameter, argument)| {
-                decode(schema, &parameter.r#type, argument).map_err(|m| Mismatch {
-                    message: format!(
-                        "in `{}` of `{}`: {}",
-                        parameter.name, call.name.text, m.message
-                    ),
-                    ..m
-                })
-            })
-            .collect::<Result<_, _>>()?;
+            .find(|shape| shape.text == variant.body.name.text)
+    {
         return Ok(Value::Variant {
             shape: shape.text.clone(),
-            arguments,
+            arguments: arguments(schema, shape, &variant.body)?,
+        });
+    }
+    let unmarked = match value {
+        Syntax::Call(call) => Some(call.name.text.clone()),
+        Syntax::Duration(duration) => Some(duration.name.text.clone()),
+        _ => None,
+    };
+    if let Some(text) = unmarked
+        && shapes.iter().any(|shape| shape.text == text)
+    {
+        return Err(Mismatch {
+            span: value.span(),
+            message: format!("`{text}` is not a function; did you mean the variant `` `{text} ``?"),
         });
     }
     Err(Mismatch {
@@ -270,11 +301,34 @@ pub(crate) fn variant(
             describe(value),
             shapes
                 .iter()
-                .map(|shape| format!("`{}`", shape.text))
+                .map(|shape| format!("`` `{} ``", shape.text))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
     })
+}
+
+/// The arguments of `call`, a call of `shape`, each decoded as its
+/// parameter's type.
+fn arguments(
+    schema: &Schema,
+    shape: &Shape,
+    call: &crate::request_grammar::ValueCall,
+) -> Result<Vec<Value>, Mismatch> {
+    shape
+        .parameters
+        .iter()
+        .zip(&call.arguments)
+        .map(|(parameter, argument)| {
+            decode(schema, &parameter.r#type, argument).map_err(|m| Mismatch {
+                message: format!(
+                    "in `{}` of `{}`: {}",
+                    parameter.name, call.name.text, m.message
+                ),
+                ..m
+            })
+        })
+        .collect()
 }
 
 fn fields_value(
@@ -324,7 +378,7 @@ fn fields_value(
 }
 
 /// The field an entry of a record fills, by the entry's shape alone:
-/// `path "a"` is the shape `path _`, `hidden` a checkbox, and `@newest first`
+/// `path "a"` is the shape `path _`, `hidden` a checkbox, and `` @(`newest first) ``
 /// the `@` field whose values are written in the form of `newest first`.
 /// The schema checker makes sure at most one fits, so nothing is tried.
 pub(crate) fn entry_field(schema: &Schema, fields: &[Field], entry: &Syntax) -> Option<usize> {
@@ -351,21 +405,28 @@ fn field_entry<'f>(
         })?;
         return Ok((field, value));
     }
-    // `any case` for the shape `_ case`: the value before the words needs
-    // its parentheses, or it joins them.
-    let hint = match entry {
-        Syntax::Call(call) if call.arguments.is_empty() => fields.iter().find_map(|field| {
+    // `` `any case `` for the shape `_ case`: the value before the words
+    // needs its parentheses, or it joins them.
+    let written = match entry {
+        Syntax::Call(call) if call.arguments.is_empty() => Some(("", &call.name.text)),
+        Syntax::Variant(variant) if variant.body.arguments.is_empty() => {
+            Some(("`", &variant.body.name.text))
+        }
+        _ => None,
+    };
+    let hint = written.and_then(|(mark, text)| {
+        fields.iter().find_map(|field| {
             let FieldForm::Shape(shape) = &field.form else {
                 return None;
             };
             let words = shape.strip_prefix("_ ")?;
-            let value = call.name.text.strip_suffix(words)?.strip_suffix(' ')?;
+            let value = text.strip_suffix(words)?.strip_suffix(' ')?;
             Some(format!(
-                "; a value before a field's words goes in parentheses: `({value}) {words}`"
+                "; a value before a field's words goes in parentheses: {}",
+                code(&format!("({mark}{value}) {words}"))
             ))
-        }),
-        _ => None,
-    };
+        })
+    });
     Err(Mismatch {
         span: entry.span(),
         message: format!(
@@ -433,19 +494,20 @@ pub(crate) fn decode_field_entry(
 }
 
 /// How `value` is written, to find the `@` field it fills.
-fn written(value: &Syntax) -> Written {
+pub(crate) fn written(value: &Syntax) -> Written {
     match value {
         Syntax::Integer(_) | Syntax::Float(_) => Written::Number,
         Syntax::Text(_) => Written::String,
         Syntax::List(_) => Written::List,
         Syntax::Braces(_) => Written::Braces,
         Syntax::Duration(duration) => Written::Call(ShapePart::of(&duration.name.parts)),
+        Syntax::Variant(variant) => Written::Variant(ShapePart::of(&variant.body.name.parts)),
         Syntax::Call(call) => Written::Call(ShapePart::of(&call.name.parts)),
     }
 }
 
-// Preserve the neutral call reading: `(5 minutes)` may be a choice's
-// `(count) minutes` variant instead of a Duration.
+// Preserve the neutral call reading: `(5 minutes)` may be a named type's
+// constructor `(count) minutes` instead of a Duration.
 fn duration_call(duration: &crate::request_grammar::Duration) -> Syntax {
     Syntax::Call(crate::request_grammar::ValueCall {
         name: duration.name.clone(),
@@ -510,7 +572,7 @@ mod tests {
         let schema = Schema::load("protocol.protocol.anyx", |path| -> Result<String, String> {
             match path {
                 "protocol.protocol.anyx" => Ok("PROTOCOL a VERSION 1, USE \"./files.protocol.anyx\"".into()),
-                "files.protocol.anyx" => Ok("PUBLIC CHOICE Count { (count: Integer) minutes }, METHOD count (count: Count) RETURNS NOTHING".into()),
+                "files.protocol.anyx" => Ok("PUBLIC CHOICE Count { `(count: Integer) minutes }, METHOD count (count: Count) RETURNS NOTHING".into()),
                 _ => Err(format!("missing {path}")),
             }
         }).unwrap();
@@ -521,7 +583,7 @@ mod tests {
                 arguments: vec![Value::Integer(5)],
             }],
         }];
-        let source = "count (5 minutes AS: Count)";
+        let source = "count (`5 minutes AS: Count)";
         assert_eq!(decode_request(&schema, source).unwrap(), calls);
         assert_eq!(
             decode_request(&schema, &encode_request(&schema, &calls).unwrap()).unwrap(),
@@ -531,8 +593,8 @@ mod tests {
 
     #[test]
     fn booleans_keep_their_choice_reading_when_annotated() {
-        let schema = Schema::parse("PROTOCOL a VERSION 1, CHOICE Truth { true, false }, METHOD set (value: Truth) RETURNS NOTHING").unwrap();
-        let calls = decode_request(&schema, "set (true AS: Truth)").unwrap();
+        let schema = Schema::parse("PROTOCOL a VERSION 1, CHOICE Truth { `true, `false }, METHOD set (value: Truth) RETURNS NOTHING").unwrap();
+        let calls = decode_request(&schema, "set (`true AS: Truth)").unwrap();
         assert_eq!(
             calls[0].arguments,
             vec![Value::Variant {

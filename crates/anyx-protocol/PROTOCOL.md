@@ -15,21 +15,21 @@ RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
-    note (Text ?) DEFAULT note (null),
+    note (Text ?) DEFAULT note (`null),
 },
 
-CHOICE Shade { dark, light },
+CHOICE Shade { `dark, `light },
 
-CHOICE Colour { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
+CHOICE Colour { `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed },
 
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
 ERRORS file errors [
     # The owner moved this file to the trash.
-    trashed,
-    missing,
-    (path: Text) would be both file and folder,
+    `trashed,
+    `missing,
+    `(path: Text) would be both file and folder,
 ],
 
 # Saves the score, if the file is still at `revision`.
@@ -37,13 +37,13 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     RETURNS (new revision: Integer)
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at `revision`.
-        conflict at revision (revision: Integer) content (content: Text),
+        `conflict at revision (revision: Integer) content (content: Text),
     ] + file errors
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title" RETURNS 4,
         # Someone saved first.
-        write "Hymns/a.poentaro" at revision 3 content "title" ERROR conflict at revision 4 content "hymn",
+        write "Hymns/a.poentaro" at revision 3 content "title" ERROR `conflict at revision 4 content "hymn",
     ],
 ```
 
@@ -74,7 +74,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   things can't be mixed up. Its name is a shape whose slots hold types, and
   a value is written with that shape and a value in each slot: `File Id
   "a"`. A slot may be anywhere among the words, and there may be several or
-  none: `NAMED TYPE (UNION [red, blue]) Color` is written `(red) Color`,
+  none: `` NAMED TYPE (UNION [`red, `blue]) Color `` is written `` (`red) Color ``,
   `NAMED TYPE Range from (Integer) to (Integer)` is written `Range from 1 to
   3`, and `NAMED TYPE Unit` is written `Unit`. Since a value shows its type,
   it needs no annotation, and a `UNION` of named types tells its members
@@ -107,20 +107,20 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   entry of its field; parameters cannot have defaults.
 - **`UNION [A, B, …]`** is a value of one of its members, written as that
   member writes it, on the wire and in JSON: a value of
-  `UNION [Integer, none]` is `3` or `none`. A member is a variant, written
-  lowercase as a `CHOICE`'s is, or a named type, an intrinsic, a refinement
+  `` UNION [Integer, `none] `` is `3` or `` `none ``. A member is a variant,
+  written with a backtick as a `CHOICE`'s is, or a named type, an intrinsic, a refinement
   or another union. A `LIST`, `MAP` or `RECORD` is named first, by `TYPE
   ALIAS`. A value's form alone tells its member, so the checker flattens a
   union and rejects one where two members share a form, in anyx or in JSON:
-  `UNION [Integer, Float]` shares the number, and `Depth??` repeats `null`.
+  `UNION [Integer, Float]` shares the number, and `Depth??` repeats `` `null ``.
   `UNION []` has no values. A union fits where another is expected when
   each of its members does, so a `Depth` fits where a `Depth?` is expected.
-- **Nullability** is the prelude's `T?`, the alias `UNION [Item, null]`:
-  `null`, or a value of the item written as it is, `note "hi"`.
-  `note: Text?` is required but admits `null`;
-  `note (Text?) DEFAULT note (null)` may be omitted. `OPTIONAL` is no longer a
+- **Nullability** is the prelude's `T?`, the alias `` UNION [Item, `null] ``:
+  `` `null ``, or a value of the item written as it is, `note "hi"`.
+  `note: Text?` is required but admits `` `null ``;
+  `` note (Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
-- **`CHOICE Name { variant, … }`**: one of its variants. A variant is a
+- **`` CHOICE Name { `variant, `… } ``**: one of its variants. A variant is a
   *shape*: words, with `(name: Type)` slots anywhere among them, as in
   `custom hue (hue: Float)` or `(base: Shade) dimmed`. Variants differ by
   their words.
@@ -138,13 +138,13 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   # A page of a long list, and where the next one starts. (A slot at the end.)
   RECORD Page of (Item: TYPE) {
       items: LIST: Item,
-      next (Text?) DEFAULT next (null),
+      next (Text?) DEFAULT next (`null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
   CHOICE (Value: TYPE) or (Problem: TYPE) {
-      done (value: Value),
-      failed (problem: Problem),
+      `done (value: Value),
+      `failed (problem: Problem),
   },
 
   # A value and who vouches for it. (A slot between words.)
@@ -178,7 +178,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   variant, and not the name of a type visible there: a type declared in its file,
   or a directly imported `PUBLIC` type. A parameter has no slots, and a field
   whose type holds one can have a `DEFAULT` only if it can be checked
-  without knowing the argument, as in `content (Item?) DEFAULT content (null)`. A use fills every slot, in order; a use whose
+  without knowing the argument, as in `` content (Item?) DEFAULT content (`null) ``. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
   with its own parameters as they are, `LIST Tree of (Item)`, and only
@@ -208,10 +208,10 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 - **Errors** are written where they are used, in full: a shape like a
   variant's, with its `#` doc before it. A method's `ERRORS` has its own
   errors in brackets, then the groups it shares joined with `+`:
-  `[conflict at revision (revision: Integer)] + file errors`, or a group
+  `` [`conflict at revision (revision: Integer)] + file errors ``, or a group
   alone, `file errors`.
-- **`ERRORS name [errors]`** defines a group of errors that methods share.
-  It may join other groups with `+`: `ERRORS export errors [unreadable] +
+- **`ERRORS name [`errors]`** defines a group of errors that methods share.
+  It may join other groups with `+`: `ERRORS export errors [`unreadable] +
   file errors`. A group exists only to be shared; an error used by one
   method goes in that method's brackets.
 - Each error is defined once in the protocol, in the brackets of the one method
@@ -334,12 +334,12 @@ They let a method take a list of settings, rather than optional words,
 and still rule out settings that contradict each other:
 
 ```anyx
-CHOICE Setting { any case, smart case, hidden, (name: Text) encoding },
+CHOICE Setting { `any case, `smart case, `hidden, `(name: Text) encoding },
 
 READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
     REQUIRES [
         settings . has no repeats,
-        settings . has at most one of [any case, smart case],
+        settings . has at most one of [`any case, `smart case],
     ]
     RETURNS (paths: LIST Text),
 ```
@@ -391,14 +391,14 @@ generated code too, and a value writes it as it is declared:
 | Declared | Written | Named |
 | --- | --- | --- |
 | `path: Text` | `path "a"` | `path` |
-| `(Case) case DEFAULT (smart) case` | `(any) case` | `case` |
-| `at least (Size?) bytes DEFAULT at least (null) bytes` | `at least 14 bytes` | `at least bytes` |
+| `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
+| `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
 | `hidden` | `hidden` | `hidden` |
-| `@(order: Order) DEFAULT @newest first` | `@by name` | `order` |
+| `` @(order: Order) DEFAULT @(`newest first) `` | `` @(`by name) `` | `order` |
 
-- **Words alone are a checkbox**: a `Boolean`, `true` when written and
-  `false` when left out. It takes no `DEFAULT`.
+- **Words alone are a checkbox**: a `Boolean`, `` `true `` when written and
+  `` `false `` when left out. It takes no `DEFAULT`.
 - **The slot holds a type, not a parameter**: `(Case) case`, since the words
   already name the field.
 - **A field with several slots holds a value for each**, as a tuple:
@@ -408,29 +408,29 @@ generated code too, and a value writes it as it is declared:
 - **A `DEFAULT` takes the whole field**, and is the entry the field holds
   when left out, written as a value writes it: `age (Integer) DEFAULT age 0`,
   `between (Integer) and (Integer) DEFAULT between 1 and 9`,
-  `@(order: Order) DEFAULT @newest first`. With a `:`, the field goes in
+  `` @(order: Order) DEFAULT @(`newest first) ``. With a `:`, the field goes in
   parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
   age 0` is `age (Integer DEFAULT age 0)`, a `DEFAULT` in the slot.
 - **A value is written as its type writes it**, a nullable one as its item
-  or `null`: `at least 14 bytes`, `at least (null) bytes` for a `Size?`.
-- **No `Boolean?`.** Three states named `true`, `false` and `null` leave
-  the reader to guess what `null` means. Use a checkbox when left out means
-  off, or a `CHOICE` that names each state: `CHOICE Color { always, never,
-  auto }`, not `color (Boolean?)`.
-- **A value before the words keeps its parentheses**, `(any) case`: without
-  them, `any case` is the one call `any case`, not `_ case`.
+  or `` `null ``: `at least 14 bytes`, `` at least (`null) bytes `` for a `Size?`.
+- **No `Boolean?`.** Three states named `` `true ``, `` `false `` and `` `null ``
+  leave the reader to guess what `` `null `` means. Use a checkbox when left out means
+  off, or a `CHOICE` that names each state: `` CHOICE Color { `always, `never,
+  `auto } ``, not `color (Boolean?)`.
+- **A value before the words keeps its parentheses**, `` (`any) case ``:
+  without them, `` `any case `` is the one variant `` `any case ``, not `_ case`.
 - **Each field once.** A record says each thing once, so where a list of
   settings needs `REQUIRES` to rule out `[glob, fixed text]`, a record's
   `(Syntax) pattern` is one choice.
 
 **`@` fields.** `@(order: Order)` is the shape with no words, so a
 parameter names the field. A value writes `@` and the field's value,
-`@newest first`, and the field is found by the value's *outermost form*
+`` @(`newest first) ``, and the field is found by the value's *outermost form*
 alone: a variant's shape, a string, a number, a list, braces or a duration.
 No two `@` fields of a record may share a form, not even one variant's
 shape, and `Integer` and `Float` share the form of a number, `Text` and
 `Instant` that of a string. So finding the field never tries one and backs
-out. A nullable `@` field's forms are `null` and its item's, and one of a type
+out. A nullable `@` field's forms are `` `null `` and its item's, and one of a type
 parameter has no known form, which is an error.
 
 Readability decides between them, since a record is read far more than it is
@@ -445,18 +445,18 @@ written:
    form for text, numbers and lists, whose form never says what they mean:
    `@"src"` and `@3` leave the reader guessing.
 4. **A choice only one field uses → its word in every variant, and `@`.**
-   `CHOICE Case { smart case, any case, exact case }` with
-   `@(case: Case) DEFAULT @smart case` is written `@any case`, a phrase
-   with no parentheses. Every variant carries the word, so that none reads
-   bare, as `@exact` would.
+   `` CHOICE Case { `smart case, `any case, `exact case } `` with
+   `` @(case: Case) DEFAULT @(`smart case) `` is written `` @(`any case) ``.
+   Every variant carries the word, so that none reads bare, as
+   `` @(`exact) `` would.
 5. **A choice several fields or methods share → its shared word in the
-   shape.** `(Case) case` over `CHOICE Case { smart, any, exact }`, written
-   `(any) case`, keeps the word out of the type, where it would follow the
+   shape.** `(Case) case` over `` CHOICE Case { `smart, `any, `exact } ``,
+   written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no
-   word, and would stutter with one → `@`.** `@newest first`, `@by name`,
-   `@no auth`, where a word would only repeat (`(no auth) auth`) or add
-   nothing (`(by name) order`). Read `@by name` alone: if it says nothing to
+   word, and would stutter with one → `@`.** `` @(`newest first) ``, `` @(`by name) ``,
+   `` @(`no auth) ``, where a word would only repeat (`` (`no auth) auth ``) or add
+   nothing (`` (`by name) order ``). Read `` @(`by name) `` alone: if it says nothing to
    someone reading the call cold, give it a word.
 
 When in doubt, use a shape: a word costs one word, while an unclear `@`
@@ -480,9 +480,9 @@ METHOD update account (id: Text) fields (fields: account fields)
 ## This: the server does the whole transfer, or none of it.
 METHOD transfer (amount: Integer) cents from (source: Text) to (target: Text)
     RETURNS (transfer: Text)
-    ERRORS [short by (shortfall: Integer) cents],
+    ERRORS [`short by (shortfall: Integer) cents],
 METHOD close (account: Text) RETURNS NOTHING
-    ERRORS [still holds (balance: Integer) cents],
+    ERRORS [`still holds (balance: Integer) cents],
 ```
 
 - **The shape names the intent.** `transfer (amount) cents from (source) to
@@ -503,23 +503,23 @@ lost, and whether to ask a person before sending it.
 
 ```anyx
 READ ONLY METHOD read (path: Text) RETURNS (document: Document)
-    ERRORS [missing],
+    ERRORS [`missing],
 
 IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING
-    ERRORS [missing]
+    ERRORS [`missing]
     UNDONE BY unarchive (path: Text),
 
-IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [missing],
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [`missing],
 
 METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
-    ERRORS [missing, taken]
+    ERRORS [`missing, `taken]
     UNDONE BY move (new path: Text) to (path: Text),
 
 ## No markers: may change anything, and is never retried on its own.
-METHOD append (text: Text) to (path: Text) RETURNS NOTHING ERRORS [missing],
+METHOD append (text: Text) to (path: Text) RETURNS NOTHING ERRORS [`missing],
 
 ## Can't claim `UNDONE BY`: the recipient has read the document.
-METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [missing],
+METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [`missing],
 ```
 
 - **`READ ONLY`** before `METHOD`: the caller asks for no change, as HTTP's
@@ -577,18 +577,18 @@ USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
-PUBLIC ERRORS common errors [missing],
+PUBLIC ERRORS common errors [`missing],
 
 ## notes/files.protocol.anyx
 USE "./common.protocol.anyx",
-PUBLIC ERRORS file errors [trashed] + common errors,
+PUBLIC ERRORS file errors [`trashed] + common errors,
 METHOD read (path: Text) RETURNS (text: Text) ERRORS file errors,
 
 ## notes/files/export.protocol.anyx
 USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
-    ERRORS [unreadable (diagnostics: LIST Diagnostic)] + file errors,
+    ERRORS [`unreadable (diagnostics: LIST Diagnostic)] + file errors,
 ```
 
 - `USE "relative path"` is the only import form. It includes that file in
@@ -635,11 +635,11 @@ visible in every file, so a schema can't declare a type of the same name:
 # A whole number of 64 bits, written without a point: `3`, `-1`.
 INTRINSIC TYPE Integer,
 
-INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
+INTRINSIC CHOICE Duration { `day, `hour, `minute, `second, `millisecond },
 
-CHOICE Boolean { false, true },
+CHOICE Boolean { `false, `true },
 
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
 ```
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
@@ -706,14 +706,14 @@ and base64 are checked in Rust.
 | `Bytes` | its standard base64 (RFC 4648, padded) as a string: `"TVRoZA=="` |
 | `Integer` | a whole number without a point: `3`, `-1` |
 | `Float` | a number with a point or an exponent: `1.5`, `3.0`, `1e3`; never `3`, which is an `Integer` |
-| `Boolean` | `true`, `false` |
+| `Boolean` | `` `true ``, `` `false `` |
 | `Instant` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
 | `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
-| a `RECORD` | `{ path "a", revision 3, hidden, (any) case, @by name }`, each field in its shape, in any order; `name: value` when the value is a word |
-| a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
-| a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `(red) Color`, `Unit` |
+| a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, @(`by name) } ``, each field in its shape, in any order; `name: value` when the value is a word |
+| a `CHOICE` | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
+| a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `` (`red) Color ``, `Unit` |
 | a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 
 A number's type is how it is written, as in Rust: `3` and `-1` are
@@ -726,9 +726,9 @@ carries decimal text and a narrower type would only lose precision; a server
 narrows the value itself. There is no exact decimal type: write money as an
 `Integer` of cents.
 
-A value written as words, a `Boolean`, a `Duration` or a variant, goes in
-parentheses in a slot, where it would otherwise join the words around it:
-`set (custom hue 0.5) strict (true)`, `wait (5 minutes)`. In a record, such a
+A value written as words, a variant or a `Duration`, goes in parentheses in
+a slot, where it would otherwise join the words around it:
+`` set (`custom hue 0.5) strict (`true) ``, `wait (5 minutes)`. In a record, such a
 value follows a `:`: `{ every: 1 hour 30 minutes }`, `{ "tea": 5 minutes }`.
 
 A `Duration`'s units are the variants of its declaration in the
@@ -760,7 +760,7 @@ methods:
 | --- | --- |
 | a number | `Integer` without a point or an exponent, else `Float` |
 | a string | `Text` |
-| `true`, `false` | the unique matching choice, normally `Boolean`; annotate if ambiguous |
+| `` `true ``, `` `false `` | the unique matching choice, normally `Boolean`; annotate if ambiguous |
 | whole numbers each with a unit | `Duration` |
 | a list with items | `LIST` of its items' type, when they all have the same one |
 | braces of string keys | `MAP` of its values' type, the same way |
@@ -822,8 +822,8 @@ revision 3 content "…", files/export/midi "b.poentaro"`:
 
 ```anyx
 RETURNS { path "a.poentaro", revision 3, content "…" },
-ERROR conflict at revision 4 content "…",
-ERROR missing,
+ERROR `conflict at revision 4 content "…",
+ERROR `missing,
 ```
 
 A reader checks that there are as many results as calls, and reads each

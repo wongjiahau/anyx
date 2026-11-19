@@ -10,7 +10,7 @@ RETURNS NOTHING
 RETURNS NOTHING, RETURNS 2, RETURNS 3
 => 1:29: found 3 results; expected 2 results, one per call, in the order of the calls
 
-RETURNS NOTHING, ERROR wrong password
+RETURNS NOTHING, ERROR `wrong password
 => 1:24: in result 2 of 2, for the call of `tag _`: found an error after `ERROR`; expected `RETURNS` and what `tag _` returns, since it has no errors
 
 change password from "a" to "b" RETURNS NOTHING, tag [] RETURNS 0

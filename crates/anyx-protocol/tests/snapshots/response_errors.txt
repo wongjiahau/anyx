@@ -1,8 +1,8 @@
-ERROR conflict at revision 1 content "x"
-=> 1:7: found the call `conflict at revision _ content _`; expected an error of `read _`: `trashed`, `missing`
+ERROR `conflict at revision 1 content "x"
+=> 1:7: found the variant `` `conflict at revision _ content _ ``; expected an error of `read _`: `` `trashed ``, `` `missing ``
 
-ERROR gone
-=> 1:7: found the call `gone`; expected an error of `read _`: `trashed`, `missing`
+ERROR `gone
+=> 1:7: found the variant `` `gone ``; expected an error of `read _`: `` `trashed ``, `` `missing ``
 
 RETURNS missing
 => 1:9: found the call `missing`; expected the record `File`, as in `{ path …, revision …, content … }`; an error is written after `ERROR`, as in `ERROR missing`
