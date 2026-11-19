@@ -995,6 +995,22 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                     Err(format!("expected `{label}`"))
                 }
             }
+            Type::Union(_) => match schema.member_holding(ty, value) {
+                Some(member) => validate(schema, member, value),
+                None => Err(format!("found `{}`; expected `{label}`", value_text(value))),
+            },
+            Type::Variant(own) => match value {
+                Value::Variant { shape, arguments }
+                    if *shape == own.text && arguments.len() == own.parameters.len() =>
+                {
+                    for (parameter, value) in own.parameters.iter().zip(arguments) {
+                        validate(schema, &parameter.r#type, value)
+                            .map_err(|e| format!("in `{}`: {e}", parameter.name))?;
+                    }
+                    Ok(())
+                }
+                _ => Err(format!("found `{}`; expected `{label}`", value_text(value))),
+            },
             Type::Tuple(slots) => match value {
                 Value::Tuple(values) if values.len() == slots.len() => {
                     for (index, (slot, value)) in slots.iter().zip(values).enumerate() {
@@ -1049,9 +1065,14 @@ pub(crate) fn check_schema(schema: &Schema) -> Vec<Diagnostic> {
                 check(schema, base, errors);
             }
             Type::List(item) | Type::Map(item) => check(schema, item, errors),
-            Type::Generic(_, args) | Type::Tuple(args) => {
+            Type::Generic(_, args) | Type::Tuple(args) | Type::Union(args) => {
                 for arg in args {
                     check(schema, arg, errors);
+                }
+            }
+            Type::Variant(shape) => {
+                for parameter in &shape.parameters {
+                    check(schema, &parameter.r#type, errors);
                 }
             }
             _ => {}
@@ -1097,7 +1118,13 @@ pub fn has_refinements(schema: &Schema, ty: &Type) -> bool {
         match ty {
             Type::Refined(..) => true,
             Type::List(item) | Type::Map(item) => walk(schema, item, seen),
-            Type::Tuple(slots) => slots.iter().any(|slot| walk(schema, slot, seen)),
+            Type::Tuple(slots) | Type::Union(slots) => {
+                slots.iter().any(|slot| walk(schema, slot, seen))
+            }
+            Type::Variant(shape) => shape
+                .parameters
+                .iter()
+                .any(|parameter| walk(schema, &parameter.r#type, seen)),
             Type::Named(index) | Type::Generic(index, _) => {
                 if seen.contains(index) {
                     return false;

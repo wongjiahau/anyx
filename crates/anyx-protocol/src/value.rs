@@ -194,6 +194,30 @@ impl<T: FromValue> FromValue for Vec<T> {
     }
 }
 
+/// A nullable `T?`: `None` is `null`, and `Some` a value of `T` as it is.
+impl<T: IntoValue> IntoValue for Option<T> {
+    fn into_value(self) -> Value {
+        match self {
+            Some(value) => value.into_value(),
+            None => Value::Variant {
+                shape: "null".to_string(),
+                arguments: Vec::new(),
+            },
+        }
+    }
+}
+
+impl<T: FromValue> FromValue for Option<T> {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments } if shape == "null" && arguments.is_empty() => {
+                Some(None)
+            }
+            value => T::from_value(value).map(Some),
+        }
+    }
+}
+
 /// A record's field with several slots, as a tuple of their values.
 macro_rules! tuple {
     ($($name:ident),+) => {

@@ -87,7 +87,7 @@ impl notes::Server for Notes {
         Ok(match self.notes.borrow().get(&path) {
             Some((_, content)) => Ok(vec![Page {
                 html: format!("<p>{content}</p>"),
-                problem: notes::Nullable::Null,
+                problem: None,
             }]),
             None => Err(HtmlError::Missing),
         })
@@ -143,7 +143,7 @@ fn a_client_calls_methods_from_each_file() {
         run(client.html("a".into())),
         Ok(vec![Page {
             html: "<p>hi</p>".into(),
-            problem: notes::Nullable::Null
+            problem: None
         }])
     );
     assert_eq!(run(client.pdf("a".into())), Ok(b"hi".to_vec()));

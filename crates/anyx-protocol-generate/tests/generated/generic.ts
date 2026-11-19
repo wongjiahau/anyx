@@ -3,7 +3,7 @@
 /** A page of a long list, and where the next one starts. */
 export interface PageOf<Item> {
   items: Item[];
-  next: Nullable<string>;
+  next: (string | { kind: "null" });
   /** How many there are in all. */
   total: bigint;
 }
@@ -55,11 +55,6 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item: Item)` containing a value. */
-export type Nullable<Item> =
-  | { kind: "null" }
-  | { kind: "value"; item: Item };
-
 /**
  * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
  * as the schema's `USE` lines reach it, and its source.
@@ -70,7 +65,9 @@ export interface SchemaFile {
 }
 
 // Runtime descriptors are emitted from the same checked schema as the API.
-type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
+// A `union`'s `args` are its members, each told by its form; a `variant` is
+// a union's member written in its `shape`.
+type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; shape?: ShapeDescriptor; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
 // A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
@@ -91,7 +88,7 @@ function resolved(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
 }
 function substitute(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
   type = resolved(type, bindings);
-  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)) };
+  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)), shape: type.shape && { ...type.shape, params: type.shape.params.map(p => ({ ...p, type: substitute(p.type, bindings) })) } };
 }
 function instance(type: TypeDescriptor, bindings: Bindings): [Definition, Bindings] {
   const def = definitions[type.index!];
@@ -146,6 +143,9 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
     case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings); }
+    // The checker keeps a union's members apart, so a value fits one at most.
+    case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -448,6 +448,8 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       }
       return out;
     } break;
+    case "variant": { const value = shapeValue(type.shape!, node, bindings); if (value) return value; break; }
+    case "union": for (const member of type.args!) { try { return decodeValue(member, node, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -516,7 +518,7 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:["Item"],kind:'record', fields:[{wire:"items _", form:"shape", name:"items", type:{k:'list', item:{k:'parameter', name:"Item"}}, slots:[{k:'list', item:{k:'parameter', name:"Item"}}]},{wire:"next _", form:"shape", name:"next", type:{k:'named', index:9, args:[{k:'text'}]}, slots:[{k:'named', index:9, args:[{k:'text'}]}], defaultValue:()=>{kind:"null"}},{wire:"total _", form:"shape", name:"total", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>0n}]},
+const definitions: Definition[] = [{parameters:["Item"],kind:'record', fields:[{wire:"items _", form:"shape", name:"items", type:{k:'list', item:{k:'parameter', name:"Item"}}, slots:[{k:'list', item:{k:'parameter', name:"Item"}}]},{wire:"next _", form:"shape", name:"next", type:{k:'union', args:[{k:'text'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'text'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})},{wire:"total _", form:"shape", name:"total", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>(0n)}]},
 {parameters:["Value","Problem"],kind:'choice', variants:[{text:"done _", kind:"done", params:[{name:"value", type:{k:'parameter', name:"Value"}, annotation:"Value"}]},{text:"failed _", kind:"failed", params:[{name:"problem", type:{k:'parameter', name:"Problem"}, annotation:"Problem"}]}]},
 {parameters:["Item"],kind:'record', fields:[{wire:"item _", form:"shape", name:"item", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]}]},
 {parameters:["Item"],kind:'record', fields:[{wire:"value _", form:"shape", name:"value", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]},{wire:"children _", form:"shape", name:"children", type:{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"Item"}]}}, slots:[{k:'list', item:{k:'named', index:3, args:[{k:'parameter', name:"Item"}]}}]}]},
@@ -525,7 +527,6 @@ const definitions: Definition[] = [{parameters:["Item"],kind:'record', fields:[{
 {parameters:[],kind:'choice', variants:[{text:"insufficient funds", kind:"insufficientFunds", params:[]},{text:"card expired", kind:"cardExpired", params:[]}]},
 {parameters:[],kind:'distinct', type:{k:'named', index:0, args:[{k:'named', index:5, args:[]}]}},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _", kind:"pay", params:[{name:"amount", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}, errors:[]},
 ["pay all _"]:{shape:{text:"pay all _", kind:"payAll", params:[{name:"amounts", type:{k:'list', item:{k:'integer'}}, annotation:"LIST Integer"}]}, returns:{k:'named', index:0, args:[{k:'named', index:1, args:[{k:'named', index:5, args:[]},{k:'named', index:6, args:[]}]}]}, errors:[]},
@@ -535,7 +536,7 @@ const methods: Record<string, MethodDescriptor> = {["pay _"]:{shape:{text:"pay _
 ["latest"]:{shape:{text:"latest", kind:"latest", params:[]}, returns:{k:'named', index:2, args:[{k:'text'}]}, errors:[]},
 ["prices"]:{shape:{text:"prices", kind:"prices", params:[]}, returns:{k:'named', index:4, args:[{k:'text'},{k:'integer'}]}, errors:[]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:10, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:9, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

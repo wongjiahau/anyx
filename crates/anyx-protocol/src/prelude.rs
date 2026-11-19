@@ -367,8 +367,8 @@ fn signature_type(ty: &ast::Type) -> &'static str {
                 _ => "",
             }
         }
-        ast::Type::List { item, .. } if signature_type(item) == "Type" => "LIST Type",
-        ast::Type::Map { value, .. } if signature_type(value) == "Type" => "MAP Type",
+        ast::Type::List(list) if signature_type(&list.item) == "Type" => "LIST Type",
+        ast::Type::Map(map) if signature_type(&map.value) == "Type" => "MAP Type",
         _ => "",
     }
 }

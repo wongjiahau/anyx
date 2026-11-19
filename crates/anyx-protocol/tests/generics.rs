@@ -398,7 +398,6 @@ fn a_slot_may_sit_anywhere_in_a_generic_type_s_shape() {
         ("box of _ sealed", "box of (Item) sealed", vec!["Item"]),
         ("Page", "Page", vec![]),
         ("Boolean", "Boolean", vec![]),
-        ("_ ?", "(Item) ?", vec!["Item"]),
         ("Schema File", "Schema File", vec![]),
     ];
     assert_eq!(declared.len(), expected.len());

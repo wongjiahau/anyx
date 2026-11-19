@@ -126,8 +126,73 @@ fn type_words(schema: &Schema, r#type: &Type) -> String {
         Type::Named(index) => named(*index, &[]),
         Type::Generic(index, arguments) => named(*index, arguments),
         Type::Parameter(name) => name.clone(),
+        Type::Union(members) => match schema.nullable_item(r#type) {
+            Some(item) => format!("nullable {}", type_words(schema, item)),
+            None => format!(
+                "union of {}",
+                members
+                    .iter()
+                    .map(|member| type_words(schema, member))
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            ),
+        },
+        Type::Variant(shape) => shape.words(),
         built_in => schema.type_name(built_in).to_lowercase(),
     }
+}
+
+/// The first union anywhere in the schema that isn't a nullable `T?`, by
+/// its name.
+pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
+    fn walk(schema: &Schema, r#type: &Type) -> Option<String> {
+        match r#type {
+            Type::Union(_) => match schema.nullable_item(r#type) {
+                Some(item) => walk(schema, item),
+                None => Some(schema.type_name(r#type)),
+            },
+            Type::Variant(_) => Some(schema.type_name(r#type)),
+            Type::Refined(item, _) | Type::List(item) | Type::Map(item) => walk(schema, item),
+            Type::Generic(_, arguments) | Type::Tuple(arguments) => {
+                arguments.iter().find_map(|argument| walk(schema, argument))
+            }
+            _ => None,
+        }
+    }
+    let mut types: Vec<&Type> = Vec::new();
+    for definition in &schema.types {
+        match &definition.kind {
+            TypeKind::Record(fields) => types.extend(fields.iter().map(|field| &field.r#type)),
+            TypeKind::Choice(variants) => types.extend(
+                variants
+                    .iter()
+                    .flat_map(|variant| &variant.shape.parameters)
+                    .map(|parameter| &parameter.r#type),
+            ),
+            TypeKind::Distinct(underneath) => types.push(underneath),
+        }
+    }
+    for method in &schema.methods {
+        types.extend(
+            method
+                .shape
+                .parameters
+                .iter()
+                .map(|parameter| &parameter.r#type),
+        );
+        types.extend(method.returns.iter().map(|returns| &returns.r#type));
+    }
+    for error in &schema.errors {
+        types.extend(
+            error
+                .error
+                .shape
+                .parameters
+                .iter()
+                .map(|parameter| &parameter.r#type),
+        );
+    }
+    types.into_iter().find_map(|r#type| walk(schema, r#type))
 }
 
 /// The enum of a method's errors:

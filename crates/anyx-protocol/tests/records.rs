@@ -45,19 +45,13 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 #[test]
 fn each_entry_finds_its_field_by_its_shape() {
     let search = find(
-        "find { (any) case, @by name, pattern \"ode\", at least (value 14) bytes, hidden, @bearer \"t\", max depth (value 3) }",
+        "find { (any) case, @by name, pattern \"ode\", at least 14 bytes, hidden, @bearer \"t\", max depth 3 }",
     );
     assert_eq!(field(&search, "pattern"), &Value::Text("ode".into()));
     assert_eq!(field(&search, "case"), &variant("any", vec![]));
     assert_eq!(field(&search, "hidden"), &variant("true", vec![]));
-    assert_eq!(
-        field(&search, "max depth"),
-        &variant("value _", vec![Value::Integer(3)])
-    );
-    assert_eq!(
-        field(&search, "at least bytes"),
-        &variant("value _", vec![Value::Integer(14)])
-    );
+    assert_eq!(field(&search, "max depth"), &Value::Integer(3));
+    assert_eq!(field(&search, "at least bytes"), &Value::Integer(14));
     assert_eq!(field(&search, "order"), &variant("by name", vec![]));
     assert_eq!(
         field(&search, "auth"),
@@ -84,8 +78,8 @@ fn a_record_is_written_back_as_a_reader_writes_it() {
             "find { pattern \"ode\", (smart) case }\n",
         ),
         (
-            "find { pattern \"ode\", (any) case, hidden, max depth (value 3), at least (value 14) bytes, @by name, @bearer \"t\" }",
-            "find {\n    pattern \"ode\",\n    (any) case,\n    hidden,\n    max depth: value 3,\n    at least (value 14) bytes,\n    @by name,\n    @bearer \"t\",\n}\n",
+            "find { pattern \"ode\", (any) case, hidden, max depth 3, at least 14 bytes, @by name, @bearer \"t\" }",
+            "find { pattern \"ode\", (any) case, hidden, max depth 3, at least 14 bytes, @by name, @bearer \"t\" }\n",
         ),
     ] {
         let calls = decode_request(&schema, source).unwrap();
@@ -224,14 +218,11 @@ METHOD find (search: Search) RETURNS (count: Integer),";
 #[test]
 fn a_field_with_several_slots_holds_a_value_for_each() {
     let schema = schema(RANGE);
-    let calls = decode_request(&schema, "find { depth from 1 to (value 3) }").unwrap();
+    let calls = decode_request(&schema, "find { depth from 1 to 3 }").unwrap();
     let search = &calls[0].arguments[0];
     assert_eq!(
         field(search, "depth from to"),
-        &Value::Tuple(vec![
-            Value::Integer(1),
-            variant("value _", vec![Value::Integer(3)])
-        ])
+        &Value::Tuple(vec![Value::Integer(1), Value::Integer(3)])
     );
     assert_eq!(
         field(search, "between and bytes"),
@@ -240,7 +231,7 @@ fn a_field_with_several_slots_holds_a_value_for_each() {
     let encoded = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         encoded,
-        "find { depth from 1 to (value 3), between 1 and 9 bytes }\n"
+        "find { depth from 1 to 3, between 1 and 9 bytes }\n"
     );
     assert_eq!(decode_request(&schema, &encoded).unwrap(), calls);
 }
@@ -248,7 +239,7 @@ fn a_field_with_several_slots_holds_a_value_for_each() {
 #[test]
 fn each_slot_is_checked_against_its_own_type() {
     let schema = schema(RANGE);
-    let error = decode_request(&schema, "find { depth from -1 to (value 3) }").unwrap_err();
+    let error = decode_request(&schema, "find { depth from -1 to 3 }").unwrap_err();
     assert!(
         format!("{error:?}").contains("in `depth from to`: value `-1` is not a `Depth`"),
         "{error:?}"

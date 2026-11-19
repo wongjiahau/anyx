@@ -15,18 +15,13 @@ export interface Diagnostic {
 /** A page of a note, with what is wrong on it. */
 export interface Page {
   html: string;
-  problem: Nullable<Diagnostic>;
+  problem: (Diagnostic | { kind: "null" });
 }
 
 /** `true` or `false`. */
 export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
-
-/** A nullable item: `null`, or `value (item: Item)` containing a value. */
-export type Nullable<Item> =
-  | { kind: "null" }
-  | { kind: "value"; item: Item };
 
 /**
  * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
@@ -77,7 +72,9 @@ export type PdfError =
   | { kind: "missing" };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
-type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
+// A `union`'s `args` are its members, each told by its form; a `variant` is
+// a union's member written in its `shape`.
+type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; shape?: ShapeDescriptor; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
 // A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
@@ -98,7 +95,7 @@ function resolved(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
 }
 function substitute(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
   type = resolved(type, bindings);
-  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)) };
+  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)), shape: type.shape && { ...type.shape, params: type.shape.params.map(p => ({ ...p, type: substitute(p.type, bindings) })) } };
 }
 function instance(type: TypeDescriptor, bindings: Bindings): [Definition, Bindings] {
   const def = definitions[type.index!];
@@ -153,6 +150,9 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
     case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings); }
+    // The checker keeps a union's members apart, so a value fits one at most.
+    case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -455,6 +455,8 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       }
       return out;
     } break;
+    case "variant": { const value = shapeValue(type.shape!, node, bindings); if (value) return value; break; }
+    case "union": for (const member of type.args!) { try { return decodeValue(member, node, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -525,9 +527,8 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 }
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"content _", form:"shape", name:"content", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
-{parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}, slots:[{k:'named', index:4, args:[{k:'named', index:1, args:[]}]}], defaultValue:()=>{kind:"null"}}]},
+{parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'union', args:[{k:'named', index:1, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'named', index:1, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list", kind:"list", params:[]}, returns:{k:'list', item:{k:'text'}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:0, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
@@ -537,7 +538,7 @@ const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list",
 ["html _"]:{shape:{text:"html _", kind:"html", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:2, args:[]}}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:5, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

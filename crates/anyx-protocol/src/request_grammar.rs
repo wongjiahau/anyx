@@ -71,20 +71,29 @@ pub enum Entry {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    Refined {
-        base: Box<Type>,
-        predicate: Spanned<Vec<Node>>,
-        span: Span,
-    },
-    List {
-        item: Box<Type>,
-        span: Span,
-    },
-    Map {
-        value: Box<Type>,
-        span: Span,
-    },
+    Refined(RefinedType),
+    List(ListType),
+    Map(MapType),
     Named(Reference),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RefinedType {
+    pub base: Box<Type>,
+    pub predicate: Spanned<Vec<Node>>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListType {
+    pub item: Box<Type>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapType {
+    pub value: Box<Type>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -129,7 +138,9 @@ impl Entry {
 impl Type {
     pub fn span(&self) -> Span {
         match self {
-            Type::Refined { span, .. } | Type::List { span, .. } | Type::Map { span, .. } => *span,
+            Type::Refined(value) => value.span,
+            Type::List(value) => value.span,
+            Type::Map(value) => value.span,
             Type::Named(value) => value.span,
         }
     }
@@ -203,20 +214,30 @@ impl support::Errors for Entry {
 impl support::Errors for Type {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Type::Refined {
-                base, predicate, ..
-            } => {
-                support::Errors::errors(base, found);
-                support::Errors::errors(predicate, found);
-            }
-            Type::List { item, .. } => {
-                support::Errors::errors(item, found);
-            }
-            Type::Map { value, .. } => {
-                support::Errors::errors(value, found);
-            }
+            Type::Refined(value) => support::Errors::errors(value, found),
+            Type::List(value) => support::Errors::errors(value, found),
+            Type::Map(value) => support::Errors::errors(value, found),
             Type::Named(value) => support::Errors::errors(value, found),
         }
+    }
+}
+
+impl support::Errors for RefinedType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.base, found);
+        support::Errors::errors(&self.predicate, found);
+    }
+}
+
+impl support::Errors for ListType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.item, found);
+    }
+}
+
+impl support::Errors for MapType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.value, found);
     }
 }
 
@@ -378,26 +399,27 @@ fn decode_entry_map(node: &Node) -> Result<Entry, DecodeError> {
 }
 
 pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
-    decode_type_refined(node)
-        .or_else(|error| error.or(decode_type_list(node)))
-        .or_else(|error| error.or(decode_type_map(node)))
+    decode_refined_type(node)
+        .map(Type::Refined)
+        .or_else(|error| error.or(decode_list_type(node).map(Type::List)))
+        .or_else(|error| error.or(decode_map_type(node).map(Type::Map)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }
 
-fn decode_type_refined(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_refined_type(node: &Node) -> Result<RefinedType, DecodeError> {
     let mut parts = support::call(node, "the call `_ WHERE _`")?;
-    let decoded = Type::Refined {
+    let decoded = RefinedType {
         base: parts.one(|node| decode_type(node).map(Box::new), "a type")?,
         predicate: parts
             .word("WHERE")?
-            .one(decode_type_refined_predicate, "`[...]`")?,
+            .one(decode_refined_type_predicate, "`[...]`")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
 }
 
-fn decode_type_refined_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
+fn decode_refined_type_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
     let mut elements = support::square_bracket(node)?;
     let value = elements.one_or_more(support::any_node, "a node")?;
     elements.finish()?;
@@ -407,9 +429,9 @@ fn decode_type_refined_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, Deco
     })
 }
 
-fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_list_type(node: &Node) -> Result<ListType, DecodeError> {
     let mut parts = support::call(node, "the call `LIST _`")?;
-    let decoded = Type::List {
+    let decoded = ListType {
         item: parts
             .word("LIST")?
             .one(|node| decode_type(node).map(Box::new), "a type")?,
@@ -419,9 +441,9 @@ fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
     Ok(decoded)
 }
 
-fn decode_type_map(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_map_type(node: &Node) -> Result<MapType, DecodeError> {
     let mut parts = support::call(node, "the call `MAP _`")?;
-    let decoded = Type::Map {
+    let decoded = MapType {
         value: parts
             .word("MAP")?
             .one(|node| decode_type(node).map(Box::new), "a type")?,

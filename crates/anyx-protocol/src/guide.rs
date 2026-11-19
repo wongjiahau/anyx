@@ -69,13 +69,15 @@ the account, such as by sending or sharing it.
   `{{ (any) case, between 1 and 3 }}`. A value before a field's words
   keeps its parentheses. A field of words alone is a checkbox, true when
   written: `{{ hidden }}`. An `@` field is `@` and its value alone:
-  `{{ @by name }}`. A nullable value is `null` or `value _`:
-  `{{ max depth (value 3) }}`. A field with a `DEFAULT` may be left out and
+  `{{ @by name }}`. A field with a `DEFAULT` may be left out and
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
   `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
+- A `UNION` is a value of one of its members, written as that member
+  writes it. So a nullable `T?`, `UNION [T, null]`, is `null` or a value
+  of `T`: `{{ max depth 3 }}`, `{{ max depth: null }}`.
 {generic_types}{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
@@ -413,7 +415,9 @@ fn always_annotated(schema: &Schema, r#type: &Type) -> bool {
         Type::Refined(base, _) => always_annotated(schema, base),
         Type::Named(index) => matches!(schema.types[*index].kind, TypeKind::Distinct(_)),
         Type::List(item) | Type::Map(item) => always_annotated(schema, item),
-        Type::Tuple(slots) => slots.iter().any(|slot| always_annotated(schema, slot)),
+        Type::Tuple(slots) | Type::Union(slots) => {
+            slots.iter().any(|slot| always_annotated(schema, slot))
+        }
         _ => false,
     }
 }
@@ -447,6 +451,10 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
             TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
         },
         Type::Parameter(_) => "…".to_string(),
+        Type::Union(members) => members
+            .first()
+            .map_or("…".to_string(), |member| sample(schema, member)),
+        Type::Variant(shape) => format!("({})", schema.shape_name(shape)),
     }
 }
 

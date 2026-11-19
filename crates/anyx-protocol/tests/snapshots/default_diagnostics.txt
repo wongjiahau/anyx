@@ -12,7 +12,7 @@ schema:1:92: in the `DEFAULT` of `shade`: found the call `dim`; expected a varia
 
 == the removed OPTIONAL keyword
 PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },
-schema:1:47: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
+schema:1:47: found the word `OPTIONAL`; expected the word `LIST`, `MAP` or `UNION`
   PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },
                                                 ^^^^^^^^
 

@@ -12,6 +12,13 @@ const IMPORTS: &str = "use anyx_protocol::client::{CallError, Transport};\nuse a
 
 pub fn rust(schema: &Schema) -> Result<String, Error> {
     crate::check_names(schema)?;
+    if let Some(union) = crate::union_beyond_nullable(schema) {
+        return Err(Error {
+            message: format!(
+                "found the union `{union}`; expected only nullable unions, `T?`, in generated Rust, which writes them as `Option<T>`; other unions wait for named types"
+            ),
+        });
+    }
     let mut out = String::new();
     writeln!(
         out,
@@ -117,6 +124,11 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
             )
         }
         Type::Parameter(name) => type_parameter_name(name, |taken| rust_type_taken(schema, taken)),
+        Type::Union(_) | Type::Variant(_) => match schema.nullable_item(r#type) {
+            Some(item) => format!("Option<{}>", rust_type(schema, item)),
+            // `rust` reports any other union before it writes a type.
+            None => "()".to_string(),
+        },
         Type::Tuple(slots) => format!(
             "({})",
             slots

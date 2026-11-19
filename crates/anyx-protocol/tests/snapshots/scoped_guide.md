@@ -71,17 +71,15 @@ the account, such as by sending or sharing it.
   `{ (any) case, between 1 and 3 }`. A value before a field's words
   keeps its parentheses. A field of words alone is a checkbox, true when
   written: `{ hidden }`. An `@` field is `@` and its value alone:
-  `{ @by name }`. A nullable value is `null` or `value _`:
-  `{ max depth (value 3) }`. A field with a `DEFAULT` may be left out and
+  `{ @by name }`. A field with a `DEFAULT` may be left out and
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
   `{ status: done }`, `{ timeout: 5 minutes }`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
-- A generic RECORD or CHOICE has a type parameter in each slot of its
-  name, which its fields or variants use as a type: `CHOICE (Item: TYPE) ?`.
-  A use puts a type in each slot, in parentheses, `(Text) ?`, and its value
-  is written with those types in place of the parameters.
+- A `UNION` is a value of one of its members, written as that member
+  writes it. So a nullable `T?`, `UNION [T, null]`, is `null` or a value
+  of `T`: `{ max depth 3 }`, `{ max depth: null }`.
 - In a slot, a value written as words goes in parentheses so that it doesn't
   join the words around it: `set (true)`, `pick (custom hue 0.5)`,
   `wait (5 minutes)`.
@@ -105,11 +103,9 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 # `true` or `false`.
 CHOICE Boolean { false, true },
 
-# A nullable item: `null`, or `value (item: Item)` containing a value.
-CHOICE (Item: TYPE) ? {
-    null,
-    value (item: Item),
-},
+# A nullable item: `null`, or a value of the item written as it is, as in
+# `3` for `Integer?`.
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.

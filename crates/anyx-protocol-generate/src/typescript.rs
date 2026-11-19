@@ -217,6 +217,28 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
             )
         }
         Type::Parameter(name) => parameter_name(schema, name),
+        Type::Union(members) if members.is_empty() => "never".to_string(),
+        Type::Union(members) => format!(
+            "({})",
+            members
+                .iter()
+                .map(|member| ts_type(schema, member))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ),
+        Type::Variant(shape) => format!(
+            "{{ kind: {:?}{} }}",
+            camel_case(&shape.words()),
+            shape
+                .parameters
+                .iter()
+                .map(|parameter| format!(
+                    "; {}: {}",
+                    camel_case(&parameter.name),
+                    ts_type(schema, &parameter.r#type)
+                ))
+                .collect::<String>()
+        ),
         Type::Tuple(slots) => format!(
             "[{}]",
             slots
@@ -445,6 +467,29 @@ fn native_type(ty: &Type) -> String {
             args.iter().map(native_type).collect::<Vec<_>>().join(",")
         ),
         Type::Parameter(name) => format!("{{k:'parameter', name:{name:?}}}"),
+        Type::Union(members) => format!(
+            "{{k:'union', args:[{}]}}",
+            members
+                .iter()
+                .map(native_type)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Variant(shape) => format!(
+            "{{k:'variant', shape:{{text:{:?}, kind:{:?}, params:[{}]}}}}",
+            shape.text,
+            camel_case(&shape.words()),
+            shape
+                .parameters
+                .iter()
+                .map(|p| format!(
+                    "{{name:{:?}, type:{}, annotation:\"\"}}",
+                    camel_case(&p.name),
+                    native_type(&p.r#type)
+                ))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
         Type::Tuple(slots) => format!(
             "{{k:'tuple', args:[{}]}}",
             slots.iter().map(native_type).collect::<Vec<_>>().join(",")
@@ -527,7 +572,7 @@ fn native_schema(schema: &Schema) -> String {
                                 _ => String::new(),
                             },
                             f.default.as_ref().map_or(String::new(), |v| format!(
-                                ", defaultValue:()=>{}",
+                                ", defaultValue:()=>({})",
                                 native_default(schema, &f.r#type, v)
                             ))
                         ))
@@ -576,6 +621,12 @@ fn native_schema(schema: &Schema) -> String {
 
 fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Value) -> String {
     use anyx_protocol::value::Value;
+    let underlying = schema.underlying(ty);
+    if let Type::Union(_) = underlying
+        && let Some(member) = schema.member_holding(underlying, value)
+    {
+        return native_default(schema, member, value);
+    }
     match value {
         Value::Text(s) => serde_json::to_string(s).expect("text default"),
         Value::Bytes(b) => format!("new Uint8Array({b:?})"),
@@ -651,8 +702,27 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
                     .join(",")
             )
         }
+        Value::Variant { shape, arguments } if matches!(underlying, Type::Variant(_)) => {
+            let Type::Variant(own) = underlying else {
+                unreachable!()
+            };
+            let fields = own
+                .parameters
+                .iter()
+                .zip(arguments)
+                .map(|(p, v)| {
+                    format!(
+                        ",[{:?}]:{}",
+                        camel_case(&p.name),
+                        native_default(schema, &p.r#type, v)
+                    )
+                })
+                .collect::<String>();
+            debug_assert_eq!(own.text, *shape);
+            format!("{{kind:{:?}{fields}}}", camel_case(&own.words()))
+        }
         Value::Variant { shape, arguments } => {
-            let (_, kind) = schema.instance(schema.underlying(ty)).expect("choice");
+            let (_, kind) = schema.instance(underlying).expect("choice");
             let TypeKind::Choice(variants) = kind.as_ref() else {
                 unreachable!()
             };
