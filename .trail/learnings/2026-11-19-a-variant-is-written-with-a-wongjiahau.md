@@ -37,6 +37,7 @@ touches:
 - Marking functions only inside values: one function would be written two ways.
 
 ## Watch out
+- A marked variant in an argument needs parentheses: `` paint (`red) if (`true) ``. `` ` `` is a symbol word, so `` paint (`red) if `true `` is the flat shape `` _ ` _ ``. After a keyword it stands alone: `` ERROR `missing (…) ``, `` RETURNS `red ``.
 - OCaml's backtick exists for a different reason (an undeclared tag whose type is inferred). Here every variant is declared; the mark is for the reader.
 
 In the code: crates/anyx/src/lexer.rs (`` ` `` is a symbol character), crates/anyx-protocol/src/annotation.rs (`constructed_by`), crates/anyx-protocol/prelude.protocol.anyx.
