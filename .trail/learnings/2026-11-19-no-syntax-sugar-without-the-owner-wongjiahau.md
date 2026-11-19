@@ -4,7 +4,9 @@ author: Wongjiahau
 date: 2026-11-19
 branch: feat/fd-protocol-tool
 cost: { minutes: 17, tokens: 181625 }
+standing: true
 id: l-0b25366f
+kind: guardrail
 scope: repo
 status: active
 src: agent
