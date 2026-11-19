@@ -51,8 +51,8 @@ CHOICE Syntax {
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
-    (Case) case DEFAULT smart,
-    (Syntax) pattern DEFAULT regex,
+    (Case DEFAULT smart) case,
+    (Syntax DEFAULT regex) pattern,
     # Match the pattern against the whole path, not just the name.
     full path,
     # Each file must match these patterns too, in the same syntax and case.
@@ -85,18 +85,18 @@ RECORD Search {
     # Find only files with one of these extensions, such as `"rs"`, or
     # with any when empty.
     extensions: LIST Text DEFAULT [],
-    at least (Size?) bytes DEFAULT null,
-    at most (Size?) bytes DEFAULT null,
+    at least (Size? DEFAULT null) bytes,
+    at most (Size? DEFAULT null) bytes,
     changed within: Duration? DEFAULT null,
     changed since: Instant? DEFAULT null,
     changed before: Instant? DEFAULT null,
-    changed more than (Duration?) ago DEFAULT null,
+    changed more than (Duration? DEFAULT null) ago,
     # Owned by the user with this id.
     owned by user: Integer? DEFAULT null,
     # Owned by the group with this id.
     owned by group: Integer? DEFAULT null,
     # Stop after this many paths.
-    at most (Count?) results DEFAULT null,
+    at most (Count? DEFAULT null) results,
 },
 
 # What a found file is, as `fd --list-details` shows it.

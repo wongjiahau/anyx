@@ -24,6 +24,7 @@ touches:
 ## Tried and ruled out
 - `UNNAMED` keyword: too heavy, and nothing marked the value at the call site.
 - A parameter in a field's slot (`max depth (depth: Depth?)`): a lowercase name is ambiguous with a generic's type parameter in the grammar.
+- `DEFAULT` after the shape (`(Case) case DEFAULT smart`): two places for a default. The user: DEFAULT is part of the type annotation, so it goes in the slot, `(Case DEFAULT smart) case`, `@(order: Order DEFAULT newest first)`.
 - Several slots in one field: put a record or choice in the one slot.
 
 ## Watch out

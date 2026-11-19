@@ -60,15 +60,11 @@ type marker: ONE OF [WORD "Type"],
 ##   finds which `@` field an entry fills by the value's outermost form
 ##   alone.
 ##
-## A `DEFAULT` follows the shape, `(Case) case DEFAULT smart`, or the type
-## in the slot, `path: Text DEFAULT "a"`.
+## A `DEFAULT` is part of the type in the slot: `path: Text DEFAULT "a"`,
+## `(Case DEFAULT smart) case`, `@(order: Order DEFAULT newest first)`. A
+## checkbox has no slot, so it has no `DEFAULT`.
 field: ONE OF [
-  defaulted: ANYFIX CALL [shape: field shape, WORD "DEFAULT", default: ANY NODE],
-  shape: field shape,
-],
-
-field shape: ONE OF [
-  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "@", parameter],
+  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "@", parameter: field parameter],
   ## Its first word isn't `@`, after any slot for a doc or for its type.
   words: ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_@]"],
@@ -77,6 +73,9 @@ field shape: ONE OF [
 ],
 
 field slot: ONE OF [doc: LINE STRING, type: field type],
+
+## `order: Order DEFAULT newest first`, the slot of an `@` field.
+field parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type: field type],
 
 field type: ONE OF [defaulted, type],
 

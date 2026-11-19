@@ -12,13 +12,13 @@ CHOICE Auth { bearer (token: Text), no auth },
 RECORD Search {
     # The pattern to look for.
     pattern: Text,
-    (Case) case DEFAULT smart,
+    (Case DEFAULT smart) case,
     # Searches hidden files too.
     hidden,
     max depth (Integer? DEFAULT null),
-    at least (Integer?) bytes DEFAULT null,
-    @(order: Order) DEFAULT newest first,
-    @(auth: Auth?) DEFAULT null,
+    at least (Integer? DEFAULT null) bytes,
+    @(order: Order DEFAULT newest first),
+    @(auth: Auth? DEFAULT null),
 },
 METHOD find (search: Search) RETURNS (count: Integer),";
 
@@ -163,20 +163,12 @@ fn mistakes_in_fields_are_diagnosed() {
             "found the `@` field `auth` of a nullable type without `DEFAULT null`",
         ),
         (
-            "hidden DEFAULT true",
-            "found a `DEFAULT` for the checkbox `hidden`",
-        ),
-        (
             "between (Integer) and (Integer)",
             "found the field `between _ and _` with 2 slots; expected one",
         ),
         (
             "path: Text DEFAULT \"a\", path: Text",
             "found a second field named `path`",
-        ),
-        (
-            "(Text DEFAULT \"a\") name DEFAULT \"b\"",
-            "found two defaults for the field `_ name`",
         ),
     ] {
         let source = format!("PROTOCOL a VERSION 1, RECORD Rec {{ {fields} }},");

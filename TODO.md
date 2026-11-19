@@ -180,12 +180,12 @@ Decided:
 
   ```anyx
   RECORD Search {
-      (Case) case DEFAULT smart,
-      (Syntax) pattern DEFAULT regex,
+      (Case DEFAULT smart) case,
+      (Syntax DEFAULT regex) pattern,
       hidden,
       max depth: Depth? DEFAULT null,
-      at least (Size?) bytes DEFAULT null,
-      changed more than (Duration?) ago DEFAULT null,
+      at least (Size? DEFAULT null) bytes,
+      changed more than (Duration? DEFAULT null) ago,
       only: LIST Kind DEFAULT [],
   },
   ```
@@ -232,6 +232,10 @@ Tried and ruled out:
   slot name is ambiguous with a generic's type parameter
   (`other: item of (Text)` read as a parameter). The words name the field,
   so the slot holds a type.
+- `DEFAULT` after the shape, `(Case) case DEFAULT smart`: a default then
+  had two places, which needed a "two defaults" error, and sat apart from
+  the type it belongs to. It is part of the type in the slot,
+  `(Case DEFAULT smart) case`, so a checkbox, with no slot, can't have one.
 - Fields with several slots: one slot keeps the field one value, and a pair
   is a record or a choice in that slot.
 - Any choice field writable by its variant without a marker, and an

@@ -353,19 +353,20 @@ declared:
 | Declared | Written | Named |
 | --- | --- | --- |
 | `path: Text` | `path "a"` | `path` |
-| `(Case) case DEFAULT smart` | `(any) case` | `case` |
-| `at least (Size?) bytes DEFAULT null` | `at least 14 bytes` | `at least bytes` |
-| `changed more than (Duration?) ago DEFAULT null` | `changed more than (1 hour) ago` | `changed more than ago` |
+| `(Case DEFAULT smart) case` | `(any) case` | `case` |
+| `at least (Size? DEFAULT null) bytes` | `at least 14 bytes` | `at least bytes` |
+| `changed more than (Duration? DEFAULT null) ago` | `changed more than (1 hour) ago` | `changed more than ago` |
 | `hidden` | `hidden` | `hidden` |
-| `@(order: Order) DEFAULT newest first` | `@by name` | `order` |
+| `@(order: Order DEFAULT newest first)` | `@by name` | `order` |
 
 - **Words alone are a checkbox**: a `Boolean`, `true` when written and
   `false` when left out. It takes no `DEFAULT`.
 - **A nullable field is written as its item**, `max depth 3` for
   `max depth: Depth? DEFAULT null`; leaving it out says `null`.
 - **The slot holds a type, not a parameter**: `(Case) case`, since the words
-  already name the field. A `DEFAULT` follows the shape, or the type when the
-  slot is last: `path: Text DEFAULT "a"`.
+  already name the field. A `DEFAULT` is part of that type, in the slot:
+  `(Case DEFAULT smart) case`, `path: Text DEFAULT "a"`,
+  `@(order: Order DEFAULT newest first)`.
 - **A value before the words keeps its parentheses**, `(any) case`: without
   them, `any case` is the one call `any case`, not `_ case`.
 - **Each field once.** A record says each thing once, so where a list of

@@ -1344,26 +1344,20 @@ impl<'a> Checker<'a> {
     /// alone are a checkbox, `@(order: Order)` a field written as its value
     /// alone, and any other shape holds the field's type in its one slot.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
-        let (shape, default) = match field {
-            ast::Field::Shape(shape) => (shape, None),
-            ast::Field::Defaulted { shape, default, .. } => (shape, Some(default)),
-        };
-        let (name, arguments) = match shape {
-            ast::FieldShape::Unnamed { doc, parameter, .. } => {
+        let (name, arguments) = match field {
+            ast::Field::Unnamed { doc, parameter, .. } => {
                 self.check_words(&parameter.name, "a field");
-                if let Some(node) = default {
-                    self.pending_default(record, index, node);
-                }
+                let r#type = self.field_type(record, index, &parameter.r#type);
                 let field = Field {
                     doc: self::doc(doc),
                     name: parameter.name.value.clone(),
-                    r#type: self.r#type(&parameter.r#type),
+                    r#type,
                     default: None,
                     form: FieldForm::Unnamed,
                 };
                 return (field, parameter.name.span);
             }
-            ast::FieldShape::Words {
+            ast::Field::Words {
                 name, arguments, ..
             } => (name, arguments),
         };
@@ -1384,7 +1378,6 @@ impl<'a> Checker<'a> {
         }
         let words = spanned_words(&name);
         self.check_words(&words, "a field");
-        let mut defaults: Vec<&anyx::Node> = Vec::new();
         let r#type = match slots.as_slice() {
             [] => {
                 let boolean = self
@@ -1392,15 +1385,6 @@ impl<'a> Checker<'a> {
                     .iter()
                     .position(|known| known.name == "Boolean" && known.file == self.prelude_file)
                     .map_or(Type::Text, Type::Named);
-                if default.is_some() {
-                    self.error(
-                        name.span,
-                        format!(
-                            "found a `DEFAULT` for the checkbox `{}`; expected none, since a checkbox is `false` when left out",
-                            name.text
-                        ),
-                    );
-                }
                 let field = Field {
                     doc,
                     name: words.value,
@@ -1413,12 +1397,7 @@ impl<'a> Checker<'a> {
                 };
                 return (field, name.span);
             }
-            [ast::FieldSlot::Type(ast::FieldType::Type(r#type))] => self.r#type(r#type),
-            [ast::FieldSlot::Type(ast::FieldType::Defaulted(defaulted))] => {
-                let (r#type, node) = self.defaulted(defaulted);
-                defaults.push(node);
-                r#type
-            }
+            [ast::FieldSlot::Type(r#type)] => self.field_type(record, index, r#type),
             [ast::FieldSlot::Doc(doc)] => {
                 self.error(
                     doc.span,
@@ -1438,19 +1417,6 @@ impl<'a> Checker<'a> {
                 Type::Text
             }
         };
-        defaults.extend(default);
-        if defaults.len() > 1 {
-            self.error(
-                name.span,
-                format!(
-                    "found two defaults for the field `{}`; expected one, after the shape or after the type",
-                    name.text
-                ),
-            );
-        }
-        if let Some(node) = defaults.first() {
-            self.pending_default(record, index, node);
-        }
         let field = Field {
             doc,
             name: words.value,
@@ -1461,13 +1427,22 @@ impl<'a> Checker<'a> {
         (field, name.span)
     }
 
-    fn pending_default(&mut self, record: usize, index: usize, node: &anyx::Node) {
-        self.defaults.push(PendingDefault {
-            r#type: record,
-            field: index,
-            node: node.clone(),
-            file: self.file,
-        });
+    /// The type in a field's slot; its `DEFAULT`, if any, is read once every
+    /// type is known.
+    fn field_type(&mut self, record: usize, index: usize, r#type: &ast::FieldType) -> Type {
+        match r#type {
+            ast::FieldType::Type(r#type) => self.r#type(r#type),
+            ast::FieldType::Defaulted(defaulted) => {
+                let (r#type, node) = self.defaulted(defaulted);
+                self.defaults.push(PendingDefault {
+                    r#type: record,
+                    field: index,
+                    node: node.clone(),
+                    file: self.file,
+                });
+                r#type
+            }
+        }
     }
 
     fn variants(&mut self, variants: &[ast::Variant]) -> Vec<Shaped> {
