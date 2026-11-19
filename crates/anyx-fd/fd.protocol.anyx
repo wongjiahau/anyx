@@ -33,26 +33,26 @@ CHOICE Kind {
 # The case a pattern is matched in.
 CHOICE Case {
     # Any case, unless the pattern has an uppercase letter.
-    smart,
-    any,
-    exact,
+    smart case,
+    any case,
+    exact case,
 },
 
 # How a pattern is read.
 CHOICE Syntax {
-    regex,
+    regex pattern,
     # A glob, such as `*.rs`.
-    glob,
+    glob pattern,
     # Plain text.
-    fixed text,
+    fixed text pattern,
 },
 
-# How `find` searches, as in `{ (glob) pattern, hidden, max depth (value 2) }`.
+# How `find` searches, as in `{ @glob pattern, hidden, max depth (value 2) }`.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
-    (Case) case DEFAULT (smart) case,
-    (Syntax) pattern DEFAULT (regex) pattern,
+    @(case: Case) DEFAULT @smart case,
+    @(pattern: Syntax) DEFAULT @regex pattern,
     # Match the pattern against the whole path, not just the name.
     full path,
     # Each file must match these patterns too, in the same syntax and case.

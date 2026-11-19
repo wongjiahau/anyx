@@ -365,13 +365,13 @@ impl Search {
             ignore_files.push(full);
         }
         let syntax = match fields.variant("pattern") {
-            Some("glob") => Syntax::Glob,
-            Some("fixed text") => Syntax::Fixed,
+            Some("glob pattern") => Syntax::Glob,
+            Some("fixed text pattern") => Syntax::Fixed,
             _ => Syntax::Regex,
         };
         let case = match fields.variant("case") {
-            Some("exact") => Case::Exact,
-            Some("any") => Case::Any,
+            Some("exact case") => Case::Exact,
+            Some("any case") => Case::Any,
             _ => Case::Smart,
         };
         let mut patterns = vec![pattern.to_string()];

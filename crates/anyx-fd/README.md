@@ -20,8 +20,8 @@ fd / any match of "TODO",
 `find` returns paths, `details of` returns a record for each path, and
 `any match of` returns whether anything matched. Each has four shapes: with
 or without `in (paths)`, and with or without `with (search)`. A search is a
-record of `fd`'s flags, each written as it reads: `hidden`, `(glob) pattern`,
-`(any) case`, `at least (value 14) bytes`, `changed within (value (1 hour))`. Each field comes
+record of `fd`'s flags, each written as it reads: `hidden`, `@glob pattern`,
+`@any case`, `at least (value 14) bytes`, `changed within (value (1 hour))`. Each field comes
 at most once, so a search can't contradict itself: the pattern's syntax and
 case are each one choice.
 

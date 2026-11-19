@@ -399,13 +399,20 @@ written:
 2. **Options that combine → separate fields, not a choice.** `no ignore`
    and `no ignore vcs`; `changed within` and `changed since`. A choice is
    for options that truly exclude each other.
-3. **A value with a word that names it → a shape.** `max depth 3`,
-   `at least 14 bytes`, `retry 3 times`. This is the default, and the only
+3. **A value with a word that names it → a shape.** `max depth (value 3)`,
+   `at least (value 14) bytes`, `retry 3 times`. This is the default, and the only
    form for text, numbers and lists, whose form never says what they mean:
    `@"src"` and `@3` leave the reader guessing.
-4. **A choice whose variants share a word → that word in the shape.**
-   `(any) case`, `changed (within (1 hour))`, not `@any case`.
-5. **A choice whose variants are phrases that say what they are, share no
+4. **A choice only one field uses → its word in every variant, and `@`.**
+   `CHOICE Case { smart case, any case, exact case }` with
+   `@(case: Case) DEFAULT @smart case` is written `@any case`, a phrase
+   with no parentheses. Every variant carries the word, so that none reads
+   bare, as `@exact` would.
+5. **A choice several fields or methods share → its shared word in the
+   shape.** `(Case) case` over `CHOICE Case { smart, any, exact }`, written
+   `(any) case`, keeps the word out of the type, where it would follow the
+   type everywhere it is used.
+6. **A choice whose variants are phrases that say what they are, share no
    word, and would stutter with one → `@`.** `@newest first`, `@by name`,
    `@no auth`, where a word would only repeat (`(no auth) auth`) or add
    nothing (`(by name) order`). Read `@by name` alone: if it says nothing to

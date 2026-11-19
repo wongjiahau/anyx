@@ -19,7 +19,8 @@ touches:
 - `DEFAULT` takes the whole field, `_ DEFAULT _` at the root of the tree, followed by the entry the field holds when left out, as a value writes it: `age (Integer) DEFAULT age 0`, `@(order: Order) DEFAULT @newest first`. With a colon the field goes in parentheses, `(age: Integer) DEFAULT age 0`. The default is decoded as an entry of its field, by the request decoder.
 - `@(name: T)` is a field written as `@` and its value, `@by name`. A symbol prefix, so it's marked at the call site and costs one character; the declaration and the call site share the syntax.
 - An `@` entry is found by its value's outermost form alone (variant shape, string, number, list, braces, duration). The checker rejects two `@` fields sharing any form, even one variant shape; Integer/Float clash, Text/Instant clash. This keeps decoding a lookup, never a search. The user asked for this strictness explicitly.
-- Guideline (PROTOCOL.md, Records): checkbox for on/off; separate fields for options that combine; a shape by default (always for text, numbers, lists); the shared word in the shape (`(any) case`); `@` only for self-describing phrases with no shared word, where a word would stutter. When in doubt, a shape. The user: "sometimes having the key is clearer".
+- Guideline (PROTOCOL.md, Records): checkbox for on/off; separate fields for options that combine; a shape by default (always for text, numbers, lists); a choice only one field uses carries its word in every variant and is an `@` field (`CHOICE Case { smart case, any case, exact case }`, written `@any case`), which the user found more readable than `(any) case`; a choice shared by several uses keeps the word in the shape (`(any) case`); `@` for self-describing phrases with no shared word. When in doubt, a shape. The user: "sometimes having the key is clearer".
+- The checkbox stays a shorthand for a `Boolean` field, on purpose: it is the most common field.
 - `(any) case` keeps its parentheses: readability over writability. The decoder hints at it when `any case` is written.
 
 ## Tried and ruled out
@@ -27,6 +28,7 @@ touches:
 - A parameter in a field's slot (`max depth (depth: Depth?)`): a lowercase name is ambiguous with a generic's type parameter in the grammar.
 - A bare value after the shape (`(Case) case DEFAULT smart`), then `DEFAULT` inside the slot's type (`(Case DEFAULT smart) case`): with several slots, a slot's default needed an "every slot or none" rule. The user put `_ DEFAULT _` at the root instead.
 - One slot per field, with a record or choice for a pair: the user wanted several values per field, a tuple in generated code.
+- A checkbox as an honest `@` field, `@(hidden: UNION [hidden, Null]) DEFAULT @Null`: every checkbox would share the form `Null` (or `null`, or any common "off" word), so two `@` fields clash. A field-specific "off" variant per field (`skip hidden`) works but needs a made-up word for each; exempting `Null` from the `@` lookup is a special case. An auto-generated index for the field's name, `@(UNION [...])`: JSON keys and generated fields become `_1`, and moving a field would break them.
 - A nullable field written as its item (`max depth 3` for `Depth?`): an implicit coercion; see the learning on no syntax sugar.
 
 ## Watch out

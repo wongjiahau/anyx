@@ -180,8 +180,8 @@ Decided:
 
   ```anyx
   RECORD Search {
-      (Case) case DEFAULT (smart) case,
-      (Syntax) pattern DEFAULT (regex) pattern,
+      @(case: Case) DEFAULT @smart case,
+      @(pattern: Syntax) DEFAULT @regex pattern,
       hidden,
       max depth (Depth?) DEFAULT max depth (null),
       at least (Size?) bytes DEFAULT at least (null) bytes,
@@ -189,10 +189,14 @@ Decided:
   },
   ```
   ```anyx
-  fd / find "*.md" in ["docs"] with { (glob) pattern, (any) case, max depth (value 3), hidden }
+  fd / find "*.md" in ["docs"] with { @glob pattern, @any case, max depth (value 3), hidden }
   ```
   - Words alone are a checkbox: a `Boolean`, true when written, false when
     left out, and never with a `DEFAULT`.
+  - A choice only one field uses carries the field's word in every variant
+    and is an `@` field: `CHOICE Case { smart case, any case, exact case }`,
+    written `@any case`. A choice several uses share keeps the word in the
+    shape, `(any) case`.
   - A field with several slots holds a tuple, a value for each:
     `between (Integer) and (Integer)`, written `between 1 and 3`, is `[1, 3]`
     in JSON and TypeScript and `(i64, i64)` in Rust. A tuple has no syntax
@@ -225,9 +229,9 @@ Decided:
   a false checkbox and an `@` field at its default, and writes other
   defaults out. The formatter hugs a leading symbol to a word, string or
   group: `@by name`, `@"src"`, but `@ 3`.
-- Mutual exclusion is one choice field: `{ (glob) pattern, (fixed text)
+- Mutual exclusion is one choice field: `{ @glob pattern, @fixed text
   pattern }` is the duplicate-field error. fd's `exact depth` went: it is
-  `{ min depth 2, max depth 2 }`.
+  `{ min depth (value 2), max depth (value 2) }`.
 - "A needs B" is nesting, A inside B's value. A need that isn't a tree is a
   `REQUIRES`.
 - The prelude keeps `has no repeats` and `has at most one of`: fd no longer

@@ -55,13 +55,13 @@ fn a_search_changes_how_fd_searches() {
             r#"[".hidden.rs", "src/deep/inner.rs", "src/lib.rs", "src/main.rs", "target/build.rs"]"#,
         ),
         (
-            r#"find "*.md" with { (glob) pattern }"#,
+            r#"find "*.md" with { @glob pattern }"#,
             r#"["README.md", "src/Notes.md"]"#,
         ),
-        (r#"find "NOTES" with { (any) case }"#, r#"["src/Notes.md"]"#),
-        (r#"find "notes" with { (exact) case }"#, "[]"),
+        (r#"find "NOTES" with { @any case }"#, r#"["src/Notes.md"]"#),
+        (r#"find "notes" with { @exact case }"#, "[]"),
         (
-            r#"find "." with { (fixed text) pattern, max depth (value 1) }"#,
+            r#"find "." with { @fixed text pattern, max depth (value 1) }"#,
             r#"["README.md"]"#,
         ),
         (
@@ -93,14 +93,23 @@ fn a_search_changes_how_fd_searches() {
             r#"find "src/d" with { full path }"#,
             r#"["src/deep", "src/deep/inner.rs"]"#,
         ),
-        (r#"find "" with { at least (value 14) bytes }"#, r#"["src/lib.rs"]"#),
-        (r#"find "" with { at most (value 1) results }"#, r#"["README.md"]"#),
+        (
+            r#"find "" with { at least (value 14) bytes }"#,
+            r#"["src/lib.rs"]"#,
+        ),
+        (
+            r#"find "" with { at most (value 1) results }"#,
+            r#"["README.md"]"#,
+        ),
         (r#"find "^s" with { prune }"#, r#"["src"]"#),
         (
             r#"find "" with { changed within (value (1 hour)), only [file], at most (value 1) results }"#,
             r#"["README.md"]"#,
         ),
-        (r#"find "" with { changed more than (value (1 hour)) ago }"#, "[]"),
+        (
+            r#"find "" with { changed more than (value (1 hour)) ago }"#,
+            "[]",
+        ),
     ] {
         assert_eq!(
             answer(directory.path(), request),
@@ -152,13 +161,13 @@ fn mistakes_are_errors_or_invalid_requests() {
         "ERROR invalid pattern \"unclosed group\"\n"
     );
     assert!(
-        answer(directory.path(), r#"find "[" with { (glob) pattern }"#)
+        answer(directory.path(), r#"find "[" with { @glob pattern }"#)
             .starts_with("ERROR invalid glob \"")
     );
     // A search says each thing once, so it can't contradict itself.
     for (request, expected) in [
         (
-            r#"find "x" with { (glob) pattern, (fixed text) pattern }"#,
+            r#"find "x" with { @glob pattern, @fixed text pattern }"#,
             "pattern",
         ),
         (r#"find "x" with { hidden, hidden }"#, "hidden"),
