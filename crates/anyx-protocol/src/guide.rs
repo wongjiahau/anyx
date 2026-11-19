@@ -64,10 +64,15 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
   words, put `:` after its key: `{{ \"hymn\": done }}`.
-- A RECORD is its fields in braces, each its name and value, in any order:
-  `{{ path \"a\", revision 3 }}`. A field with a `DEFAULT` may be left out
-  and then holds that value. When a value is words, put `:`
-  after the field's name: `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
+- A RECORD is its fields in braces, each written in its declared shape with
+  its value in the slot, in any order: `{{ path \"a\", revision 3 }}`,
+  `{{ (any) case, at least 14 bytes }}`. A value before a field's words
+  keeps its parentheses. A field of words alone is a checkbox, true when
+  written: `{{ hidden }}`. An `@` field is `@` and its value alone:
+  `{{ @by name }}`. A nullable field is written as its item. A field with a
+  `DEFAULT` may be left out and then holds that value. When a value is words
+  and the slot is last, put `:` after the field's words:
+  `{{ status: done }}`, `{{ timeout: 5 minutes }}`.
 - A CHOICE is one of its variants, written in the variant's shape with a
   value in each slot: `dark`, `custom hue 0.5`.
 {generic_types}{named_types}- In a slot, a value written as words goes in parentheses so that it doesn't

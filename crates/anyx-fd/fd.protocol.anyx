@@ -12,7 +12,10 @@ TYPE Depth: Integer . WHERE [0 <= _],
 # A count of bytes.
 TYPE Size: Integer . WHERE [0 <= _],
 
-# What a file is, for `_ only`.
+# A count of results, at least one.
+TYPE Count: Integer . WHERE [1 <= _],
+
+# What a file is, for `only _`.
 CHOICE Kind {
     file,
     directory,
@@ -27,22 +30,33 @@ CHOICE Kind {
     char device,
 },
 
-# A change to how `find` searches. A setting may come once, except
-# `_ only`, `extension _` and `excluding _`, which find what any of them
-# allow, and `also matching _`, which each must match.
-CHOICE Setting {
-    # Match the pattern in exactly its case.
-    exact case,
-    # Match the pattern in any case.
-    any case,
-    # The pattern is a glob, such as `*.rs`, not a regex.
+# The case a pattern is matched in.
+CHOICE Case {
+    # Any case, unless the pattern has an uppercase letter.
+    smart,
+    any,
+    exact,
+},
+
+# How a pattern is read.
+CHOICE Syntax {
+    regex,
+    # A glob, such as `*.rs`.
     glob,
-    # The pattern is plain text, not a regex.
+    # Plain text.
     fixed text,
+},
+
+# How `find` searches, as in `{ (glob) pattern, hidden, max depth 2 }`.
+# Each field left out keeps fd's default, and a file must pass every
+# filter given.
+RECORD Search {
+    (Case) case DEFAULT smart,
+    (Syntax) pattern DEFAULT regex,
     # Match the pattern against the whole path, not just the name.
     full path,
-    # Each file must match this pattern too, in the same syntax and case.
-    also matching (pattern: Text),
+    # Each file must match these patterns too, in the same syntax and case.
+    also matching: LIST Text DEFAULT [],
     # Find hidden files and directories too.
     hidden,
     # Don't skip what ignore files ignore.
@@ -54,35 +68,35 @@ CHOICE Setting {
     no ignore parent,
     # Read `.gitignore` outside a git repository too.
     no require git,
-    # Skip what this file ignores, written as `.gitignore` is.
-    ignore file (path: Text),
-    # Skip paths this glob matches, as `--exclude` does.
-    excluding (glob: Text),
+    # Skip what these files ignore, each written as `.gitignore` is.
+    ignore files: LIST Text DEFAULT [],
+    # Skip paths these globs match, as `--exclude` does.
+    excluding: LIST Text DEFAULT [],
     # Follow symbolic links into the directories they point to.
     follow links,
     # Don't go into another file system.
     one file system,
     # Don't go into a directory that matched.
     prune,
-    max depth (depth: Depth),
-    min depth (depth: Depth),
-    exact depth (depth: Depth),
-    # Find only these: say `(file) only` and `(directory) only` for both.
-    (what: Kind) only,
-    # Find only files with this extension, such as `"rs"`.
-    extension (extension: Text),
-    at least (size: Size) bytes,
-    at most (size: Size) bytes,
-    changed within (period: Duration),
-    changed since (time: Instant),
-    changed before (time: Instant),
-    changed more than (period: Duration) ago,
+    max depth: Depth? DEFAULT null,
+    min depth: Depth? DEFAULT null,
+    # Find only these kinds of file, or every kind when empty.
+    only: LIST Kind DEFAULT [],
+    # Find only files with one of these extensions, such as `"rs"`, or
+    # with any when empty.
+    extensions: LIST Text DEFAULT [],
+    at least (Size?) bytes DEFAULT null,
+    at most (Size?) bytes DEFAULT null,
+    changed within: Duration? DEFAULT null,
+    changed since: Instant? DEFAULT null,
+    changed before: Instant? DEFAULT null,
+    changed more than (Duration?) ago DEFAULT null,
     # Owned by the user with this id.
-    owned by user (id: Integer),
+    owned by user: Integer? DEFAULT null,
     # Owned by the group with this id.
-    owned by group (id: Integer),
+    owned by group: Integer? DEFAULT null,
     # Stop after this many paths.
-    at most (count: Integer . WHERE [1 <= _]) results,
+    at most (Count?) results DEFAULT null,
 },
 
 # What a found file is, as `fd --list-details` shows it.
@@ -101,155 +115,69 @@ ERRORS fd errors [
     (path: Text) is not unicode,
 ],
 
-READ ONLY METHOD find (pattern: Text) in (paths: LIST Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+READ ONLY METHOD find (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (paths: LIST Text)
     ERRORS fd errors
     EXAMPLES [
-        find "\\.rs$" in ["src"] with [(file) only] RETURNS ["src/lib.rs", "src/main.rs"],
-        find "(" in ["src"] with [hidden] ERROR invalid pattern "unclosed group",
+        find "\\.rs$" in ["src"] with { only [file] } RETURNS ["src/lib.rs", "src/main.rs"],
+        find "(" in ["src"] with { hidden } ERROR invalid pattern "unclosed group",
     ],
 
 # In the working directory.
-READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+READ ONLY METHOD find (pattern: Text) with (search: Search)
     RETURNS (paths: LIST Text)
     ERRORS fd errors,
 
-# With no settings.
+# As fd searches by default.
 READ ONLY METHOD find (pattern: Text) in (paths: LIST Text)
     RETURNS (paths: LIST Text)
     ERRORS fd errors,
 
-# In the working directory, with no settings.
+# In the working directory, as fd searches by default.
 READ ONLY METHOD find (pattern: Text)
     RETURNS (paths: LIST Text)
     ERRORS fd errors,
 
 # What `find` finds, with each file's details.
-READ ONLY METHOD details of (pattern: Text) in (paths: LIST Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+READ ONLY METHOD details of (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (files: LIST Details)
     ERRORS fd errors,
 
 # What `find` finds, with each file's details. In the working directory.
-READ ONLY METHOD details of (pattern: Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+READ ONLY METHOD details of (pattern: Text) with (search: Search)
     RETURNS (files: LIST Details)
     ERRORS fd errors,
 
-# What `find` finds, with each file's details. With no settings.
+# What `find` finds, with each file's details. As fd searches by default.
 READ ONLY METHOD details of (pattern: Text) in (paths: LIST Text)
     RETURNS (files: LIST Details)
     ERRORS fd errors,
 
-# What `find` finds, with each file's details. In the working directory, with no settings.
+# What `find` finds, with each file's details. In the working directory, as
+# fd searches by default.
 READ ONLY METHOD details of (pattern: Text)
     RETURNS (files: LIST Details)
     ERRORS fd errors,
 
 # Whether `find` finds anything. It stops at the first.
-READ ONLY METHOD any match of (pattern: Text) in (paths: LIST Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+READ ONLY METHOD any match of (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (found: Boolean)
     ERRORS fd errors,
 
-# Whether `find` finds anything. It stops at the first. In the working directory.
-READ ONLY METHOD any match of (pattern: Text) with (settings: LIST Setting)
-    REQUIRES [
-        settings . has no repeats,
-        settings . has at most one of [exact case, any case],
-        settings . has at most one of [glob, fixed text],
-        settings . has at most one of [no ignore, no ignore vcs],
-        settings . has at most one of [max depth _, exact depth _],
-        settings . has at most one of [min depth _, exact depth _],
-        settings . has at most one of [at least _ bytes],
-        settings . has at most one of [at most _ bytes],
-        settings . has at most one of [changed within _, changed since _],
-        settings . has at most one of [changed before _, changed more than _ ago],
-        settings . has at most one of [owned by user _],
-        settings . has at most one of [owned by group _],
-        settings . has at most one of [at most _ results],
-    ]
+# Whether `find` finds anything. It stops at the first. In the working
+# directory.
+READ ONLY METHOD any match of (pattern: Text) with (search: Search)
     RETURNS (found: Boolean)
     ERRORS fd errors,
 
-# Whether `find` finds anything. It stops at the first. With no settings.
+# Whether `find` finds anything. It stops at the first. As fd searches by
+# default.
 READ ONLY METHOD any match of (pattern: Text) in (paths: LIST Text)
     RETURNS (found: Boolean)
     ERRORS fd errors,
 
-# Whether `find` finds anything. It stops at the first. In the working directory, with no settings.
+# Whether `find` finds anything. It stops at the first. In the working
+# directory, as fd searches by default.
 READ ONLY METHOD any match of (pattern: Text)
     RETURNS (found: Boolean)
     ERRORS fd errors,

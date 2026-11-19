@@ -135,6 +135,118 @@ calling it: `rg / search "TODO" in (fd / …)`.
       returns the guide; choose its name
 - [x] Decide how a path that is not Unicode is returned: an error, `Bytes`,
       or a lossy conversion (an error, `(path) is not unicode`, for now)
+- [ ] Generic functions in the prelude, in place of the special word `Type`
+      in `LIST Type`, which links no use of it to another. Decided:
+      - `FOR ANY [ … ]` right after `FUNCTION` declares the type parameters,
+        before the shape that uses them, in the `(name: marker)` form of a
+        record's slots; the shape refers to them by name. `FOR ANY` won over
+        `FOR ALL` (correct, but reads as logic) and `FOR EVERY`; it can't be
+        confused with "at least one", as in `any match of`, since it only
+        follows `FUNCTION`.
+      - Declared up front, not at their first use inside a parameter
+        (`(items: LIST: (item: Type))`), since one parameter can be used by
+        several parameters.
+      - A `Choice` marker beside `Type`, for a parameter that must be a
+        `CHOICE`.
+      - `VARIANT OF item`, the type of a variant shape with `_` in each slot,
+        such as `max depth _`, so the checker types `has at most one of`
+        and the special case for it in `refinement.rs` goes.
+
+      ```anyx
+      FUNCTION FOR ANY [(item: Type)]
+          (items: LIST: item) has no repeats
+          RETURNS (holds: Boolean),
+
+      FUNCTION FOR ANY [(item: Choice)]
+          (items: LIST: item) has at most one of (variants: LIST: VARIANT OF item)
+          RETURNS (holds: Boolean),
+
+      FUNCTION FOR ANY [(item: Type)] (value: LIST: item) length RETURNS (size: Integer),
+      ```
+
+### Records whose fields are anyfix shapes, and `@` fields
+
+fd's settings were a `LIST Setting` with a 13-line `REQUIRES` block copied
+into six methods. The block spelled out what a record gives by structure
+(each field at most once, some options mutually exclusive), but a record
+entry had to be `name value`, so a record couldn't read like
+`{hidden, (any) case}`.
+
+Decided:
+- Every field is a shape with one slot, which holds a type, and a value
+  writes it as declared, in any order. There is no separate "named" kind:
+  `path: Text` is `path (Text)`, written `path "a"`. The field is named by
+  its words (`at least (Size?) bytes` is `at least bytes`).
+
+  ```anyx
+  RECORD Search {
+      (Case) case DEFAULT smart,
+      (Syntax) pattern DEFAULT regex,
+      hidden,
+      max depth: Depth? DEFAULT null,
+      at least (Size?) bytes DEFAULT null,
+      changed more than (Duration?) ago DEFAULT null,
+      only: LIST Kind DEFAULT [],
+  },
+  ```
+  ```anyx
+  fd / find "*.md" in ["docs"] with { (glob) pattern, (any) case, max depth 3, hidden }
+  ```
+  - Words alone are a checkbox: a `Boolean`, true when written, false when
+    left out, and never with a `DEFAULT`.
+  - A nullable field is written as its item, `max depth 3`; left out, it is
+    `null`.
+  - A value before the words keeps its parentheses, `(any) case`: `any case`
+    is one call. Readability over writability; the decoder hints at it.
+- `@(name: T)` is a field written as `@` and its value alone, `@by name`,
+  for choices whose variants are self-describing phrases that share no word.
+  `@` makes it distinct at the call site from a shaped field, and the
+  declaration has the same syntax as the call site. A symbol, not a keyword,
+  so it costs one character to write: `UNNAMED` would have had to appear
+  at the call site too.
+- An `@` entry finds its field by its value's outermost form alone: a
+  variant's shape, a string, a number, a list, braces or a duration. No two
+  `@` fields may share a form, even one variant's shape, and `Integer` and
+  `Float` share the number's form, `Text` and `Instant` the string's. So
+  decoding never tries a field and backs out: no graph search. A nullable
+  `@` field needs `DEFAULT null`, and one of a type parameter is an error.
+- The guideline is in `PROTOCOL.md` under Records: checkbox, separate fields
+  for options that combine, a shape by default, the shared word in the
+  shape, and `@` only when a word would stutter. fd uses no `@` field.
+- The encoder writes each field in its shape, leaves out a `null` default,
+  a false checkbox and an `@` field at its default, and writes other
+  defaults out. The formatter hugs a leading symbol to a word, string or
+  group: `@by name`, `@"src"`, but `@ 3`.
+- Mutual exclusion is one choice field: `{ (glob) pattern, (fixed text)
+  pattern }` is the duplicate-field error. fd's `exact depth` went: it is
+  `{ min depth 2, max depth 2 }`.
+- "A needs B" is nesting, A inside B's value. A need that isn't a tree is a
+  `REQUIRES`.
+- The prelude keeps `has no repeats` and `has at most one of`: fd no longer
+  uses them, but they still serve a method that takes a list.
+
+Tried and ruled out:
+- `UNNAMED name: T` as a keyword: heavy, and nothing marked the value at the
+  call site.
+- A parameter in a field's slot, `max depth (depth: Depth?)`: a lowercase
+  slot name is ambiguous with a generic's type parameter
+  (`other: item of (Text)` read as a parameter). The words name the field,
+  so the slot holds a type.
+- Fields with several slots: one slot keeps the field one value, and a pair
+  is a record or a choice in that slot.
+- Any choice field writable by its variant without a marker, and an
+  `@` field found by trying each field's type: both make decoding a search.
+- `OPTIONS` as a new kind of type, groups by `|`, `REPEATABLE`, `NEEDS` and
+  bundles like fd's `-u`.
+
+- [x] Fields as shapes, checkboxes and `@` in `protocol.grammar.anyx`, with
+      the checker's one-field-per-form rule for `@` fields
+- [x] Decode, encode and format the literal; the shell's compiler
+- [x] Generated TypeScript
+- [x] `PROTOCOL.md` and the guide
+- [x] Rework `fd.protocol.anyx`: `RECORD Search` in place of `LIST Setting`
+      and every `REQUIRES`
+- [ ] The shell's completion and hover inside a record's braces
 
 ### Shell
 

@@ -5,6 +5,10 @@
 use anyx::{Node, Span, StringLiteral};
 pub use support::{CallName, DecodeError, Spanned};
 
+static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^(_ )*[^_@]").expect("the generator checked it")
+});
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub header: Option<Protocol>,
@@ -72,11 +76,33 @@ pub enum TypeMarker {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Field {
-    pub doc: Option<Spanned<StringLiteral>>,
-    pub name: Spanned<String>,
-    pub r#type: FieldType,
-    pub span: Span,
+pub enum Field {
+    Defaulted {
+        shape: FieldShape,
+        default: Node,
+        span: Span,
+    },
+    Shape(FieldShape),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldShape {
+    Unnamed {
+        doc: Option<Spanned<StringLiteral>>,
+        parameter: Parameter,
+        span: Span,
+    },
+    Words {
+        name: CallName,
+        arguments: Vec<FieldSlot>,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldSlot {
+    Doc(Spanned<StringLiteral>),
+    Type(FieldType),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -322,6 +348,32 @@ impl TypeMarker {
     }
 }
 
+impl Field {
+    pub fn span(&self) -> Span {
+        match self {
+            Field::Defaulted { span, .. } => *span,
+            Field::Shape(value) => value.span(),
+        }
+    }
+}
+
+impl FieldShape {
+    pub fn span(&self) -> Span {
+        match self {
+            FieldShape::Unnamed { span, .. } | FieldShape::Words { span, .. } => *span,
+        }
+    }
+}
+
+impl FieldSlot {
+    pub fn span(&self) -> Span {
+        match self {
+            FieldSlot::Doc(value) => value.span,
+            FieldSlot::Type(value) => value.span(),
+        }
+    }
+}
+
 impl FieldType {
     pub fn span(&self) -> Span {
         match self {
@@ -484,9 +536,39 @@ impl support::Errors for TypeMarker {
 
 impl support::Errors for Field {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.doc, found);
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.r#type, found);
+        match self {
+            Field::Defaulted { shape, default, .. } => {
+                support::Errors::errors(shape, found);
+                support::Errors::errors(default, found);
+            }
+            Field::Shape(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for FieldShape {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            FieldShape::Unnamed { doc, parameter, .. } => {
+                support::Errors::errors(doc, found);
+                support::Errors::errors(parameter, found);
+            }
+            FieldShape::Words {
+                name, arguments, ..
+            } => {
+                support::Errors::errors(name, found);
+                support::Errors::errors(arguments, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for FieldSlot {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            FieldSlot::Doc(value) => support::Errors::errors(value, found),
+            FieldSlot::Type(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -866,18 +948,56 @@ pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
 }
 
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
-    let mut parts = support::call(node, "the call `_? … _`")?;
-    let decoded = Field {
-        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        r#type: parts.one(decode_field_type, "a field type")?,
+    decode_field_defaulted(node)
+        .or_else(|error| error.or(decode_field_shape(node).map(Field::Shape)))
+}
+
+fn decode_field_defaulted(node: &Node) -> Result<Field, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = Field::Defaulted {
+        shape: parts.one(decode_field_shape, "a field shape")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
+}
+
+pub fn decode_field_shape(node: &Node) -> Result<FieldShape, DecodeError> {
+    decode_field_shape_unnamed(node).or_else(|error| error.or(decode_field_shape_words(node)))
+}
+
+fn decode_field_shape_unnamed(node: &Node) -> Result<FieldShape, DecodeError> {
+    let mut parts = support::call(node, "the call `_? @ _`")?;
+    let decoded = FieldShape::Unnamed {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        parameter: parts.word("@")?.one(decode_parameter, "a parameter")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_field_shape_words(node: &Node) -> Result<FieldShape, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
+        "a call whose name has no keyword and matches the regex `^(_ )*[^_@]`",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = FieldShape::Words {
+        name,
+        arguments: arguments.zero_or_more(decode_field_slot),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_field_slot(node: &Node) -> Result<FieldSlot, DecodeError> {
+    support::line_string(node, |_| true, "a `#` line string")
+        .map(FieldSlot::Doc)
+        .or_else(|error| error.or(decode_field_type(node).map(FieldSlot::Type)))
 }
 
 pub fn decode_field_type(node: &Node) -> Result<FieldType, DecodeError> {

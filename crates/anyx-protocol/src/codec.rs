@@ -10,7 +10,7 @@ use anyx::{Node, NodeKind, Span, line_column};
 
 use crate::annotation::{own_syntax_type, own_type, request_type};
 use crate::request_grammar as request;
-use crate::schema::{Field, Method, Schema, Shape, Type, TypeKind};
+use crate::schema::{Field, FieldForm, Method, Schema, Shape, Type, TypeKind};
 use crate::value::Value;
 
 /// One call of a request: which method, and its arguments in order.
@@ -809,29 +809,85 @@ fn mismatched(schema: &Schema, r#type: &Type, found: &str) -> EncodeError {
     }
 }
 
-/// Writes fields in the schema's order, each as its name, a `:`, and its
-/// value; the layout drops each `:` that a reader doesn't need.
+/// Writes fields in the schema's order, each as a reader writes it: a
+/// shape whose slot is last as its words, a `:`, and its value; another
+/// shape with its value in the slot; a checkbox as its words when `true`;
+/// an `@` field as `@` and its value. A nullable value is written as its
+/// item. The layout drops each `:` that a reader doesn't need.
 fn write_fields(
     schema: &Schema,
     fields: &[Field],
     values: &BTreeMap<String, Value>,
     out: &mut String,
 ) -> Result<(), EncodeError> {
-    out.push_str("{ ");
-    let mut first = true;
+    let mut written = Vec::new();
     for field in fields {
         let Some(value) = values.get(&field.name) else {
             continue;
         };
-        if !first {
-            out.push_str(", ");
+        // A checkbox, an `@` field and a `null` read best left out; any
+        // other default is written, so a reader sees it.
+        let null = matches!(value, Value::Variant { shape, .. } if shape == "null")
+            && schema.nullable_item(&field.r#type).is_some();
+        if field.default.as_ref() == Some(value)
+            && (null || matches!(field.form, FieldForm::Checkbox | FieldForm::Unnamed))
+        {
+            continue;
         }
-        first = false;
-        out.push_str(&field.name);
-        out.push_str(": ");
-        write(schema, &field.r#type, value, out)?;
+        let mut entry = String::new();
+        let (r#type, item) = match (schema.nullable_item(&field.r#type), value) {
+            (
+                Some(item),
+                Value::Variant {
+                    shape, arguments, ..
+                },
+            ) if shape == "value _" => (item, &arguments[0]),
+            _ => (&field.r#type, value),
+        };
+        match &field.form {
+            FieldForm::Checkbox => match value {
+                Value::Variant { shape, .. } if shape == "true" => entry.push_str(&field.name),
+                _ => continue,
+            },
+            // `path: "a"`: a slot last takes its value after a `:`.
+            FieldForm::Shape(shape)
+                if shape.ends_with(" _") && !shape[..shape.len() - 2].contains('_') =>
+            {
+                entry.push_str(&shape[..shape.len() - 2]);
+                entry.push_str(": ");
+                write(schema, r#type, item, &mut entry)?;
+            }
+            FieldForm::Shape(shape) => {
+                for (index, word) in shape.split(' ').enumerate() {
+                    if index > 0 {
+                        entry.push(' ');
+                    }
+                    match word {
+                        "_" => write_slot(schema, r#type, item, &mut entry)?,
+                        word => entry.push_str(word),
+                    }
+                }
+            }
+            FieldForm::Unnamed => {
+                let mut value = String::new();
+                write(schema, r#type, item, &mut value)?;
+                entry.push('@');
+                // `@-3` would read as the symbol word `@-`.
+                if value.starts_with(|c: char| !c.is_alphanumeric() && !"\"([{".contains(c)) {
+                    entry.push(' ');
+                }
+                entry.push_str(&value);
+            }
+        }
+        written.push(entry);
     }
-    out.push_str(" }");
+    if written.is_empty() {
+        out.push_str("{}");
+    } else {
+        out.push_str("{ ");
+        out.push_str(&written.join(", "));
+        out.push_str(" }");
+    }
     Ok(())
 }
 

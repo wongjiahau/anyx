@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, Method, Shaped, Type, TypeKind};
+use anyx_protocol::schema::{Field, FieldForm, Method, Shaped, Type, TypeKind, Written};
 
 use crate::names::camel_case;
 use crate::{
@@ -386,6 +386,18 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 }
 
 // Compact, schema-specific descriptors consumed by the native runtime.
+/// How the native codec names a form an `@` field's values are written in.
+fn native_form(form: &Written) -> String {
+    match form {
+        Written::Call(shape) => format!("call:{shape}"),
+        Written::String => "string".into(),
+        Written::Number => "number".into(),
+        Written::List => "list".into(),
+        Written::Braces => "braces".into(),
+        Written::Duration => "duration".into(),
+    }
+}
+
 fn native_type(ty: &Type) -> String {
     match ty {
         Type::Refined(base, predicate) => format!(
@@ -440,44 +452,71 @@ fn native_schema(schema: &Schema) -> String {
                 .map(|p| format!("{p:?}"))
                 .collect::<Vec<_>>()
                 .join(",");
-            let kind = match &d.kind {
-                TypeKind::Distinct(t) => {
-                    if anyx_protocol::refinement::has_refinements(schema, t) {
-                        format!(
-                            "kind:'distinct', name:{:?}, type:{}",
-                            d.name,
-                            native_type(t)
-                        )
-                    } else {
-                        format!("kind:'distinct', type:{}", native_type(t))
+            let kind =
+                match &d.kind {
+                    TypeKind::Distinct(t) => {
+                        if anyx_protocol::refinement::has_refinements(schema, t) {
+                            format!(
+                                "kind:'distinct', name:{:?}, type:{}",
+                                d.name,
+                                native_type(t)
+                            )
+                        } else {
+                            format!("kind:'distinct', type:{}", native_type(t))
+                        }
                     }
-                }
-                TypeKind::Record(fields) => format!(
-                    "kind:'record', fields:[{}]",
-                    fields
-                        .iter()
-                        .map(|f| format!(
-                            "{{wire:{:?}, name:{:?}, type:{}{}}}",
-                            f.name,
-                            camel_case(&f.name),
-                            native_type(&f.r#type),
-                            f.default.as_ref().map_or(String::new(), |v| format!(
-                                ", defaultValue:()=>{}",
-                                native_default(schema, &f.r#type, v)
+                    TypeKind::Record(fields) => format!(
+                        "kind:'record', fields:[{}]",
+                        fields
+                            .iter()
+                            .map(|f| format!(
+                                "{{wire:{:?}, form:{:?}, name:{:?}, type:{}{}{}{}}}",
+                                match &f.form {
+                                    FieldForm::Shape(shape) => shape.as_str(),
+                                    FieldForm::Checkbox => f.name.as_str(),
+                                    FieldForm::Unnamed => "@ _",
+                                },
+                                match &f.form {
+                                    FieldForm::Shape(_) => "shape",
+                                    FieldForm::Checkbox => "checkbox",
+                                    FieldForm::Unnamed => "unnamed",
+                                },
+                                camel_case(&f.name),
+                                native_type(&f.r#type),
+                                schema.nullable_item(&f.r#type).map_or(
+                                    String::new(),
+                                    |item| format!(", item:{}", native_type(item))
+                                ),
+                                match f.form {
+                                    FieldForm::Unnamed => format!(
+                                        ", forms:[{}]",
+                                        schema
+                                            .written_forms(&f.r#type)
+                                            .unwrap_or_default()
+                                            .iter()
+                                            .map(|form| format!("{:?}", native_form(form)))
+                                            .collect::<Vec<_>>()
+                                            .join(",")
+                                    ),
+                                    _ => String::new(),
+                                },
+                                f.default.as_ref().map_or(String::new(), |v| format!(
+                                    ", defaultValue:()=>{}",
+                                    native_default(schema, &f.r#type, v)
+                                ))
                             ))
-                        ))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-                TypeKind::Choice(variants) => format!(
-                    "kind:'choice', variants:[{}]",
-                    variants
-                        .iter()
-                        .map(|v| native_shape(schema, &v.shape))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            };
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    ),
+                    TypeKind::Choice(variants) => format!(
+                        "kind:'choice', variants:[{}]",
+                        variants
+                            .iter()
+                            .map(|v| native_shape(schema, &v.shape))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    ),
+                };
             format!("{{parameters:[{parameters}],{kind}}}")
         })
         .collect::<Vec<_>>()

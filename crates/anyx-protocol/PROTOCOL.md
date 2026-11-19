@@ -73,9 +73,10 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   written exactly like `T`, on the wire and in JSON, and generated code
   keeps it distinct from `T` and from other named types over `T`. `T` is any
   type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
-- **`RECORD Name { field: T, … }`**: fields by name. `DEFAULT value`
-  after a field's type makes it omittable and supplies its value when absent:
-  `limit: Integer DEFAULT 50`, or `tags: LIST Text DEFAULT []`.
+- **`RECORD Name { field: T, … }`**: fields, each a shape that a value
+  writes as it is declared, in any order. See [Records](#records).
+  `DEFAULT value` after a field makes it omittable and supplies its value
+  when absent: `limit: Integer DEFAULT 50`, or `tags: LIST Text DEFAULT []`.
   Without a default the field must be supplied. Defaults are checked against
   the field's type; parameters cannot have defaults.
 - **Nullability** is the prelude's generic choice `T?`: `null`, or
@@ -343,6 +344,67 @@ can say.
   `locked for (duration: Integer) seconds` is `LockedForSeconds { duration }`.
   Two variants can't differ only by where their slots sit.
 
+### Records
+
+A record's field is a shape with one slot, which holds the field's type.
+Its words name it, in generated code too, and a value writes it as it is
+declared:
+
+| Declared | Written | Named |
+| --- | --- | --- |
+| `path: Text` | `path "a"` | `path` |
+| `(Case) case DEFAULT smart` | `(any) case` | `case` |
+| `at least (Size?) bytes DEFAULT null` | `at least 14 bytes` | `at least bytes` |
+| `changed more than (Duration?) ago DEFAULT null` | `changed more than (1 hour) ago` | `changed more than ago` |
+| `hidden` | `hidden` | `hidden` |
+| `@(order: Order) DEFAULT newest first` | `@by name` | `order` |
+
+- **Words alone are a checkbox**: a `Boolean`, `true` when written and
+  `false` when left out. It takes no `DEFAULT`.
+- **A nullable field is written as its item**, `max depth 3` for
+  `max depth: Depth? DEFAULT null`; leaving it out says `null`.
+- **The slot holds a type, not a parameter**: `(Case) case`, since the words
+  already name the field. A `DEFAULT` follows the shape, or the type when the
+  slot is last: `path: Text DEFAULT "a"`.
+- **A value before the words keeps its parentheses**, `(any) case`: without
+  them, `any case` is the one call `any case`, not `_ case`.
+- **Each field once.** A record says each thing once, so where a list of
+  settings needs `REQUIRES` to rule out `[glob, fixed text]`, a record's
+  `(Syntax) pattern` is one choice.
+
+**`@` fields.** `@(order: Order)` is the shape with no words, so a
+parameter names the field. A value writes `@` and the field's value,
+`@newest first`, and the field is found by the value's *outermost form*
+alone: a variant's shape, a string, a number, a list, braces or a duration.
+No two `@` fields of a record may share a form, not even one variant's
+shape, and `Integer` and `Float` share the form of a number, `Text` and
+`Instant` that of a string. So finding the field never tries one and backs
+out. A nullable `@` field needs `DEFAULT null`, since leaving it out is the
+only way to say `null`; one of a type parameter has no known form, and is an
+error.
+
+Readability decides between them, since a record is read far more than it is
+written:
+
+1. **On or off → a checkbox.** `hidden`, `follow links`.
+2. **Options that combine → separate fields, not a choice.** `no ignore`
+   and `no ignore vcs`; `changed within` and `changed since`. A choice is
+   for options that truly exclude each other.
+3. **A value with a word that names it → a shape.** `max depth 3`,
+   `at least 14 bytes`, `retry 3 times`. This is the default, and the only
+   form for text, numbers and lists, whose form never says what they mean:
+   `@"src"` and `@3` leave the reader guessing.
+4. **A choice whose variants share a word → that word in the shape.**
+   `(any) case`, `changed (within (1 hour))`, not `@any case`.
+5. **A choice whose variants are phrases that say what they are, share no
+   word, and would stutter with one → `@`.** `@newest first`, `@by name`,
+   `@no auth`, where a word would only repeat (`(no auth) auth`) or add
+   nothing (`(by name) order`). Read `@by name` alone: if it says nothing to
+   someone reading the call cold, give it a word.
+
+When in doubt, use a shape: a word costs one word, while an unclear `@`
+makes every reader work it out.
+
 ### Naming methods
 
 Name a method after what the caller wants done, not after the record it
@@ -596,7 +658,7 @@ and base64 are checked in Rust.
 | `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
-| a `RECORD` | `{ path "a", revision 3 }`, fields in any order; `name: value` when the value is a word |
+| a `RECORD` | `{ path "a", revision 3, hidden, (any) case, @by name }`, each field in its shape, in any order; `name: value` when the value is a word |
 | a `CHOICE` | the variant's shape filled in: `dark`, `custom hue 0.5` |
 | a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 

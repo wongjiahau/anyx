@@ -66,11 +66,7 @@ pub enum Entry {
         value: Value,
         span: Span,
     },
-    Field {
-        name: Spanned<String>,
-        value: Value,
-        span: Span,
-    },
+    Value(Value),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -124,7 +120,8 @@ impl Value {
 impl Entry {
     pub fn span(&self) -> Span {
         match self {
-            Entry::Map { span, .. } | Entry::Field { span, .. } => *span,
+            Entry::Map { span, .. } => *span,
+            Entry::Value(value) => value.span(),
         }
     }
 }
@@ -198,10 +195,7 @@ impl support::Errors for Entry {
                 support::Errors::errors(key, found);
                 support::Errors::errors(value, found);
             }
-            Entry::Field { name, value, .. } => {
-                support::Errors::errors(name, found);
-                support::Errors::errors(value, found);
-            }
+            Entry::Value(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -366,7 +360,7 @@ pub fn decode_value_call(node: &Node) -> Result<ValueCall, DecodeError> {
 }
 
 pub fn decode_entry(node: &Node) -> Result<Entry, DecodeError> {
-    decode_entry_map(node).or_else(|error| error.or(decode_entry_field(node)))
+    decode_entry_map(node).or_else(|error| error.or(decode_value(node).map(Entry::Value)))
 }
 
 fn decode_entry_map(node: &Node) -> Result<Entry, DecodeError> {
@@ -375,20 +369,6 @@ fn decode_entry_map(node: &Node) -> Result<Entry, DecodeError> {
         key: parts.one(
             |node| support::string(node, |_| true, "a string"),
             "a string",
-        )?,
-        value: parts.one(decode_value, "a value")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_entry_field(node: &Node) -> Result<Entry, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = Entry::Field {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
         )?,
         value: parts.one(decode_value, "a value")?,
         span: node.span,

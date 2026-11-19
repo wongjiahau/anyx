@@ -8,8 +8,8 @@ use crate::response::{self, WrittenOutcome};
 use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
-    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, Method, Parameter, Schema,
-    Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, fill_slots,
+    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, FieldForm, Method, Parameter,
+    Schema, Shape, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written, fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
@@ -41,6 +41,16 @@ struct PendingDefault {
     field: usize,
     node: anyx::Node,
     file: usize,
+}
+
+/// A record's fields, to check once every type is known that no way of
+/// writing an entry leads to two of them.
+struct PendingForms {
+    /// The index of the record's type.
+    r#type: usize,
+    file: usize,
+    /// Where each field's name is written.
+    spans: Vec<Span>,
 }
 
 /// An error of a method, and where its list names it.
@@ -255,6 +265,10 @@ pub(crate) struct Checker<'a> {
     /// Each error, in the order of the schema's errors.
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
+    forms: Vec<PendingForms>,
+    /// Each nullable `@` field, by its record, its index, its file and
+    /// where its name is written, checked once defaults are read.
+    nullable_unnamed: Vec<(usize, usize, usize, Span)>,
     examples: Vec<PendingExamples<'a>>,
     undos: Vec<PendingUndo<'a>>,
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -504,6 +518,7 @@ impl<'a> Checker<'a> {
             schema.methods[pending.method].undone_by = undo;
         }
         self.check_recursion(&schema);
+        self.check_forms(&schema);
         if self.diagnostics.is_empty() {
             self.diagnostics
                 .extend(crate::refinement::check_schema(&schema));
@@ -512,6 +527,7 @@ impl<'a> Checker<'a> {
         }
         if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
+            self.check_nullable_unnamed(&schema);
         }
         // Examples are read against the schema, defaults and all, which
         // must be whole first: a mistake elsewhere would only show up again
@@ -525,6 +541,82 @@ impl<'a> Checker<'a> {
             }
         }
         schema
+    }
+
+    /// An `@` entry leads to one field by its value's outermost form alone,
+    /// so a record value never has to try a field and back out: no two `@`
+    /// fields of a record may share a form, even one variant's shape.
+    fn check_forms(&mut self, schema: &Schema) {
+        for pending in std::mem::take(&mut self.forms) {
+            let TypeKind::Record(fields) = &schema.types[pending.r#type].kind else {
+                continue;
+            };
+            self.file = pending.file;
+            let mut seen: Vec<(Written, usize)> = Vec::new();
+            for (index, field) in fields.iter().enumerate() {
+                if field.form != FieldForm::Unnamed
+                    // A second field of the same name is reported already.
+                    || fields[..index].iter().any(|other| other.name == field.name)
+                {
+                    continue;
+                }
+                let span = pending.spans[index];
+                if schema.nullable_item(&field.r#type).is_some() {
+                    self.nullable_unnamed
+                        .push((pending.r#type, index, pending.file, span));
+                }
+                let Some(forms) = schema.written_forms(&field.r#type) else {
+                    self.error(
+                        span,
+                        format!(
+                            "found the `@` field `{}` of a type parameter; expected a type whose values' form is known, since an `@` entry is found by its form; give the field a shape with words",
+                            field.name
+                        ),
+                    );
+                    continue;
+                };
+                for form in forms {
+                    let clash = seen
+                        .iter()
+                        .find(|(known, _)| known.admits(&form) || form.admits(known));
+                    if let Some((known, other)) = clash {
+                        self.error(
+                            span,
+                            format!(
+                                "found {known} as a value of both `@` fields `{}` and `{}`; expected each `@` field's values written in forms of their own, since an `@` entry is found by its outermost form alone; give one of them a shape with words",
+                                fields[*other].name, field.name
+                            ),
+                        );
+                        break;
+                    }
+                    seen.push((form, index));
+                }
+            }
+        }
+    }
+
+    /// A nullable `@` field defaults to `null`, since an `@` entry is
+    /// written as a value and only leaving it out says `null`.
+    fn check_nullable_unnamed(&mut self, schema: &Schema) {
+        for (record, index, file, span) in std::mem::take(&mut self.nullable_unnamed) {
+            let TypeKind::Record(fields) = &schema.types[record].kind else {
+                continue;
+            };
+            let field = &fields[index];
+            if !matches!(
+                &field.default,
+                Some(crate::value::Value::Variant { shape, .. }) if shape == "null"
+            ) {
+                self.file = file;
+                self.error(
+                    span,
+                    format!(
+                        "found the `@` field `{}` of a nullable type without `DEFAULT null`; expected `DEFAULT null`, since an `@` entry is written as a value and leaving it out is how a value says `null`",
+                        field.name
+                    ),
+                );
+            }
+        }
     }
 
     /// Reads each field's `DEFAULT` as a value of the field's type. A
@@ -1225,38 +1317,157 @@ impl<'a> Checker<'a> {
 
     fn fields(&mut self, record: usize, fields: &[ast::Field]) -> Vec<Field> {
         let mut checked: Vec<Field> = Vec::new();
+        let mut spans = Vec::new();
         for field in fields {
-            self.check_words(&field.name, "a field");
-            if checked.iter().any(|known| known.name == field.name.value) {
+            let (field, span) = self.field(record, checked.len(), field);
+            if checked.iter().any(|known| known.name == field.name) {
                 self.error(
-                    field.name.span,
+                    span,
                     format!(
                         "found a second field named `{}`; expected each field once; rename or remove one of them",
-                        field.name.value
+                        field.name
                     ),
                 );
             }
-            let r#type = match &field.r#type {
-                ast::FieldType::Defaulted(defaulted) => {
-                    let (r#type, node) = self.defaulted(defaulted);
-                    self.defaults.push(PendingDefault {
-                        r#type: record,
-                        field: checked.len(),
-                        node: node.clone(),
-                        file: self.file,
-                    });
-                    r#type
-                }
-                ast::FieldType::Type(r#type) => self.r#type(r#type),
-            };
-            checked.push(Field {
-                doc: doc(&field.doc),
-                name: field.name.value.clone(),
-                r#type,
-                default: None,
-            });
+            checked.push(field);
+            spans.push(span);
         }
+        self.forms.push(PendingForms {
+            r#type: record,
+            file: self.file,
+            spans,
+        });
         checked
+    }
+
+    /// A field, and the span of its name. Every field is a shape: words
+    /// alone are a checkbox, `@(order: Order)` a field written as its value
+    /// alone, and any other shape holds the field's type in its one slot.
+    fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
+        let (shape, default) = match field {
+            ast::Field::Shape(shape) => (shape, None),
+            ast::Field::Defaulted { shape, default, .. } => (shape, Some(default)),
+        };
+        let (name, arguments) = match shape {
+            ast::FieldShape::Unnamed { doc, parameter, .. } => {
+                self.check_words(&parameter.name, "a field");
+                if let Some(node) = default {
+                    self.pending_default(record, index, node);
+                }
+                let field = Field {
+                    doc: self::doc(doc),
+                    name: parameter.name.value.clone(),
+                    r#type: self.r#type(&parameter.r#type),
+                    default: None,
+                    form: FieldForm::Unnamed,
+                };
+                return (field, parameter.name.span);
+            }
+            ast::FieldShape::Words {
+                name, arguments, ..
+            } => (name, arguments),
+        };
+        let mut slots = arguments.iter().peekable();
+        // A doc fills the call's first slot, before the first word.
+        let doc = match (name.parts.first(), slots.peek()) {
+            (Some(NamePart::Slot), Some(ast::FieldSlot::Doc(doc))) => {
+                slots.next();
+                Some(doc.value.value.clone())
+            }
+            _ => None,
+        };
+        let slots: Vec<&ast::FieldSlot> = slots.collect();
+        let mut name = name.clone();
+        if doc.is_some() {
+            name.parts.remove(0);
+            name.text = name.text.trim_start_matches('_').trim_start().to_string();
+        }
+        let words = spanned_words(&name);
+        self.check_words(&words, "a field");
+        let mut defaults: Vec<&anyx::Node> = Vec::new();
+        let r#type = match slots.as_slice() {
+            [] => {
+                let boolean = self
+                    .types
+                    .iter()
+                    .position(|known| known.name == "Boolean" && known.file == self.prelude_file)
+                    .map_or(Type::Text, Type::Named);
+                if default.is_some() {
+                    self.error(
+                        name.span,
+                        format!(
+                            "found a `DEFAULT` for the checkbox `{}`; expected none, since a checkbox is `false` when left out",
+                            name.text
+                        ),
+                    );
+                }
+                let field = Field {
+                    doc,
+                    name: words.value,
+                    r#type: boolean,
+                    default: Some(crate::value::Value::Variant {
+                        shape: "false".into(),
+                        arguments: Vec::new(),
+                    }),
+                    form: FieldForm::Checkbox,
+                };
+                return (field, name.span);
+            }
+            [ast::FieldSlot::Type(ast::FieldType::Type(r#type))] => self.r#type(r#type),
+            [ast::FieldSlot::Type(ast::FieldType::Defaulted(defaulted))] => {
+                let (r#type, node) = self.defaulted(defaulted);
+                defaults.push(node);
+                r#type
+            }
+            [ast::FieldSlot::Doc(doc)] => {
+                self.error(
+                    doc.span,
+                    "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it",
+                );
+                Type::Text
+            }
+            _ => {
+                self.error(
+                    name.span,
+                    format!(
+                        "found the field `{}` with {} slots; expected one, holding the field's type; to hold several values, give the slot a record or a choice",
+                        name.text,
+                        slots.len()
+                    ),
+                );
+                Type::Text
+            }
+        };
+        defaults.extend(default);
+        if defaults.len() > 1 {
+            self.error(
+                name.span,
+                format!(
+                    "found two defaults for the field `{}`; expected one, after the shape or after the type",
+                    name.text
+                ),
+            );
+        }
+        if let Some(node) = defaults.first() {
+            self.pending_default(record, index, node);
+        }
+        let field = Field {
+            doc,
+            name: words.value,
+            r#type,
+            default: None,
+            form: FieldForm::Shape(name.text.clone()),
+        };
+        (field, name.span)
+    }
+
+    fn pending_default(&mut self, record: usize, index: usize, node: &anyx::Node) {
+        self.defaults.push(PendingDefault {
+            r#type: record,
+            field: index,
+            node: node.clone(),
+            file: self.file,
+        });
     }
 
     fn variants(&mut self, variants: &[ast::Variant]) -> Vec<Shaped> {

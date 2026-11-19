@@ -95,11 +95,79 @@ pub enum TypeKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Field {
     pub doc: Option<String>,
+    /// Its words, which name it in generated code and in conditions:
+    /// `path`, `hidden`, `changed more than ago`; for an `@` field, its
+    /// parameter's name.
     pub name: String,
     pub r#type: Type,
     /// The value supplied when the field is omitted. Without a default the
     /// field is required, including when its type admits `null`.
     pub default: Option<crate::value::Value>,
+    pub form: FieldForm,
+}
+
+/// A value's outermost form, which finds the `@` field an entry fills:
+/// `@newest first` is the call `newest first`, `@"src"` a string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Written {
+    /// A call of this shape, such as `changed within _` or `hidden`.
+    Call(String),
+    String,
+    Number,
+    List,
+    Braces,
+    Duration,
+}
+
+impl std::fmt::Display for Written {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Written::Call(shape) => write!(f, "`{shape}`"),
+            Written::String => f.write_str("a string"),
+            Written::Number => f.write_str("a number"),
+            Written::List => f.write_str("a list `[…]`"),
+            Written::Braces => f.write_str("braces `{…}`"),
+            Written::Duration => f.write_str("a duration"),
+        }
+    }
+}
+
+impl Written {
+    /// Whether an entry written as `found` may be a value of a type
+    /// written as `self`, or the two clash as `@` fields: the same form, or
+    /// a variant shaped like a duration against a `Duration`.
+    pub fn admits(&self, found: &Written) -> bool {
+        match (self, found) {
+            (Written::Duration, Written::Call(shape)) => crate::time::is_duration_shape(shape),
+            _ => self == found,
+        }
+    }
+
+    /// A node's outermost form, `None` for one no value is written as.
+    pub fn of(node: &anyx::Node) -> Option<Written> {
+        Some(match &node.kind {
+            anyx::NodeKind::Number(_) => Written::Number,
+            anyx::NodeKind::String(_) => Written::String,
+            anyx::NodeKind::Brackets(_) => Written::List,
+            anyx::NodeKind::Braces(_) => Written::Braces,
+            anyx::NodeKind::Call(call) => Written::Call(call.name_text()),
+            _ => return None,
+        })
+    }
+}
+
+/// How a record value writes a field.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldForm {
+    /// Its shape with its value in the one slot: `path _` for
+    /// `path: Text`, `_ case`, `at least _ bytes`.
+    Shape(String),
+    /// Its words alone, for `true`: `hidden`. Its type is `Boolean`, and
+    /// it is `false` when left out.
+    Checkbox,
+    /// `@` and its value, `@newest first`, found by the value's outermost
+    /// form. The field's name is its parameter's.
+    Unnamed,
 }
 
 /// A call's shape: words with a typed slot between or around them, such as
@@ -630,6 +698,67 @@ impl Schema {
             }
         }
         underlying
+    }
+
+    /// `item` for the nullable `item?`.
+    pub fn nullable_item<'t>(&'t self, r#type: &'t Type) -> Option<&'t Type> {
+        match self.underlying(r#type) {
+            Type::Generic(index, arguments) if self.types[*index].name == "_ ?" => {
+                arguments.first()
+            }
+            _ => None,
+        }
+    }
+
+    /// The field of `fields` that an entry of this call shape fills, as in
+    /// `path _`, `_ case` or the checkbox `hidden`; `@ _` is found by its
+    /// value's form instead, with [`Schema::unnamed_field`].
+    pub fn shaped_field(&self, fields: &[Field], shape: &str) -> Option<usize> {
+        fields.iter().position(|field| match &field.form {
+            FieldForm::Shape(text) => shape == text,
+            FieldForm::Checkbox => shape == field.name,
+            FieldForm::Unnamed => false,
+        })
+    }
+
+    /// The `@` field of `fields` whose values are written in the form
+    /// `found`. The schema checker makes sure at most one is.
+    pub fn unnamed_field(&self, fields: &[Field], found: &Written) -> Option<usize> {
+        fields.iter().position(|field| {
+            field.form == FieldForm::Unnamed
+                && self
+                    .written_forms(&field.r#type)
+                    .is_some_and(|forms| forms.iter().any(|known| known.admits(found)))
+        })
+    }
+
+    /// The forms a value of `type` is written in, which tell an `@`
+    /// field's value from other entries of a record: a variant by its shape,
+    /// and other values by their kind. A nullable type is written as its
+    /// item, since leaving the field out is `null`. `None` for a type
+    /// parameter, whose form isn't known.
+    pub fn written_forms(&self, r#type: &Type) -> Option<Vec<Written>> {
+        if let Some(item) = self.nullable_item(r#type) {
+            return self.written_forms(item);
+        }
+        Some(match self.underlying(r#type) {
+            Type::Text | Type::Bytes | Type::Instant => vec![Written::String],
+            Type::Integer | Type::Float => vec![Written::Number],
+            Type::Duration => vec![Written::Duration],
+            Type::List(_) => vec![Written::List],
+            Type::Map(_) => vec![Written::Braces],
+            Type::Parameter(_) => return None,
+            underlying => match self.instance(underlying).map(|(_, kind)| kind) {
+                Some(kind) => match kind.as_ref() {
+                    TypeKind::Choice(variants) => variants
+                        .iter()
+                        .map(|variant| Written::Call(variant.shape.text.clone()))
+                        .collect(),
+                    _ => vec![Written::Braces],
+                },
+                None => vec![Written::Braces],
+            },
+        })
     }
 
     /// The method a request calls by `full_name`, such as `files/read _`,

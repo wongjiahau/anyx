@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyx::{Expression, Item, Node, NodeKind, Span, TokenKind};
 use anyx_protocol::{
     Problem, Schema, Value,
-    schema::{Type, TypeKind},
+    schema::{Field, FieldForm, Type, TypeKind, Written},
 };
 
 use crate::{Interpreter, at};
@@ -528,35 +528,31 @@ impl Compiler<'_> {
                 "empty braces have no type of their own; annotate them with `AS: Type`",
             ));
         }
-        let mut fields = Vec::new();
+        // Each entry is a map's key and value, or a record's entry: a call
+        // whose shape finds its field, as in `path _`, `hidden` or `@ _`.
+        let mut fields: Vec<(String, &Node)> = Vec::new();
+        let mut entry_calls: Vec<&anyx::Call> = Vec::new();
         let mut is_map = false;
         for entry in entries {
             let NodeKind::Call(call) = &entry.kind else {
                 return Err(self.error(entry.span, "expected a record field or map entry"));
             };
-            let (name, value) = if call.name_text() == "_ _" && call.arguments.len() == 2 {
+            if call.name_text() == "_ _" && call.arguments.len() == 2 {
                 let NodeKind::String(key) = &call.arguments[0].kind else {
                     return Err(self.error(entry.span, "expected a text map key"));
                 };
                 is_map = true;
-                (key.value.clone(), &call.arguments[1])
-            } else if call.arguments.len() == 1 && call.name.last() == Some(&anyx::NamePart::Slot) {
-                (
-                    call.name_text().trim_end_matches(" _").to_string(),
-                    &call.arguments[0],
-                )
+                let key = key.value.clone();
+                if fields.iter().any(|(previous, _)| *previous == key) {
+                    return Err(self.error(entry.span, format!("duplicate key `{key}`")));
+                }
+                fields.push((key, &call.arguments[1]));
             } else {
-                return Err(self.error(entry.span, "expected one value per record field"));
-            };
-            if fields.iter().any(|(previous, _)| previous == &name) {
-                return Err(self.error(entry.span, format!("duplicate field or key `{name}`")));
+                entry_calls.push(call);
             }
-            fields.push((name, value));
         }
         if is_map {
-            if entries.iter().any(
-                |entry| !matches!(&entry.kind, NodeKind::Call(call) if call.name_text() == "_ _"),
-            ) {
+            if !entry_calls.is_empty() {
                 return Err(self.error(span, "cannot mix record fields and map keys"));
             }
             let item = match expected.map(|expected| schema.underlying(expected)) {
@@ -590,13 +586,14 @@ impl Compiler<'_> {
                 let TypeKind::Record(record) = &definition.kind else {
                     return None;
                 };
+                let found: Vec<Option<usize>> = entry_calls
+                    .iter()
+                    .map(|call| record_entry(schema, record, call))
+                    .collect();
                 (definition.parameters.is_empty()
-                    && fields
-                        .iter()
-                        .all(|(name, _)| record.iter().any(|field| field.name == *name))
-                    && record.iter().all(|field| {
-                        field.default.is_some()
-                            || fields.iter().any(|(name, _)| field.name == *name)
+                    && found.iter().all(Option::is_some)
+                    && record.iter().enumerate().all(|(index, field)| {
+                        field.default.is_some() || found.contains(&Some(index))
                     }))
                 .then_some(Type::Named(index))
             })
@@ -617,16 +614,54 @@ impl Compiler<'_> {
         let TypeKind::Record(record) = kind.as_ref() else {
             return Err(self.error(span, "expected a record type"));
         };
-        let mut values = fields
-            .into_iter()
-            .map(|(name, node)| {
-                let field = record
-                    .iter()
-                    .find(|field| field.name == name)
-                    .ok_or_else(|| self.error(node.span, format!("unknown field `{name}`")))?;
-                Ok((name, self.argument(schema, node, Some(&field.r#type))?))
-            })
-            .collect::<Result<Vec<_>, Problem>>()?;
+        let mut values: Vec<(String, Argument)> = Vec::new();
+        for (entry, call) in entries.iter().zip(&entry_calls) {
+            let (field, value) = match record_entry(schema, record, call) {
+                Some(index) => {
+                    let field = &record[index];
+                    let value = match field.form {
+                        FieldForm::Checkbox => Argument {
+                            r#type: field.r#type.clone(),
+                            value: ExpressionValue::Literal(Value::Variant {
+                                shape: "true".into(),
+                                arguments: Vec::new(),
+                            }),
+                        },
+                        _ => self.field_argument(schema, &call.arguments[0], &field.r#type)?,
+                    };
+                    (field, value)
+                }
+                // An `@` entry whose value is a call of the shell's, found
+                // by its type.
+                None if call.name_text() == "@ _" => {
+                    let value = self.argument(schema, &call.arguments[0], None)?;
+                    let field = record
+                        .iter()
+                        .find(|field| {
+                            field.form == FieldForm::Unnamed
+                                && (field.r#type == value.r#type
+                                    || schema.nullable_item(&field.r#type) == Some(&value.r#type))
+                        })
+                        .ok_or_else(|| {
+                            self.error(
+                                entry.span,
+                                "expected a value of one of the record's `@` fields",
+                            )
+                        })?;
+                    let value = self.check(schema, entry.span, value, Some(&field.r#type))?;
+                    (field, value)
+                }
+                None => {
+                    return Err(
+                        self.error(entry.span, format!("unknown field `{}`", call.name_text()))
+                    );
+                }
+            };
+            if values.iter().any(|(name, _)| *name == field.name) {
+                return Err(self.error(entry.span, format!("duplicate field `{}`", field.name)));
+            }
+            values.push((field.name.clone(), value));
+        }
         for field in record {
             if !values.iter().any(|(name, _)| *name == field.name) {
                 if let Some(value) = &field.default {
@@ -637,7 +672,7 @@ impl Compiler<'_> {
                             value: ExpressionValue::Literal(value.clone()),
                         },
                     ));
-                } else if field.default.is_none() {
+                } else {
                     return Err(
                         self.error(span, format!("missing required field `{}`", field.name))
                     );
@@ -647,6 +682,28 @@ impl Compiler<'_> {
         Ok(Argument {
             r#type,
             value: ExpressionValue::Record(values),
+        })
+    }
+
+    /// A field's value: a nullable field's may be written as its item,
+    /// `max depth 3` for `Integer?`.
+    fn field_argument(
+        &self,
+        schema: &Schema,
+        node: &Node,
+        r#type: &Type,
+    ) -> Result<Argument, Problem> {
+        let full = self.argument(schema, node, Some(r#type));
+        let Some(item) = schema.nullable_item(r#type) else {
+            return full;
+        };
+        if full.is_ok() {
+            return full;
+        }
+        let item = self.argument(schema, node, Some(item))?;
+        Ok(Argument {
+            r#type: r#type.clone(),
+            value: ExpressionValue::Variant("value _".into(), vec![item]),
         })
     }
 
@@ -809,4 +866,13 @@ fn transfer(
         }
         _ => r#type.clone(),
     })
+}
+
+/// The field of `record` a braces entry fills, by its shape, or for `@`
+/// by its value's outermost form.
+fn record_entry(schema: &Schema, record: &[Field], call: &anyx::Call) -> Option<usize> {
+    match call.name_text().as_str() {
+        "@ _" => schema.unnamed_field(record, &Written::of(&call.arguments[0])?),
+        shape => schema.shaped_field(record, shape),
+    }
 }

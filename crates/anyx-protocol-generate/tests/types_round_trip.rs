@@ -127,7 +127,7 @@ fn a_field_left_out_reaches_the_server_with_its_default() {
     ));
     assert_eq!(
         response,
-        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", every: null, times 3, seen {} }]\n"
+        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} }]\n"
     );
 }
 

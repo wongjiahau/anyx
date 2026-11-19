@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::codec::{DURATION_EXAMPLE, INSTANT_EXAMPLE, Mismatch};
 use crate::request_grammar::{Entry, Value as Syntax};
-use crate::schema::{Field, Schema, Shape, Type, TypeKind};
+use crate::schema::{Field, FieldForm, Schema, Shape, Type, TypeKind, Written};
 use crate::value::Value;
 
 fn describe(value: &Syntax) -> String {
@@ -108,7 +108,16 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
             let mut values = BTreeMap::new();
             for entry in &entries.value {
                 let Entry::Map { key, value, span } = entry else {
-                    return Err(Mismatch { span: entry.span(), message: "found a record field; expected a map entry with a string key, as in `\"key\": …`".into() });
+                    let found = match entry {
+                        Entry::Value(value) => describe(value),
+                        Entry::Map { .. } => unreachable!(),
+                    };
+                    return Err(Mismatch {
+                        span: entry.span(),
+                        message: format!(
+                            "found {found}; expected a map entry, a string key and its value, as in `\"key\": …`"
+                        ),
+                    });
                 };
                 let key = &key.value.value;
                 if values.contains_key(key) {
@@ -239,33 +248,20 @@ fn fields_value(
 ) -> Result<BTreeMap<String, Value>, Mismatch> {
     let mut values = BTreeMap::new();
     for entry in entries {
-        let Entry::Field { name, value, span } = entry else {
-            return Err(Mismatch { span: entry.span(), message: "found a map entry; expected a record field written as its name and value, as in `name: …`".into() });
-        };
-        let name = &name.value;
-        let Some(field) = fields.iter().find(|field| field.name == *name) else {
+        let Entry::Value(entry) = entry else {
             return Err(Mismatch {
-                span: *span,
-                message: format!(
-                    "found the field `{name}`; expected one of {}",
-                    fields
-                        .iter()
-                        .map(|field| format!("`{}`", field.name))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
+                span: entry.span(),
+                message: "found a map entry; expected a record's field, as in `name …`".into(),
             });
         };
+        let (field, value) = field_entry(schema, fields, entry)?;
+        let name = &field.name;
         if values.contains_key(name) {
             return Err(Mismatch {
-                span: *span,
+                span: entry.span(),
                 message: format!("found the field `{name}` twice; expected each field once"),
             });
         }
-        let value = decode(schema, &field.r#type, value).map_err(|m| Mismatch {
-            message: format!("in `{name}`: {}", m.message),
-            ..m
-        })?;
         values.insert(name.clone(), value);
     }
     for field in fields {
@@ -288,6 +284,113 @@ fn fields_value(
         });
     }
     Ok(values)
+}
+
+/// The field an entry of a record fills, by the entry's shape alone:
+/// `path "a"` is the shape `path _`, `hidden` a checkbox, and `@newest first`
+/// the `@` field whose values are written in the form of `newest first`.
+/// The schema checker makes sure at most one fits, so nothing is tried.
+pub(crate) fn entry_field(schema: &Schema, fields: &[Field], entry: &Syntax) -> Option<usize> {
+    let Syntax::Call(call) = entry else {
+        return None;
+    };
+    match call.name.text.as_str() {
+        "@ _" => schema.unnamed_field(fields, &written(&call.arguments[0])),
+        shape => schema.shaped_field(fields, shape),
+    }
+}
+
+/// The field an entry of a record fills, and its value.
+fn field_entry<'f>(
+    schema: &Schema,
+    fields: &'f [Field],
+    entry: &Syntax,
+) -> Result<(&'f Field, Value), Mismatch> {
+    if let Some(index) = entry_field(schema, fields, entry) {
+        let field = &fields[index];
+        let within = |m: Mismatch| Mismatch {
+            message: format!("in `{}`: {}", field.name, m.message),
+            ..m
+        };
+        let value = match (&field.form, entry) {
+            (FieldForm::Checkbox, _) => Value::Variant {
+                shape: "true".into(),
+                arguments: Vec::new(),
+            },
+            (_, Syntax::Call(call)) => {
+                field_value(schema, &field.r#type, &call.arguments[0]).map_err(within)?
+            }
+            _ => unreachable!("a field is found by its entry's call"),
+        };
+        return Ok((field, value));
+    }
+    // `any case` for the shape `_ case`: the value before the words needs
+    // its parentheses, or it joins them.
+    let hint = match entry {
+        Syntax::Call(call) if call.arguments.is_empty() => fields.iter().find_map(|field| {
+            let FieldForm::Shape(shape) = &field.form else {
+                return None;
+            };
+            let words = shape.strip_prefix("_ ")?;
+            let value = call.name.text.strip_suffix(words)?.strip_suffix(' ')?;
+            Some(format!(
+                "; a value before a field's words goes in parentheses: `({value}) {words}`"
+            ))
+        }),
+        _ => None,
+    };
+    Err(Mismatch {
+        span: entry.span(),
+        message: format!(
+            "found {}; expected a field: {}{}",
+            describe(entry),
+            fields
+                .iter()
+                .map(|field| match &field.form {
+                    FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
+                    FieldForm::Checkbox => format!("`{}`", field.name),
+                    FieldForm::Unnamed => format!("`@…` for `{}`", field.name),
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            hint.unwrap_or_default()
+        ),
+    })
+}
+
+/// A field's value. A nullable field's value may be written as its item:
+/// `max depth 3` for `max depth: Integer? DEFAULT null`.
+fn field_value(schema: &Schema, r#type: &Type, value: &Syntax) -> Result<Value, Mismatch> {
+    let Some(item) = schema.nullable_item(r#type) else {
+        return decode(schema, r#type, value);
+    };
+    if let Syntax::Call(call) = value
+        && (call.name.text == "null" || call.name.text == "value _")
+    {
+        return decode(schema, r#type, value);
+    }
+    let item = decode(schema, item, value)?;
+    let nullable = Value::Variant {
+        shape: "value _".into(),
+        arguments: vec![item],
+    };
+    crate::refinement::validate(schema, r#type, &nullable).map_err(|message| Mismatch {
+        span: value.span(),
+        message,
+    })?;
+    Ok(nullable)
+}
+
+/// How `value` is written, to find the `@` field it fills.
+fn written(value: &Syntax) -> Written {
+    match value {
+        Syntax::Integer(_) | Syntax::Float(_) => Written::Number,
+        Syntax::Text(_) => Written::String,
+        Syntax::List(_) => Written::List,
+        Syntax::Braces(_) => Written::Braces,
+        Syntax::Duration(duration) => Written::Call(duration.name.text.clone()),
+        Syntax::Call(call) => Written::Call(call.name.text.clone()),
+    }
 }
 
 // Preserve the neutral call reading: `(5 minutes)` may be a choice's

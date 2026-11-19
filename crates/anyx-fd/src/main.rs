@@ -10,7 +10,7 @@ request on standard input and writes the response on standard output.
 In the anyx shell, bring it in with:
 
     USE fd FROM COMMAND \"anyx-fd\",
-    fd / find \"\\\\.rs$\" with [(file) only],
+    fd / find \"\\\\.rs$\" with { only [file] },
 
 Send `SCHEMA` for the guide to its methods.
 ";

@@ -67,6 +67,19 @@ pub(crate) fn units() -> &'static [Unit] {
 }
 
 /// Milliseconds since the Unix epoch, rounded down: what an instant keeps.
+/// Whether `shape` is a duration's, a unit after each slot: `_ hour`,
+/// `_ hours _ minutes`.
+pub(crate) fn is_duration_shape(shape: &str) -> bool {
+    let words: Vec<&str> = shape.split(' ').collect();
+    words.len() % 2 == 0
+        && words.chunks(2).all(|pair| {
+            pair[0] == "_"
+                && units()
+                    .iter()
+                    .any(|unit| unit.singular == pair[1] || unit.plural == pair[1])
+        })
+}
+
 pub(crate) fn milliseconds_since_epoch(instant: SystemTime) -> Option<i64> {
     match instant.duration_since(UNIX_EPOCH) {
         Ok(after) => i64::try_from(after.as_millis()).ok(),

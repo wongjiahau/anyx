@@ -96,6 +96,7 @@ fn a_generic_type_reads_with_its_parameters_and_each_use_with_its_arguments() {
             name: "items".to_string(),
             r#type: Type::List(Box::new(Type::Parameter("item".to_string()))),
             default: None,
+            form: anyx_protocol::schema::FieldForm::Shape("items _".to_string()),
         }
     );
     assert_eq!(fields[2].default, Some(Value::Integer(20)));

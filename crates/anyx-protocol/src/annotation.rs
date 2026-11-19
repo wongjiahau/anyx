@@ -51,11 +51,11 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
             if let Some(values) = map_values {
                 return same_type(schema, &values).map(|value| Type::Map(Box::new(value)));
             }
-            let names = entries
+            let entries = entries
                 .value
                 .iter()
                 .map(|entry| match entry {
-                    Entry::Field { name, .. } => Some(name.value.as_str()),
+                    Entry::Value(value) => Some(value),
                     _ => None,
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -63,13 +63,20 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
                 let TypeKind::Record(fields) = &definition.kind else {
                     return false;
                 };
-                definition.parameters.is_empty()
-                    && names
-                        .iter()
-                        .all(|name| fields.iter().any(|field| field.name == *name))
-                    && fields.iter().all(|field| {
-                        field.default.is_some() || names.contains(&field.name.as_str())
-                    })
+                if !definition.parameters.is_empty() {
+                    return false;
+                }
+                let Some(filled) = entries
+                    .iter()
+                    .map(|entry| crate::request::entry_field(schema, fields, entry))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    return false;
+                };
+                fields
+                    .iter()
+                    .enumerate()
+                    .all(|(index, field)| field.default.is_some() || filled.contains(&index))
             }))
         }
         Syntax::Duration(duration) => {
