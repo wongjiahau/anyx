@@ -71,7 +71,7 @@ pub(crate) fn units() -> &'static [Unit] {
 /// `_ hours _ minutes`.
 pub(crate) fn is_duration_shape(shape: &str) -> bool {
     let words: Vec<&str> = shape.split(' ').collect();
-    words.len() % 2 == 0
+    words.len().is_multiple_of(2)
         && words.chunks(2).all(|pair| {
             pair[0] == "_"
                 && units()
