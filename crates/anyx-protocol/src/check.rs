@@ -1517,6 +1517,7 @@ impl<'a> Checker<'a> {
         }
         Shape {
             text: name.text.clone(),
+            parts: crate::schema::ShapePart::of(&name.parts),
             parameters: checked,
         }
     }

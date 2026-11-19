@@ -111,7 +111,7 @@ pub struct Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Written {
     /// A call of this shape, such as `changed within _` or `hidden`.
-    Call(String),
+    Call(Vec<ShapePart>),
     String,
     Number,
     List,
@@ -122,7 +122,7 @@ pub enum Written {
 impl std::fmt::Display for Written {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Written::Call(shape) => write!(f, "`{shape}`"),
+            Written::Call(shape) => write!(f, "`{}`", ShapePart::text(shape)),
             Written::String => f.write_str("a string"),
             Written::Number => f.write_str("a number"),
             Written::List => f.write_str("a list `[…]`"),
@@ -138,7 +138,7 @@ impl Written {
     /// a variant shaped like a duration against a `Duration`.
     pub fn admits(&self, found: &Written) -> bool {
         match (self, found) {
-            (Written::Duration, Written::Call(shape)) => crate::time::is_duration_shape(shape),
+            (Written::Duration, Written::Call(parts)) => crate::time::is_duration_shape(parts),
             _ => self == found,
         }
     }
@@ -150,7 +150,7 @@ impl Written {
             anyx::NodeKind::String(_) => Written::String,
             anyx::NodeKind::Brackets(_) => Written::List,
             anyx::NodeKind::Braces(_) => Written::Braces,
-            anyx::NodeKind::Call(call) => Written::Call(call.name_text()),
+            anyx::NodeKind::Call(call) => Written::Call(ShapePart::of(&call.name)),
             _ => return None,
         })
     }
@@ -176,15 +176,51 @@ pub enum FieldForm {
 pub struct Shape {
     /// The words with `_` for each slot: `conflict at revision _`.
     pub text: String,
+    /// Its words and slots, in order, as the parser read them.
+    pub parts: Vec<ShapePart>,
     pub parameters: Vec<Parameter>,
 }
 
 impl Shape {
     /// The words alone, which name it: `conflict at revision`.
     pub fn words(&self) -> String {
-        self.text
-            .split(' ')
-            .filter(|word| *word != "_")
+        self.parts
+            .iter()
+            .filter_map(|part| match part {
+                ShapePart::Word(word) => Some(word.as_str()),
+                ShapePart::Slot => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// A word or a slot of a shape, from a call's name as the parser read it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ShapePart {
+    Word(String),
+    Slot,
+}
+
+impl ShapePart {
+    /// The parts of a call's name, without their spans.
+    pub fn of(name: &[anyx::NamePart]) -> Vec<ShapePart> {
+        name.iter()
+            .map(|part| match part {
+                anyx::NamePart::Word { text, .. } => ShapePart::Word(text.clone()),
+                anyx::NamePart::Slot => ShapePart::Slot,
+            })
+            .collect()
+    }
+
+    /// The words with `_` for each slot, joined by spaces: `changed within _`.
+    pub fn text(parts: &[ShapePart]) -> String {
+        parts
+            .iter()
+            .map(|part| match part {
+                ShapePart::Word(word) => word.as_str(),
+                ShapePart::Slot => "_",
+            })
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -427,6 +463,7 @@ impl TypeKind {
                         doc: variant.doc.clone(),
                         shape: Shape {
                             text: variant.shape.text.clone(),
+                            parts: variant.shape.parts.clone(),
                             parameters: variant
                                 .shape
                                 .parameters
@@ -461,7 +498,7 @@ pub const SCHEMA_FILES: &str = "SCHEMA FILES";
 pub fn introspection() -> &'static Method {
     static METHOD: std::sync::LazyLock<Method> = std::sync::LazyLock::new(|| {
         built_in(
-            INTROSPECTION,
+            &["SCHEMA"],
             "The guide to this protocol and its schema.",
             "guide",
             Type::Text,
@@ -480,7 +517,7 @@ pub(crate) fn built_ins(types: &[TypeDefinition]) -> Vec<Method> {
     vec![
         introspection().clone(),
         built_in(
-            SCHEMA_FILES,
+            &["SCHEMA", "FILES"],
             "The files of this protocol's schema, the entry first, then each file it imports.",
             "files",
             Type::List(Box::new(Type::Named(schema_file))),
@@ -488,11 +525,15 @@ pub(crate) fn built_ins(types: &[TypeDefinition]) -> Vec<Method> {
     ]
 }
 
-fn built_in(words: &str, doc: &str, returns: &str, r#type: Type) -> Method {
+fn built_in(words: &[&str], doc: &str, returns: &str, r#type: Type) -> Method {
     Method {
         doc: Some(doc.to_string()),
         shape: Shape {
-            text: words.to_string(),
+            text: words.join(" "),
+            parts: words
+                .iter()
+                .map(|word| ShapePart::Word(word.to_string()))
+                .collect(),
             parameters: Vec::new(),
         },
         returns: Some(Parameter {
@@ -763,7 +804,7 @@ impl Schema {
                 Some(kind) => match kind.as_ref() {
                     TypeKind::Choice(variants) => variants
                         .iter()
-                        .map(|variant| Written::Call(variant.shape.text.clone()))
+                        .map(|variant| Written::Call(variant.shape.parts.clone()))
                         .collect(),
                     _ => vec![Written::Braces],
                 },

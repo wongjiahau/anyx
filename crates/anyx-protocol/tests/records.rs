@@ -122,6 +122,28 @@ fn a_value_before_words_without_parentheses_gets_a_hint() {
 }
 
 #[test]
+fn a_duration_finds_its_at_field_by_its_units() {
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+        CHOICE Order { newest first, by name },
+        RECORD Wait { @(wait: Duration) DEFAULT @1 seconds, @(order: Order) DEFAULT @newest first },
+        METHOD find (wait: Wait) RETURNS (count: Integer),",
+    );
+    for (source, milliseconds) in [
+        ("find { @5 minutes, @by name }", 300_000),
+        ("find { @by name, @1 hours 30 minutes }", 5_400_000),
+        ("find { @1 minute }", 60_000),
+    ] {
+        let calls = decode_request(&schema, source).unwrap_or_else(|error| panic!("{error:?}"));
+        assert_eq!(
+            field(&calls[0].arguments[0], "wait"),
+            &Value::Duration(std::time::Duration::from_millis(milliseconds)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn two_at_fields_may_not_share_a_form() {
     for (fields, clash) in [
         (

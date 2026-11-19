@@ -216,7 +216,14 @@ function formOf(node: Syntax): string {
     default: return `call:${parts(node).map(t => t.tag === "word" ? t.text : "_").join(" ")}`;
   }
 }
-const durationShape = /^call:_ (days?|hours?|minutes?|seconds?|milliseconds?)( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$/;
+// Whether a node is a duration's call, a unit after each slot: `_ hour`,
+// `_ hours _ minutes`. Read from its parts, as the parser gave them.
+function isDurationCall(node: Syntax): boolean {
+  const p = parts(node);
+  return p.length > 0 && p.length % 2 === 0 && p.every((t, i) => i % 2 === 0
+    ? t.tag !== "word"
+    : t.tag === "word" && durationUnits.some(([unit]) => t.text === unit || t.text === `${unit}s`));
+}
 // A field's value from its entry's slots: one value, or an array of one for
 // each slot.
 function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
@@ -474,10 +481,10 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
           const p = parts(entry);
           const shape = p.map(t => t.tag === "word" ? t.text : "_").join(" ");
           const field = shape === "@ _"
-            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && durationShape.test(formOf(p[1])))))
+            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && isDurationCall(p[1]))))
             : def.fields!.find(f => f.form !== "unnamed" && f.wire === shape);
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
-          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter((_, i) => shape.split(" ")[i] === "_"), env);
+          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter(t => t.tag !== "word"), env);
           Object.defineProperty(out, field.name, { value, enumerable: true, writable: true, configurable: true });
         }
         for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }

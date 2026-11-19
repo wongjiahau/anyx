@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Field, FieldForm, Method, Shaped, Type, TypeKind, Written};
+use anyx_protocol::schema::{Field, FieldForm, Method, ShapePart, Shaped, Type, TypeKind, Written};
 
 use crate::names::camel_case;
 use crate::{
@@ -415,7 +415,7 @@ fn native_slots(field: &anyx_protocol::schema::Field) -> String {
 /// How the native codec names a form an `@` field's values are written in.
 fn native_form(form: &Written) -> String {
     match form {
-        Written::Call(shape) => format!("call:{shape}"),
+        Written::Call(shape) => format!("call:{}", ShapePart::text(shape)),
         Written::String => "string".into(),
         Written::Number => "number".into(),
         Written::List => "list".into(),

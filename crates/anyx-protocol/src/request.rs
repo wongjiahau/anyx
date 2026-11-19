@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::codec::{DURATION_EXAMPLE, INSTANT_EXAMPLE, Mismatch};
 use crate::request_grammar::{Entry, Value as Syntax};
-use crate::schema::{Field, FieldForm, Schema, Shape, Type, TypeKind, Written};
+use crate::schema::{Field, FieldForm, Schema, Shape, ShapePart, Type, TypeKind, Written};
 use crate::value::Value;
 
 fn describe(value: &Syntax) -> String {
@@ -403,8 +403,8 @@ fn written(value: &Syntax) -> Written {
         Syntax::Text(_) => Written::String,
         Syntax::List(_) => Written::List,
         Syntax::Braces(_) => Written::Braces,
-        Syntax::Duration(duration) => Written::Call(duration.name.text.clone()),
-        Syntax::Call(call) => Written::Call(call.name.text.clone()),
+        Syntax::Duration(duration) => Written::Call(ShapePart::of(&duration.name.parts)),
+        Syntax::Call(call) => Written::Call(ShapePart::of(&call.name.parts)),
     }
 }
 

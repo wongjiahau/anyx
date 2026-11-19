@@ -27,6 +27,6 @@ touches:
 - Adding a feature to variants alone, or to methods alone. Two shape syntaxes would drift apart.
 
 ## Watch out
-- Open: `1 hour` versus `1 hours`. The singular would be sugar, which needs the owner's approval.
+- A duration is written `1 hours` for now. Accepting the singular would be sugar, which the owner hasn't approved. Optional parts are tracked in #54.
 
 In the code: crates/anyx-protocol/src/check.rs (`shape`, which methods and variants already share), crates/anyx-protocol/src/schema.rs (`Shape`), crates/anyx-protocol/protocol.grammar.anyx, crates/anyx-fd/fd.protocol.anyx (twelve methods that optional parts would make three).
