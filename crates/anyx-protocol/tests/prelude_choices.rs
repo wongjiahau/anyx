@@ -8,6 +8,18 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
     }
 }
 
+fn null_shape() -> anyx_protocol::schema::Shape {
+    let schema = Schema::parse("METHOD f (x: Text?) RETURNS NOTHING").unwrap();
+    let Type::Union(members) = &schema.method("f _").unwrap().shape.parameters[0].r#type else {
+        panic!("`Text?` is a union")
+    };
+    let Type::Variant(shape) = &members[1] else {
+        panic!("`null` is a variant")
+    };
+    assert_eq!(shape.text, "null");
+    *shape.clone()
+}
+
 #[test]
 fn prelude_choices_are_checked_schema_definitions() {
     let schema =
@@ -18,7 +30,8 @@ fn prelude_choices_are_checked_schema_definitions() {
         .iter()
         .position(|d| d.name == "Boolean")
         .unwrap();
-    let nullable = schema.types.iter().position(|d| d.name == "_ ?").unwrap();
+    // `?` is an alias, so it makes no type of its own.
+    assert!(schema.types.iter().all(|d| d.name != "_ ?"));
     let TypeKind::Choice(variants) = &schema.types[boolean].kind else {
         panic!("Boolean is a choice")
     };
@@ -29,19 +42,14 @@ fn prelude_choices_are_checked_schema_definitions() {
             .collect::<Vec<_>>(),
         ["false", "true"]
     );
-    assert_eq!(schema.types[nullable].parameters, ["Item"]);
-    let TypeKind::Choice(variants) = &schema.types[nullable].kind else {
-        panic!("? is a choice")
-    };
-    assert_eq!(
-        variants[1].shape.parameters[0].r#type,
-        Type::Parameter("Item".into())
-    );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
         panic!()
     };
     assert_eq!(fields[0].r#type, Type::Named(boolean));
-    assert_eq!(fields[1].r#type, Type::Generic(nullable, vec![Type::Text]));
+    assert_eq!(
+        fields[1].r#type,
+        Type::Union(vec![Type::Text, Type::Variant(Box::new(null_shape()))])
+    );
     assert_eq!(fields[1].default, Some(variant("null", vec![])));
     assert_eq!(
         schema.files.len(),
@@ -63,16 +71,13 @@ fn nullable_and_omittable_are_independent() {
     assert_eq!(fields["note"], variant("null", vec![]));
     assert_eq!(fields["count"], Value::Integer(0));
     assert_eq!(fields["flag"], variant("false", vec![]));
-    let Value::Record(fields) = decode("{ required: value (\"hello\"), flag: true }").unwrap()
-    else {
+    let Value::Record(fields) = decode("{ required \"hello\", flag: true }").unwrap() else {
         panic!()
     };
-    assert_eq!(
-        fields["required"],
-        variant("value _", vec![Value::Text("hello".into())])
-    );
+    assert_eq!(fields["required"], Value::Text("hello".into()));
     assert_eq!(fields["flag"], variant("true", vec![]));
-    assert!(decode("{ required: value (3) }").is_err());
+    assert!(decode("{ required 3 }").is_err());
+    assert!(decode("{ required: value (\"hello\") }").is_err());
     assert!(decode("{ required: null, count: null }").is_err());
     assert!(Schema::parse("RECORD Example { note: OPTIONAL Text }").is_err());
 }
@@ -103,17 +108,10 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
         value,
         Value::Record([("content".into(), variant("null", vec![]))].into())
     );
-    let value =
-        anyx_protocol::codec::decode_value(&schema, &ty, "{ content: value (\"hello\") }").unwrap();
+    let value = anyx_protocol::codec::decode_value(&schema, &ty, "{ content \"hello\" }").unwrap();
     assert_eq!(
         value,
-        Value::Record(
-            [(
-                "content".into(),
-                variant("value _", vec![Value::Text("hello".into())])
-            )]
-            .into()
-        )
+        Value::Record([("content".into(), Value::Text("hello".into()))].into())
     );
     assert!(
         Schema::parse("RECORD Box of (Item: TYPE) { content (Item) DEFAULT content 3 }").is_err()

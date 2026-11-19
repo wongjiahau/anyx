@@ -36,11 +36,16 @@ entry: ONE OF [
 ],
 
 ## These rules are the schema language's type rules, including generic
-## types. A snapshot test keeps them in step with protocol.anyx.
+## types, but for `UNION`: an annotation names a type its value is written
+## in, and a union's member is told by its form alone. A test keeps them in
+## step with protocol.grammar.anyx.
 type: ONE OF [
-  refined: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
-  list: ANYFIX CALL [WORD "LIST", item: type],
-  map: ANYFIX CALL [WORD "MAP", value: type],
+  refined: refined type,
+  list: list type,
+  map: map type,
   named: reference,
 ],
+refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
+list type: ANYFIX CALL [WORD "LIST", item: type],
+map type: ANYFIX CALL [WORD "MAP", value: type],
 reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],

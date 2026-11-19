@@ -47,7 +47,7 @@ CHOICE Syntax {
     fixed text pattern,
 },
 
-# How `find` searches, as in `{ @glob pattern, hidden, max depth (value 2) }`.
+# How `find` searches, as in `{ @glob pattern, hidden, max depth 2 }`.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {

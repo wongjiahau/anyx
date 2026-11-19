@@ -271,7 +271,7 @@ fn a_field_with_several_slots_takes_a_computed_value_in_each() {
         "PROTOCOL range VERSION 1, RECORD Span { between (Text) and (Integer) or (Integer?) }, METHOD identity (value: Span) RETURNS (value: Span)"
     ).unwrap())).unwrap();
     let execution = interpreter
-        .execute("range / identity { between (example / text) and 2 or (value 3) }")
+        .execute("range / identity { between (example / text) and 2 or 3 }")
         .unwrap();
     assert!(execution.error.is_none(), "{:?}", execution.error);
     let Value::Record(record) = &execution.values[0] else {
@@ -282,14 +282,11 @@ fn a_field_with_several_slots_takes_a_computed_value_in_each() {
         Value::Tuple(vec![
             Value::Text("hello".into()),
             Value::Integer(2),
-            Value::Variant {
-                shape: "value _".into(),
-                arguments: vec![Value::Integer(3)]
-            },
+            Value::Integer(3),
         ])
     );
     let problem = interpreter
-        .execute("range / identity { between \"a\" and \"b\" or (value 3) }")
+        .execute("range / identity { between \"a\" and \"b\" or 3 }")
         .unwrap_err();
     assert!(
         problem.message.contains("expected a whole number"),

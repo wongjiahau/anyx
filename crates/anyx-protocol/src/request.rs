@@ -168,6 +168,24 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
                 TypeKind::Distinct(_) => unreachable!("underlying reads past named types"),
             }
         }
+        (Type::Union(_), _) => match schema.member_written_as(expected, &written(value)) {
+            Some(member) => decode(schema, member, value),
+            None => Err(mismatch(format!(
+                "a value of one of {}",
+                expected
+                    .members()
+                    .iter()
+                    .map(|member| format!("`{}`", schema.type_name(member)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))),
+        },
+        (Type::Variant(shape), _) => variant(
+            schema,
+            &[shape.as_ref()],
+            value,
+            &format!("`{}`", schema.shape_name(shape)),
+        ),
         (Type::Refined(..), _) => unreachable!("underlying removes refinements"),
         (Type::Parameter(name), _) => Err(mismatch(format!(
             "a value of a type in place of the type parameter `{name}`"

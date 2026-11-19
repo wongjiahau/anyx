@@ -91,9 +91,19 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `limit (Integer) DEFAULT limit 50`, or `tags (LIST Text) DEFAULT tags []`.
   Without a default the field must be supplied. A default is checked as an
   entry of its field; parameters cannot have defaults.
-- **Nullability** is the prelude's generic choice `T?`: `null`, or
-  `value (item: Item)`, and a value of it is always written as one of the two:
-  `note (value "hi")`. `note: Text?` is required but admits `null`;
+- **`UNION [A, B, …]`** is a value of one of its members, written as that
+  member writes it, on the wire and in JSON: a value of
+  `UNION [Integer, none]` is `3` or `none`. A member is a variant, written
+  lowercase as a `CHOICE`'s is, or a named type, an intrinsic, a refinement
+  or another union. A `LIST`, `MAP` or `RECORD` is named first, by `TYPE
+  ALIAS`. A value's form alone tells its member, so the checker flattens a
+  union and rejects one where two members share a form, in anyx or in JSON:
+  `UNION [Integer, Float]` shares the number, and `Depth??` repeats `null`.
+  `UNION []` has no values. A union fits where another is expected when
+  each of its members does, so a `Depth` fits where a `Depth?` is expected.
+- **Nullability** is the prelude's `T?`, the alias `UNION [Item, null]`:
+  `null`, or a value of the item written as it is, `note "hi"`.
+  `note: Text?` is required but admits `null`;
   `note (Text?) DEFAULT note (null)` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
 - **`CHOICE Name { variant, … }`**: one of its variants. A variant is a
@@ -367,7 +377,7 @@ generated code too, and a value writes it as it is declared:
 | --- | --- | --- |
 | `path: Text` | `path "a"` | `path` |
 | `(Case) case DEFAULT (smart) case` | `(any) case` | `case` |
-| `at least (Size?) bytes DEFAULT at least (null) bytes` | `at least (value 14) bytes` | `at least bytes` |
+| `at least (Size?) bytes DEFAULT at least (null) bytes` | `at least 14 bytes` | `at least bytes` |
 | `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
 | `hidden` | `hidden` | `hidden` |
 | `@(order: Order) DEFAULT @newest first` | `@by name` | `order` |
@@ -386,8 +396,12 @@ generated code too, and a value writes it as it is declared:
   `@(order: Order) DEFAULT @newest first`. With a `:`, the field goes in
   parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
   age 0` is `age (Integer DEFAULT age 0)`, a `DEFAULT` in the slot.
-- **A value is written as its type writes it**, a nullable one too:
-  `at least (value 14) bytes`, never `at least 14 bytes` for a `Size?`.
+- **A value is written as its type writes it**, a nullable one as its item
+  or `null`: `at least 14 bytes`, `at least (null) bytes` for a `Size?`.
+- **No `Boolean?`.** Three states named `true`, `false` and `null` leave
+  the reader to guess what `null` means. Use a checkbox when left out means
+  off, or a `CHOICE` that names each state: `CHOICE Color { always, never,
+  auto }`, not `color (Boolean?)`.
 - **A value before the words keeps its parentheses**, `(any) case`: without
   them, `any case` is the one call `any case`, not `_ case`.
 - **Each field once.** A record says each thing once, so where a list of
@@ -401,7 +415,7 @@ alone: a variant's shape, a string, a number, a list, braces or a duration.
 No two `@` fields of a record may share a form, not even one variant's
 shape, and `Integer` and `Float` share the form of a number, `Text` and
 `Instant` that of a string. So finding the field never tries one and backs
-out. A nullable `@` field's forms are `null` and `value _`, and one of a type
+out. A nullable `@` field's forms are `null` and its item's, and one of a type
 parameter has no known form, which is an error.
 
 Readability decides between them, since a record is read far more than it is
@@ -411,8 +425,8 @@ written:
 2. **Options that combine → separate fields, not a choice.** `no ignore`
    and `no ignore vcs`; `changed within` and `changed since`. A choice is
    for options that truly exclude each other.
-3. **A value with a word that names it → a shape.** `max depth (value 3)`,
-   `at least (value 14) bytes`, `retry 3 times`. This is the default, and the only
+3. **A value with a word that names it → a shape.** `max depth 3`,
+   `at least 14 bytes`, `retry 3 times`. This is the default, and the only
    form for text, numbers and lists, whose form never says what they mean:
    `@"src"` and `@3` leave the reader guessing.
 4. **A choice only one field uses → its word in every variant, and `@`.**
@@ -610,10 +624,7 @@ INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
 
 CHOICE Boolean { false, true },
 
-CHOICE (Item: TYPE) ? {
-    null,
-    value (item: Item),
-},
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
 ```
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
@@ -622,8 +633,8 @@ CHOICE (Item: TYPE) ? {
   generated. Only the prelude may use it; `INTRINSIC` in a schema is an
   error. An `INTRINSIC TYPE` has no type after it.
 - The prelude also contains ordinary declarations, checked as user types are.
-  `Boolean` and postfix `?` are ordinary choices: their variants and generic
-  payloads are declared here, without intrinsic Rust type or value cases.
+  `Boolean` is an ordinary choice and postfix `?` an ordinary alias: both
+  are declared here, without intrinsic Rust type or value cases.
 - The guide's list of built-in types is the prelude's docs, and a
   `Duration`'s units are the prelude's variants.
 - The built-in types were once keywords, `INTEGER`, `TEXT` and so on. An
@@ -824,10 +835,11 @@ An `Instant` is its text, as on the wire, and a `Duration` its whole
 milliseconds: `5400000` for `1 hour 30 minutes`.
 A field with a `DEFAULT` that is left out takes its default. An explicitly
 supplied value is always checked against the field's type.
-`Boolean` and `T?` use ordinary choice objects too: `{ "kind": "true" }`,
-`{ "kind": "null" }`, or `{ "kind": "value", "item": "hello" }`. Generated
-Rust uses `Boolean` and `Nullable<Item>` enums, and TypeScript uses tagged
-unions; neither choice has an intrinsic primitive representation.
+`Boolean` uses an ordinary choice object, `{ "kind": "true" }`. A union's
+value is written as its member writes it, so a `Text?` is `"hello"` or
+`{ "kind": "null" }`. Generated Rust uses a `Boolean` enum and `Option<T>`
+for `T?`, and supports no other union yet; TypeScript uses a union of the
+members' types, `string | { kind: "null" }`.
 A `MAP` is an object whose keys are kept as written, not camelCased:
 `{ "old ode": 1 }`.
 A result is `{ "kind": "value", "value": … }` (with no `value` for a method

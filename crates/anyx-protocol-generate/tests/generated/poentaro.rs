@@ -244,44 +244,6 @@ impl FromValue for Boolean {
     }
 }
 
-/// A nullable item: `null`, or `value (item: Item)` containing a value.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Nullable<Item> {
-    Null,
-    Value { item: Item },
-}
-
-impl<Item: IntoValue> IntoValue for Nullable<Item> {
-    fn into_value(self) -> Value {
-        match self {
-            Nullable::Null => Value::Variant {
-                shape: "null".to_string(),
-                arguments: vec![],
-            },
-            Nullable::Value { item } => Value::Variant {
-                shape: "value _".to_string(),
-                arguments: vec![item.into_value()],
-            },
-        }
-    }
-}
-
-impl<Item: FromValue> FromValue for Nullable<Item> {
-    fn from_value(value: Value) -> Option<Self> {
-        let Value::Variant { shape, arguments } = value else {
-            return None;
-        };
-        let mut arguments = arguments.into_iter();
-        Some(match shape.as_str() {
-            "null" => Nullable::Null,
-            "value _" => Nullable::Value {
-                item: FromValue::from_value(arguments.next()?)?,
-            },
-            _ => return None,
-        })
-    }
-}
-
 /// A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 /// as the schema's `USE` lines reach it, and its source.
 #[derive(Clone, Debug, PartialEq)]

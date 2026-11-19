@@ -4,7 +4,7 @@
 export interface Reminder {
   note: string;
   at: Date;
-  every: Nullable<bigint>;
+  every: (bigint | { kind: "null" });
   /** How many times to remind before giving up. */
   times: bigint;
   /** When each person last saw it, by their name. */
@@ -23,11 +23,6 @@ export type Boolean =
   | { kind: "false" }
   | { kind: "true" };
 
-/** A nullable item: `null`, or `value (item: Item)` containing a value. */
-export type Nullable<Item> =
-  | { kind: "null" }
-  | { kind: "value"; item: Item };
-
 /**
  * A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
  * as the schema's `USE` lines reach it, and its source.
@@ -43,7 +38,9 @@ export type SnoozeForError =
   | { kind: "overdueSince"; since: Date };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
-type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
+// A `union`'s `args` are its members, each told by its form; a `variant` is
+// a union's member written in its `shape`.
+type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; shape?: ShapeDescriptor; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
 // A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
@@ -64,7 +61,7 @@ function resolved(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
 }
 function substitute(type: TypeDescriptor, bindings: Bindings): TypeDescriptor {
   type = resolved(type, bindings);
-  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)) };
+  return { ...type, item: type.item && substitute(type.item, bindings), args: type.args?.map(arg => substitute(arg, bindings)), shape: type.shape && { ...type.shape, params: type.shape.params.map(p => ({ ...p, type: substitute(p.type, bindings) })) } };
 }
 function instance(type: TypeDescriptor, bindings: Bindings): [Definition, Bindings] {
   const def = definitions[type.index!];
@@ -119,6 +116,9 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
     case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings); }
+    // The checker keeps a union's members apart, so a value fits one at most.
+    case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -421,6 +421,8 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       }
       return out;
     } break;
+    case "variant": { const value = shapeValue(type.shape!, node, bindings); if (value) return value; break; }
+    case "union": for (const member of type.args!) { try { return decodeValue(member, node, bindings); } catch { /* another member's */ } } break;
     case "named": {
       const [def, env] = instance(type, bindings);
       if (def.kind === "distinct") {
@@ -489,16 +491,15 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note _", form:"shape", name:"note", type:{k:'text'}, slots:[{k:'text'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"every _", form:"shape", name:"every", type:{k:'named', index:3, args:[{k:'duration'}]}, slots:[{k:'named', index:3, args:[{k:'duration'}]}], defaultValue:()=>{kind:"null"}},{wire:"times _", form:"shape", name:"times", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>3n},{wire:"seen _", form:"shape", name:"seen", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}], defaultValue:()=>Object.fromEntries([])},{wire:"quiet from _ to _", form:"shape", name:"quietFromTo", type:{k:'tuple', args:[{k:'integer'},{k:'integer'}]}, slots:[{k:'integer'},{k:'integer'}], defaultValue:()=>[22n,7n]}]},
+const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note _", form:"shape", name:"note", type:{k:'text'}, slots:[{k:'text'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"every _", form:"shape", name:"every", type:{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})},{wire:"times _", form:"shape", name:"times", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>(3n)},{wire:"seen _", form:"shape", name:"seen", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}], defaultValue:()=>(Object.fromEntries([]))},{wire:"quiet from _ to _", form:"shape", name:"quietFromTo", type:{k:'tuple', args:[{k:'integer'},{k:'integer'}]}, slots:[{k:'integer'},{k:'integer'}], defaultValue:()=>([22n,7n])}]},
 {parameters:[],kind:'choice', variants:[{text:"never", kind:"never", params:[]},{text:"once at _", kind:"onceAt", params:[{name:"at", type:{k:'instant'}, annotation:"Instant"}]},{text:"every _", kind:"every", params:[{name:"period", type:{k:'duration'}, annotation:"Duration"}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:["Item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"Item"}, annotation:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:1, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"reminders", type:{k:'map', item:{k:'named', index:0, args:[]}}, annotation:"MAP Reminder"}]}, returns:{k:'map', item:{k:'integer'}}, errors:[]},
 ["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:3, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

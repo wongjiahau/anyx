@@ -9,6 +9,14 @@ static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
     regex::Regex::new("^(_ )*[^_@]").expect("the generator checked it")
 });
 
+static REGEX_2: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^(_ )*[a-z]").expect("the generator checked it")
+});
+
+static REGEX_3: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^(_ )*[^a-z_]").expect("the generator checked it")
+});
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub header: Option<Protocol>,
@@ -275,20 +283,52 @@ pub struct Parameter {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    Refined {
-        base: Box<Type>,
-        predicate: Spanned<Vec<Node>>,
-        span: Span,
-    },
-    List {
-        item: Box<Type>,
-        span: Span,
-    },
-    Map {
-        value: Box<Type>,
-        span: Span,
-    },
+    Refined(RefinedType),
+    List(ListType),
+    Map(MapType),
+    Union(UnionType),
     Named(Reference),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RefinedType {
+    pub base: Box<Type>,
+    pub predicate: Spanned<Vec<Node>>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListType {
+    pub item: Box<Type>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MapType {
+    pub value: Box<Type>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnionType {
+    pub members: Spanned<Vec<UnionMember>>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnionMember {
+    Variant {
+        name: CallName,
+        arguments: Vec<Parameter>,
+        span: Span,
+    },
+    Refined(RefinedType),
+    Union(UnionType),
+    Named {
+        name: CallName,
+        arguments: Vec<Type>,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -429,8 +469,21 @@ impl ErrorTerm {
 impl Type {
     pub fn span(&self) -> Span {
         match self {
-            Type::Refined { span, .. } | Type::List { span, .. } | Type::Map { span, .. } => *span,
+            Type::Refined(value) => value.span,
+            Type::List(value) => value.span,
+            Type::Map(value) => value.span,
+            Type::Union(value) => value.span,
             Type::Named(value) => value.span,
+        }
+    }
+}
+
+impl UnionMember {
+    pub fn span(&self) -> Span {
+        match self {
+            UnionMember::Variant { span, .. } | UnionMember::Named { span, .. } => *span,
+            UnionMember::Refined(value) => value.span,
+            UnionMember::Union(value) => value.span,
         }
     }
 }
@@ -739,19 +792,57 @@ impl support::Errors for Parameter {
 impl support::Errors for Type {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Type::Refined {
-                base, predicate, ..
-            } => {
-                support::Errors::errors(base, found);
-                support::Errors::errors(predicate, found);
-            }
-            Type::List { item, .. } => {
-                support::Errors::errors(item, found);
-            }
-            Type::Map { value, .. } => {
-                support::Errors::errors(value, found);
-            }
+            Type::Refined(value) => support::Errors::errors(value, found),
+            Type::List(value) => support::Errors::errors(value, found),
+            Type::Map(value) => support::Errors::errors(value, found),
+            Type::Union(value) => support::Errors::errors(value, found),
             Type::Named(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for RefinedType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.base, found);
+        support::Errors::errors(&self.predicate, found);
+    }
+}
+
+impl support::Errors for ListType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.item, found);
+    }
+}
+
+impl support::Errors for MapType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.value, found);
+    }
+}
+
+impl support::Errors for UnionType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.members, found);
+    }
+}
+
+impl support::Errors for UnionMember {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            UnionMember::Variant {
+                name, arguments, ..
+            } => {
+                support::Errors::errors(name, found);
+                support::Errors::errors(arguments, found);
+            }
+            UnionMember::Refined(value) => support::Errors::errors(value, found),
+            UnionMember::Union(value) => support::Errors::errors(value, found),
+            UnionMember::Named {
+                name, arguments, ..
+            } => {
+                support::Errors::errors(name, found);
+                support::Errors::errors(arguments, found);
+            }
         }
     }
 }
@@ -1431,26 +1522,28 @@ pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {
 }
 
 pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
-    decode_type_refined(node)
-        .or_else(|error| error.or(decode_type_list(node)))
-        .or_else(|error| error.or(decode_type_map(node)))
+    decode_refined_type(node)
+        .map(Type::Refined)
+        .or_else(|error| error.or(decode_list_type(node).map(Type::List)))
+        .or_else(|error| error.or(decode_map_type(node).map(Type::Map)))
+        .or_else(|error| error.or(decode_union_type(node).map(Type::Union)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }
 
-fn decode_type_refined(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_refined_type(node: &Node) -> Result<RefinedType, DecodeError> {
     let mut parts = support::call(node, "the call `_ WHERE _`")?;
-    let decoded = Type::Refined {
+    let decoded = RefinedType {
         base: parts.one(|node| decode_type(node).map(Box::new), "a type")?,
         predicate: parts
             .word("WHERE")?
-            .one(decode_type_refined_predicate, "`[...]`")?,
+            .one(decode_refined_type_predicate, "`[...]`")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
 }
 
-fn decode_type_refined_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
+fn decode_refined_type_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
     let mut elements = support::square_bracket(node)?;
     let value = elements.one_or_more(support::any_node, "a node")?;
     elements.finish()?;
@@ -1460,9 +1553,9 @@ fn decode_type_refined_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, Deco
     })
 }
 
-fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_list_type(node: &Node) -> Result<ListType, DecodeError> {
     let mut parts = support::call(node, "the call `LIST _`")?;
-    let decoded = Type::List {
+    let decoded = ListType {
         item: parts
             .word("LIST")?
             .one(|node| decode_type(node).map(Box::new), "a type")?,
@@ -1472,15 +1565,76 @@ fn decode_type_list(node: &Node) -> Result<Type, DecodeError> {
     Ok(decoded)
 }
 
-fn decode_type_map(node: &Node) -> Result<Type, DecodeError> {
+pub fn decode_map_type(node: &Node) -> Result<MapType, DecodeError> {
     let mut parts = support::call(node, "the call `MAP _`")?;
-    let decoded = Type::Map {
+    let decoded = MapType {
         value: parts
             .word("MAP")?
             .one(|node| decode_type(node).map(Box::new), "a type")?,
         span: node.span,
     };
     parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_union_type(node: &Node) -> Result<UnionType, DecodeError> {
+    let mut parts = support::call(node, "the call `UNION _`")?;
+    let decoded = UnionType {
+        members: parts
+            .word("UNION")?
+            .one(decode_union_type_members, "`[...]`")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_union_type_members(node: &Node) -> Result<Spanned<Vec<UnionMember>>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.zero_or_more(decode_union_member);
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+pub fn decode_union_member(node: &Node) -> Result<UnionMember, DecodeError> {
+    decode_union_member_variant(node)
+        .or_else(|error| error.or(decode_refined_type(node).map(UnionMember::Refined)))
+        .or_else(|error| error.or(decode_union_type(node).map(UnionMember::Union)))
+        .or_else(|error| error.or(decode_union_member_named(node)))
+}
+
+fn decode_union_member_variant(node: &Node) -> Result<UnionMember, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        "a call whose name has no keyword and matches the regex `^(_ )*[a-z]`",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = UnionMember::Variant {
+        name,
+        arguments: arguments.zero_or_more(decode_parameter),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+fn decode_union_member_named(node: &Node) -> Result<UnionMember, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_3.is_match(name),
+        "a call whose name has no keyword and matches the regex `^(_ )*[^a-z_]`",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = UnionMember::Named {
+        name,
+        arguments: arguments.zero_or_more(decode_type),
+        span: node.span,
+    };
+    arguments.finish()?;
     Ok(decoded)
 }
 

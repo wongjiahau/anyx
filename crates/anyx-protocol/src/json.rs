@@ -10,25 +10,10 @@ use serde_json::{Map, Value as Json, json};
 
 use crate::codec::{Call, Outcome, Response, decode_request, encode_request};
 use crate::response::{decode_response, encode_response};
-use crate::schema::{Field, Schema, Shape, Type, TypeKind};
+use crate::schema::{Field, JsonForm, Schema, Shape, Type, TypeKind};
 use crate::value::Value;
 
-/// `file summary` as `fileSummary`.
-pub fn camel_case(name: &str) -> String {
-    name.split(' ')
-        .enumerate()
-        .map(|(index, word)| match index {
-            0 => word.to_string(),
-            _ => {
-                let mut chars = word.chars();
-                chars
-                    .next()
-                    .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
-                    .unwrap_or_default()
-            }
-        })
-        .collect()
-}
+pub use crate::schema::camel_case;
 
 /// Writes one call of the method `full_name`, such as `files/read _` or
 /// `SCHEMA`, as a request. An overload is named with its parameters'
@@ -292,6 +277,11 @@ fn method_index(schema: &Schema, name: &str) -> Result<usize, String> {
 /// `value` as JSON.
 pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
     let r#type = schema.underlying(r#type);
+    if let Type::Union(_) = r#type
+        && let Some(member) = schema.member_holding(r#type, value)
+    {
+        return to_json(schema, member, value);
+    }
     match value {
         Value::Text(text) => Json::String(text.clone()),
         Value::Bytes(bytes) => Json::String(crate::bytes::encode(bytes)),
@@ -350,6 +340,9 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
             Json::Object(fields_to_json(schema, fields, values))
         }
         Value::Variant { shape, arguments } => {
+            if let Type::Variant(own) = r#type {
+                return variant_to_json(schema, &[own.as_ref()], shape, arguments);
+            }
             let kind = schema.instance(r#type).map(|(_, kind)| kind);
             let variants = match kind.as_deref() {
                 Some(TypeKind::Choice(variants)) => {
@@ -489,6 +482,39 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 TypeKind::Distinct(_) => unreachable!("`underlying` reads past named types"),
             }
         }
+        Type::Union(_) => {
+            let found = match json {
+                Json::Number(_) => JsonForm::Number,
+                Json::String(_) => JsonForm::String,
+                Json::Array(_) => JsonForm::Array,
+                Json::Object(object) => match object.get("kind").and_then(Json::as_str) {
+                    Some(kind) => JsonForm::Kind(kind.to_string()),
+                    None => JsonForm::Object,
+                },
+                Json::Null | Json::Bool(_) => JsonForm::Object,
+            };
+            let member = r#type.members().into_iter().find(|member| {
+                schema
+                    .json_forms(member)
+                    .is_some_and(|forms| forms.contains(&found))
+            });
+            match member {
+                Some(member) => from_json(schema, member, json),
+                None => mismatch(&format!(
+                    "a value of one of {}",
+                    r#type
+                        .members()
+                        .iter()
+                        .map(|member| format!("`{}`", schema.type_name(member)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            }
+        }
+        Type::Variant(shape) => match json {
+            Json::Object(object) => variant_from_json(schema, &[shape.as_ref()], object),
+            _ => mismatch(&format!("an object for `{}`", schema.shape_name(shape))),
+        },
         // The checker replaces each parameter by its argument wherever a
         // value is read.
         Type::Refined(..) => unreachable!("underlying removes refinements"),

@@ -109,9 +109,8 @@ struct Fields(std::collections::BTreeMap<String, Value>);
 
 impl Fields {
     fn get(&self, name: &str) -> Option<&Value> {
-        // A nullable field's `value _` holds its item.
+        // A nullable field holds `null` or its item.
         match self.0.get(name)? {
-            Value::Variant { shape, arguments } if shape == "value _" => arguments.first(),
             Value::Variant { shape, .. } if shape == "null" => None,
             value => Some(value),
         }

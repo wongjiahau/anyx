@@ -156,6 +156,48 @@ impl Written {
     }
 }
 
+/// `file summary` as `fileSummary`.
+pub fn camel_case(name: &str) -> String {
+    name.split(' ')
+        .enumerate()
+        .map(|(index, word)| match index {
+            0 => word.to_string(),
+            _ => {
+                let mut chars = word.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
+                    .unwrap_or_default()
+            }
+        })
+        .collect()
+}
+
+/// A value's outermost form in JSON, which tells a union's member there:
+/// a variant by its `kind`, and other values by their JSON type.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum JsonForm {
+    Number,
+    String,
+    Array,
+    /// An object without a `kind`: a record or a map.
+    Object,
+    /// An object with this `kind`: a variant, such as `customHue`.
+    Kind(String),
+}
+
+impl std::fmt::Display for JsonForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JsonForm::Number => f.write_str("a number"),
+            JsonForm::String => f.write_str("a string"),
+            JsonForm::Array => f.write_str("an array"),
+            JsonForm::Object => f.write_str("an object"),
+            JsonForm::Kind(kind) => write!(f, "an object of the kind \"{kind}\""),
+        }
+    }
+}
+
 /// How a record value writes a field.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldForm {
@@ -182,6 +224,23 @@ pub struct Shape {
 }
 
 impl Shape {
+    /// `self` with each of `parameters` replaced by the argument at its
+    /// place in `arguments`, in the types of its slots.
+    pub fn substitute(&self, parameters: &[String], arguments: &[Type]) -> Shape {
+        Shape {
+            text: self.text.clone(),
+            parts: self.parts.clone(),
+            parameters: self
+                .parameters
+                .iter()
+                .map(|parameter| Parameter {
+                    name: parameter.name.clone(),
+                    r#type: parameter.r#type.substitute(parameters, arguments),
+                })
+                .collect(),
+        }
+    }
+
     /// The words alone, which name it: `conflict at revision`.
     pub fn words(&self) -> String {
         self.parts
@@ -373,9 +432,28 @@ pub enum Type {
     /// that declares it. A use of that type puts its argument in its place,
     /// so a value is never of this type.
     Parameter(String),
+    /// Values of any of its members, each written as that member writes
+    /// it: `UNION [Integer, null]` holds `3` and `null`. Its members are as
+    /// written; [`Schema::members`] reads through nested unions. A value's
+    /// form tells its member, so the checker rejects two members written
+    /// alike.
+    Union(Vec<Type>),
+    /// A variant as a type of its own, whose values are written in its
+    /// shape: `null`, `custom hue (hue: Float)`. It is a union's member.
+    Variant(Box<Shape>),
 }
 
 impl Type {
+    /// The members of a union, reading through the unions among them, in
+    /// order: `UNION [Text, UNION [null, none]]` has `Text`, `null` and
+    /// `none`. Any other type is its own one member.
+    pub fn members(&self) -> Vec<&Type> {
+        match self {
+            Type::Union(members) => members.iter().flat_map(Type::members).collect(),
+            other => vec![other],
+        }
+    }
+
     /// Whether an argument's type matches this parameter before checking its
     /// value against inline refinements. Named types retain their identity.
     /// This is only a type check; the parameter's predicates must still run.
@@ -385,6 +463,13 @@ impl Type {
         }
         match (self, argument) {
             (Type::Refined(base, _), argument) => base.accepts_argument_type(argument),
+            // `Depth` fits `Depth?`, and so does every member of a union.
+            (expected, Type::Union(members)) => members
+                .iter()
+                .all(|member| expected.accepts_argument_type(member)),
+            (Type::Union(members), argument) => members
+                .iter()
+                .any(|member| member.accepts_argument_type(argument)),
             (Type::List(expected), Type::List(actual))
             | (Type::Map(expected), Type::Map(actual)) => expected.accepts_argument_type(actual),
             _ => false,
@@ -420,6 +505,15 @@ impl Type {
                     .map(|argument| argument.substitute(parameters, arguments))
                     .collect(),
             ),
+            Type::Union(members) => Type::Union(
+                members
+                    .iter()
+                    .map(|member| member.substitute(parameters, arguments))
+                    .collect(),
+            ),
+            Type::Variant(shape) => {
+                Type::Variant(Box::new(shape.substitute(parameters, arguments)))
+            }
             _ => self.clone(),
         }
     }
@@ -430,9 +524,13 @@ impl Type {
             match r#type {
                 Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => walk(item, found),
-                Type::Generic(_, arguments) | Type::Tuple(arguments) => {
+                Type::Generic(_, arguments) | Type::Tuple(arguments) | Type::Union(arguments) => {
                     arguments.iter().for_each(|argument| walk(argument, found))
                 }
+                Type::Variant(shape) => shape
+                    .parameters
+                    .iter()
+                    .for_each(|parameter| walk(&parameter.r#type, found)),
                 _ => {}
             }
         }
@@ -697,7 +795,115 @@ impl Schema {
                 .map(|slot| format!("({})", self.type_name(slot)))
                 .collect::<Vec<_>>()
                 .join(" "),
+            Type::Union(members) => match self.nullable_item(r#type) {
+                Some(item) => format!("{}?", self.type_name_grouped(item)),
+                None => format!(
+                    "UNION [{}]",
+                    members
+                        .iter()
+                        .map(|member| self.type_name(member))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            },
+            Type::Variant(shape) => self.shape_name(shape),
         }
+    }
+
+    /// The name of `type`, in parentheses when it is more than one word, so
+    /// that a postfix `?` takes all of it: `Text?`, `(LIST Text)?`.
+    fn type_name_grouped(&self, r#type: &Type) -> String {
+        let name = self.type_name(r#type);
+        match name.contains(' ') {
+            true => format!("({name})"),
+            false => name,
+        }
+    }
+
+    /// A variant's shape with the type of each slot: `custom hue (hue:
+    /// Float)`.
+    pub fn shape_name(&self, shape: &Shape) -> String {
+        let mut parameters = shape.parameters.iter();
+        shape
+            .parts
+            .iter()
+            .map(|part| match part {
+                ShapePart::Word(word) => word.clone(),
+                ShapePart::Slot => parameters.next().map_or("_".to_string(), |parameter| {
+                    format!(
+                        "({}: {})",
+                        parameter.name,
+                        self.type_name(&parameter.r#type)
+                    )
+                }),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The member of the union `type` that a value written as `found`
+    /// belongs to. The checker makes sure at most one is.
+    pub fn member_written_as<'t>(&self, r#type: &'t Type, found: &Written) -> Option<&'t Type> {
+        r#type.members().into_iter().find(|member| {
+            self.written_forms(member)
+                .is_some_and(|forms| forms.iter().any(|form| form.admits(found)))
+        })
+    }
+
+    /// The member of the union `type` that holds `value`, by its form.
+    pub fn member_holding<'t>(&self, r#type: &'t Type, value: &Value) -> Option<&'t Type> {
+        let found = match value {
+            Value::Text(_) | Value::Bytes(_) | Value::Instant(_) => Written::String,
+            Value::Integer(_) | Value::Float(_) => Written::Number,
+            Value::Duration(_) => Written::Duration,
+            Value::List(_) => Written::List,
+            Value::Map(_) | Value::Record(_) => Written::Braces,
+            Value::Variant { shape, .. } => {
+                return r#type.members().into_iter().find(|member| {
+                    self.written_forms(member).is_some_and(|forms| {
+                        forms.iter().any(|form| {
+                            matches!(form, Written::Call(parts) if ShapePart::text(parts) == *shape)
+                        })
+                    })
+                });
+            }
+            Value::Tuple(_) | Value::Nothing => return None,
+        };
+        r#type.members().into_iter().find(|member| {
+            self.written_forms(member)
+                .is_some_and(|forms| forms.contains(&found))
+        })
+    }
+
+    /// The forms a value of `type` takes in JSON, which tell a union's
+    /// member there as [`Schema::written_forms`] does in anyx. `None` for a
+    /// type parameter.
+    pub fn json_forms(&self, r#type: &Type) -> Option<Vec<JsonForm>> {
+        Some(match self.underlying(r#type) {
+            Type::Text | Type::Bytes | Type::Instant => vec![JsonForm::String],
+            Type::Integer | Type::Float | Type::Duration => vec![JsonForm::Number],
+            Type::List(_) | Type::Tuple(_) => vec![JsonForm::Array],
+            Type::Map(_) => vec![JsonForm::Object],
+            Type::Parameter(_) => return None,
+            Type::Variant(shape) => vec![JsonForm::Kind(camel_case(&shape.words()))],
+            Type::Union(members) => {
+                let mut forms = Vec::new();
+                for member in members {
+                    forms.extend(self.json_forms(member)?);
+                }
+                forms
+            }
+            underlying => match self.instance(underlying).map(|(_, kind)| kind) {
+                Some(kind) => match kind.as_ref() {
+                    TypeKind::Choice(variants) => variants
+                        .iter()
+                        .map(|variant| JsonForm::Kind(camel_case(&variant.shape.words())))
+                        .collect(),
+                    _ => vec![JsonForm::Object],
+                },
+                None => vec![JsonForm::Object],
+            },
+        })
     }
 
     /// The record or choice that `type` names, after reading past named
@@ -756,12 +962,13 @@ impl Schema {
         underlying
     }
 
-    /// `item` for the nullable `item?`.
+    /// `item` for the nullable `item?`, `UNION [item, null]`.
     pub fn nullable_item<'t>(&'t self, r#type: &'t Type) -> Option<&'t Type> {
         match self.underlying(r#type) {
-            Type::Generic(index, arguments) if self.types[*index].name == "_ ?" => {
-                arguments.first()
-            }
+            Type::Union(members) => match members.as_slice() {
+                [item, Type::Variant(null)] if null.text == "null" => Some(item),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -800,6 +1007,14 @@ impl Schema {
             Type::List(_) => vec![Written::List],
             Type::Map(_) => vec![Written::Braces],
             Type::Parameter(_) => return None,
+            Type::Variant(shape) => vec![Written::Call(shape.parts.clone())],
+            Type::Union(members) => {
+                let mut forms = Vec::new();
+                for member in members {
+                    forms.extend(self.written_forms(member)?);
+                }
+                forms
+            }
             underlying => match self.instance(underlying).map(|(_, kind)| kind) {
                 Some(kind) => match kind.as_ref() {
                     TypeKind::Choice(variants) => variants

@@ -716,6 +716,12 @@ pub(crate) fn write(
     crate::refinement::validate(schema, r#type, value)
         .map_err(|message| EncodeError { message })?;
     let r#type = schema.underlying(r#type);
+    if let Type::Union(_) = r#type {
+        return match schema.member_holding(r#type, value) {
+            Some(member) => write(schema, member, value, out),
+            None => Err(mismatched(schema, r#type, &format!("{value:?}"))),
+        };
+    }
     match value {
         Value::Text(text) => write_text(text, out),
         Value::Bytes(bytes) => write_text(&crate::bytes::encode(bytes), out),
@@ -801,6 +807,11 @@ pub(crate) fn write(
             write_fields(schema, fields, values, out)?;
         }
         Value::Variant { shape, arguments } => {
+            if let Type::Variant(own) = r#type
+                && own.text == *shape
+            {
+                return write_shape(schema, own, arguments, out);
+            }
             let Some((_, kind)) = schema.instance(r#type) else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };

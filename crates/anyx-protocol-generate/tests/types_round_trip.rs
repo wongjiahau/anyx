@@ -32,8 +32,8 @@ impl Server for Reminders {
 
     async fn remind(&self, reminder: Reminder) -> Result<Schedule, Self::Error> {
         Ok(match reminder.every {
-            types::Nullable::Value { item: period } => Schedule::Every { period },
-            types::Nullable::Null => Schedule::OnceAt { at: reminder.at },
+            Some(period) => Schedule::Every { period },
+            None => Schedule::OnceAt { at: reminder.at },
         })
     }
 
@@ -82,7 +82,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
     let reminder = Reminder {
         note: "tea".into(),
         at: at(1_794_636_008_123),
-        every: types::Nullable::Null,
+        every: None,
         times: 3,
         seen: BTreeMap::new(),
         quiet_from_to: (23, 6),
@@ -95,9 +95,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
     );
     assert_eq!(
         run(client.remind(Reminder {
-            every: types::Nullable::Value {
-                item: Duration::from_secs(5400)
-            },
+            every: Some(Duration::from_secs(5400)),
             ..reminder.clone()
         })),
         Ok(Schedule::Every {
@@ -138,7 +136,7 @@ fn maps_reach_the_server_and_come_back() {
     let reminder = Reminder {
         note: "tea".into(),
         at: at(1_794_636_008_123),
-        every: types::Nullable::Null,
+        every: None,
         times: 3,
         seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
         quiet_from_to: (22, 7),

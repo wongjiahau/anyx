@@ -54,6 +54,22 @@ struct PendingForms {
     spans: Vec<Span>,
 }
 
+/// A union to check, once every type is known, for two members written
+/// alike. A union written with `UNION` is checked as it is; a use of a
+/// generic type or alias, for the unions it makes with its arguments.
+struct PendingUnion {
+    r#type: Type,
+    /// The parameters to put `arguments` in place of: empty for a union
+    /// checked as it is.
+    parameters: Vec<String>,
+    arguments: Vec<Type>,
+    /// A union written with `UNION`, rather than a use.
+    written: bool,
+    /// Where the union, or the use, is written.
+    span: Span,
+    file: usize,
+}
+
 /// An error of a method, and where its list names it.
 struct Listed {
     index: usize,
@@ -355,6 +371,7 @@ pub(crate) struct Checker<'a> {
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
     forms: Vec<PendingForms>,
+    unions: Vec<PendingUnion>,
     examples: Vec<PendingExamples<'a>>,
     undos: Vec<PendingUndo<'a>>,
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -613,6 +630,7 @@ impl<'a> Checker<'a> {
         }
         self.check_recursion(&schema);
         self.check_forms(&schema);
+        self.check_unions(&schema);
         if self.diagnostics.is_empty() {
             self.diagnostics
                 .extend(crate::refinement::check_schema(&schema));
@@ -680,6 +698,147 @@ impl<'a> Checker<'a> {
                     }
                     seen.push((form, index));
                 }
+            }
+        }
+    }
+
+    /// A value's form tells its member of a union, in anyx and in JSON
+    /// alike, so no two members of a union may share a form, whether
+    /// written in it or made by the arguments of a generic type or alias:
+    /// `Depth??` holds `null` in two ways.
+    fn check_unions(&mut self, schema: &Schema) {
+        let mut seen: Vec<(usize, Vec<Type>)> = Vec::new();
+        for pending in std::mem::take(&mut self.unions) {
+            self.file = pending.file;
+            match pending.written {
+                true => self.check_union(schema, &pending.r#type, pending.span),
+                false => self.check_instance(
+                    schema,
+                    &pending.r#type,
+                    &pending.parameters,
+                    &pending.arguments,
+                    pending.span,
+                    &mut seen,
+                ),
+            }
+        }
+    }
+
+    /// Checks the unions in `type` that its `parameters` take part in,
+    /// with `arguments` in their place, and those of the generic types it
+    /// uses. Unions without a parameter are checked where written.
+    fn check_instance(
+        &mut self,
+        schema: &Schema,
+        r#type: &Type,
+        parameters: &[String],
+        arguments: &[Type],
+        span: Span,
+        seen: &mut Vec<(usize, Vec<Type>)>,
+    ) {
+        match r#type {
+            Type::Union(members) => {
+                if !parameters.is_empty() && !r#type.parameters().is_empty() {
+                    self.check_union(schema, &r#type.substitute(parameters, arguments), span);
+                }
+                for member in members {
+                    self.check_instance(schema, member, parameters, arguments, span, seen);
+                }
+            }
+            Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
+                self.check_instance(schema, item, parameters, arguments, span, seen)
+            }
+            Type::Tuple(slots) => {
+                for slot in slots {
+                    self.check_instance(schema, slot, parameters, arguments, span, seen);
+                }
+            }
+            Type::Variant(shape) => {
+                for parameter in &shape.parameters {
+                    self.check_instance(
+                        schema,
+                        &parameter.r#type,
+                        parameters,
+                        arguments,
+                        span,
+                        seen,
+                    );
+                }
+            }
+            Type::Generic(index, inner) => {
+                let inner: Vec<Type> = inner
+                    .iter()
+                    .map(|argument| argument.substitute(parameters, arguments))
+                    .collect();
+                for argument in &inner {
+                    self.check_instance(schema, argument, &[], &[], span, seen);
+                }
+                if seen
+                    .iter()
+                    .any(|(known, with)| known == index && *with == inner)
+                {
+                    return;
+                }
+                seen.push((*index, inner.clone()));
+                let definition = &schema.types[*index];
+                let held: Vec<&Type> = match &definition.kind {
+                    TypeKind::Record(fields) => fields.iter().map(|field| &field.r#type).collect(),
+                    TypeKind::Choice(variants) => variants
+                        .iter()
+                        .flat_map(|variant| &variant.shape.parameters)
+                        .map(|parameter| &parameter.r#type)
+                        .collect(),
+                    TypeKind::Distinct(underneath) => vec![underneath],
+                };
+                for held in held {
+                    self.check_instance(schema, held, &definition.parameters, &inner, span, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Reports two members of the union `type` written alike, in anyx or
+    /// in JSON. A repeat within one member is that member's to report.
+    fn check_union(&mut self, schema: &Schema, r#type: &Type, span: Span) {
+        let Type::Union(members) = r#type else {
+            return;
+        };
+        let union = schema.type_name(r#type);
+        let mut written: Vec<(Written, usize)> = Vec::new();
+        let mut json: Vec<(crate::schema::JsonForm, usize)> = Vec::new();
+        for (index, member) in members.iter().enumerate() {
+            let clash = schema.written_forms(member).and_then(|forms| {
+                forms.into_iter().find_map(|form| {
+                    let clash = written
+                        .iter()
+                        .find(|(known, _)| known.admits(&form) || form.admits(known))
+                        .map(|(known, other)| (known.to_string(), *other));
+                    written.push((form, index));
+                    clash
+                })
+            });
+            let clash = clash.or_else(|| {
+                schema.json_forms(member).and_then(|forms| {
+                    forms.into_iter().find_map(|form| {
+                        let clash = json
+                            .iter()
+                            .find(|(known, _)| *known == form)
+                            .map(|(known, other)| (format!("{known} in JSON"), *other));
+                        json.push((form, index));
+                        clash
+                    })
+                })
+            });
+            if let Some((form, other)) = clash {
+                self.error(
+                    span,
+                    format!(
+                        "found {form} as a value of both `{}` and `{}` in `{union}`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own",
+                        schema.type_name(&members[other]),
+                        schema.type_name(member),
+                    ),
+                );
             }
         }
     }
@@ -2073,28 +2232,62 @@ impl<'a> Checker<'a> {
 
     fn r#type(&mut self, r#type: &ast::Type) -> Type {
         match r#type {
-            ast::Type::Refined {
-                base, predicate, ..
-            } => {
-                let base = self.r#type(base);
-                let source = self.written(predicate.span).to_string();
-                match crate::refinement::Predicate::parse(
-                    &predicate.value,
-                    &source[1..source.len() - 1],
-                ) {
-                    Ok(mut predicate) => {
-                        predicate.path = self.paths[self.file].clone();
-                        Type::Refined(Box::new(base), predicate)
-                    }
-                    Err(message) => {
-                        self.error(predicate.span, message);
-                        base
-                    }
-                }
-            }
-            ast::Type::List { item, .. } => Type::List(Box::new(self.r#type(item))),
-            ast::Type::Map { value, .. } => Type::Map(Box::new(self.r#type(value))),
+            ast::Type::Refined(refined) => self.refined(refined),
+            ast::Type::List(list) => Type::List(Box::new(self.r#type(&list.item))),
+            ast::Type::Map(map) => Type::Map(Box::new(self.r#type(&map.value))),
+            ast::Type::Union(union) => self.union(union),
             ast::Type::Named(reference) => self.type_use(reference),
+        }
+    }
+
+    fn union(&mut self, union: &ast::UnionType) -> Type {
+        let members = union
+            .members
+            .value
+            .iter()
+            .map(|member| match member {
+                ast::UnionMember::Variant {
+                    name, arguments, ..
+                } => Type::Variant(Box::new(self.shape(name, arguments, "a variant"))),
+                ast::UnionMember::Refined(refined) => self.refined(refined),
+                ast::UnionMember::Union(union) => self.union(union),
+                ast::UnionMember::Named {
+                    name,
+                    arguments,
+                    span,
+                } => self.type_use(&ast::Reference {
+                    name: name.clone(),
+                    arguments: arguments.clone(),
+                    span: *span,
+                }),
+            })
+            .collect();
+        self.unions.push(PendingUnion {
+            r#type: Type::Union(members),
+            parameters: Vec::new(),
+            arguments: Vec::new(),
+            written: true,
+            span: union.span,
+            file: self.file,
+        });
+        self.unions.last().expect("just pushed").r#type.clone()
+    }
+
+    fn refined(&mut self, refined: &ast::RefinedType) -> Type {
+        let ast::RefinedType {
+            base, predicate, ..
+        } = refined;
+        let base = self.r#type(base);
+        let source = self.written(predicate.span).to_string();
+        match crate::refinement::Predicate::parse(&predicate.value, &source[1..source.len() - 1]) {
+            Ok(mut predicate) => {
+                predicate.path = self.paths[self.file].clone();
+                Type::Refined(Box::new(base), predicate)
+            }
+            Err(message) => {
+                self.error(predicate.span, message);
+                base
+            }
         }
     }
 
@@ -2139,16 +2332,38 @@ impl<'a> Checker<'a> {
                 .iter()
                 .map(|parameter| parameter.value.clone())
                 .collect();
-            return self.alias_type(alias).map_or(Type::Text, |r#type| {
-                r#type.substitute(&parameters, &arguments)
-            });
+            let Some(r#type) = self.alias_type(alias) else {
+                return Type::Text;
+            };
+            if !arguments.is_empty() {
+                self.unions.push(PendingUnion {
+                    r#type: r#type.clone(),
+                    parameters: parameters.clone(),
+                    arguments: arguments.clone(),
+                    written: false,
+                    span: reference.span,
+                    file: self.file,
+                });
+            }
+            return r#type.substitute(&parameters, &arguments);
         }
         let Some(index) = self.resolve_type(reference.span, &path, arguments.len()) else {
             return Type::Text;
         };
         match arguments.is_empty() {
             true => Type::Named(index),
-            false => Type::Generic(index, arguments),
+            false => {
+                let r#type = Type::Generic(index, arguments);
+                self.unions.push(PendingUnion {
+                    r#type: r#type.clone(),
+                    parameters: Vec::new(),
+                    arguments: Vec::new(),
+                    written: false,
+                    span: reference.span,
+                    file: self.file,
+                });
+                r#type
+            }
         }
     }
 
@@ -2162,7 +2377,13 @@ impl<'a> Checker<'a> {
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
                     mentioned(item, found)
                 }
-                Type::Tuple(slots) => slots.iter().for_each(|slot| mentioned(slot, found)),
+                Type::Tuple(slots) | Type::Union(slots) => {
+                    slots.iter().for_each(|slot| mentioned(slot, found))
+                }
+                Type::Variant(shape) => shape
+                    .parameters
+                    .iter()
+                    .for_each(|parameter| mentioned(&parameter.r#type, found)),
                 Type::Generic(index, arguments) => {
                     found.push(*index);
                     arguments
@@ -2229,6 +2450,22 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Type::Parameter(name) => parameters.push(name),
+                Type::Union(members) => {
+                    for member in members {
+                        held(member, holds_parameters, schema, types, parameters);
+                    }
+                }
+                Type::Variant(shape) => {
+                    for parameter in &shape.parameters {
+                        held(
+                            &parameter.r#type,
+                            holds_parameters,
+                            schema,
+                            types,
+                            parameters,
+                        );
+                    }
+                }
                 _ => {}
             }
         }
@@ -2324,7 +2561,13 @@ impl<'a> Checker<'a> {
                     arguments.iter().for_each(|argument| uses(argument, found));
                 }
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => uses(item, found),
-                Type::Tuple(slots) => slots.iter().for_each(|slot| uses(slot, found)),
+                Type::Tuple(slots) | Type::Union(slots) => {
+                    slots.iter().for_each(|slot| uses(slot, found))
+                }
+                Type::Variant(shape) => shape
+                    .parameters
+                    .iter()
+                    .for_each(|parameter| uses(&parameter.r#type, found)),
                 _ => {}
             }
         }

@@ -189,7 +189,7 @@ Decided:
   },
   ```
   ```anyx
-  fd / find "*.md" in ["docs"] with { @glob pattern, @any case, max depth (value 3), hidden }
+  fd / find "*.md" in ["docs"] with { @glob pattern, @any case, max depth 3, hidden }
   ```
   - Words alone are a checkbox: a `Boolean`, true when written, false when
     left out, and never with a `DEFAULT`.
@@ -206,8 +206,8 @@ Decided:
     `age (Integer) DEFAULT age 0`. A default is read as an entry of its
     field, so one entry covers every slot. With a `:`, the field goes in
     parentheses: `(age: Integer) DEFAULT age 0`.
-  - A nullable value is written with its constructor, `max depth (value 3)`:
-    no syntax sugar without the owner's approval.
+  - A nullable value is written as its item, `max depth 3`, since `T?` is
+    the union `UNION [T, null]` (#56).
   - A value before the words keeps its parentheses, `(any) case`: `any case`
     is one call. Readability over writability; the decoder hints at it.
 - `@(name: T)` is a field written as `@` and its value alone, `@by name`,
@@ -231,7 +231,7 @@ Decided:
   group: `@by name`, `@"src"`, but `@ 3`.
 - Mutual exclusion is one choice field: `{ @glob pattern, @fixed text
   pattern }` is the duplicate-field error. fd's `exact depth` went: it is
-  `{ min depth (value 2), max depth (value 2) }`.
+  `{ min depth 2, max depth 2 }`.
 - "A needs B" is nesting, A inside B's value. A need that isn't a tree is a
   `REQUIRES`.
 - The prelude keeps `has no repeats` and `has at most one of`: fd no longer
@@ -248,8 +248,9 @@ Tried and ruled out:
   and then `DEFAULT` in the slot, `(Case DEFAULT smart) case`: a slot's
   default left a field with several slots needing a default on every slot
   or none. The whole field's entry after `DEFAULT` says it once.
-- A nullable field written as its item, `max depth 3` for `Depth?`: an
-  implicit `value _` that the call tree didn't show.
+- A nullable field written as its item, `max depth 3` for `Depth?`, by an
+  implicit `value _` that the call tree didn't show. #56 got there without
+  sugar: `T?` is a union, so `3` is a value of `Depth?` as it stands.
 - Any choice field writable by its variant without a marker, and an
   `@` field found by trying each field's type: both make decoding a search.
 - `OPTIONS` as a new kind of type, groups by `|`, `REPEATABLE`, `NEEDS` and

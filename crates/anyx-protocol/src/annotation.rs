@@ -119,26 +119,22 @@ fn same_type(schema: &Schema, values: &[&Syntax]) -> Option<Type> {
 pub(crate) fn request_type(schema: &Schema, written: &request::Type) -> Option<Type> {
     fn schema_type(written: &request::Type) -> ast::Type {
         match written {
-            request::Type::Refined {
-                base,
-                predicate,
-                span,
-            } => ast::Type::Refined {
-                base: Box::new(schema_type(base)),
+            request::Type::Refined(refined) => ast::Type::Refined(ast::RefinedType {
+                base: Box::new(schema_type(&refined.base)),
                 predicate: ast::Spanned {
-                    value: predicate.value.clone(),
-                    span: predicate.span,
+                    value: refined.predicate.value.clone(),
+                    span: refined.predicate.span,
                 },
-                span: *span,
-            },
-            request::Type::List { item, span } => ast::Type::List {
-                item: Box::new(schema_type(item)),
-                span: *span,
-            },
-            request::Type::Map { value, span } => ast::Type::Map {
-                value: Box::new(schema_type(value)),
-                span: *span,
-            },
+                span: refined.span,
+            }),
+            request::Type::List(list) => ast::Type::List(ast::ListType {
+                item: Box::new(schema_type(&list.item)),
+                span: list.span,
+            }),
+            request::Type::Map(map) => ast::Type::Map(ast::MapType {
+                value: Box::new(schema_type(&map.value)),
+                span: map.span,
+            }),
             request::Type::Named(reference) => ast::Type::Named(ast::Reference {
                 name: ast::CallName {
                     text: reference.name.text.clone(),
@@ -161,16 +157,19 @@ fn only<'d, T: 'd>(mut found: impl Iterator<Item = (usize, &'d T)>) -> Option<Ty
 
 fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
     Some(match written {
-        ast::Type::Refined {
+        ast::Type::Refined(ast::RefinedType {
             base, predicate, ..
-        } => {
+        }) => {
             let base = resolve(schema, base)?;
             let predicate = crate::refinement::Predicate::from_nodes(&predicate.value).ok()?;
             predicate.check_type(schema, &base).ok()?;
             Type::Refined(Box::new(base), predicate)
         }
-        ast::Type::List { item, .. } => Type::List(Box::new(resolve(schema, item)?)),
-        ast::Type::Map { value, .. } => Type::Map(Box::new(resolve(schema, value)?)),
+        ast::Type::List(list) => Type::List(Box::new(resolve(schema, &list.item)?)),
+        ast::Type::Map(map) => Type::Map(Box::new(resolve(schema, &map.value)?)),
+        // A request's annotation is written in the request grammar, which
+        // has no `UNION`.
+        ast::Type::Union(_) => return None,
         ast::Type::Named(reference) => {
             if let Some(built_in) = crate::prelude::reference(reference) {
                 return Some(built_in);

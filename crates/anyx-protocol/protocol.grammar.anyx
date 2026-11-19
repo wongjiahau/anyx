@@ -231,11 +231,39 @@ parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 ## A built-in type such as `Integer` is no keyword: the prelude declares
 ## it, so it reads as a `reference` like any other type.
 type: ONE OF [
-  refined: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
-  list: ANYFIX CALL [WORD "LIST", item: type],
-  ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
-  map: ANYFIX CALL [WORD "MAP", value: type],
+  refined: refined type,
+  list: list type,
+  map: map type,
+  union: union type,
   named: reference,
+],
+
+refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: ANY NODE]],
+
+list type: ANYFIX CALL [WORD "LIST", item: type],
+
+## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
+map type: ANYFIX CALL [WORD "MAP", value: type],
+
+## Values of any of its members, each written as that member writes it:
+## `UNION [Integer, none]` holds `3` and `none`. A value's form tells its
+## member, so the checker rejects two members written alike.
+union type: ANYFIX CALL [WORD "UNION", members: SQUARE BRACKET [ZERO OR MORE: union member]],
+
+## A member of a union. Case tells which: a variant's first word is
+## lowercase, as in `null` or `custom hue (hue: Float)`, and a type's name
+## starts otherwise, as in `Integer`, `Text?` or `(Text) Pair`. So a
+## generic type whose name starts lowercase needs an alias to be a member.
+## A list or a map is named first, as a record is: `TYPE ALIAS Paths: LIST
+## Text`, then `UNION [Paths, none]`.
+union member: ONE OF [
+  variant: ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[a-z]"],
+    ARGUMENTS: ZERO OR MORE: parameter,
+  ],
+  refined: refined type,
+  union: union type,
+  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^a-z_]"], ARGUMENTS: ZERO OR MORE: type],
 ],
 
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a

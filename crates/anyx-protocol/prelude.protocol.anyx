@@ -40,11 +40,9 @@ INTRINSIC TYPE Instant,
 # unit is in the plural for any count but 1: `1 day 1 second`.
 INTRINSIC CHOICE Duration { day, hour, minute, second, millisecond },
 
-# A nullable item: `null`, or `value (item: Item)` containing a value.
-CHOICE (Item: TYPE) ? {
-    null,
-    value (item: Item),
-},
+# A nullable item: `null`, or a value of the item written as it is, as in
+# `3` for `Integer?`.
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
