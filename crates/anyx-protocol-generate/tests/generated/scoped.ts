@@ -175,8 +175,8 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
   }
   return fail(`invalid ${type.k} value`);
 }
-// A field as a reader writes it: a checkbox's words when true, `@` and the
-// value, or the shape with the value in its slot, after a `:` when the slot
+// A field as a reader writes it: a checkbox's words when true, the variant
+// alone, or the shape with the value in its slot, after a `:` when the slot
 // is last. A `null` default is left out.
 function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings: Bindings): string[] {
   const present = Object.hasOwn(obj, f.name) && obj[f.name] !== undefined;
@@ -197,7 +197,7 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
   let next = 0;
   return [words.map(w => w === "_" ? `(${texts[next++]})` : w).join(" ")];
 }
-// A node's outermost form, which finds the `@` field it fills.
+// A node's outermost form; a variant's finds the field written as it.
 function formOf(node: Syntax): string {
   node = ungroup(node);
   const body = marked(node);
