@@ -196,7 +196,7 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
     ));
     assert_eq!(
         response,
-        "RETURNS NOTHING,\nERROR missing,\nRETURNS NOTHING,\n"
+        "RETURNS NOTHING,\nERROR `missing,\nRETURNS NOTHING,\n"
     );
 }
 

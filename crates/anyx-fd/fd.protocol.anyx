@@ -17,42 +17,42 @@ TYPE ALIAS Count: Integer . WHERE [1 <= _],
 
 # What a file is, for `only _`.
 CHOICE Kind {
-    file,
-    directory,
-    symlink,
+    `file,
+    `directory,
+    `symlink,
     # A file the owner, group or others may run.
-    executable,
+    `executable,
     # An empty file, or a directory with nothing in it.
-    empty,
-    socket,
-    pipe,
-    block device,
-    char device,
+    `empty,
+    `socket,
+    `pipe,
+    `block device,
+    `char device,
 },
 
 # The case a pattern is matched in.
 CHOICE Case {
     # Any case, unless the pattern has an uppercase letter.
-    smart case,
-    any case,
-    exact case,
+    `smart case,
+    `any case,
+    `exact case,
 },
 
 # How a pattern is read.
 CHOICE Syntax {
-    regex pattern,
+    `regex pattern,
     # A glob, such as `*.rs`.
-    glob pattern,
+    `glob pattern,
     # Plain text.
-    fixed text pattern,
+    `fixed text pattern,
 },
 
-# How `find` searches, as in `{ @glob pattern, hidden, max depth 2 }`.
+# How `find` searches, as in `` { `glob pattern, hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
-    @(case: Case) DEFAULT @smart case,
-    @(pattern: Syntax) DEFAULT @regex pattern,
+    `(case: Case) DEFAULT `smart case,
+    `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
     full path,
     # Each file must match these patterns too, in the same syntax and case.
@@ -78,25 +78,25 @@ RECORD Search {
     one file system,
     # Don't go into a directory that matched.
     prune,
-    max depth (Depth?) DEFAULT max depth (null),
-    min depth (Depth?) DEFAULT min depth (null),
+    max depth (Depth?) DEFAULT max depth (`null),
+    min depth (Depth?) DEFAULT min depth (`null),
     # Find only these kinds of file, or every kind when empty.
     only (LIST Kind) DEFAULT only [],
     # Find only files with one of these extensions, such as `"rs"`, or
     # with any when empty.
     extensions (LIST Text) DEFAULT extensions [],
-    at least (Size?) bytes DEFAULT at least (null) bytes,
-    at most (Size?) bytes DEFAULT at most (null) bytes,
-    changed within (Duration?) DEFAULT changed within (null),
-    changed since (Instant?) DEFAULT changed since (null),
-    changed before (Instant?) DEFAULT changed before (null),
-    changed more than (Duration?) ago DEFAULT changed more than (null) ago,
+    at least (Size?) bytes DEFAULT at least (`null) bytes,
+    at most (Size?) bytes DEFAULT at most (`null) bytes,
+    changed within (Duration?) DEFAULT changed within (`null),
+    changed since (Instant?) DEFAULT changed since (`null),
+    changed before (Instant?) DEFAULT changed before (`null),
+    changed more than (Duration?) ago DEFAULT changed more than (`null) ago,
     # Owned by the user with this id.
-    owned by user (Integer?) DEFAULT owned by user (null),
+    owned by user (Integer?) DEFAULT owned by user (`null),
     # Owned by the group with this id.
-    owned by group (Integer?) DEFAULT owned by group (null),
+    owned by group (Integer?) DEFAULT owned by group (`null),
     # Stop after this many paths.
-    at most (Count?) results DEFAULT at most (null) results,
+    at most (Count?) results DEFAULT at most (`null) results,
 },
 
 # What a found file is, as `fd --list-details` shows it.
@@ -108,19 +108,19 @@ RECORD Details {
 },
 
 ERRORS fd errors [
-    (path: Text) does not exist,
-    invalid pattern (message: Text),
-    invalid glob (message: Text),
+    `(path: Text) does not exist,
+    `invalid pattern (message: Text),
+    `invalid glob (message: Text),
     # A path fd found can't be written as Unicode text.
-    (path: Text) is not unicode,
+    `(path: Text) is not unicode,
 ],
 
 READ ONLY METHOD find (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (paths: LIST Text)
     ERRORS fd errors
     EXAMPLES [
-        find "\\.rs$" in ["src"] with { only [file] } RETURNS ["src/lib.rs", "src/main.rs"],
-        find "(" in ["src"] with { hidden } ERROR invalid pattern "unclosed group",
+        find "\\.rs$" in ["src"] with { only [`file] } RETURNS ["src/lib.rs", "src/main.rs"],
+        find "(" in ["src"] with { hidden } ERROR `invalid pattern "unclosed group",
     ],
 
 # In the working directory.

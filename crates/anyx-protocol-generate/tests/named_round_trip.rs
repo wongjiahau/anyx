@@ -139,7 +139,7 @@ fn named_types_cross_the_wire_with_their_names() {
             "RETURNS { share id: Share Id \"share of a\", file id: File Id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );
-    assert_eq!(exchanged[1].1, "RETURNS write\n");
+    assert_eq!(exchanged[1].1, "RETURNS `write\n");
 }
 
 #[test]

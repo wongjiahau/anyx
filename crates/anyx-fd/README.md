@@ -12,7 +12,7 @@ In the anyx shell:
 
 ```anyx
 USE fd FROM COMMAND "anyx-fd",
-fd / find "\\.rs$" in ["src"] with { only [file], hidden },
+fd / find "\\.rs$" in ["src"] with { only [`file], hidden },
 fd / details of "Cargo" with { max depth 2 },
 fd / any match of "TODO",
 ```
@@ -20,10 +20,10 @@ fd / any match of "TODO",
 `find` returns paths, `details of` returns a record for each path, and
 `any match of` returns whether anything matched. Each has four shapes: with
 or without `in (paths)`, and with or without `with (search)`. A search is a
-record of `fd`'s flags, each written as it reads: `hidden`, `@glob pattern`,
-`@any case`, `at least 14 bytes`, `changed within (1 hour)`. Each field comes
-at most once, so a search can't contradict itself: the pattern's syntax and
-case are each one choice.
+record of `fd`'s flags, each written as it reads: `hidden`,
+`` `glob pattern ``, `` `any case ``, `at least 14 bytes`,
+`changed within (1 hour)`. Each field comes at most once, so a search can't
+contradict itself: the pattern's syntax and case are each one choice.
 
 As in `fd`, the pattern is a regular expression matched against the file
 name, in smart case, skipping hidden and ignored files. Results are sorted by
@@ -40,6 +40,6 @@ Some flags have nothing to do here because results are typed values (`-0`,
 response on standard output, and exits:
 
 ```sh
-echo 'find "lib" with { only [file] }' | anyx-fd --anyx-protocol
+echo 'find "lib" with { only [`file] }' | anyx-fd --anyx-protocol
 echo 'SCHEMA' | anyx-fd --anyx-protocol
 ```

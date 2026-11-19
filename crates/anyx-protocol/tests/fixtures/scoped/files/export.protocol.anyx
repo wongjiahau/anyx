@@ -2,12 +2,12 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (null) },
+RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST Diagnostic),
+        `unreadable (diagnostics: LIST Diagnostic),
     ] + file errors,

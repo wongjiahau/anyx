@@ -8,10 +8,11 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::error::Error;
-use crate::lexer::is_symbol_word;
+use crate::lexer::{is_keyword, is_symbol_word};
 use crate::node::{NamePart, Node, NodeKind};
 use crate::parser::parse;
 use crate::span::Span;
+use crate::string::StringKind;
 use crate::syntax::{
     Expression, Group, GroupKind, Item, Sequence, SyntaxTree, Token, TokenKind, TriviaKind,
 };
@@ -520,7 +521,7 @@ impl Builder<'_> {
     fn expression(&mut self, expression: &Expression) -> Doc {
         match expression {
             Expression::Run(run) => {
-                let hugs = !std::mem::take(&mut self.after_dot) && prefix_hugs(&run.items);
+                let after_dot = std::mem::take(&mut self.after_dot);
                 let breaks: Vec<bool> = run
                     .items
                     .iter()
@@ -542,7 +543,7 @@ impl Builder<'_> {
                         true => &mut tail,
                         false => &mut head,
                     };
-                    if i > 0 && !(i == 1 && hugs) {
+                    if i > 0 && !((i > 1 || !after_dot) && prefix_hugs(&run.items, i)) {
                         parts.push(match breaks[i] {
                             true => Doc::Line,
                             false => Doc::Text(" ".into()),
@@ -717,14 +718,30 @@ impl Builder<'_> {
     }
 }
 
-/// A symbol word that starts a run hugs a name word, string or group
-/// after it, as a prefix: `@glob`, `@"src"`. A number stays apart, since
-/// `-` and a digit would read as a negative number.
-fn prefix_hugs(items: &[Item]) -> bool {
-    let [Item::Atom(first), second, ..] = items else {
+/// Whether the item at `index` hugs the one before it: a symbol word that
+/// starts a run, or a part of it after a keyword or a `#` line string,
+/// hugs a name word, string
+/// or group after it, as a prefix: `@glob`, `@"src"`, `` ERROR `missing ``.
+/// A number stays apart, since `-` and a digit would read as a negative
+/// number.
+fn prefix_hugs(items: &[Item], index: usize) -> bool {
+    let (Some(Item::Atom(first)), Some(second)) = (
+        index.checked_sub(1).and_then(|before| items.get(before)),
+        items.get(index),
+    ) else {
         return false;
     };
-    first.kind == TokenKind::Word
+    let starts = match index.checked_sub(2).map(|before| &items[before]) {
+        None => true,
+        Some(Item::Atom(token)) => match &token.kind {
+            TokenKind::Word => is_keyword(&token.text),
+            TokenKind::String(literal) => literal.kind == StringKind::Line,
+            _ => false,
+        },
+        Some(_) => false,
+    };
+    starts
+        && first.kind == TokenKind::Word
         && is_symbol_word(&first.text)
         && match second {
             Item::Group(_) => true,

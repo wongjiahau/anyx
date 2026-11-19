@@ -65,24 +65,26 @@ the account, such as by sending or sharing it.
 - `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
-  words, put `:` after its key: `{ "hymn": done }`.
+  words, put `:` after its key: `` { "hymn": `done } ``.
 - A RECORD is its fields in braces, each written in its declared shape with
   a value in each slot, in any order: `{ path "a", revision 3 }`,
-  `{ (any) case, between 1 and 3 }`. A value before a field's words
+  `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field of words alone is a checkbox, true when
-  written: `{ hidden }`. An `@` field is `@` and its value alone:
-  `{ @by name }`. A field with a `DEFAULT` may be left out and
+  written: `{ hidden }`. A field declared as a backtick and a slot is its
+  variant alone: `` { `by name } ``. A field with a `DEFAULT` may be left out and
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
-  `{ status: done }`, `{ timeout: 5 minutes }`.
-- A CHOICE is one of its variants, written in the variant's shape with a
-  value in each slot: `dark`, `custom hue 0.5`.
+  `` { status: `done } ``, `{ timeout: 5 minutes }`.
+- A CHOICE is one of its variants, written as a backtick and the
+  variant's shape with a value in each slot: `` `dark ``,
+  `` `custom hue 0.5 ``. A call without the backtick is a function, such
+  as a named type's constructor.
 - A `UNION` is a value of one of its members, written as that member
-  writes it. So a nullable `T?`, `UNION [T, null]`, is `null` or a value
-  of `T`: `{ max depth 3 }`, `{ max depth: null }`.
-- In a slot, a value written as words goes in parentheses so that it doesn't
-  join the words around it: `set (true)`, `pick (custom hue 0.5)`,
-  `wait (5 minutes)`.
+  writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
+  value of `T`: `{ max depth 3 }`, `` { max depth: `null } ``.
+- In a slot, a value written as words or a variant goes in parentheses so
+  that it doesn't join the words around it: `` set (`true) ``,
+  `` pick (`custom hue 0.5) ``, `wait (5 minutes)`.
 
 An argument whose type its value doesn't show is annotated with `AS:` and
 its parameter's type, in parentheses: `tag ([] AS: LIST Text)`. A value
@@ -99,12 +101,12 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 `DEFAULT` makes a record field omittable.
 
 ```anyx
-# `true` or `false`.
-CHOICE Boolean { false, true },
+# `` `true `` or `` `false ``.
+CHOICE Boolean { `false, `true },
 
-# A nullable item: `null`, or a value of the item written as it is, as in
-# `3` for `Integer?`.
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, null],
+# A nullable item: `` `null ``, or a value of the item written as it is,
+# as in `3` for `Integer?`.
+TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
@@ -125,7 +127,7 @@ enough to count its results without slipping. A result is one of:
   method that returns nothing.
 - `ERROR` and one of the method's errors, in the error's shape. They follow
   `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `ERROR missing`. The call didn't do anything. Each error's
+  For example: `` ERROR `missing ``. The call didn't do anything. Each error's
   `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
@@ -133,7 +135,7 @@ enough to count its results without slipping. A result is one of:
 For two calls, one that read a file and one whose file was missing:
 
     RETURNS { path "a", revision 3 },
-    ERROR missing,
+    ERROR `missing,
 
 A request that can't be read gets one result, and none of its calls run:
 
@@ -181,15 +183,15 @@ RECORD Diagnostic {
 
 ERRORS file errors [
     # The owner moved this file to the trash. Ask them to restore it.
-    trashed,
+    `trashed,
     # No file has this path. It may have been renamed: run `list files` to
     # see the exact paths.
-    missing,
+    `missing,
 ],
 
 ERRORS score errors [
     # The score doesn't parse. Nothing was saved.
-    rejected (diagnostics: LIST Diagnostic),
+    `rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
@@ -203,13 +205,13 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
-        conflict at revision (revision: Integer) content (content: Text),
+        `conflict at revision (revision: Integer) content (content: Text),
     ] + score errors + file errors
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
         # Someone saved first.
-        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR conflict at revision 4 content "title \"Hymn\"",
+        write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" ERROR `conflict at revision 4 content "title \"Hymn\"",
     ],
 
 # Makes a new file, and its folders if they don't exist.
@@ -217,9 +219,9 @@ METHOD create (path: Text) content (content: Text)
     RETURNS (revision: Integer)
     ERRORS [
         # A file already has this path. Read it, or create under another path.
-        already exists at revision (revision: Integer),
+        `already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
-        invalid path (message: Text),
+        `invalid path (message: Text),
     ] + score errors,
 
 # The score as a Standard MIDI File.

@@ -14,18 +14,18 @@ PROTOCOL tagging VERSION 1,
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
-CHOICE Shade { dark, light },
+CHOICE Shade { `dark, `light },
 
 # Tags files by their paths.
 METHOD tag (paths: LIST Text)
     RETURNS (tagged: Integer)
-    ERRORS [missing (path: Text)]
+    ERRORS [`missing (path: Text)]
     EXAMPLES [tag ["a"] RETURNS 1],
 
 # Tags files by their ids.
 METHOD tag (ids: LIST: File Id)
     RETURNS (tagged: Integer)
-    ERRORS [unknown (id: File Id)]
+    ERRORS [`unknown (id: File Id)]
     EXAMPLES [tag ([] AS: LIST: File Id) RETURNS 0],
 
 READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float),
@@ -134,7 +134,7 @@ impl FromValue for Shade {
     }
 }
 
-/// `true` or `false`.
+/// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     False,

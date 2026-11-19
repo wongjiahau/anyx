@@ -10,9 +10,9 @@ use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
 NAMED TYPE File Id (Text),
-CHOICE Shade { dark, light },
-CHOICE Colour { dark, red },
-CHOICE Mood { calm, wild },
+CHOICE Shade { `dark, `light },
+CHOICE Colour { `dark, `red },
+CHOICE Mood { `calm, `wild },
 RECORD Point { x: Integer, y: Integer },
 RECORD Size { x: Integer, label (Text) DEFAULT label \"\" },
 RECORD Width { x: Integer },
@@ -87,9 +87,9 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
     );
     assert_eq!(calls("scale 3.0"), [(4, vec![Value::Float(3.0)])]);
     assert_eq!(calls("scale 3"), [(5, vec![Value::Integer(3)])]);
-    assert_eq!(calls("paint (dark AS: Shade)")[0].0, 6);
-    assert_eq!(calls("paint (dark AS: Colour)")[0].0, 7);
-    assert_eq!(calls("paint (red)")[0].0, 7, "`red` is only a `colour`");
+    assert_eq!(calls("paint (`dark AS: Shade)")[0].0, 6);
+    assert_eq!(calls("paint (`dark AS: Colour)")[0].0, 7);
+    assert_eq!(calls("paint (`red)")[0].0, 7, "`red` is only a `colour`");
 }
 
 #[test]
@@ -99,8 +99,8 @@ fn a_value_with_no_type_of_its_own_needs_an_annotation() {
         "in `tag _`: `[]` has no type of its own, so no overload of `tag _` can be chosen by it; annotate it with the type of the one to call, as in `tag ([] AS: LIST Text)`; the overloads are `tag (names: LIST Text)`, `tag (ids: LIST Integer)`"
     );
     assert_eq!(
-        message("paint (dark)"),
-        "in `paint _`: `dark` has no type of its own, so no overload of `paint _` can be chosen by it; annotate it with the type of the one to call, as in `paint (dark AS: Shade)`; the overloads are `paint (shade: Shade)`, `paint (colour: Colour)`"
+        message("paint (`dark)"),
+        "in `paint _`: `` `dark `` has no type of its own, so no overload of `paint _` can be chosen by it; annotate it with the type of the one to call, as in `` paint (`dark AS: Shade) ``; the overloads are `paint (shade: Shade)`, `paint (colour: Colour)`"
     );
     // Even when the method has no overloads, so that adding one never
     // breaks a call.
@@ -109,7 +109,7 @@ fn a_value_with_no_type_of_its_own_needs_an_annotation() {
         "in `id` of `read _`: found a string; expected a `File Id`, written with its name: `File Id …`",
     );
     assert_eq!(
-        message("feel (calm), read \"a\""),
+        message("feel (`calm), read \"a\""),
         "in `id` of `read _`: found a string; expected a `File Id`, written with its name: `File Id …`",
         "the whole request is invalid, so none of its calls run"
     );
@@ -117,7 +117,7 @@ fn a_value_with_no_type_of_its_own_needs_an_annotation() {
 
 #[test]
 fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
-    assert_eq!(calls("feel (calm)")[0].0, 8, "only `mood` has `calm`");
+    assert_eq!(calls("feel (`calm)")[0].0, 8, "only `mood` has `calm`");
     assert_eq!(
         calls("move to { x 1, y 2 }")[0].0,
         9,
@@ -130,7 +130,7 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
         "`size` and `width` both fit; `point` needs a `y`"
     );
     assert_eq!(
-        calls("show (true)"),
+        calls("show (`true)"),
         [(
             11,
             vec![Value::Variant {
@@ -157,11 +157,11 @@ fn an_annotation_is_a_checked_claim() {
         "in `names` of `tag _`: found the number `1`; expected a string, as in `\"text\"`"
     );
     assert_eq!(
-        message("feel (calm AS: Shade)"),
+        message("feel (`calm AS: Shade)"),
         "in `mood` of `feel _`: found `AS: Shade`; expected `AS: Mood`, the type of `mood`"
     );
     assert_eq!(
-        message("feel (calm AS: weather)"),
+        message("feel (`calm AS: weather)"),
         "found `weather` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`"
     );
     assert_eq!(
@@ -216,8 +216,8 @@ fn a_request_states_the_types_it_depends_on() {
 tag [1],
 open (File Id \"a\"),
 scale 3.0,
-paint (dark AS Shade),
-feel (calm),
+paint (`dark AS Shade),
+feel (`calm),
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);

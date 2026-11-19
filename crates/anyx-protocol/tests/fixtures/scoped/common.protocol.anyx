@@ -3,5 +3,5 @@ PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
 PUBLIC ERRORS common errors [
     # No note has this path.
-    missing,
+    `missing,
 ],

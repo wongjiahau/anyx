@@ -8,7 +8,7 @@ use common::{assert_snapshot, diagnostics, schema};
 
 const DOCUMENTS: &str = "PROTOCOL documents VERSION 1,
 
-READ ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [missing],
+READ ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [`missing],
 
 # Moves the document to the archive. Archiving it again changes nothing.
 IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING UNDONE BY unarchive (path: Text),
@@ -16,7 +16,7 @@ IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING UNDONE BY unarchive (path
 IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
 
 METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
-    ERRORS [taken]
+    ERRORS [`taken]
     UNDONE BY move (new path: Text) to (path: Text)
     EXAMPLES [move \"a\" to \"b\" RETURNS NOTHING],
 
@@ -102,7 +102,7 @@ fn markers_are_formatted_in_place() {
         "PROTOCOL t VERSION 1,
 READ   ONLY METHOD read (path: Text) RETURNS (content: Text),
 IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
-IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [missing, already archived by someone else] UNDONE BY unarchive (path: Text) EXAMPLES [archive \"a\" RETURNS NOTHING],
+IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [`missing, `already archived by someone else] UNDONE BY unarchive (path: Text) EXAMPLES [archive \"a\" RETURNS NOTHING],
 ",
     )
     .unwrap();
@@ -113,7 +113,7 @@ READ ONLY METHOD read (path: Text) RETURNS content: Text,
 IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
 IDEMPOTENT METHOD archive (path: Text)
     RETURNS NOTHING
-    ERRORS [missing, already archived by someone else]
+    ERRORS [`missing, `already archived by someone else]
     UNDONE BY unarchive (path: Text)
     EXAMPLES [archive \"a\" RETURNS NOTHING],
 "

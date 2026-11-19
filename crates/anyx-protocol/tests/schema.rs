@@ -112,12 +112,12 @@ fn choice_variants_are_shapes_with_docs() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         CHOICE Mode {
-            dark,
+            `dark,
             # A colour of the wheel.
-            custom hue (hue: Float) lightness (lightness: Float),
+            `custom hue (hue: Float) lightness (lightness: Float),
             # Plain.
-            plain,
-            (base: Text) tinted,
+            `plain,
+            `(base: Text) tinted,
         },",
     );
     let TypeKind::Choice(variants) = &schema.types[0].kind else {
@@ -193,11 +193,11 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a bad error after RETURNS NOTHING, which is not an unnamed return",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [gone 3],",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS NOTHING ERRORS [`gone 3],",
         ),
         (
             "a type defined twice",
-            "PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { b },",
+            "PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },",
         ),
         (
             "a field twice",
@@ -205,7 +205,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a variant twice",
-            "PROTOCOL a VERSION 1, CHOICE Example { a, a (b: Text) },",
+            "PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },",
         ),
         (
             "a parameter twice",
@@ -229,7 +229,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type holding itself through an optional field",
-            "PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },",
+            "PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (`null) }, RECORD Tree { children: MAP: Tree },",
         ),
         (
             "a map default that is not a map",
@@ -237,7 +237,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a cycle through a choice",
-            "PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { has (a: Alpha), none },",
+            "PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },",
         ),
         (
             "names that are not lowercase ASCII",
@@ -245,7 +245,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a parameter named kind",
-            "PROTOCOL a VERSION 1, CHOICE Example { y (kind: Text) },",
+            "PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },",
         ),
         (
             "a keyword in a name",
@@ -257,55 +257,55 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an error where a group goes",
-            "PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [lost] + gone,",
+            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,",
         ),
         (
             "groups joining each other",
-            "PROTOCOL a VERSION 1, ERRORS x [a] + y, ERRORS y [b] + x,",
+            "PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,",
         ),
         (
             "an error listed twice through a group",
-            "PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS x + x,",
+            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,",
         ),
         (
             "an error defined twice in a scope",
-            "PROTOCOL a VERSION 1, ERRORS x [gone], METHOD f RETURNS (y: Text) ERRORS [gone],",
+            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],",
         ),
         (
             "a group joining an unknown group",
-            "PROTOCOL a VERSION 1, ERRORS x [a] + lost, METHOD f RETURNS (y: Text) ERRORS x,",
+            "PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,",
         ),
         (
             "a group without a name",
-            "PROTOCOL a VERSION 1, ERRORS [gone],",
+            "PROTOCOL a VERSION 1, ERRORS [`gone],",
         ),
         (
             "a group defined twice",
-            "PROTOCOL a VERSION 1, ERRORS x [a], ERRORS x [b],",
+            "PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],",
         ),
         (
             "a name before a method's errors",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [gone],",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],",
         ),
         (
             "errors in brackets after a group",
-            "PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS x + [b],",
+            "PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],",
         ),
         (
             "an operator other than `+` among errors",
-            "PROTOCOL a VERSION 1, ERRORS x [a], METHOD f RETURNS (y: Text) ERRORS [b] - x,",
+            "PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,",
         ),
         (
             "an error defined on its own",
-            "PROTOCOL a VERSION 1, ERROR gone,",
+            "PROTOCOL a VERSION 1, ERROR `gone,",
         ),
         (
             "a string inside an error",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [gone (a: Text) # doc\n],",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [`gone (a: Text) # doc\n],",
         ),
         (
             "a string inside a variant",
-            "PROTOCOL a VERSION 1, CHOICE Example { y (a: Text) # doc\n},",
+            "PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc\n},",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -340,11 +340,11 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a choice",
-            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE Shade { dark, light },",
+            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE Shade { `dark, `light },",
         ),
         (
             "a quoted doc on a variant",
-            "PROTOCOL a VERSION 1, CHOICE Shade { \"Dim.\" dark, light },",
+            "PROTOCOL a VERSION 1, CHOICE Shade { `\"Dim.\" dark, light },",
         ),
         (
             "a quoted doc on a type",
@@ -352,11 +352,11 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a group of errors",
-            "PROTOCOL a VERSION 1, \"Shared.\" ERRORS file errors [missing],",
+            "PROTOCOL a VERSION 1, \"Shared.\" ERRORS file errors [`missing],",
         ),
         (
             "a quoted doc on an error",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [\"Gone.\" missing],",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [`\"Gone.\" missing],",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -392,7 +392,7 @@ fn a_method_may_return_nothing() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         METHOD sign out RETURNS NOTHING,
-        METHOD trash (path: Text) RETURNS NOTHING ERRORS [missing],",
+        METHOD trash (path: Text) RETURNS NOTHING ERRORS [`missing],",
     );
     let sign_out = schema.method("sign out").unwrap();
     assert_eq!(sign_out.returns, None);
@@ -406,15 +406,15 @@ fn a_method_may_return_nothing() {
 fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Shade { dark, light },
+        CHOICE Shade { `dark, `light },
         RECORD Page { size (Integer) DEFAULT size 50, after (Text) DEFAULT after \"\" },
         RECORD Search {
             query: Text,
             limit (Integer) DEFAULT limit 50,
-            include trash (Boolean) DEFAULT include trash (false),
-            shade (Shade) DEFAULT shade (dark),
+            include trash (Boolean) DEFAULT include trash (`false),
+            shade (Shade) DEFAULT shade (`dark),
             tags (LIST: Text) DEFAULT tags [\"new\"],
-            shades (LIST Shade) DEFAULT shades [light],
+            shades (LIST Shade) DEFAULT shades [`light],
             sizes (LIST Integer) DEFAULT sizes [],
             wait (Duration) DEFAULT wait (5 minutes),
             page (Page) DEFAULT page { after \"a\" },
@@ -495,7 +495,7 @@ fn mistakes_in_a_default_are_diagnosed() {
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade (Shade) DEFAULT shade (dim) },",
+            "PROTOCOL a VERSION 1, CHOICE Shade { `dark }, RECORD Example { shade (Shade) DEFAULT shade (`dim) },",
         ),
         (
             "the removed OPTIONAL keyword",
@@ -529,11 +529,11 @@ RECORD Search { limit (Integer) DEFAULT limit 50, tags (LIST Text) DEFAULT tags 
 fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Shade { dark, light },
+        CHOICE Shade { `dark, `light },
         RECORD Folder {
             files: MAP Integer,
             folders: MAP: Folder,
-            shades (MAP: Shade) DEFAULT shades { \"a\": dark },
+            shades (MAP: Shade) DEFAULT shades { \"a\": `dark },
             names (MAP: LIST: Text) DEFAULT names { \"b\" [\"c\"] },
             lights (MAP Shade) DEFAULT lights {},
         },
@@ -595,12 +595,12 @@ fn the_request_decoder_is_what_its_grammar_generates() {
 #[test]
 fn simple_type_names_use_title_case() {
     schema(
-        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { pdf }, TYPE ALIAS Some Format: File Format,",
+        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { `pdf }, TYPE ALIAS Some Format: File Format,",
     );
     for name in ["file summary", "FileSummary", "File summary"] {
         for declaration in [
             format!("RECORD {name} {{ path: Text }}"),
-            format!("CHOICE {name} {{ pdf }}"),
+            format!("CHOICE {name} {{ `pdf }}"),
             format!("TYPE {name}: Text"),
         ] {
             let message = diagnostics(&format!("PROTOCOL a VERSION 1, {declaration},"));

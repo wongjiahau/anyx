@@ -141,12 +141,12 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
                     if variants
                         .value
                         .iter()
-                        .all(|variant| variant.arguments.is_empty()) =>
+                        .all(|variant| variant.body.arguments.is_empty()) =>
                 {
                     let variants = variants
                         .value
                         .iter()
-                        .map(|variant| variant.name.text.clone())
+                        .map(|variant| variant.body.name.text.clone())
                         .collect();
                     Some((
                         doc,

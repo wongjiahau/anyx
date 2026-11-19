@@ -451,7 +451,12 @@ impl Compiler<'_> {
                 })
             }
             NodeKind::Braces(entries) => self.braces(schema, node.span, entries, expected),
-            NodeKind::Call(call) => {
+            // A variant is marked with a backtick, `` `custom hue (x) ``,
+            // and its slots hold expressions of the shell's.
+            NodeKind::Call(marked) if marked.name_text() == "` _" => {
+                let NodeKind::Call(call) = &marked.arguments[0].kind else {
+                    return Err(literal_error);
+                };
                 let name = call.name_text();
                 let candidates: Vec<_> = schema.types.iter().enumerate().filter_map(|(index, definition)| {
                     if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Choice(variants) if variants.iter().any(|variant| variant.shape.text == name)) {
@@ -536,7 +541,8 @@ impl Compiler<'_> {
             ));
         }
         // Each entry is a map's key and value, or a record's entry: a call
-        // whose shape finds its field, as in `path _`, `hidden` or `@ _`.
+        // whose shape finds its field, as in `path _`, `hidden`, or a
+        // variant, `` `by name ``.
         let mut fields: Vec<(String, &Node)> = Vec::new();
         let mut entry_calls: Vec<&anyx::Call> = Vec::new();
         let mut is_map = false;
@@ -593,9 +599,10 @@ impl Compiler<'_> {
                 let TypeKind::Record(record) = &definition.kind else {
                     return None;
                 };
-                let found: Vec<Option<usize>> = entry_calls
+                let found: Vec<Option<usize>> = entries
                     .iter()
-                    .map(|call| record_entry(schema, record, call))
+                    .zip(&entry_calls)
+                    .map(|(entry, call)| record_entry(schema, record, entry, call))
                     .collect();
                 (definition.parameters.is_empty()
                     && found.iter().all(Option::is_some)
@@ -623,7 +630,7 @@ impl Compiler<'_> {
         };
         let mut values: Vec<(String, Argument)> = Vec::new();
         for (entry, call) in entries.iter().zip(&entry_calls) {
-            let (field, value) = match record_entry(schema, record, call) {
+            let (field, value) = match record_entry(schema, record, entry, call) {
                 Some(index) => {
                     let field = &record[index];
                     let value = match field.form {
@@ -634,6 +641,8 @@ impl Compiler<'_> {
                                 arguments: Vec::new(),
                             }),
                         },
+                        // `` `by name ``: the entry is the value.
+                        FieldForm::Unnamed => self.argument(schema, entry, Some(&field.r#type))?,
                         _ => match &field.r#type {
                             // A field with several slots holds a value for each.
                             Type::Tuple(slots) => Argument {
@@ -651,24 +660,6 @@ impl Compiler<'_> {
                             r#type => self.argument(schema, &call.arguments[0], Some(r#type))?,
                         },
                     };
-                    (field, value)
-                }
-                // An `@` entry whose value is a call of the shell's, found
-                // by its type.
-                None if call.name_text() == "@ _" => {
-                    let value = self.argument(schema, &call.arguments[0], None)?;
-                    let field = record
-                        .iter()
-                        .find(|field| {
-                            field.form == FieldForm::Unnamed && field.r#type == value.r#type
-                        })
-                        .ok_or_else(|| {
-                            self.error(
-                                entry.span,
-                                "expected a value of one of the record's `@` fields",
-                            )
-                        })?;
-                    let value = self.check(schema, entry.span, value, Some(&field.r#type))?;
                     (field, value)
                 }
                 None => {
@@ -877,11 +868,16 @@ fn transfer(
     })
 }
 
-/// The field of `record` a braces entry fills, by its shape, or for `@`
-/// by its value's outermost form.
-fn record_entry(schema: &Schema, record: &[Field], call: &anyx::Call) -> Option<usize> {
+/// The field of `record` a braces entry fills, by its shape, or for a
+/// variant, `` `by name ``, by the variant's shape.
+fn record_entry(
+    schema: &Schema,
+    record: &[Field],
+    entry: &Node,
+    call: &anyx::Call,
+) -> Option<usize> {
     match call.name_text().as_str() {
-        "@ _" => schema.unnamed_field(record, &Written::of(&call.arguments[0])?),
+        "` _" => schema.unnamed_field(record, &Written::of(entry)?),
         shape => schema.shaped_field(record, shape),
     }
 }

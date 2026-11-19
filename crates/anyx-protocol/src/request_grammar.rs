@@ -9,6 +9,9 @@ static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
     regex::Regex::new("^(_ (days?|hours?|minutes?|seconds?|milliseconds?))( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$").expect("the generator checked it")
 });
 
+static REGEX_2: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new("^[^`]").expect("the generator checked it"));
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub call: Vec<Call>,
@@ -40,7 +43,14 @@ pub enum Value {
     Text(Spanned<StringLiteral>),
     List(Spanned<Vec<Value>>),
     Braces(Spanned<Vec<Entry>>),
+    Variant(Variant),
     Call(ValueCall),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Variant {
+    pub body: ValueCall,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,7 +90,35 @@ pub enum Type {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RefinedType {
     pub base: Box<Type>,
-    pub predicate: Spanned<Vec<Node>>,
+    pub predicate: Spanned<Vec<Term>>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Term {
+    Subject(Span),
+    Integer(Spanned<String>),
+    Float(Spanned<String>),
+    Text(Spanned<StringLiteral>),
+    Variants(Spanned<Vec<TermVariant>>),
+    Variant(TermVariant),
+    Call {
+        name: CallName,
+        arguments: Vec<Term>,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermVariant {
+    pub body: TermVariantBody,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermVariantBody {
+    pub name: CallName,
+    pub arguments: Vec<Span>,
     pub span: Span,
 }
 
@@ -121,6 +159,7 @@ impl Value {
             Value::Text(value) => value.span,
             Value::List(value) => value.span,
             Value::Braces(value) => value.span,
+            Value::Variant(value) => value.span,
             Value::Call(value) => value.span,
         }
     }
@@ -142,6 +181,19 @@ impl Type {
             Type::List(value) => value.span,
             Type::Map(value) => value.span,
             Type::Named(value) => value.span,
+        }
+    }
+}
+
+impl Term {
+    pub fn span(&self) -> Span {
+        match self {
+            Term::Subject(span) | Term::Call { span, .. } => *span,
+            Term::Integer(value) => value.span,
+            Term::Float(value) => value.span,
+            Term::Text(value) => value.span,
+            Term::Variants(value) => value.span,
+            Term::Variant(value) => value.span,
         }
     }
 }
@@ -180,8 +232,15 @@ impl support::Errors for Value {
             Value::Text(value) => support::Errors::errors(value, found),
             Value::List(value) => support::Errors::errors(value, found),
             Value::Braces(value) => support::Errors::errors(value, found),
+            Value::Variant(value) => support::Errors::errors(value, found),
             Value::Call(value) => support::Errors::errors(value, found),
         }
+    }
+}
+
+impl support::Errors for Variant {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.body, found);
     }
 }
 
@@ -226,6 +285,38 @@ impl support::Errors for RefinedType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.base, found);
         support::Errors::errors(&self.predicate, found);
+    }
+}
+
+impl support::Errors for Term {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Term::Subject(value) => support::Errors::errors(value, found),
+            Term::Integer(value) => support::Errors::errors(value, found),
+            Term::Float(value) => support::Errors::errors(value, found),
+            Term::Text(value) => support::Errors::errors(value, found),
+            Term::Variants(value) => support::Errors::errors(value, found),
+            Term::Variant(value) => support::Errors::errors(value, found),
+            Term::Call {
+                name, arguments, ..
+            } => {
+                support::Errors::errors(name, found);
+                support::Errors::errors(arguments, found);
+            }
+        }
+    }
+}
+
+impl support::Errors for TermVariant {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.body, found);
+    }
+}
+
+impl support::Errors for TermVariantBody {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
     }
 }
 
@@ -314,6 +405,7 @@ pub fn decode_value(node: &Node) -> Result<Value, DecodeError> {
         .or_else(|error| error.or(support::string(node, |_| true, "a string").map(Value::Text)))
         .or_else(|error| error.or(decode_value_list(node).map(Value::List)))
         .or_else(|error| error.or(decode_value_braces(node).map(Value::Braces)))
+        .or_else(|error| error.or(decode_variant(node).map(Value::Variant)))
         .or_else(|error| error.or(decode_value_call(node).map(Value::Call)))
 }
 
@@ -335,6 +427,16 @@ fn decode_value_braces(node: &Node) -> Result<Spanned<Vec<Entry>>, DecodeError> 
         value,
         span: node.span,
     })
+}
+
+pub fn decode_variant(node: &Node) -> Result<Variant, DecodeError> {
+    let mut parts = support::call(node, "the call `` ` _ ``")?;
+    let decoded = Variant {
+        body: parts.word("`")?.one(decode_value_call, "a value call")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_duration(node: &Node) -> Result<Duration, DecodeError> {
@@ -367,8 +469,8 @@ pub fn decode_count(node: &Node) -> Result<Count, DecodeError> {
 pub fn decode_value_call(node: &Node) -> Result<ValueCall, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword),
-        "a call whose name has no keyword",
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = ValueCall {
@@ -419,14 +521,99 @@ pub fn decode_refined_type(node: &Node) -> Result<RefinedType, DecodeError> {
     Ok(decoded)
 }
 
-fn decode_refined_type_predicate(node: &Node) -> Result<Spanned<Vec<Node>>, DecodeError> {
+fn decode_refined_type_predicate(node: &Node) -> Result<Spanned<Vec<Term>>, DecodeError> {
     let mut elements = support::square_bracket(node)?;
-    let value = elements.one_or_more(support::any_node, "a node")?;
+    let value = elements.one_or_more(decode_term, "a term")?;
     elements.finish()?;
     Ok(Spanned {
         value,
         span: node.span,
     })
+}
+
+pub fn decode_term(node: &Node) -> Result<Term, DecodeError> {
+    support::underscore(node)
+        .map(Term::Subject)
+        .or_else(|error| {
+            error.or(support::float(
+                node,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                false,
+                "an integer literal",
+            )
+            .and_then(|_| support::number_literal(node, false, "an integer literal"))
+            .map(Term::Integer))
+        })
+        .or_else(|error| {
+            error.or(support::float(
+                node,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                false,
+                "a float literal",
+            )
+            .and_then(|_| support::number_literal(node, true, "a float literal"))
+            .map(Term::Float))
+        })
+        .or_else(|error| error.or(support::string(node, |_| true, "a string").map(Term::Text)))
+        .or_else(|error| error.or(decode_term_variants(node).map(Term::Variants)))
+        .or_else(|error| error.or(decode_term_variant(node).map(Term::Variant)))
+        .or_else(|error| error.or(decode_term_call(node)))
+}
+
+fn decode_term_variants(node: &Node) -> Result<Spanned<Vec<TermVariant>>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.zero_or_more(decode_term_variant);
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+fn decode_term_call(node: &Node) -> Result<Term, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        "a call whose name has no keyword and matches the regex `` ^[^`] ``",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = Term::Call {
+        name,
+        arguments: arguments.zero_or_more(decode_term),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_term_variant(node: &Node) -> Result<TermVariant, DecodeError> {
+    let mut parts = support::call(node, "the call `` ` _ ``")?;
+    let decoded = TermVariant {
+        body: parts
+            .word("`")?
+            .one(decode_term_variant_body, "a call whose name has no keyword")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_term_variant_body(node: &Node) -> Result<TermVariantBody, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = TermVariantBody {
+        name,
+        arguments: arguments.zero_or_more(support::underscore),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_list_type(node: &Node) -> Result<ListType, DecodeError> {
@@ -738,8 +925,8 @@ pub mod support {
             NodeKind::Number(text) => format!("the number `{text}`"),
             NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
-                [NamePart::Word { text, .. }] => format!("the word `{text}`"),
-                _ => format!("the call `{}`", call.name_text()),
+                [NamePart::Word { text, .. }] => format!("the word {}", code(text)),
+                _ => format!("the call {}", code(&call.name_text())),
             },
             NodeKind::Parens(_) => "`(...)`".to_string(),
             NodeKind::Brackets(_) => "`[...]`".to_string(),
@@ -941,7 +1128,7 @@ pub mod support {
         fn unexpected(&mut self, expected: &str) -> DecodeError {
             let error = match self.items.get(self.index) {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), expected)
+                    DecodeError::new(*span, format!("the word {}", code(text)), expected)
                 }
                 Some(Item::Node(node)) => mismatch(node, expected),
                 None => DecodeError::new(self.end.1, self.end.0, expected),
@@ -1025,7 +1212,7 @@ pub mod support {
             }
             let mut error = match next {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), "")
+                    DecodeError::new(*span, format!("the word {}", code(text)), "")
                 }
                 Some(Item::Node(node)) => mismatch(node, ""),
                 None => DecodeError::new(self.end.1, self.end.0, ""),
@@ -1060,7 +1247,7 @@ pub mod support {
                     Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
-                    _ => return Err(self.unexpected(&format!("the word `{text}`"))),
+                    _ => return Err(self.unexpected(&format!("the word {}", code(text)))),
                 };
                 self.index += 1;
                 self.other_call = None;
@@ -1099,7 +1286,8 @@ pub mod support {
                 let error = match self.other_call.is_some() {
                     true => self.is_other_call(),
                     false => {
-                        let error = DecodeError::new(span, format!("the words `{text}`"), expected);
+                        let error =
+                            DecodeError::new(span, format!("the words {}", code(&text)), expected);
                         self.fail(error)
                     }
                 };
@@ -1299,7 +1487,24 @@ pub mod support {
     pub fn word(node: &Node, text: &str) -> Result<Span, DecodeError> {
         match is_word(node, text) {
             true => Ok(node.span),
-            false => Err(mismatch(node, &format!("the word `{text}`"))),
+            false => Err(mismatch(node, &format!("the word {}", code(text)))),
+        }
+    }
+
+    /// `text` quoted as code: `` `x` ``, or with two backticks around text
+    /// that holds one, as the word `` ` ``.
+    pub fn code(text: &str) -> String {
+        match text.contains('`') {
+            true => format!("`` {text} ``"),
+            false => format!("`{text}`"),
+        }
+    }
+
+    /// The node `_`.
+    pub fn underscore(node: &Node) -> Result<Span, DecodeError> {
+        match node.kind {
+            NodeKind::Underscore => Ok(node.span),
+            _ => Err(mismatch(node, "`_`")),
         }
     }
 

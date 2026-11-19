@@ -15,14 +15,14 @@ PROTOCOL shop VERSION 1,
 # A page of a long list, and where the next one starts.
 RECORD Page of (Item: TYPE) {
     items: LIST: Item,
-    next (Text?) DEFAULT next (null),
+    next (Text?) DEFAULT next (`null),
     # How many there are in all.
     total (Integer) DEFAULT total 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-CHOICE (Value: TYPE) or (Problem: TYPE) { done (value: Value), failed (problem: Problem) },
+CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) },
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
 RECORD (Item: TYPE) dated { item: Item, at: Instant },
@@ -35,7 +35,7 @@ RECORD Table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, values: LIST: 
 
 RECORD Payment { amount: Integer, at: Instant },
 
-CHOICE Decline { insufficient funds, card expired },
+CHOICE Decline { `insufficient funds, `card expired },
 
 TYPE ALIAS Payments: Page of (Payment),
 
@@ -306,7 +306,7 @@ impl FromValue for Decline {
     }
 }
 
-/// `true` or `false`.
+/// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     False,

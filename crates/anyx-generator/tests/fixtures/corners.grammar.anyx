@@ -2,8 +2,8 @@
 ## every kind of number and word, fields named like Rust keywords, brackets
 ## with and without fields, recursion through an optional field, `EACH`
 ## among the parts of a call, a call with no arguments, a node kept as it
-## is, name words taken as text, fixed words written as one `WORDS`, and
-## strings that must be `#` line strings.
+## is, the placeholder `_`, name words taken as text, fixed words written as
+## one `WORDS`, and strings that must be `#` line strings.
 
 ENTRY [header: OPTIONAL: string, ZERO OR MORE: node],
 
@@ -20,6 +20,7 @@ node: ONE OF [
   wrapped: PARENTHESIS [WORD "wrap", OPTIONAL: node, WORD "end"],
   each: ANYFIX CALL [WORD "EACH", EACH: node],
   kept: ANYFIX CALL [WORD "KEEP", node: ANY NODE],
+  held: ANYFIX CALL [WORD "HOLD", place: UNDERSCORE],
   raw: ANYFIX CALL [NAME [STARTS WITH "raw "]],
   set: ANYFIX CALL [WORD "SET", field],
   unset: ANYFIX CALL [WORD "UNSET", name: ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS]],

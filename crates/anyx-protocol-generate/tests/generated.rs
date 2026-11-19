@@ -141,7 +141,7 @@ fn error(source: &str) -> String {
 fn names_that_become_the_same_name_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [gone]"
+            "PROTOCOL p VERSION 1, RECORD Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [`gone]"
         ),
         "found the errors of `read _`, which becomes the type `ReadError`, like the type `Read Error`; expected names that stay distinct in the generated code, so rename one"
     );
@@ -150,7 +150,7 @@ fn names_that_become_the_same_name_are_rejected() {
         "found the type `Client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, CHOICE Record { a }"),
+        error("PROTOCOL p VERSION 1, CHOICE Record { `a }"),
         "found the type `Record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(

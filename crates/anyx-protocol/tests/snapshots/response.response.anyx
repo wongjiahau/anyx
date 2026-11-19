@@ -11,7 +11,7 @@ RETURNS {
 
         """",
 },
-ERROR conflict at revision 4 content """"
+ERROR `conflict at revision 4 content """"
     title "Ode"
 
     melody """
@@ -19,7 +19,7 @@ ERROR conflict at revision 4 content """"
         """
 
     """",
-ERROR rejected [{ line 2, column 5, code "E1", message "found \"x\"; expected a note" }],
-ERROR trashed,
+ERROR `rejected [{ line 2, column 5, code "E1", message "found \"x\"; expected a note" }],
+ERROR `trashed,
 INTERNAL ERROR,
 NOT RUN,

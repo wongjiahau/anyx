@@ -59,12 +59,12 @@ fn each_outcome_reads_as_json() {
         ),
         (
             WRITE,
-            "ERROR conflict at revision 4 content \"y\"",
+            "ERROR `conflict at revision 4 content \"y\"",
             r#"{"error":{"content":"y","kind":"conflictAtRevisionContent","revision":4},"kind":"error"}"#,
         ),
         (
             "read _",
-            "ERROR trashed",
+            "ERROR `trashed",
             r#"{"error":{"kind":"trashed"},"kind":"error"}"#,
         ),
         ("read _", "NOT RUN", r#"{"kind":"notRun"}"#),

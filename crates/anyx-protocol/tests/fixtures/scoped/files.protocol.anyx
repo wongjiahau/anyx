@@ -4,7 +4,7 @@ RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
-    trashed,
+    `trashed,
 ] + common errors,
 
 READ ONLY METHOD list RETURNS (paths: LIST Text),
@@ -16,7 +16,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     RETURNS (warnings: LIST Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST Diagnostic),
+        `rejected (diagnostics: LIST Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.

@@ -92,25 +92,28 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
             }
             constructed_by(schema, &duration.name.text)
         }
-        Syntax::Call(call) => {
-            let text = &call.name.text;
-            constructed_by(schema, text)
-        }
+        Syntax::Variant(variant) => variant_of(schema, &variant.body.name.text),
+        Syntax::Call(call) => constructed_by(schema, &call.name.text),
     }
 }
 
 /// The one type, not generic, that a call of the shape `text` constructs:
 /// a choice with a variant of that shape, or a named type of that name.
+/// The one choice, not generic, with a variant of the shape `text`.
+fn variant_of(schema: &Schema, text: &str) -> Option<Type> {
+    only(schema.types.iter().enumerate().filter(|(_, definition)| {
+        definition.parameters.is_empty()
+            && matches!(&definition.kind, TypeKind::Choice(variants)
+                if variants.iter().any(|variant| variant.shape.text == text))
+    }))
+}
+
+/// The one named type, not generic, whose constructor is the shape `text`.
 fn constructed_by(schema: &Schema, text: &str) -> Option<Type> {
     only(schema.types.iter().enumerate().filter(|(_, definition)| {
         definition.parameters.is_empty()
-            && match &definition.kind {
-                TypeKind::Choice(variants) => {
-                    variants.iter().any(|variant| variant.shape.text == text)
-                }
-                TypeKind::Distinct { constructor, .. } => ShapePart::text(constructor) == text,
-                TypeKind::Record(_) => false,
-            }
+            && matches!(&definition.kind, TypeKind::Distinct { constructor, .. }
+                if ShapePart::text(constructor) == text)
     }))
 }
 
@@ -125,12 +128,57 @@ fn same_type(schema: &Schema, values: &[&Syntax]) -> Option<Type> {
 /// Resolve the request grammar's copy of the schema's type rule with the
 /// same semantic resolver. No type syntax is decoded a second time.
 pub(crate) fn request_type(schema: &Schema, written: &request::Type) -> Option<Type> {
+    fn schema_name(name: &request::CallName) -> ast::CallName {
+        ast::CallName {
+            text: name.text.clone(),
+            parts: name.parts.clone(),
+            span: name.span,
+        }
+    }
+    fn schema_spanned<T: Clone>(spanned: &request::Spanned<T>) -> ast::Spanned<T> {
+        ast::Spanned {
+            value: spanned.value.clone(),
+            span: spanned.span,
+        }
+    }
+    fn schema_variant(written: &request::TermVariant) -> ast::TermVariant {
+        ast::TermVariant {
+            body: ast::TermVariantBody {
+                name: schema_name(&written.body.name),
+                arguments: written.body.arguments.clone(),
+                span: written.body.span,
+            },
+            span: written.span,
+        }
+    }
+    fn schema_term(written: &request::Term) -> ast::Term {
+        match written {
+            request::Term::Subject(span) => ast::Term::Subject(*span),
+            request::Term::Integer(n) => ast::Term::Integer(schema_spanned(n)),
+            request::Term::Float(n) => ast::Term::Float(schema_spanned(n)),
+            request::Term::Text(text) => ast::Term::Text(schema_spanned(text)),
+            request::Term::Variants(variants) => ast::Term::Variants(ast::Spanned {
+                value: variants.value.iter().map(schema_variant).collect(),
+                span: variants.span,
+            }),
+            request::Term::Variant(variant) => ast::Term::Variant(schema_variant(variant)),
+            request::Term::Call {
+                name,
+                arguments,
+                span,
+            } => ast::Term::Call {
+                name: schema_name(name),
+                arguments: arguments.iter().map(schema_term).collect(),
+                span: *span,
+            },
+        }
+    }
     fn schema_type(written: &request::Type) -> ast::Type {
         match written {
             request::Type::Refined(refined) => ast::Type::Refined(ast::RefinedType {
                 base: Box::new(schema_type(&refined.base)),
                 predicate: ast::Spanned {
-                    value: refined.predicate.value.clone(),
+                    value: refined.predicate.value.iter().map(schema_term).collect(),
                     span: refined.predicate.span,
                 },
                 span: refined.span,
@@ -144,11 +192,7 @@ pub(crate) fn request_type(schema: &Schema, written: &request::Type) -> Option<T
                 span: map.span,
             }),
             request::Type::Named(reference) => ast::Type::Named(ast::Reference {
-                name: ast::CallName {
-                    text: reference.name.text.clone(),
-                    parts: reference.name.parts.clone(),
-                    span: reference.name.span,
-                },
+                name: schema_name(&reference.name),
                 arguments: reference.arguments.iter().map(schema_type).collect(),
                 span: reference.span,
             }),
@@ -169,7 +213,7 @@ fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
             base, predicate, ..
         }) => {
             let base = resolve(schema, base)?;
-            let predicate = crate::refinement::Predicate::from_nodes(&predicate.value).ok()?;
+            let predicate = crate::refinement::Predicate::from_terms(&predicate.value).ok()?;
             predicate.check_type(schema, &base).ok()?;
             Type::Refined(Box::new(base), predicate)
         }

@@ -4,7 +4,7 @@
 //!
 //! ```anyx
 //! RETURNS { path "a.poentaro", revision 3, content "…" },
-//! ERROR missing,
+//! ERROR `missing,
 //! ```
 //!
 //! A result is `RETURNS` and the method's value (`RETURNS NOTHING` for a
@@ -126,6 +126,7 @@ fn encode_outcome(
                     ),
                 });
             };
+            out.push('`');
             write_shape(schema, &error.shape, arguments, &mut out)?;
         }
         Outcome::NotRun => out.push_str("NOT RUN"),

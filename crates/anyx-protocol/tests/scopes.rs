@@ -62,7 +62,7 @@ fn json_uses_flat_names() {
         "pdf \"a\"\n"
     );
     assert_eq!(
-        anyx_protocol::json::decode_response_json(&schema, "pdf _", "ERROR missing").unwrap(),
+        anyx_protocol::json::decode_response_json(&schema, "pdf _", "ERROR `missing").unwrap(),
         r#"{"error":{"kind":"missing"},"kind":"error"}"#
     );
 }
@@ -137,7 +137,7 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
 fn own_declarations_and_direct_public_imports_are_visible() {
     let schema = load("entry.protocol.anyx", &[
         ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
-        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [gone],"),
+        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [`gone],"),
     ]).unwrap();
     assert_eq!(schema.types.len(), 4);
     assert_eq!(schema.errors.len(), 1);
@@ -174,7 +174,7 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
                 "entry.protocol.anyx",
                 "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS failures,",
             ),
-            ("lib.anyx", "ERRORS failures [gone],"),
+            ("lib.anyx", "ERRORS failures [`gone],"),
         ],
     )
     .unwrap_err();
@@ -187,7 +187,7 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
 
 #[test]
 fn duplicate_names_include_both_files_even_when_private() {
-    for second in ["RECORD Item { value: Text },", "ERRORS Item [gone],"] {
+    for second in ["RECORD Item { value: Text },", "ERRORS Item [`gone],"] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[

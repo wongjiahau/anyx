@@ -13,7 +13,7 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
   assert.equal(unwrapOutcome(result).tea, 9007199254740993n);
   const largestDuration = 18446744073709551615n;
   assert.equal((await client.snoozeFor(reminder, largestDuration)).kind, 'error');
-  const duration = await new Client(async () => 'RETURNS every (18446744073709551615 milliseconds)').remind(reminder);
+  const duration = await new Client(async () => 'RETURNS `every (18446744073709551615 milliseconds)').remind(reminder);
   assert.equal(duration.value.period, largestDuration);
   await assert.rejects(client.snoozeFor(reminder, largestDuration + 1n));
   const declared = await client.snoozeFor(reminder, 1000n);
@@ -26,6 +26,13 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
     .snoozeFor({...reminder, quietFromTo: [1n, 5n]}, 1000n);
   assert.deepEqual(quiet.value.map(r => r.quietFromTo), [[23n, 6n], [22n, 7n]]);
   assert.match(sent, /quiet from \(1\) to \(5\)/);
+  // A field written as its variant alone: the default is left out.
+  assert.deepEqual(quiet.value.map(r => r.tone.kind), ['chime', 'chime']);
+  await new Client(async request => { sent = String(request); return 'RETURNS [{ note "tea", at "2026-11-14T06:00:08.000Z", `silent }]'; })
+    .snoozeFor({...reminder, tone: {kind: 'silent'}}, 1000n)
+    .then(result => assert.equal(result.value[0].tone.kind, 'silent'));
+  assert.match(sent, /`silent/);
+  assert.doesNotMatch(sent, /@/);
   const batch = await client.batch(c => [c.remind(reminder), c.count({tea: reminder})]);
   assert.equal(batch[0].value.kind, 'onceAt');
   assert.equal(batch[1].value.tea, reminder.times);

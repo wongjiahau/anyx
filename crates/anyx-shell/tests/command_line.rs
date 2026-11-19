@@ -98,7 +98,7 @@ fn earlier_values_are_kept_when_a_method_fails() {
     let output = command().args(["--expression", "environment / read variable \"ANYX_INHERITED\", environment / read variable \"missing\""]).output().unwrap();
     assert!(!output.status.success());
     assert_eq!(output.stdout, b"\"original\"\n");
-    assert_eq!(output.stderr, b"ERROR variable does not exist\n");
+    assert_eq!(output.stderr, b"ERROR `variable does not exist\n");
 }
 
 #[test]
@@ -158,7 +158,10 @@ fn interactive_session_keeps_state_and_recovers_after_errors() {
     );
     assert!(stdout.contains("\"kept\"\n"), "{stdout}");
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("ERROR variable does not exist"), "{stderr}");
+    assert!(
+        stderr.contains("ERROR `variable does not exist"),
+        "{stderr}"
+    );
     assert!(stderr.contains("INVALID REQUEST"), "{stderr}");
 }
 
@@ -167,12 +170,12 @@ fn boolean_operations_are_available_in_the_shell() {
     let output = command()
         .args([
             "--expression",
-            "boolean / not (false), boolean / (true) and (false), boolean / (true) or (false), boolean / (true) xor (true)",
+            "boolean / not (`false), boolean / (`true) and (`false), boolean / (`true) or (`false), boolean / (`true) xor (`true)",
         ])
         .output()
         .unwrap();
     succeeds(&output);
-    assert_eq!(output.stdout, b"true,\nfalse,\ntrue,\nfalse,\n");
+    assert_eq!(output.stdout, b"`true,\n`false,\n`true,\n`false,\n");
 }
 
 #[test]
@@ -180,10 +183,10 @@ fn boolean_tool_can_be_opened_in_a_batch() {
     let output = command()
         .args([
             "--expression",
-            "USE ALL FROM boolean, true .and (false .and (true)), boolean / not (true)",
+            "USE ALL FROM boolean, `true .and (`false .and (`true)), boolean / not (`true)",
         ])
         .output()
         .unwrap();
     succeeds(&output);
-    assert_eq!(output.stdout, b"false,\nfalse,\n");
+    assert_eq!(output.stdout, b"`false,\n`false,\n");
 }

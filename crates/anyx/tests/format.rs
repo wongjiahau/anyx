@@ -420,3 +420,17 @@ fn a_blank_line_or_comment_before_a_call_does_not_break_it() {
         "f,\n\n## c\nMETHOD x RETURNS y: TEXT,\n"
     );
 }
+
+#[test]
+fn a_prefix_after_a_keyword_hugs_what_follows() {
+    assert_eq!(
+        anyx::format("add 1 to 2 ERROR ` overflow").unwrap(),
+        "add 1 to 2 ERROR `overflow\n"
+    );
+    assert_eq!(anyx::format("x RETURNS ` red").unwrap(), "x RETURNS `red\n");
+    assert_eq!(anyx::format("a - b").unwrap(), "a - b\n");
+    assert_eq!(
+        anyx::format("[\n  # Gone.\n  ` trashed,\n]").unwrap(),
+        "[\n    # Gone.\n    `trashed,\n]\n"
+    );
+}

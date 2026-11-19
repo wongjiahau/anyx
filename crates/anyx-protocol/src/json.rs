@@ -592,7 +592,7 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                     r#type
                         .members()
                         .iter()
-                        .map(|member| format!("`{}`", schema.type_name(member)))
+                        .map(|member| crate::schema::code(&schema.type_name(member)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )),

@@ -639,8 +639,8 @@ pub mod support {
             NodeKind::Number(text) => format!("the number `{text}`"),
             NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
-                [NamePart::Word { text, .. }] => format!("the word `{text}`"),
-                _ => format!("the call `{}`", call.name_text()),
+                [NamePart::Word { text, .. }] => format!("the word {}", code(text)),
+                _ => format!("the call {}", code(&call.name_text())),
             },
             NodeKind::Parens(_) => "`(...)`".to_string(),
             NodeKind::Brackets(_) => "`[...]`".to_string(),
@@ -842,7 +842,7 @@ pub mod support {
         fn unexpected(&mut self, expected: &str) -> DecodeError {
             let error = match self.items.get(self.index) {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), expected)
+                    DecodeError::new(*span, format!("the word {}", code(text)), expected)
                 }
                 Some(Item::Node(node)) => mismatch(node, expected),
                 None => DecodeError::new(self.end.1, self.end.0, expected),
@@ -926,7 +926,7 @@ pub mod support {
             }
             let mut error = match next {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), "")
+                    DecodeError::new(*span, format!("the word {}", code(text)), "")
                 }
                 Some(Item::Node(node)) => mismatch(node, ""),
                 None => DecodeError::new(self.end.1, self.end.0, ""),
@@ -961,7 +961,7 @@ pub mod support {
                     Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
-                    _ => return Err(self.unexpected(&format!("the word `{text}`"))),
+                    _ => return Err(self.unexpected(&format!("the word {}", code(text)))),
                 };
                 self.index += 1;
                 self.other_call = None;
@@ -1000,7 +1000,8 @@ pub mod support {
                 let error = match self.other_call.is_some() {
                     true => self.is_other_call(),
                     false => {
-                        let error = DecodeError::new(span, format!("the words `{text}`"), expected);
+                        let error =
+                            DecodeError::new(span, format!("the words {}", code(&text)), expected);
                         self.fail(error)
                     }
                 };
@@ -1200,7 +1201,24 @@ pub mod support {
     pub fn word(node: &Node, text: &str) -> Result<Span, DecodeError> {
         match is_word(node, text) {
             true => Ok(node.span),
-            false => Err(mismatch(node, &format!("the word `{text}`"))),
+            false => Err(mismatch(node, &format!("the word {}", code(text)))),
+        }
+    }
+
+    /// `text` quoted as code: `` `x` ``, or with two backticks around text
+    /// that holds one, as the word `` ` ``.
+    pub fn code(text: &str) -> String {
+        match text.contains('`') {
+            true => format!("`` {text} ``"),
+            false => format!("`{text}`"),
+        }
+    }
+
+    /// The node `_`.
+    pub fn underscore(node: &Node) -> Result<Span, DecodeError> {
+        match node.kind {
+            NodeKind::Underscore => Ok(node.span),
+            _ => Err(mismatch(node, "`_`")),
         }
     }
 

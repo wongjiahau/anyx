@@ -136,7 +136,7 @@ fn the_client_annotates_what_its_arguments_leave_open() {
             "tag [File Id \"a\"]\n",
             "scale 3.0\n",
             "scale 3\n",
-            "paint (dark)\n",
+            "paint (`dark)\n",
         ]
     );
 }

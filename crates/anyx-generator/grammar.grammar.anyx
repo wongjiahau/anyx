@@ -48,6 +48,9 @@ pattern: ONE OF [
   string,
   line string,
   number,
+  ## The node `_`, which isn't a word: a placeholder of the language, as
+  ## the value a predicate tests.
+  underscore: WORD "UNDERSCORE",
   any node,
 ],
 

@@ -24,7 +24,7 @@ RECORD File { path: Text, revision: Integer, content: Text },
 
 PUBLIC ERRORS file errors [
     # The note is in the trash.
-    trashed,
+    `trashed,
 ] + common errors,
 
 READ ONLY METHOD list RETURNS (paths: LIST Text),
@@ -36,7 +36,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     RETURNS (warnings: LIST Diagnostic)
     ERRORS [
         # The note has errors, so nothing was saved.
-        rejected (diagnostics: LIST Diagnostic),
+        `rejected (diagnostics: LIST Diagnostic),
     ] + file errors,
 
 # Moves the note to the trash.
@@ -53,7 +53,7 @@ PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
 PUBLIC ERRORS common errors [
     # No note has this path.
-    missing,
+    `missing,
 ],
 "#,
     },
@@ -63,14 +63,14 @@ PUBLIC ERRORS common errors [
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (null) },
+RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
-        unreadable (diagnostics: LIST Diagnostic),
+        `unreadable (diagnostics: LIST Diagnostic),
     ] + file errors,
 "#,
     },
@@ -187,7 +187,7 @@ impl FromValue for Page {
     }
 }
 
-/// `true` or `false`.
+/// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     False,

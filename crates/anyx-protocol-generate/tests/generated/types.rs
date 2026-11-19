@@ -15,16 +15,20 @@ PROTOCOL types VERSION 1,
 RECORD Reminder {
     note: Text,
     at: Instant,
-    every (Duration?) DEFAULT every (null),
+    every (Duration?) DEFAULT every (`null),
     # How many times to remind before giving up.
     times (Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
     seen (MAP: Instant) DEFAULT seen {},
     # The hours of the day it stays quiet, from and to.
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
+    # How it sounds, written as the variant alone.
+    `(tone: Tone) DEFAULT `chime,
 },
 
-CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },
+CHOICE Tone { `chime, `silent },
+
+CHOICE Schedule { `never, `once at (at: Instant), `every (period: Duration) },
 
 METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule),
 
@@ -34,7 +38,7 @@ METHOD snooze (reminder: Reminder) for (duration: Duration)
     RETURNS (reminders: LIST: Reminder)
     ERRORS [
         # Snoozed past its next time.
-        overdue since (since: Instant),
+        `overdue since (since: Instant),
     ],
 "#,
 }];
@@ -67,6 +71,8 @@ pub struct Reminder {
     pub seen: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
     /// The hours of the day it stays quiet, from and to.
     pub quiet_from_to: (i64, i64),
+    /// How it sounds, written as the variant alone.
+    pub tone: Tone,
 }
 
 impl IntoValue for Reminder {
@@ -79,6 +85,7 @@ impl IntoValue for Reminder {
                 .field("times", self.times)
                 .field("seen", self.seen)
                 .field("quiet from to", self.quiet_from_to)
+                .field("tone", self.tone)
                 .build(),
         )
     }
@@ -97,6 +104,42 @@ impl FromValue for Reminder {
             times: fields.field("times")?,
             seen: fields.field("seen")?,
             quiet_from_to: fields.field("quiet from to")?,
+            tone: fields.field("tone")?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Tone {
+    Chime,
+    Silent,
+}
+
+impl IntoValue for Tone {
+    fn into_value(self) -> Value {
+        match self {
+            Tone::Chime => Value::Variant {
+                shape: "chime".to_string(),
+                arguments: vec![],
+            },
+            Tone::Silent => Value::Variant {
+                shape: "silent".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for Tone {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "chime" => Tone::Chime,
+            "silent" => Tone::Silent,
+            _ => return None,
         })
     }
 }
@@ -146,7 +189,7 @@ impl FromValue for Schedule {
     }
 }
 
-/// `true` or `false`.
+/// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
     False,

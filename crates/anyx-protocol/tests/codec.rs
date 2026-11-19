@@ -156,9 +156,9 @@ fn an_invalid_request_reads_back() {
 }
 
 const MODES: &str = "PROTOCOL a VERSION 1,
-CHOICE Shade { dark, light },
-CHOICE Mode { dark, light, custom hue (hue: Float), (base: Shade) dimmed },
-RECORD Options { mode: Mode, strict (Boolean) DEFAULT strict (false) },
+CHOICE Shade { `dark, `light },
+CHOICE Mode { `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed },
+RECORD Options { mode: Mode, strict (Boolean) DEFAULT strict (`false) },
 METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean),
 METHOD apply (options: Options) RETURNS (modes: LIST: Mode),";
 
@@ -208,10 +208,10 @@ fn words_in_slots_go_in_parentheses() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "set (dark AS Mode) strict (true),
-set (custom hue 0.5) strict (false),
-set ((dark) dimmed) strict (false),
-apply { mode: (light) dimmed, strict: false },
+        "set (`dark AS Mode) strict (`true),
+set (`custom hue 0.5) strict (`false),
+set (`(`dark) dimmed) strict (`false),
+apply { mode: `(`light) dimmed, strict: `false },
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -280,16 +280,16 @@ fn mistakes_in_a_request_point_at_where_they_are() {
 fn mistakes_in_values_name_the_parameter_and_field() {
     let schema = schema(MODES);
     let cases = [
-        "apply { mode: dim }",
-        "apply { strict: true }",
-        "apply { mode: dark, mode: dark }",
-        "apply { mode: dark, colour: dark }",
-        "apply { mode: custom hue }",
-        "apply { mode: dark hue 1 }",
-        "apply { mode: custom hue \"red\" }",
-        "apply { mode dark }",
-        "apply { mode: dark, strict: yes }",
-        "set dark strict (true)",
+        "apply { mode: `dim }",
+        "apply { strict: `true }",
+        "apply { mode: `dark, mode: `dark }",
+        "apply { mode: `dark, colour: `dark }",
+        "apply { mode: `custom hue }",
+        "apply { mode: `dark hue 1 }",
+        "apply { mode: `custom hue \"red\" }",
+        "apply { mode `dark }",
+        "apply { mode: `dark, strict: `yes }",
+        "set dark strict (`true)",
     ];
     assert_snapshot(
         "tests/snapshots/value_errors.txt",
@@ -304,8 +304,8 @@ fn mistakes_in_a_response_point_at_where_they_are() {
     let schema = poentaro();
     let read = [method(&schema, "read _")];
     let cases = [
-        "ERROR conflict at revision 1 content \"x\"",
-        "ERROR gone",
+        "ERROR `conflict at revision 1 content \"x\"",
+        "ERROR `gone",
         "RETURNS missing",
         "NOT RUN, NOT RUN",
         "",
@@ -323,7 +323,7 @@ fn mistakes_in_a_response_point_at_where_they_are() {
 }
 
 const ACCOUNTS: &str = "PROTOCOL a VERSION 1,
-METHOD change password from (old: Text) to (new: Text) RETURNS NOTHING ERRORS [wrong password],
+METHOD change password from (old: Text) to (new: Text) RETURNS NOTHING ERRORS [`wrong password],
 METHOD tag (names: LIST Text) RETURNS (count: Integer),";
 
 #[test]
@@ -354,7 +354,7 @@ fn a_response_answers_each_call_by_position_without_repeating_it() {
     let written = encode_response(&schema, &calls, &response).unwrap();
     assert_eq!(
         written,
-        "RETURNS NOTHING,\nERROR wrong password,\nRETURNS 2,\nINTERNAL ERROR,\nNOT RUN,\n"
+        "RETURNS NOTHING,\nERROR `wrong password,\nRETURNS 2,\nINTERNAL ERROR,\nNOT RUN,\n"
     );
     assert!(!written.contains("secret"));
     assert_eq!(
@@ -371,7 +371,7 @@ fn a_result_is_read_as_an_outcome_of_the_call_in_its_place() {
         "RETURNS NOTHING, RETURNS NOTHING",
         "RETURNS NOTHING",
         "RETURNS NOTHING, RETURNS 2, RETURNS 3",
-        "RETURNS NOTHING, ERROR wrong password",
+        "RETURNS NOTHING, ERROR `wrong password",
         "change password from \"a\" to \"b\" RETURNS NOTHING, tag [] RETURNS 0",
     ];
     assert_snapshot(
@@ -591,7 +591,7 @@ fn a_field_left_out_takes_its_default() {
 }
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
-CHOICE Mood { calm, wild },
+CHOICE Mood { `calm, `wild },
 RECORD Tally { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
 METHOD count (tally: Tally) RETURNS (counts: MAP Integer),
 METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood),";
@@ -637,7 +637,7 @@ fn maps_read_back_as_written() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": wild, \"a \\\"b\\\"\": calm } },
+        "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": `wild, \"a \\\"b\\\"\": `calm } },
 wait { \"tea\": 5 minutes },
 wait ({} AS: MAP Duration),
 "

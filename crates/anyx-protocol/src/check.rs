@@ -10,7 +10,7 @@ use crate::grammar as ast;
 use crate::schema::{
     DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, FieldForm, Method, Parameter,
     Schema, Shape, ShapePart, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written,
-    fill_slots,
+    code, fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
@@ -22,7 +22,7 @@ struct Declared {
     public: bool,
 }
 
-/// An `ERRORS` group: `ERRORS file errors [trashed, missing] + other`.
+/// An `ERRORS` group: `` ERRORS file errors [`trashed, `missing] + other ``.
 struct Group<'a> {
     declared: Declared,
     /// Its own errors, as written.
@@ -704,9 +704,10 @@ impl<'a> Checker<'a> {
         schema
     }
 
-    /// An `@` entry leads to one field by its value's outermost form alone,
-    /// so a record value never has to try a field and back out: no two `@`
-    /// fields of a record may share a form, even one variant's shape.
+    /// A field without a name is written as its variant alone, `` `by name ``,
+    /// so its type's every value is a variant, and the variant's shape leads
+    /// to one field: no two such fields of a record may share a variant, so
+    /// a record value never has to try a field and back out.
     fn check_forms(&mut self, schema: &Schema) {
         for pending in std::mem::take(&mut self.forms) {
             let TypeKind::Record(fields) = &schema.types[pending.r#type].kind else {
@@ -722,12 +723,16 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let span = pending.spans[index];
-                let Some(forms) = schema.written_forms(&field.r#type) else {
+                let forms = schema.written_forms(&field.r#type);
+                let Some(forms) = forms
+                    .filter(|forms| forms.iter().all(|form| matches!(form, Written::Variant(_))))
+                else {
                     self.error(
                         span,
                         format!(
-                            "found the `@` field `{}` of a type parameter; expected a type whose values' form is known, since an `@` entry is found by its form; give the field a shape with words",
-                            field.name
+                            "found the field `{}` of {}; expected a `CHOICE` or a union of variants, since the field is written as its variant alone; give the field a shape with words",
+                            field.name,
+                            code(&schema.type_name(&field.r#type))
                         ),
                     );
                     continue;
@@ -740,7 +745,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             span,
                             format!(
-                                "found {known} as a value of both `@` fields `{}` and `{}`; expected each `@` field's values written in forms of their own, since an `@` entry is found by its outermost form alone; give one of them a shape with words",
+                                "found {known} as a value of both fields `{}` and `{}`; expected each field written as its variant alone to have variants of its own, since the variant finds the field; give one of them a shape with words",
                                 fields[*other].name, field.name
                             ),
                         );
@@ -887,9 +892,10 @@ impl<'a> Checker<'a> {
                 self.error(
                     span,
                     format!(
-                        "found {form} as a value of both `{}` and `{}` in `{union}`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own",
-                        schema.type_name(&members[other]),
-                        schema.type_name(member),
+                        "found {form} as a value of both {} and {} in {}; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own",
+                        code(&schema.type_name(&members[other])),
+                        code(&schema.type_name(member)),
+                        code(&union),
                     ),
                 );
             }
@@ -1444,7 +1450,7 @@ impl<'a> Checker<'a> {
         let Some(name) = terms.name else {
             self.error(
                 error_terms::span(list),
-                "found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `ERRORS file errors [trashed, missing]`",
+                "found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `` ERRORS file errors [`trashed, `missing] ``",
             );
             return;
         };
@@ -1503,7 +1509,7 @@ impl<'a> Checker<'a> {
                 {
                     let line = anyx::line_column(&self.sources[other.file], other.span.start).line;
                     self.error(
-                        error.name.span,
+                        error.body.name.span,
                         format!(
                             "found a second error `{words}` in {}, after the one on line {line}; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`",
                             self.this_schema()
@@ -1513,7 +1519,7 @@ impl<'a> Checker<'a> {
                 let declared = self.declared(
                     &ast::Spanned {
                         value: words,
-                        span: error.name.span,
+                        span: error.body.name.span,
                     },
                     public,
                 );
@@ -1821,8 +1827,8 @@ impl<'a> Checker<'a> {
     }
 
     /// A field, and the span of its name. Every field is a shape: words
-    /// alone are a checkbox, `@(order: Order)` a field written as its value
-    /// alone, and any other shape holds the field's type in its one slot, or
+    /// alone are a checkbox, `` `(order: Order) `` a field written as its
+    /// variant alone, and any other shape holds the field's type in its one slot, or
     /// a tuple of its slots' types when it has several. A `DEFAULT` holds
     /// an entry of the field, read once every type is known.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
@@ -1940,7 +1946,7 @@ impl<'a> Checker<'a> {
                 .any(|known| known.shape.words() == shaped.shape.words())
             {
                 self.error(
-                    variant.name.span,
+                    variant.body.name.span,
                     format!(
                         "found a second variant named `{}`; expected each variant's words once; rename or remove one of them",
                         shaped.shape.words()
@@ -1952,35 +1958,10 @@ impl<'a> Checker<'a> {
         checked
     }
 
-    /// A variant or an error: its doc, then its shape.
+    /// A variant or an error: its doc, then its shape after the backtick.
     fn shaped(&mut self, variant: &ast::Variant, what: &str) -> Shaped {
-        let mut slots = variant.arguments.iter().peekable();
-        // A doc fills the call's first slot, before the first word.
-        let doc = match (variant.name.parts.first(), slots.peek()) {
-            (Some(NamePart::Slot), Some(ast::VariantSlot::Doc(doc))) => {
-                slots.next();
-                Some(doc.value.value.clone())
-            }
-            _ => None,
-        };
-        let mut parameters = Vec::new();
-        for slot in slots {
-            match slot {
-                ast::VariantSlot::Doc(doc) => self.error(
-                    doc.span,
-                    format!(
-                        "found a string in {what}'s slot; expected a parameter, as in `(revision: Integer)`; {what}'s `#` doc goes on the lines before it"
-                    ),
-                ),
-                ast::VariantSlot::Parameter(parameter) => parameters.push(parameter.clone()),
-            }
-        }
-        let mut name = variant.name.clone();
-        if doc.is_some() {
-            name.parts.remove(0);
-            name.text = name.text.trim_start_matches('_').trim_start().to_string();
-        }
-        let shape = self.shape(&name, &parameters, what);
+        let doc = variant.doc.as_ref().map(|doc| doc.value.value.clone());
+        let shape = self.shape(&variant.body.name, &variant.body.arguments, what);
         Shaped { doc, shape }
     }
 
@@ -2068,7 +2049,7 @@ impl<'a> Checker<'a> {
                 self.error(
                     name.span,
                     format!(
-                        "found the name `{}` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `ERRORS [missing] + file errors`",
+                        "found the name `{}` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `` ERRORS [`missing] + file errors ``",
                         name.value
                     ),
                 );
@@ -2076,7 +2057,7 @@ impl<'a> Checker<'a> {
             let own = self.declare_errors(terms.own, false, found);
             listed.extend(terms.own.iter().zip(own).map(|(error, index)| Listed {
                 index,
-                span: error.name.span,
+                span: error.body.name.span,
             }));
             for reference in &terms.groups {
                 let Some(group) = self.resolve_group(reference) else {
@@ -2299,9 +2280,11 @@ impl<'a> Checker<'a> {
             .value
             .iter()
             .map(|member| match member {
-                ast::UnionMember::Variant {
-                    name, arguments, ..
-                } => Type::Variant(Box::new(self.shape(name, arguments, "a variant"))),
+                ast::UnionMember::Variant(variant) => Type::Variant(Box::new(self.shape(
+                    &variant.body.name,
+                    &variant.body.arguments,
+                    "a variant",
+                ))),
                 ast::UnionMember::Refined(refined) => self.refined(refined),
                 ast::UnionMember::Union(union) => self.union(union),
                 ast::UnionMember::Named {

@@ -67,8 +67,8 @@ METHOD ping RETURNS NOTHING EXAMPLES [
 fn examples_are_formatted_one_per_line_after_a_break() {
     let formatted = anyx_protocol::format_schema(
         "PROTOCOL t VERSION 1,
-METHOD add (first: Integer) to (second: Integer) RETURNS (total: Integer) ERRORS [overflow] EXAMPLES [add 1 to 2 RETURNS 3, # Too big.
-add 9223372036854775807 to 1 ERROR overflow],
+METHOD add (first: Integer) to (second: Integer) RETURNS (total: Integer) ERRORS [`overflow] EXAMPLES [add 1 to 2 RETURNS 3, # Too big.
+add 9223372036854775807 to 1 ERROR `overflow],
 METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
 ",
     )
@@ -80,11 +80,11 @@ METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
         "PROTOCOL t VERSION 1,
 METHOD add (first: Integer) to (second: Integer)
     RETURNS (total: Integer)
-    ERRORS [overflow]
+    ERRORS [`overflow]
     EXAMPLES [
         add 1 to 2 RETURNS 3,
         # Too big.
-        add 9223372036854775807 to 1 ERROR overflow,
+        add 9223372036854775807 to 1 ERROR `overflow,
     ],
 METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
 "
@@ -154,11 +154,11 @@ METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 t
 ",
         // An error from a method without errors.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 ERROR overflow],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 ERROR `overflow],
 ",
         // An error that isn't one of the method's.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [overflow] EXAMPLES [add 1 to 2 ERROR missing],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [`overflow] EXAMPLES [add 1 to 2 ERROR `missing],
 ",
         // An empty list.
         "PROTOCOL t VERSION 1,
