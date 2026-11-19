@@ -55,16 +55,13 @@ fn a_search_changes_how_fd_searches() {
             r#"[".hidden.rs", "src/deep/inner.rs", "src/lib.rs", "src/main.rs", "target/build.rs"]"#,
         ),
         (
-            r#"find "*.md" with { @(`glob pattern) }"#,
+            r#"find "*.md" with { `glob pattern }"#,
             r#"["README.md", "src/Notes.md"]"#,
         ),
+        (r#"find "NOTES" with { `any case }"#, r#"["src/Notes.md"]"#),
+        (r#"find "notes" with { `exact case }"#, "[]"),
         (
-            r#"find "NOTES" with { @(`any case) }"#,
-            r#"["src/Notes.md"]"#,
-        ),
-        (r#"find "notes" with { @(`exact case) }"#, "[]"),
-        (
-            r#"find "." with { @(`fixed text pattern), max depth 1 }"#,
+            r#"find "." with { `fixed text pattern, max depth 1 }"#,
             r#"["README.md"]"#,
         ),
         (
@@ -155,13 +152,13 @@ fn mistakes_are_errors_or_invalid_requests() {
         "ERROR `invalid pattern \"unclosed group\"\n"
     );
     assert!(
-        answer(directory.path(), r#"find "[" with { @(`glob pattern) }"#)
+        answer(directory.path(), r#"find "[" with { `glob pattern }"#)
             .starts_with("ERROR `invalid glob \"")
     );
     // A search says each thing once, so it can't contradict itself.
     for (request, expected) in [
         (
-            r#"find "x" with { @(`glob pattern), @(`fixed text pattern) }"#,
+            r#"find "x" with { `glob pattern, `fixed text pattern }"#,
             "pattern",
         ),
         (r#"find "x" with { hidden, hidden }"#, "hidden"),

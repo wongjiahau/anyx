@@ -58,14 +58,14 @@ type marker: ONE OF [WORD "TYPE"],
 ##   value for each slot;
 ## - `hidden`, words alone: a `Boolean`, `` `true `` when written and
 ##   `` `false `` when left out;
-## - `@(order: Order)`, the shape with no words, so a parameter names it.
-##   It is written as its value after `@`: `` @(`newest first) ``. The checker
-##   finds which `@` field an entry fills by the value's outermost form
-##   alone.
+## - `` `(order: Order) ``, a backtick and a slot, so a parameter names it.
+##   It is written as its variant alone: `` `newest first ``. Its type's
+##   every value is a variant, and the checker finds which such field an
+##   entry fills by the variant's shape.
 ##
 ## A field that may be left out says what it is then, as an entry written
 ## as a value writes it: `age (Integer) DEFAULT age 0`,
-## `(path: Text) DEFAULT path "a"`, `` @(order: Order) DEFAULT @(`newest first) ``.
+## `(path: Text) DEFAULT path "a"`, `` `(order: Order) DEFAULT `newest first ``.
 ## The `DEFAULT` takes the whole field, so `path: Text DEFAULT path "a"`
 ## puts it in the slot, where no type has one.
 field: ONE OF [
@@ -74,10 +74,11 @@ field: ONE OF [
 ],
 
 declared field: ONE OF [
-  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "@", parameter],
-  ## Its first word isn't `@`, after any slot for a doc or for its type.
+  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", parameter],
+  ## Its first word isn't a backtick, after any slot for a doc or for its
+  ## type.
   words: ANYFIX CALL [
-    NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_@]"],
+    NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_`]"],
     ARGUMENTS: ZERO OR MORE: field slot,
   ],
 ],

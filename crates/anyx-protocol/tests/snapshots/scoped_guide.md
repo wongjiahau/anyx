@@ -70,8 +70,8 @@ the account, such as by sending or sharing it.
   a value in each slot, in any order: `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field of words alone is a checkbox, true when
-  written: `{ hidden }`. An `@` field is `@` and its value alone:
-  `` { @(`by name) } ``. A field with a `DEFAULT` may be left out and
+  written: `{ hidden }`. A field declared as a backtick and a slot is its
+  variant alone: `` { `by name } ``. A field with a `DEFAULT` may be left out and
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.

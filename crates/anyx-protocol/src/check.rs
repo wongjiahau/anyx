@@ -704,9 +704,10 @@ impl<'a> Checker<'a> {
         schema
     }
 
-    /// An `@` entry leads to one field by its value's outermost form alone,
-    /// so a record value never has to try a field and back out: no two `@`
-    /// fields of a record may share a form, even one variant's shape.
+    /// A field without a name is written as its variant alone, `` `by name ``,
+    /// so its type's every value is a variant, and the variant's shape leads
+    /// to one field: no two such fields of a record may share a variant, so
+    /// a record value never has to try a field and back out.
     fn check_forms(&mut self, schema: &Schema) {
         for pending in std::mem::take(&mut self.forms) {
             let TypeKind::Record(fields) = &schema.types[pending.r#type].kind else {
@@ -722,12 +723,16 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let span = pending.spans[index];
-                let Some(forms) = schema.written_forms(&field.r#type) else {
+                let forms = schema.written_forms(&field.r#type);
+                let Some(forms) = forms
+                    .filter(|forms| forms.iter().all(|form| matches!(form, Written::Variant(_))))
+                else {
                     self.error(
                         span,
                         format!(
-                            "found the `@` field `{}` of a type parameter; expected a type whose values' form is known, since an `@` entry is found by its form; give the field a shape with words",
-                            field.name
+                            "found the field `{}` of {}; expected a `CHOICE` or a union of variants, since the field is written as its variant alone; give the field a shape with words",
+                            field.name,
+                            code(&schema.type_name(&field.r#type))
                         ),
                     );
                     continue;
@@ -740,7 +745,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             span,
                             format!(
-                                "found {known} as a value of both `@` fields `{}` and `{}`; expected each `@` field's values written in forms of their own, since an `@` entry is found by its outermost form alone; give one of them a shape with words",
+                                "found {known} as a value of both fields `{}` and `{}`; expected each field written as its variant alone to have variants of its own, since the variant finds the field; give one of them a shape with words",
                                 fields[*other].name, field.name
                             ),
                         );
@@ -1822,8 +1827,8 @@ impl<'a> Checker<'a> {
     }
 
     /// A field, and the span of its name. Every field is a shape: words
-    /// alone are a checkbox, `@(order: Order)` a field written as its value
-    /// alone, and any other shape holds the field's type in its one slot, or
+    /// alone are a checkbox, `` `(order: Order) `` a field written as its
+    /// variant alone, and any other shape holds the field's type in its one slot, or
     /// a tuple of its slots' types when it has several. A `DEFAULT` holds
     /// an entry of the field, read once every type is known.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {

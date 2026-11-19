@@ -470,7 +470,9 @@ fn conditions_text(conditions: &[StringCondition]) -> String {
             StringCondition::StartsWith(text) => format!("starts with {text:?}"),
             StringCondition::EndsWith(text) => format!("ends with {text:?}"),
             StringCondition::Contains(text) => format!("contains {text:?}"),
-            StringCondition::MatchingRegex(regex) => format!("matches the regex `{regex}`"),
+            StringCondition::MatchingRegex(regex) => {
+                format!("matches the regex {}", crate::grammar::support::code(regex))
+            }
             StringCondition::NoSlots => "has no `_`".to_string(),
             StringCondition::NoKeyword => "has no keyword".to_string(),
         })

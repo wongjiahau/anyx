@@ -6,7 +6,7 @@ use anyx::{Node, Span, StringLiteral};
 pub use support::{CallName, DecodeError, Spanned};
 
 static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new("^(_ )*[^_@]").expect("the generator checked it")
+    regex::Regex::new("^(_ )*[^_`]").expect("the generator checked it")
 });
 
 static REGEX_2: std::sync::LazyLock<regex::Regex> =
@@ -1107,10 +1107,10 @@ pub fn decode_declared_field(node: &Node) -> Result<DeclaredField, DecodeError> 
 }
 
 fn decode_declared_field_unnamed(node: &Node) -> Result<DeclaredField, DecodeError> {
-    let mut parts = support::call(node, "the call `_? @ _`")?;
+    let mut parts = support::call(node, "the call `` _? ` _ ``")?;
     let decoded = DeclaredField::Unnamed {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        parameter: parts.word("@")?.one(decode_parameter, "a parameter")?,
+        parameter: parts.word("`")?.one(decode_parameter, "a parameter")?,
         span: node.span,
     };
     parts.finish()?;
@@ -1121,7 +1121,7 @@ fn decode_declared_field_words(node: &Node) -> Result<DeclaredField, DecodeError
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
-        "a call whose name has no keyword and matches the regex `^(_ )*[^_@]`",
+        "a call whose name has no keyword and matches the regex `` ^(_ )*[^_`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = DeclaredField::Words {
@@ -1715,7 +1715,7 @@ fn decode_term_call(node: &Node) -> Result<Term, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
-        "a call whose name has no keyword and matches the regex `^[^`]`",
+        "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Term::Call {
@@ -1813,7 +1813,7 @@ fn decode_union_member_named(node: &Node) -> Result<UnionMember, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_3.is_match(name),
-        "a call whose name has no keyword and matches the regex `^(_ )*[^`_]`",
+        "a call whose name has no keyword and matches the regex `` ^(_ )*[^`_] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = UnionMember::Named {

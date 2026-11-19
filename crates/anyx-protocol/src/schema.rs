@@ -102,8 +102,8 @@ pub enum TypeKind {
 pub struct Field {
     pub doc: Option<String>,
     /// Its words, which name it in generated code and in conditions:
-    /// `path`, `hidden`, `changed more than ago`; for an `@` field, its
-    /// parameter's name.
+    /// `path`, `hidden`, `changed more than ago`; for a field written as
+    /// its variant alone, its parameter's name.
     pub name: String,
     pub r#type: Type,
     /// The value supplied when the field is omitted. Without a default the
@@ -112,8 +112,9 @@ pub struct Field {
     pub form: FieldForm,
 }
 
-/// A value's outermost form, which finds the `@` field an entry fills:
-/// `` @(`newest first) `` is the variant `newest first`, `@"src"` a string.
+/// A value's outermost form: `` `newest first `` is the variant
+/// `newest first`, `"src"` a string. A variant finds the field without a
+/// name an entry fills.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Written {
     /// A call of this shape that isn't marked as a variant, such as a named
@@ -144,7 +145,7 @@ impl std::fmt::Display for Written {
 
 impl Written {
     /// Whether an entry written as `found` may be a value of a type
-    /// written as `self`, or the two clash as `@` fields: the same form, or
+    /// written as `self`, or the two clash as members of a union: the same form, or
     /// a named type's constructor shaped like a duration against a
     /// `Duration`.
     pub fn admits(&self, found: &Written) -> bool {
@@ -268,8 +269,9 @@ pub enum FieldForm {
     /// Its words alone, for `true`: `hidden`. Its type is `Boolean`, and
     /// it is `false` when left out.
     Checkbox,
-    /// `@` and its value, `` @(`newest first) ``, found by the value's outermost
-    /// form. The field's name is its parameter's.
+    /// Its variant alone, `` `newest first ``, declared `` `(order: Order) ``
+    /// and found by the variant's shape. Every value of its type is a
+    /// variant. The field's name is its parameter's.
     Unnamed,
 }
 
@@ -1067,8 +1069,8 @@ impl Schema {
     }
 
     /// The field of `fields` that an entry of this call shape fills, as in
-    /// `path _`, `_ case` or the checkbox `hidden`; `@ _` is found by its
-    /// value's form instead, with [`Schema::unnamed_field`].
+    /// `path _`, `_ case` or the checkbox `hidden`; a variant is found by
+    /// its shape instead, with [`Schema::unnamed_field`].
     pub fn shaped_field(&self, fields: &[Field], shape: &str) -> Option<usize> {
         fields.iter().position(|field| match &field.form {
             FieldForm::Shape(text) => shape == text,
@@ -1077,8 +1079,8 @@ impl Schema {
         })
     }
 
-    /// The `@` field of `fields` whose values are written in the form
-    /// `found`. The schema checker makes sure at most one is.
+    /// The field of `fields` without a name whose type has the variant
+    /// `found`. The schema checker makes sure at most one does.
     pub fn unnamed_field(&self, fields: &[Field], found: &Written) -> Option<usize> {
         fields.iter().position(|field| {
             field.form == FieldForm::Unnamed
@@ -1088,8 +1090,7 @@ impl Schema {
         })
     }
 
-    /// The forms a value of `type` is written in, which tell an `@`
-    /// field's value from other entries of a record: a variant by its shape,
+    /// The forms a value of `type` is written in: a variant by its shape,
     /// and other values by their kind. `None` for a type parameter, whose
     /// form isn't known.
     pub fn written_forms(&self, r#type: &Type) -> Option<Vec<Written>> {

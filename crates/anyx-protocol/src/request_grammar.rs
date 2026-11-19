@@ -470,7 +470,7 @@ pub fn decode_value_call(node: &Node) -> Result<ValueCall, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
-        "a call whose name has no keyword and matches the regex `^[^`]`",
+        "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = ValueCall {
@@ -576,7 +576,7 @@ fn decode_term_call(node: &Node) -> Result<Term, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
-        "a call whose name has no keyword and matches the regex `^[^`]`",
+        "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Term::Call {

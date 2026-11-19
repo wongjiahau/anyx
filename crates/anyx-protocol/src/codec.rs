@@ -868,7 +868,7 @@ fn mismatched(schema: &Schema, r#type: &Type, found: &str) -> EncodeError {
 /// Writes fields in the schema's order, each as a reader writes it: a
 /// shape whose slot is last as its words, a `:`, and its value; another
 /// shape with its value in the slot; a checkbox as its words when `true`;
-/// an `@` field as `@` and its value. The layout drops each `:` that a
+/// a field without a name as its variant alone. The layout drops each `:` that a
 /// reader doesn't need.
 fn write_fields(
     schema: &Schema,
@@ -881,8 +881,8 @@ fn write_fields(
         let Some(value) = values.get(&field.name) else {
             continue;
         };
-        // A checkbox, an `@` field and a `null` read best left out; any
-        // other default is written, so a reader sees it.
+        // A checkbox, a field written as its variant and a `null` read best
+        // left out; any other default is written, so a reader sees it.
         let null = matches!(value, Value::Variant { shape, .. } if shape == "null")
             && schema.nullable_item(&field.r#type).is_some();
         if field.default.as_ref() == Some(value)
@@ -934,22 +934,12 @@ fn write_fields(
                     }
                 }
             }
+            // `` `by name ``: the variant alone.
             FieldForm::Unnamed => {
                 let [(r#type, item)] = slots[..] else {
-                    unreachable!("an `@` field holds one value")
+                    unreachable!("a field written as its variant holds one value")
                 };
-                let mut value = String::new();
-                write(schema, r#type, item, &mut value)?;
-                entry.push('@');
-                if value.starts_with('`') {
-                    // `` @`x `` would read as the symbol word `` @` ``.
-                    value = format!("({value})");
-                } else if value.starts_with(|c: char| !c.is_alphanumeric() && !"\"([{".contains(c))
-                {
-                    // `@-3` would read as the symbol word `@-`.
-                    entry.push(' ');
-                }
-                entry.push_str(&value);
+                write(schema, r#type, item, &mut entry)?;
             }
         }
         written.push(entry);

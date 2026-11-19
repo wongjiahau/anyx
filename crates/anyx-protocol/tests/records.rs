@@ -1,5 +1,6 @@
 //! Records whose fields are shapes: a slot anywhere among the words, words
-//! alone for a checkbox, and `@` for a field written as its value alone.
+//! alone for a checkbox, and a backtick for a field written as its variant
+//! alone.
 mod common;
 
 use anyx_protocol::{Value, decode_request, encode_request};
@@ -17,8 +18,8 @@ RECORD Search {
     hidden,
     max depth (Integer?) DEFAULT max depth (`null),
     at least (Integer?) bytes DEFAULT at least (`null) bytes,
-    @(order: Order) DEFAULT @(`newest first),
-    @(auth: Auth) DEFAULT @(`no auth),
+    `(order: Order) DEFAULT `newest first,
+    `(auth: Auth) DEFAULT `no auth,
 },
 METHOD find (search: Search) RETURNS (count: Integer),";
 
@@ -45,7 +46,7 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 #[test]
 fn each_entry_finds_its_field_by_its_shape() {
     let search = find(
-        "find { (`any) case, @(`by name), pattern \"ode\", at least 14 bytes, hidden, @(`bearer \"t\"), max depth 3 }",
+        "find { (`any) case, `by name, pattern \"ode\", at least 14 bytes, hidden, `bearer \"t\", max depth 3 }",
     );
     assert_eq!(field(&search, "pattern"), &Value::Text("ode".into()));
     assert_eq!(field(&search, "case"), &variant("any", vec![]));
@@ -78,17 +79,8 @@ fn a_record_is_written_back_as_a_reader_writes_it() {
             "find { pattern \"ode\", (`smart) case }\n",
         ),
         (
-            "find { pattern \"ode\", (`any) case, hidden, max depth 3, at least 14 bytes, @(`by name), @(`bearer \"t\") }",
-            "find {
-    pattern \"ode\",
-    (`any) case,
-    hidden,
-    max depth 3,
-    at least 14 bytes,
-    @(`by name),
-    @(`bearer \"t\"),
-}
-",
+            "find { pattern \"ode\", (`any) case, hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }",
+            "find { pattern \"ode\", (`any) case, hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }\n",
         ),
     ] {
         let calls = decode_request(&schema, source).unwrap();
@@ -102,9 +94,9 @@ fn a_record_is_written_back_as_a_reader_writes_it() {
 fn an_entry_no_field_takes_is_reported_with_the_fields() {
     let schema = schema(SEARCH);
     for source in [
-        "find { pattern \"ode\", @(`exact) }",
+        "find { pattern \"ode\", `exact }",
         "find { pattern \"ode\", `any case }",
-        "find { pattern \"ode\", @\"x\" }",
+        "find { pattern \"ode\", \"x\" }",
     ] {
         let error = decode_request(&schema, source).unwrap_err();
         assert!(
@@ -125,61 +117,52 @@ fn a_value_before_words_without_parentheses_gets_a_hint() {
 }
 
 #[test]
-fn a_duration_finds_its_at_field_by_its_units() {
-    let schema = schema(
+fn two_fields_written_as_their_variant_may_not_share_one() {
+    let found = diagnostics(
         "PROTOCOL a VERSION 1,
-        CHOICE Order { `newest first, `by name },
-        RECORD Wait { @(wait: Duration) DEFAULT @1 seconds, @(order: Order) DEFAULT @(`newest first) },
-        METHOD find (wait: Wait) RETURNS (count: Integer),",
+        CHOICE Order { `by (key: Text), `newest first },
+        CHOICE Sort { `by (rank: Integer) },
+        RECORD Rec { `(order: Order), `(sort: Sort) },",
     );
-    for (source, milliseconds) in [
-        ("find { @5 minutes, @(`by name) }", 300_000),
-        ("find { @(`by name), @1 hours 30 minutes }", 5_400_000),
-        ("find { @1 minute }", 60_000),
-    ] {
-        let calls = decode_request(&schema, source).unwrap_or_else(|error| panic!("{error:?}"));
-        assert_eq!(
-            field(&calls[0].arguments[0], "wait"),
-            &Value::Duration(std::time::Duration::from_millis(milliseconds)),
-            "{source}"
-        );
-    }
+    assert!(
+        found.contains("found `` `by _ `` as a value of both fields `order` and `sort`"),
+        "{found}"
+    );
 }
 
 #[test]
-fn two_at_fields_may_not_share_a_form() {
-    for (fields, clash) in [
-        (
-            "@(order: Order), @(sort: Sort)",
-            "found `` `by _ `` as a value of both `@` fields `order` and `sort`",
-        ),
-        (
-            "@(count: Integer), @(ratio: Float)",
-            "found a number as a value of both `@` fields `count` and `ratio`",
-        ),
-        (
-            "@(path: Text), @(at: Instant)",
-            "found a string as a value of both `@` fields `path` and `at`",
-        ),
+fn a_field_written_as_its_variant_holds_only_variants() {
+    for (field, r#type) in [
+        ("`(count: Integer)", "`Integer`"),
+        ("`(path: Text)", "`Text`"),
+        ("`(wait: Duration)", "`Duration`"),
+        ("`(paths: LIST Text)", "`LIST Text`"),
+        ("`(count: Integer?)", "`Integer?`"),
     ] {
-        let source = format!(
-            "PROTOCOL a VERSION 1,
-            CHOICE Order {{ `by (key: Text), `(count: Integer) minutes }},
-            CHOICE Sort {{ `by (rank: Integer) }},
-            RECORD Rec {{ {fields} }},"
-        );
+        let source = format!("PROTOCOL a VERSION 1, RECORD Rec {{ {field} }},");
         let found = diagnostics(&source);
-        assert!(found.contains(clash), "{fields}: {found}");
+        assert!(
+            found.contains(&format!(
+                "of {type}; expected a `CHOICE` or a union of variants, since the field is written as its variant alone"
+            )),
+            "{field}: {found}"
+        );
     }
-    // The mark tells the variant `` `5 minutes `` from the duration
-    // `5 minutes`, so the two fields don't clash.
-    assert!(
-        anyx_protocol::Schema::parse(
-            "PROTOCOL a VERSION 1,
-            CHOICE Order { `(count: Integer) minutes },
-            RECORD Rec { @(wait: Duration), @(order: Order) },"
-        )
-        .is_ok()
+    // A choice, a union of variants, and either made nullable.
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+        CHOICE Order { `newest first, `by name },
+        RECORD Rec { `(order: Order?), `(mode: UNION [`fast, `slow]) },
+        METHOD find (rec: Rec) RETURNS (count: Integer),",
+    );
+    let calls = decode_request(&schema, "find { `slow, `null }").unwrap();
+    assert_eq!(
+        field(&calls[0].arguments[0], "mode"),
+        &variant("slow", vec![])
+    );
+    assert_eq!(
+        field(&calls[0].arguments[0], "order"),
+        &variant("null", vec![])
     );
 }
 
@@ -214,10 +197,12 @@ fn mistakes_in_fields_are_diagnosed() {
 }
 
 #[test]
-fn an_at_field_of_a_type_parameter_is_diagnosed() {
-    let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { @(value: Item) },");
+fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
+    let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { `(value: Item) },");
     assert!(
-        found.contains("found the `@` field `value` of a type parameter"),
+        found.contains(
+            "found the field `value` of `Item`; expected a `CHOICE` or a union of variants"
+        ),
         "{found}"
     );
 }

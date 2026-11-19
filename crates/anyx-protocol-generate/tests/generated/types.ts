@@ -11,7 +11,13 @@ export interface Reminder {
   seen: Record<string, Date>;
   /** The hours of the day it stays quiet, from and to. */
   quietFromTo: [bigint, bigint];
+  /** How it sounds, written as the variant alone. */
+  tone: Tone;
 }
+
+export type Tone =
+  | { kind: "chime" }
+  | { kind: "silent" };
 
 export type Schedule =
   | { kind: "never" }
@@ -43,10 +49,10 @@ export type SnoozeForError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; shape?: ShapeDescriptor; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-// A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
-// `slots` are each slot's type; a field with several slots holds an array, a
-// value for each. An `@` field has the `forms` its values are written in,
-// which find it.
+// A field's `wire` is its shape, `path _`, `_ case`, `hidden`, or `\` _` for
+// a field written as its variant alone. Its `slots` are each slot's type; a
+// field with several slots holds an array, a value for each. A field written
+// as its variant has the `forms` of its variants, which find it.
 type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
 // A `distinct` definition is a named type: its constructor's `shape`, `File
 // Id _`, and each slot's type. Its value is its one slot's value, or an
@@ -156,8 +162,8 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
   if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
   const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
   const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
-  // A variant after `@` takes parentheses: `@(\`by name)`.
-  if (f.form === "unnamed") return [texts[0].startsWith("`") ? `@(${texts[0]})` : `@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
+  // `\`by name`: the variant alone.
+  if (f.form === "unnamed") return [texts[0]];
   const words = f.wire.split(" ");
   if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
   let next = 0;
@@ -175,14 +181,6 @@ function formOf(node: Syntax): string {
     case "braces": return "braces";
     default: return `call:${parts(node).map(t => t.tag === "word" ? t.text : "_").join(" ")}`;
   }
-}
-// Whether a node is a duration's call, a unit after each slot: `_ hour`,
-// `_ hours _ minutes`. Read from its parts, as the parser gave them.
-function isDurationCall(node: Syntax): boolean {
-  const p = parts(node);
-  return p.length > 0 && p.length % 2 === 0 && p.every((t, i) => i % 2 === 0
-    ? t.tag !== "word"
-    : t.tag === "word" && durationUnits.some(([unit]) => t.text === unit || t.text === `${unit}s`));
 }
 // A field's value from its entry's slots: one value, or an array of one for
 // each slot.
@@ -469,15 +467,17 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
         for (const entry of node.items) {
-          // An entry finds its field by its shape alone, and an `@` entry
-          // by its value's outermost form.
+          // An entry finds its field by its shape alone, and a variant by
+          // its shape among the variants of the fields written as one.
           const p = parts(entry);
           const shape = p.map(t => t.tag === "word" ? t.text : "_").join(" ");
-          const field = shape === "@ _"
-            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && isDurationCall(p[1]))))
+          const field = marked(entry)
+            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.includes(formOf(entry)))
             : def.fields!.find(f => f.form !== "unnamed" && f.wire === shape);
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
-          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter(t => t.tag !== "word"), env);
+          const value = field.form === "checkbox" ? { kind: "true" }
+            : field.form === "unnamed" ? decodeField(field, [entry], env)
+            : decodeField(field, p.filter(t => t.tag !== "word"), env);
           Object.defineProperty(out, field.name, { value, enumerable: true, writable: true, configurable: true });
         }
         for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
@@ -528,15 +528,16 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   const n = op === '+' ? a + b : op === '-' ? a - b : a * b;
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
-const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note _", form:"shape", name:"note", type:{k:'text'}, slots:[{k:'text'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"every _", form:"shape", name:"every", type:{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})},{wire:"times _", form:"shape", name:"times", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>(3n)},{wire:"seen _", form:"shape", name:"seen", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}], defaultValue:()=>(Object.fromEntries([]))},{wire:"quiet from _ to _", form:"shape", name:"quietFromTo", type:{k:'tuple', args:[{k:'integer'},{k:'integer'}]}, slots:[{k:'integer'},{k:'integer'}], defaultValue:()=>([22n,7n])}]},
+const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note _", form:"shape", name:"note", type:{k:'text'}, slots:[{k:'text'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"every _", form:"shape", name:"every", type:{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})},{wire:"times _", form:"shape", name:"times", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>(3n)},{wire:"seen _", form:"shape", name:"seen", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}], defaultValue:()=>(Object.fromEntries([]))},{wire:"quiet from _ to _", form:"shape", name:"quietFromTo", type:{k:'tuple', args:[{k:'integer'},{k:'integer'}]}, slots:[{k:'integer'},{k:'integer'}], defaultValue:()=>([22n,7n])},{wire:"` _", form:"unnamed", name:"tone", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], forms:["variant:chime","variant:silent"], defaultValue:()=>({kind:"chime"})}]},
+{parameters:[],kind:'choice', variants:[{text:"chime", kind:"chime", params:[]},{text:"silent", kind:"silent", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"never", kind:"never", params:[]},{text:"once at _", kind:"onceAt", params:[{name:"at", type:{k:'instant'}, annotation:"Instant"}]},{text:"every _", kind:"every", params:[{name:"period", type:{k:'duration'}, annotation:"Duration"}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
-const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:1, args:[]}, errors:[]},
+const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:2, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"reminders", type:{k:'map', item:{k:'named', index:0, args:[]}}, annotation:"MAP Reminder"}]}, returns:{k:'map', item:{k:'integer'}}, errors:[]},
 ["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:3, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

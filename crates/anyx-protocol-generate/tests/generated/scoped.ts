@@ -77,10 +77,10 @@ export type PdfError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; shape?: ShapeDescriptor; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-// A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
-// `slots` are each slot's type; a field with several slots holds an array, a
-// value for each. An `@` field has the `forms` its values are written in,
-// which find it.
+// A field's `wire` is its shape, `path _`, `_ case`, `hidden`, or `\` _` for
+// a field written as its variant alone. Its `slots` are each slot's type; a
+// field with several slots holds an array, a value for each. A field written
+// as its variant has the `forms` of its variants, which find it.
 type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
 // A `distinct` definition is a named type: its constructor's `shape`, `File
 // Id _`, and each slot's type. Its value is its one slot's value, or an
@@ -190,8 +190,8 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
   if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
   const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
   const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
-  // A variant after `@` takes parentheses: `@(\`by name)`.
-  if (f.form === "unnamed") return [texts[0].startsWith("`") ? `@(${texts[0]})` : `@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
+  // `\`by name`: the variant alone.
+  if (f.form === "unnamed") return [texts[0]];
   const words = f.wire.split(" ");
   if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
   let next = 0;
@@ -209,14 +209,6 @@ function formOf(node: Syntax): string {
     case "braces": return "braces";
     default: return `call:${parts(node).map(t => t.tag === "word" ? t.text : "_").join(" ")}`;
   }
-}
-// Whether a node is a duration's call, a unit after each slot: `_ hour`,
-// `_ hours _ minutes`. Read from its parts, as the parser gave them.
-function isDurationCall(node: Syntax): boolean {
-  const p = parts(node);
-  return p.length > 0 && p.length % 2 === 0 && p.every((t, i) => i % 2 === 0
-    ? t.tag !== "word"
-    : t.tag === "word" && durationUnits.some(([unit]) => t.text === unit || t.text === `${unit}s`));
 }
 // A field's value from its entry's slots: one value, or an array of one for
 // each slot.
@@ -503,15 +495,17 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
       if (def.kind === "record" && node.tag === "braces") {
         const out: Record<string, unknown> = {};
         for (const entry of node.items) {
-          // An entry finds its field by its shape alone, and an `@` entry
-          // by its value's outermost form.
+          // An entry finds its field by its shape alone, and a variant by
+          // its shape among the variants of the fields written as one.
           const p = parts(entry);
           const shape = p.map(t => t.tag === "word" ? t.text : "_").join(" ");
-          const field = shape === "@ _"
-            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && isDurationCall(p[1]))))
+          const field = marked(entry)
+            ? def.fields!.find(f => f.form === "unnamed" && f.forms!.includes(formOf(entry)))
             : def.fields!.find(f => f.form !== "unnamed" && f.wire === shape);
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
-          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter(t => t.tag !== "word"), env);
+          const value = field.form === "checkbox" ? { kind: "true" }
+            : field.form === "unnamed" ? decodeField(field, [entry], env)
+            : decodeField(field, p.filter(t => t.tag !== "word"), env);
           Object.defineProperty(out, field.name, { value, enumerable: true, writable: true, configurable: true });
         }
         for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }

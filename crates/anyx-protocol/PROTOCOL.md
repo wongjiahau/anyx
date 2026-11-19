@@ -395,7 +395,7 @@ generated code too, and a value writes it as it is declared:
 | `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
 | `hidden` | `hidden` | `hidden` |
-| `` @(order: Order) DEFAULT @(`newest first) `` | `` @(`by name) `` | `order` |
+| `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
 - **Words alone are a checkbox**: a `Boolean`, `` `true `` when written and
   `` `false `` when left out. It takes no `DEFAULT`.
@@ -408,7 +408,7 @@ generated code too, and a value writes it as it is declared:
 - **A `DEFAULT` takes the whole field**, and is the entry the field holds
   when left out, written as a value writes it: `age (Integer) DEFAULT age 0`,
   `between (Integer) and (Integer) DEFAULT between 1 and 9`,
-  `` @(order: Order) DEFAULT @(`newest first) ``. With a `:`, the field goes in
+  `` `(order: Order) DEFAULT `newest first ``. With a `:`, the field goes in
   parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
   age 0` is `age (Integer DEFAULT age 0)`, a `DEFAULT` in the slot.
 - **A value is written as its type writes it**, a nullable one as its item
@@ -423,15 +423,15 @@ generated code too, and a value writes it as it is declared:
   settings needs `REQUIRES` to rule out `[glob, fixed text]`, a record's
   `(Syntax) pattern` is one choice.
 
-**`@` fields.** `@(order: Order)` is the shape with no words, so a
-parameter names the field. A value writes `@` and the field's value,
-`` @(`newest first) ``, and the field is found by the value's *outermost form*
-alone: a variant's shape, a string, a number, a list, braces or a duration.
-No two `@` fields of a record may share a form, not even one variant's
-shape, and `Integer` and `Float` share the form of a number, `Text` and
-`Instant` that of a string. So finding the field never tries one and backs
-out. A nullable `@` field's forms are `` `null `` and its item's, and one of a type
-parameter has no known form, which is an error.
+**Fields written as their variant.** `` `(order: Order) `` is a backtick
+and a slot with no words, so a parameter names the field. A value writes
+the field's variant alone, `` `by name ``: an entry that starts with a
+backtick can't be a field's shape, so it is the value of the field whose
+type has that variant. The field's type is a `CHOICE` or a union of
+variants, or one of them made nullable, so that every value is a variant;
+a `Text`, a number, a list, a `Duration` or a type parameter is an error.
+No two such fields of a record may share a variant, so finding the field
+never tries one and backs out; two nullable ones share `` `null ``.
 
 Readability decides between them, since a record is read far more than it is
 written:
@@ -443,24 +443,26 @@ written:
 3. **A value with a word that names it → a shape.** `max depth 3`,
    `at least 14 bytes`, `retry 3 times`. This is the default, and the only
    form for text, numbers and lists, whose form never says what they mean:
-   `@"src"` and `@3` leave the reader guessing.
-4. **A choice only one field uses → its word in every variant, and `@`.**
-   `` CHOICE Case { `smart case, `any case, `exact case } `` with
-   `` @(case: Case) DEFAULT @(`smart case) `` is written `` @(`any case) ``.
-   Every variant carries the word, so that none reads bare, as
-   `` @(`exact) `` would.
+   `"src"` and `3` alone would leave the reader guessing, which is why a
+   field without words holds only variants.
+4. **A choice only one field uses → its word in every variant, and the
+   variant alone.** `` CHOICE Case { `smart case, `any case, `exact case } ``
+   with `` `(case: Case) DEFAULT `smart case `` is written `` `any case ``.
+   Every variant carries the word, so that none reads bare, as `` `exact ``
+   would.
 5. **A choice several fields or methods share → its shared word in the
    shape.** `(Case) case` over `` CHOICE Case { `smart, `any, `exact } ``,
    written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no
-   word, and would stutter with one → `@`.** `` @(`newest first) ``, `` @(`by name) ``,
-   `` @(`no auth) ``, where a word would only repeat (`` (`no auth) auth ``) or add
-   nothing (`` (`by name) order ``). Read `` @(`by name) `` alone: if it says nothing to
-   someone reading the call cold, give it a word.
+   word, and would stutter with one → the variant alone.**
+   `` `newest first ``, `` `by name ``, `` `no auth ``, where a word would
+   only repeat (`` (`no auth) auth ``) or add nothing (`` (`by name) order ``).
+   Read `` `by name `` alone: if it says nothing to someone reading the call
+   cold, give it a word.
 
-When in doubt, use a shape: a word costs one word, while an unclear `@`
-makes every reader work it out.
+When in doubt, use a shape: a word costs one word, while an unclear variant
+alone makes every reader work it out.
 
 ### Naming methods
 
@@ -711,7 +713,7 @@ and base64 are checked in Rust.
 | `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
-| a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, @(`by name) } ``, each field in its shape, in any order; `name: value` when the value is a word |
+| a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
 | a `CHOICE` | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
 | a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `` (`red) Color ``, `Unit` |
 | a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |

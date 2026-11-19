@@ -12,7 +12,11 @@ RECORD Reminder {
     seen (MAP: Instant) DEFAULT seen {},
     # The hours of the day it stays quiet, from and to.
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
+    # How it sounds, written as the variant alone.
+    `(tone: Tone) DEFAULT `chime,
 },
+
+CHOICE Tone { `chime, `silent },
 
 CHOICE Schedule { `never, `once at (at: Instant), `every (period: Duration) },
 

@@ -11,7 +11,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyx_protocol::client::{CallError, Transport};
-use types::{Client, Reminder, Schedule, Server, SnoozeForError};
+use types::{Client, Reminder, Schedule, Server, SnoozeForError, Tone};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -86,6 +86,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         times: 3,
         seen: BTreeMap::new(),
         quiet_from_to: (23, 6),
+        tone: Tone::Chime,
     };
     assert_eq!(
         run(client.remind(reminder.clone())),
@@ -140,6 +141,7 @@ fn maps_reach_the_server_and_come_back() {
         times: 3,
         seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
         quiet_from_to: (22, 7),
+        tone: Tone::Silent,
     };
     let reminders = BTreeMap::from([
         ("tea".to_string(), reminder.clone()),

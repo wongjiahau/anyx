@@ -47,12 +47,12 @@ CHOICE Syntax {
     `fixed text pattern,
 },
 
-# How `find` searches, as in `` { @(`glob pattern), hidden, max depth 2 } ``.
+# How `find` searches, as in `` { `glob pattern, hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
-    @(case: Case) DEFAULT @(`smart case),
-    @(pattern: Syntax) DEFAULT @(`regex pattern),
+    `(case: Case) DEFAULT `smart case,
+    `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
     full path,
     # Each file must match these patterns too, in the same syntax and case.

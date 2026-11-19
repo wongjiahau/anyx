@@ -378,16 +378,14 @@ fn fields_value(
 }
 
 /// The field an entry of a record fills, by the entry's shape alone:
-/// `path "a"` is the shape `path _`, `hidden` a checkbox, and `` @(`newest first) ``
-/// the `@` field whose values are written in the form of `newest first`.
+/// `path "a"` is the shape `path _`, `hidden` a checkbox, and the variant
+/// `` `newest first `` the field without a name whose type has that variant.
 /// The schema checker makes sure at most one fits, so nothing is tried.
 pub(crate) fn entry_field(schema: &Schema, fields: &[Field], entry: &Syntax) -> Option<usize> {
-    let Syntax::Call(call) = entry else {
-        return None;
-    };
-    match call.name.text.as_str() {
-        "@ _" => schema.unnamed_field(fields, &written(&call.arguments[0])),
-        shape => schema.shaped_field(fields, shape),
+    match entry {
+        Syntax::Variant(_) => schema.unnamed_field(fields, &written(entry)),
+        Syntax::Call(call) => schema.shaped_field(fields, &call.name.text),
+        _ => None,
     }
 }
 
@@ -437,7 +435,7 @@ fn field_entry<'f>(
                 .map(|field| match &field.form {
                     FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
                     FieldForm::Checkbox => format!("`{}`", field.name),
-                    FieldForm::Unnamed => format!("`@…` for `{}`", field.name),
+                    FieldForm::Unnamed => format!("a variant for `{}`", field.name),
                 })
                 .collect::<Vec<_>>()
                 .join(", "),
@@ -449,8 +447,11 @@ fn field_entry<'f>(
 /// The value of `field` that `entry`, an entry found to fill it, holds:
 /// one for each slot of a field with several.
 fn entry_value(schema: &Schema, field: &Field, entry: &Syntax) -> Result<Value, Mismatch> {
-    let Syntax::Call(call) = entry else {
-        unreachable!("a field is found by its entry's call")
+    let call = match entry {
+        // `` `by name ``: the entry is the value.
+        Syntax::Variant(_) => return decode(schema, &field.r#type, entry),
+        Syntax::Call(call) => call,
+        _ => unreachable!("a field is found by its entry's call or variant"),
     };
     match (&field.form, &field.r#type) {
         (FieldForm::Checkbox, _) => Ok(Value::Variant {
@@ -486,14 +487,14 @@ pub(crate) fn decode_field_entry(
                 match &field.form {
                     FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
                     FieldForm::Checkbox => format!("`{}`", field.name),
-                    FieldForm::Unnamed => "`@…`".to_string(),
+                    FieldForm::Unnamed => "a variant".to_string(),
                 }
             ),
         }),
     }
 }
 
-/// How `value` is written, to find the `@` field it fills.
+/// How `value` is written, to find the field a variant fills.
 pub(crate) fn written(value: &Syntax) -> Written {
     match value {
         Syntax::Integer(_) | Syntax::Float(_) => Written::Number,

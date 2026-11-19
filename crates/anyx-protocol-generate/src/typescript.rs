@@ -453,7 +453,8 @@ fn native_slots(field: &anyx_protocol::schema::Field) -> String {
     )
 }
 
-/// How the native codec names a form an `@` field's values are written in.
+/// How the native codec names a form a value is written in, such as the
+/// variants that find a field written as its variant alone.
 fn native_form(form: &Written) -> String {
     match form {
         Written::Call(shape) => format!("call:{}", ShapePart::text(shape)),
@@ -576,7 +577,7 @@ fn native_schema(schema: &Schema) -> String {
                             match &f.form {
                                 FieldForm::Shape(shape) => shape.as_str(),
                                 FieldForm::Checkbox => f.name.as_str(),
-                                FieldForm::Unnamed => "@ _",
+                                FieldForm::Unnamed => "` _",
                             },
                             match &f.form {
                                 FieldForm::Shape(_) => "shape",
