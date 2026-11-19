@@ -267,6 +267,7 @@ impl Lowerer<'_> {
             }),
             ast::Pattern::Number(number) => Pattern::Number(self.number(number)),
             ast::Pattern::AnyNode(_) => Pattern::AnyNode,
+            ast::Pattern::Underscore(_) => Pattern::Underscore,
         }
     }
 

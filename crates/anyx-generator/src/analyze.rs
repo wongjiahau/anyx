@@ -49,7 +49,8 @@ fn children(pattern: &Pattern) -> Vec<&Pattern> {
         | Pattern::String(_)
         | Pattern::Words(_)
         | Pattern::Number(_)
-        | Pattern::AnyNode => Vec::new(),
+        | Pattern::AnyNode
+        | Pattern::Underscore => Vec::new(),
     }
 }
 

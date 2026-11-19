@@ -291,8 +291,21 @@ impl<'a> Overlap<'a> {
                     .iter()
                     .any(|call| self.patterns(call, other))
             }
-            (Pattern::Container { .. } | Pattern::String(_) | Pattern::Number(_), _)
-            | (_, Pattern::Container { .. } | Pattern::String(_) | Pattern::Number(_)) => false,
+            (Pattern::Underscore, Pattern::Underscore) => true,
+            (
+                Pattern::Container { .. }
+                | Pattern::String(_)
+                | Pattern::Number(_)
+                | Pattern::Underscore,
+                _,
+            )
+            | (
+                _,
+                Pattern::Container { .. }
+                | Pattern::String(_)
+                | Pattern::Number(_)
+                | Pattern::Underscore,
+            ) => false,
             _ => self.calls(a, b) || self.calls(b, a),
         }
     }

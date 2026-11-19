@@ -571,6 +571,7 @@ fn conditions_are_checked_where_the_value_is() {
             "WORDS [IF, name, +, x, y, ->]",
             "WORDS [IF, name, +, x, print 1, ->, end]",
             "KEEP [1, x], KEEP 3, KEEP",
+            "HOLD x",
             "(wrap, [type], finish)",
             "(only, word)",
             "raw 1 2, rawer 1",
@@ -840,4 +841,14 @@ fn spelling_conditions_are_unique_and_describe_one_number_token() {
     ] {
         assert!(anyx_generator::generate(source).is_err(), "{source}");
     }
+}
+
+#[test]
+fn underscore_decodes_to_the_span_of_the_placeholder() {
+    let document = corners::decode_document(&parse("HOLD _")).unwrap();
+    let corners::Node::Held { place, .. } = &document.node[0] else {
+        panic!("{:?}", document.node);
+    };
+    let place: anyx::Span = *place;
+    assert_eq!((place.start, place.end), (5, 6));
 }

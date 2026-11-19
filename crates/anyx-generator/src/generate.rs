@@ -185,6 +185,8 @@ enum Leaf {
     Text,
     Number(&'static str),
     Node,
+    /// The node `_`, decoded to its span.
+    Underscore,
 }
 
 /// How to get the span of a decoded value.
@@ -289,7 +291,8 @@ impl Builder<'_> {
                 | Pattern::AnyWord { .. }
                 | Pattern::String(_)
                 | Pattern::Number(_)
-                | Pattern::AnyNode => {
+                | Pattern::AnyNode
+                | Pattern::Underscore => {
                     let definition = self.reserve(&path, true, rule.name_span);
                     let value = self.value(&rule.pattern, &path, rule.name_span, true);
                     self.definitions[definition].body = Body::Alias(value);
@@ -445,6 +448,10 @@ impl Builder<'_> {
             Pattern::AnyNode => Value::Leaf {
                 kind: Leaf::Node,
                 call: "support::any_node(node)".to_string(),
+            },
+            Pattern::Underscore => Value::Leaf {
+                kind: Leaf::Underscore,
+                call: "support::underscore(node)".to_string(),
             },
             Pattern::String(string) => {
                 let terms = self.terms(&string.conditions, "text");
@@ -963,6 +970,7 @@ impl Printer<'_> {
                 Leaf::Text => spanned(self.names.get("String")),
                 Leaf::Number(rust) => spanned(rust),
                 Leaf::Node => self.names.get("Node").to_string(),
+                Leaf::Underscore => self.names.get("Span").to_string(),
             },
             Value::Rule(rule) => self.type_name(self.rule_definitions[*rule]),
             Value::Definition(definition) => match &self.definitions[*definition].body {
@@ -1007,7 +1015,11 @@ impl Printer<'_> {
     fn shape(&self, value: &Value) -> Shape {
         let Some(definition) = self.value_definition(value) else {
             return match value {
-                Value::Word(_) => Shape::Itself,
+                Value::Word(_)
+                | Value::Leaf {
+                    kind: Leaf::Underscore,
+                    ..
+                } => Shape::Itself,
                 _ => Shape::Field,
             };
         };
@@ -1061,6 +1073,17 @@ impl Printer<'_> {
                 ) =>
             {
                 "support::any_node".to_string()
+            }
+            (None, false)
+                if matches!(
+                    value,
+                    Value::Leaf {
+                        kind: Leaf::Underscore,
+                        ..
+                    }
+                ) =>
+            {
+                "support::underscore".to_string()
             }
             _ => format!("|node| {}", self.boxed_call(value, boxed)),
         }

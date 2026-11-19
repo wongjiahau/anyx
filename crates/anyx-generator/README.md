@@ -379,6 +379,16 @@ condition is a decode error at that number.
 `- _`. `SIGNED` takes those too, as the number with its sign, so a
 grammar needs no `ONE OF` of its own to read a signed value.
 
+### `UNDERSCORE`
+
+```text
+term: ONE OF [subject: UNDERSCORE, integer: NUMBER, call: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: term]],
+```
+
+`UNDERSCORE` matches the node `_`, which isn't a word: anyx reads a `_`
+standing alone as a placeholder, as the value a predicate tests in
+`[10 <= _ < 30]`.
+
 ### `ANY NODE`
 
 ```text
@@ -545,6 +555,8 @@ reads the whole call back as the words, numbers and strings written, in
 order (see `Node::flat_words` in `anyx`).
 
 **`ANY NODE`** is the `anyx::Node` itself, which has its own `span`.
+
+**`UNDERSCORE`** is the `Span` of the `_`.
 
 **Recursion** is boxed where a type would otherwise contain itself.
 

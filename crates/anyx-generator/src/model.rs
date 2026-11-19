@@ -64,6 +64,8 @@ pub enum Pattern {
     Number(NumberPattern),
     /// Any one node, decoded to itself.
     AnyNode,
+    /// The node `_`, decoded to its span.
+    Underscore,
     /// Among the parts of a call: parts that stand together, written
     /// `OPTIONAL [WORD "ERRORS", list: error list]`. The element holding it
     /// is `OPTIONAL`, or it is a choice of a [`Pattern::PartChoice`]. It
@@ -496,14 +498,22 @@ impl Grammar {
             Pattern::SpecificCall(parts) if has_groups(parts) => {
                 let mut all = Vec::new();
                 for way in shortest_ways(parts) {
-                    let one = format!("the call `{}`", call_picture(&way));
+                    let one = format!(
+                        "the call {}",
+                        crate::grammar::support::code(&call_picture(&way))
+                    );
                     if !all.contains(&one) {
                         all.push(one);
                     }
                 }
                 return all;
             }
-            Pattern::SpecificCall(parts) => format!("the call `{}`", call_picture(parts)),
+            Pattern::SpecificCall(parts) => {
+                format!(
+                    "the call {}",
+                    crate::grammar::support::code(&call_picture(parts))
+                )
+            }
             // What may stand first: a group is missed at its first part.
             Pattern::Group(parts) => match parts.first() {
                 Some(first) => return self.describe(&first.pattern),
@@ -527,7 +537,7 @@ impl Grammar {
             Pattern::AnyCall { name, .. } => {
                 format!("a call whose name {}", conditions_text(name))
             }
-            Pattern::Word(text) => format!("the word `{text}`"),
+            Pattern::Word(text) => format!("the word {}", crate::grammar::support::code(text)),
             Pattern::AnyWord { kind, conditions } => {
                 let kind = match kind {
                     None => "a word",
@@ -561,6 +571,7 @@ impl Grammar {
             },
             Pattern::Number(number) => describe_number(number),
             Pattern::AnyNode => "a node".to_string(),
+            Pattern::Underscore => "`_`".to_string(),
         };
         vec![one]
     }
@@ -653,7 +664,10 @@ impl Grammar {
                                 _ => None,
                             })
                             .collect();
-                        let missed = format!("the word `{}`", words.join(" "));
+                        let missed = format!(
+                            "the word {}",
+                            crate::grammar::support::code(&words.join(" "))
+                        );
                         if !words.is_empty() && !described.contains(&missed) {
                             described.push(missed);
                         }
