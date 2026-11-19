@@ -39,7 +39,8 @@ struct PendingDefault {
     /// The index of the record's type, and of the field in it.
     r#type: usize,
     field: usize,
-    node: anyx::Node,
+    /// The entry the field takes when left out, as in `age 0`.
+    entry: anyx::Node,
     file: usize,
 }
 
@@ -266,9 +267,6 @@ pub(crate) struct Checker<'a> {
     errors: Vec<Declared>,
     defaults: Vec<PendingDefault>,
     forms: Vec<PendingForms>,
-    /// Each nullable `@` field, by its record, its index, its file and
-    /// where its name is written, checked once defaults are read.
-    nullable_unnamed: Vec<(usize, usize, usize, Span)>,
     examples: Vec<PendingExamples<'a>>,
     undos: Vec<PendingUndo<'a>>,
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -527,7 +525,6 @@ impl<'a> Checker<'a> {
         }
         if self.diagnostics.is_empty() {
             self.read_defaults(&mut schema);
-            self.check_nullable_unnamed(&schema);
         }
         // Examples are read against the schema, defaults and all, which
         // must be whole first: a mistake elsewhere would only show up again
@@ -561,10 +558,6 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let span = pending.spans[index];
-                if schema.nullable_item(&field.r#type).is_some() {
-                    self.nullable_unnamed
-                        .push((pending.r#type, index, pending.file, span));
-                }
                 let Some(forms) = schema.written_forms(&field.r#type) else {
                     self.error(
                         span,
@@ -595,31 +588,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A nullable `@` field defaults to `null`, since an `@` entry is
-    /// written as a value and only leaving it out says `null`.
-    fn check_nullable_unnamed(&mut self, schema: &Schema) {
-        for (record, index, file, span) in std::mem::take(&mut self.nullable_unnamed) {
-            let TypeKind::Record(fields) = &schema.types[record].kind else {
-                continue;
-            };
-            let field = &fields[index];
-            if !matches!(
-                &field.default,
-                Some(crate::value::Value::Variant { shape, .. }) if shape == "null"
-            ) {
-                self.file = file;
-                self.error(
-                    span,
-                    format!(
-                        "found the `@` field `{}` of a nullable type without `DEFAULT null`; expected `DEFAULT null`, since an `@` entry is written as a value and leaving it out is how a value says `null`",
-                        field.name
-                    ),
-                );
-            }
-        }
-    }
-
-    /// Reads each field's `DEFAULT` as a value of the field's type. A
+    /// Reads each field's `DEFAULT` as an entry of the field. A
     /// default may be a record whose own fields have defaults, so it is
     /// read again until every default it holds is filled in.
     fn read_defaults(&mut self, schema: &mut Schema) {
@@ -631,7 +600,8 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 let field = &fields[default.field];
-                let read = crate::codec::decode(schema, &field.r#type, &default.node);
+                let read =
+                    crate::codec::decode_entry(schema, fields, default.field, &default.entry);
                 let name = field.name.clone();
                 match read {
                     Ok(value) => {
@@ -1342,22 +1312,50 @@ impl<'a> Checker<'a> {
 
     /// A field, and the span of its name. Every field is a shape: words
     /// alone are a checkbox, `@(order: Order)` a field written as its value
-    /// alone, and any other shape holds the field's type in its one slot.
+    /// alone, and any other shape holds the field's type in its one slot, or
+    /// a tuple of its slots' types when it has several. A `DEFAULT` holds
+    /// an entry of the field, read once every type is known.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
+        let (declared, default) = match field {
+            ast::Field::Defaulted { field, default, .. } => (field, Some(default)),
+            ast::Field::Declared(field) => (field, None),
+        };
+        let (field, span) = self.declared_field(declared);
+        if let Some(default) = default {
+            match field.form {
+                // A checkbox left out is `false`.
+                FieldForm::Checkbox => self.error(
+                    default.span,
+                    format!(
+                        "found a `DEFAULT` on the checkbox `{}`; expected none, since a checkbox left out is `false`",
+                        field.name
+                    ),
+                ),
+                _ => self.defaults.push(PendingDefault {
+                    r#type: record,
+                    field: index,
+                    entry: default.clone(),
+                    file: self.file,
+                }),
+            }
+        }
+        (field, span)
+    }
+
+    fn declared_field(&mut self, field: &ast::DeclaredField) -> (Field, Span) {
         let (name, arguments) = match field {
-            ast::Field::Unnamed { doc, parameter, .. } => {
+            ast::DeclaredField::Unnamed { doc, parameter, .. } => {
                 self.check_words(&parameter.name, "a field");
-                let r#type = self.field_type(record, index, &parameter.r#type);
                 let field = Field {
                     doc: self::doc(doc),
                     name: parameter.name.value.clone(),
-                    r#type,
+                    r#type: self.r#type(&parameter.r#type),
                     default: None,
                     form: FieldForm::Unnamed,
                 };
                 return (field, parameter.name.span);
             }
-            ast::Field::Words {
+            ast::DeclaredField::Words {
                 name, arguments, ..
             } => (name, arguments),
         };
@@ -1378,44 +1376,40 @@ impl<'a> Checker<'a> {
         }
         let words = spanned_words(&name);
         self.check_words(&words, "a field");
-        let r#type = match slots.as_slice() {
-            [] => {
-                let boolean = self
-                    .types
-                    .iter()
-                    .position(|known| known.name == "Boolean" && known.file == self.prelude_file)
-                    .map_or(Type::Text, Type::Named);
-                let field = Field {
-                    doc,
-                    name: words.value,
-                    r#type: boolean,
-                    default: Some(crate::value::Value::Variant {
-                        shape: "false".into(),
-                        arguments: Vec::new(),
-                    }),
-                    form: FieldForm::Checkbox,
-                };
-                return (field, name.span);
-            }
-            [ast::FieldSlot::Type(r#type)] => self.field_type(record, index, r#type),
-            [ast::FieldSlot::Doc(doc)] => {
-                self.error(
-                    doc.span,
-                    "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it",
-                );
-                Type::Text
-            }
-            _ => {
-                self.error(
-                    name.span,
-                    format!(
-                        "found the field `{}` with {} slots; expected one, holding the field's type; to hold several values, give the slot a record or a choice",
-                        name.text,
-                        slots.len()
-                    ),
-                );
-                Type::Text
-            }
+        if slots.is_empty() {
+            let boolean = self
+                .types
+                .iter()
+                .position(|known| known.name == "Boolean" && known.file == self.prelude_file)
+                .map_or(Type::Text, Type::Named);
+            let field = Field {
+                doc,
+                name: words.value,
+                r#type: boolean,
+                default: Some(crate::value::Value::Variant {
+                    shape: "false".into(),
+                    arguments: Vec::new(),
+                }),
+                form: FieldForm::Checkbox,
+            };
+            return (field, name.span);
+        }
+        let types: Vec<Type> = slots
+            .iter()
+            .map(|slot| match slot {
+                ast::FieldSlot::Type(r#type) => self.r#type(r#type),
+                ast::FieldSlot::Doc(doc) => {
+                    self.error(
+                        doc.span,
+                        "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it",
+                    );
+                    Type::Text
+                }
+            })
+            .collect();
+        let r#type = match <[Type; 1]>::try_from(types) {
+            Ok([r#type]) => r#type,
+            Err(types) => Type::Tuple(types),
         };
         let field = Field {
             doc,
@@ -1425,24 +1419,6 @@ impl<'a> Checker<'a> {
             form: FieldForm::Shape(name.text.clone()),
         };
         (field, name.span)
-    }
-
-    /// The type in a field's slot; its `DEFAULT`, if any, is read once every
-    /// type is known.
-    fn field_type(&mut self, record: usize, index: usize, r#type: &ast::FieldType) -> Type {
-        match r#type {
-            ast::FieldType::Type(r#type) => self.r#type(r#type),
-            ast::FieldType::Defaulted(defaulted) => {
-                let (r#type, node) = self.defaulted(defaulted);
-                self.defaults.push(PendingDefault {
-                    r#type: record,
-                    field: index,
-                    node: node.clone(),
-                    file: self.file,
-                });
-                r#type
-            }
-        }
     }
 
     fn variants(&mut self, variants: &[ast::Variant]) -> Vec<Shaped> {
@@ -1865,29 +1841,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// The type of a field with a `DEFAULT`, and the default as written.
-    fn defaulted<'d>(&mut self, defaulted: &'d ast::Defaulted) -> (Type, &'d anyx::Node) {
-        match defaulted {
-            ast::Defaulted::List { item, .. } => {
-                let (item, default) = self.defaulted(item);
-                (Type::List(Box::new(item)), default)
-            }
-            ast::Defaulted::ListOfNamed { item, default, .. } => {
-                (Type::List(Box::new(self.r#type(item))), default)
-            }
-            ast::Defaulted::Map { value, .. } => {
-                let (value, default) = self.defaulted(value);
-                (Type::Map(Box::new(value)), default)
-            }
-            ast::Defaulted::MapOfNamed { value, default, .. } => {
-                (Type::Map(Box::new(self.r#type(value))), default)
-            }
-            ast::Defaulted::Other {
-                r#type, default, ..
-            } => (self.r#type(r#type), default),
-        }
-    }
-
     /// A named type that leads back to itself, as in `TYPE a: LIST: a` or
     /// `TYPE a: b, TYPE b: a`, names no type at all. Returns the types it
     /// reported.
@@ -1898,6 +1851,7 @@ impl<'a> Checker<'a> {
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
                     mentioned(item, found)
                 }
+                Type::Tuple(slots) => slots.iter().for_each(|slot| mentioned(slot, found)),
                 Type::Generic(index, arguments) => {
                     found.push(*index);
                     arguments
@@ -2059,6 +2013,7 @@ impl<'a> Checker<'a> {
                     arguments.iter().for_each(|argument| uses(argument, found));
                 }
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => uses(item, found),
+                Type::Tuple(slots) => slots.iter().for_each(|slot| uses(slot, found)),
                 _ => {}
             }
         }

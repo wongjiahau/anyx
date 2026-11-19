@@ -63,7 +63,7 @@ PUBLIC ERRORS common errors [
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem: Diagnostic? DEFAULT null },
+RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
 

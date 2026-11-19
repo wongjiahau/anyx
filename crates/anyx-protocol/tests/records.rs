@@ -12,13 +12,13 @@ CHOICE Auth { bearer (token: Text), no auth },
 RECORD Search {
     # The pattern to look for.
     pattern: Text,
-    (Case DEFAULT smart) case,
+    (Case) case DEFAULT (smart) case,
     # Searches hidden files too.
     hidden,
-    max depth (Integer? DEFAULT null),
-    at least (Integer? DEFAULT null) bytes,
-    @(order: Order DEFAULT newest first),
-    @(auth: Auth? DEFAULT null),
+    max depth (Integer?) DEFAULT max depth (null),
+    at least (Integer?) bytes DEFAULT at least (null) bytes,
+    @(order: Order) DEFAULT @newest first,
+    @(auth: Auth) DEFAULT @no auth,
 },
 METHOD find (search: Search) RETURNS (count: Integer),";
 
@@ -45,7 +45,7 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 #[test]
 fn each_entry_finds_its_field_by_its_shape() {
     let search = find(
-        "find { (any) case, @by name, pattern \"ode\", at least 14 bytes, hidden, @bearer \"t\", max depth 3 }",
+        "find { (any) case, @by name, pattern \"ode\", at least (value 14) bytes, hidden, @bearer \"t\", max depth (value 3) }",
     );
     assert_eq!(field(&search, "pattern"), &Value::Text("ode".into()));
     assert_eq!(field(&search, "case"), &variant("any", vec![]));
@@ -61,10 +61,7 @@ fn each_entry_finds_its_field_by_its_shape() {
     assert_eq!(field(&search, "order"), &variant("by name", vec![]));
     assert_eq!(
         field(&search, "auth"),
-        &variant(
-            "value _",
-            vec![variant("bearer _", vec![Value::Text("t".into())])]
-        )
+        &variant("bearer _", vec![Value::Text("t".into())])
     );
 }
 
@@ -75,7 +72,7 @@ fn fields_left_out_take_their_defaults() {
     assert_eq!(field(&search, "hidden"), &variant("false", vec![]));
     assert_eq!(field(&search, "max depth"), &variant("null", vec![]));
     assert_eq!(field(&search, "order"), &variant("newest first", vec![]));
-    assert_eq!(field(&search, "auth"), &variant("null", vec![]));
+    assert_eq!(field(&search, "auth"), &variant("no auth", vec![]));
 }
 
 #[test]
@@ -87,8 +84,8 @@ fn a_record_is_written_back_as_a_reader_writes_it() {
             "find { pattern \"ode\", (smart) case }\n",
         ),
         (
-            "find { pattern \"ode\", (any) case, hidden, max depth 3, at least 14 bytes, @by name, @no auth }",
-            "find { pattern \"ode\", (any) case, hidden, max depth 3, at least 14 bytes, @by name, @no auth }\n",
+            "find { pattern \"ode\", (any) case, hidden, max depth (value 3), at least (value 14) bytes, @by name, @bearer \"t\" }",
+            "find {\n    pattern \"ode\",\n    (any) case,\n    hidden,\n    max depth: value 3,\n    at least (value 14) bytes,\n    @by name,\n    @bearer \"t\",\n}\n",
         ),
     ] {
         let calls = decode_request(&schema, source).unwrap();
@@ -159,16 +156,24 @@ fn two_at_fields_may_not_share_a_form() {
 fn mistakes_in_fields_are_diagnosed() {
     for (fields, message) in [
         (
-            "@(auth: Text?)",
-            "found the `@` field `auth` of a nullable type without `DEFAULT null`",
+            "between (Integer) and (Integer) DEFAULT between 1",
+            "found the call `between _`; expected an entry of the field, as a value writes it: `between … and …`",
         ),
         (
-            "between (Integer) and (Integer)",
-            "found the field `between _ and _` with 2 slots; expected one",
+            "age (Integer) DEFAULT years 0",
+            "found the call `years _`; expected an entry of the field, as a value writes it: `age …`",
         ),
         (
-            "path: Text DEFAULT \"a\", path: Text",
-            "found a second field named `path`",
+            "age: Integer DEFAULT age 0",
+            "found a `DEFAULT` in a field's slot; expected it after the whole field",
+        ),
+        (
+            "hidden DEFAULT hidden",
+            "found a `DEFAULT` on the checkbox `hidden`; expected none",
+        ),
+        (
+            "age (Integer) DEFAULT age 0, age (Integer)",
+            "found a second field named `age`",
         ),
     ] {
         let source = format!("PROTOCOL a VERSION 1, RECORD Rec {{ {fields} }},");
@@ -183,5 +188,64 @@ fn an_at_field_of_a_type_parameter_is_diagnosed() {
     assert!(
         found.contains("found the `@` field `value` of a type parameter"),
         "{found}"
+    );
+}
+
+const RANGE: &str = "PROTOCOL a VERSION 1,
+TYPE Depth: Integer . WHERE [0 <= _],
+RECORD Search {
+    depth from (Depth) to (Depth?),
+    between (Integer) and (Integer) bytes DEFAULT between 1 and 9 bytes,
+},
+METHOD find (search: Search) RETURNS (count: Integer),";
+
+#[test]
+fn a_field_with_several_slots_holds_a_value_for_each() {
+    let schema = schema(RANGE);
+    let calls = decode_request(&schema, "find { depth from 1 to (value 3) }").unwrap();
+    let search = &calls[0].arguments[0];
+    assert_eq!(
+        field(search, "depth from to"),
+        &Value::Tuple(vec![
+            Value::Integer(1),
+            variant("value _", vec![Value::Integer(3)])
+        ])
+    );
+    assert_eq!(
+        field(search, "between and bytes"),
+        &Value::Tuple(vec![Value::Integer(1), Value::Integer(9)])
+    );
+    let encoded = encode_request(&schema, &calls).unwrap();
+    assert_eq!(
+        encoded,
+        "find { depth from 1 to (value 3), between 1 and 9 bytes }\n"
+    );
+    assert_eq!(decode_request(&schema, &encoded).unwrap(), calls);
+}
+
+#[test]
+fn each_slot_is_checked_against_its_own_type() {
+    let schema = schema(RANGE);
+    let error = decode_request(&schema, "find { depth from -1 to (value 3) }").unwrap_err();
+    assert!(
+        format!("{error:?}").contains("in `depth from to`: value `-1` is not a `Depth`"),
+        "{error:?}"
+    );
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn a_field_with_several_slots_is_an_array_in_json() {
+    use anyx_protocol::json::{decode_request_json, encode_request_json};
+    let schema = schema(RANGE);
+    let json = decode_request_json(&schema, "find { depth from 1 to (null) }").unwrap();
+    assert!(
+        json.contains(r#""depthFromTo":[1,{"kind":"null"}]"#),
+        "{json}"
+    );
+    let arguments = r#"[{"depthFromTo": [1, {"kind": "null"}], "betweenAndBytes": [1, 9]}]"#;
+    assert_eq!(
+        encode_request_json(&schema, "find _", arguments).unwrap(),
+        "find { depth from 1 to (null), between 1 and 9 bytes }\n"
     );
 }

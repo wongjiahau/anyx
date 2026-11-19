@@ -18,6 +18,8 @@ pub enum Value {
     List(Vec<Value>),
     /// A `MAP`: values by their text keys.
     Map(BTreeMap<String, Value>),
+    /// The slots of a record's field with several of them, in order.
+    Tuple(Vec<Value>),
     /// A record's fields by name, with defaults filled in when decoded.
     Record(BTreeMap<String, Value>),
     /// A choice's variant or an error: its shape's text, such as
@@ -191,6 +193,36 @@ impl<T: FromValue> FromValue for Vec<T> {
         }
     }
 }
+
+/// A record's field with several slots, as a tuple of their values.
+macro_rules! tuple {
+    ($($name:ident),+) => {
+        impl<$($name: IntoValue),+> IntoValue for ($($name,)+) {
+            #[allow(non_snake_case)]
+            fn into_value(self) -> Value {
+                let ($($name,)+) = self;
+                Value::Tuple(vec![$($name.into_value()),+])
+            }
+        }
+
+        impl<$($name: FromValue),+> FromValue for ($($name,)+) {
+            fn from_value(value: Value) -> Option<Self> {
+                let Value::Tuple(values) = value else {
+                    return None;
+                };
+                let mut values = values.into_iter();
+                let tuple = ($($name::from_value(values.next()?)?,)+);
+                values.next().is_none().then_some(tuple)
+            }
+        }
+    };
+}
+
+tuple!(A, B);
+tuple!(A, B, C);
+tuple!(A, B, C, D);
+tuple!(A, B, C, D, E);
+tuple!(A, B, C, D, E, F);
 
 impl<T: IntoValue> IntoValue for BTreeMap<String, T> {
     fn into_value(self) -> Value {

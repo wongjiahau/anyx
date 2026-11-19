@@ -43,10 +43,11 @@ export type TagWithListOfFileIdError =
 type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?: TypeDescriptor[]; name?: string; checks?: {source: string; words: string; test: (value: unknown) => boolean}[] };
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
-// A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. A
-// nullable field has its `item`, which it is written as; an `@` field has the
-// `forms` its values are written in, which find it.
-type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; item?: TypeDescriptor; forms?: string[]; defaultValue?: () => unknown };
+// A field's `wire` is its shape, `path _`, `_ case`, `hidden` or `@ _`. Its
+// `slots` are each slot's type; a field with several slots holds an array, a
+// value for each. An `@` field has the `forms` its values are written in,
+// which find it.
+type FieldDescriptor = { wire: string; form: "shape" | "checkbox" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
 type Definition = { name?: string; parameters: string[]; kind: string; type?: TypeDescriptor; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
@@ -134,15 +135,9 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
   }
   return fail(`invalid ${type.k} value`);
 }
-// The `value _` variant of a nullable type, whose one parameter holds the item.
-function valueVariant(type: TypeDescriptor, bindings: Bindings): ShapeDescriptor {
-  const [def] = instance(type, bindings);
-  return def.variants!.find(v => v.text === "value _") ?? fail("invalid nullable type");
-}
 // A field as a reader writes it: a checkbox's words when true, `@` and the
 // value, or the shape with the value in its slot, after a `:` when the slot
-// is last. A nullable value is written as its item, and a `null` default is
-// left out.
+// is last. A `null` default is left out.
 function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings: Bindings): string[] {
   const present = Object.hasOwn(obj, f.name) && obj[f.name] !== undefined;
   if (!present && f.defaultValue) return [];
@@ -152,14 +147,14 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
     if (value?.kind === "false") return [];
     return fail(`invalid checkbox ${f.name}`);
   }
-  let type = f.type, item: unknown = value;
-  if (f.item && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
-  if (f.item && value?.kind === "value") { type = f.item; item = value[valueVariant(f.type, bindings).params[0].name]; }
-  const text = encodeValue(type, item, bindings);
-  if (f.form === "unnamed") return [`@${/^[\p{L}\p{N}"([{]/u.test(text) ? "" : " "}${text}`];
+  if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
+  const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
+  const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
+  if (f.form === "unnamed") return [`@${/^[\p{L}\p{N}"([{]/u.test(texts[0]) ? "" : " "}${texts[0]}`];
   const words = f.wire.split(" ");
-  if (words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${text}`];
-  return [words.map(w => w === "_" ? `(${text})` : w).join(" ")];
+  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
+  let next = 0;
+  return [words.map(w => w === "_" ? `(${texts[next++]})` : w).join(" ")];
 }
 // A node's outermost form, which finds the `@` field it fills.
 function formOf(node: Syntax): string {
@@ -173,10 +168,11 @@ function formOf(node: Syntax): string {
   }
 }
 const durationShape = /^call:_ (days?|hours?|minutes?|seconds?|milliseconds?)( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$/;
-function decodeField(f: FieldDescriptor, node: Syntax, bindings: Bindings): unknown {
-  if (!f.item) return decodeValue(f.type, node, bindings);
-  try { return decodeValue(f.type, node, bindings); }
-  catch { return { kind: "value", [valueVariant(f.type, bindings).params[0].name]: decodeValue(f.item, node, bindings) }; }
+// A field's value from its entry's slots: one value, or an array of one for
+// each slot.
+function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
+  const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
+  return f.slots.length === 1 ? values[0] : values;
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -432,7 +428,7 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
             ? def.fields!.find(f => f.form === "unnamed" && f.forms!.some(form => form === formOf(p[1]) || (form === "duration" && durationShape.test(formOf(p[1])))))
             : def.fields!.find(f => f.form !== "unnamed" && f.wire === shape);
           if (!field || Object.hasOwn(out, field.name)) return fail("unknown or duplicate record field");
-          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p[shape.split(" ").indexOf("_")], env);
+          const value = field.form === "checkbox" ? { kind: "true" } : decodeField(field, p.filter((_, i) => shape.split(" ")[i] === "_"), env);
           Object.defineProperty(out, field.name, { value, enumerable: true, writable: true, configurable: true });
         }
         for (const f of def.fields!) if (!Object.hasOwn(out, f.name)) { if (f.defaultValue) Object.defineProperty(out, f.name, { value: f.defaultValue(), enumerable: true, writable: true, configurable: true }); else return fail(`missing field ${f.wire}`); }
@@ -487,7 +483,7 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', type:{k:'text
 {parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:["item"],kind:'choice', variants:[{text:"null", kind:"null", params:[]},{text:"value _", kind:"value", params:[{name:"item", type:{k:'parameter', name:"item"}, annotation:"item"}]}]},
-{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}},{wire:"source _", form:"shape", name:"source", type:{k:'text'}}]}];
+{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
 ["tag (LIST File Id)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["scale (Float)"]:{shape:{text:"scale _", kind:"scale", params:[{name:"factor", type:{k:'float'}, annotation:"Float"}]}, returns:{k:'float'}, errors:[]},

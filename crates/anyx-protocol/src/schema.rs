@@ -329,6 +329,10 @@ pub enum Type {
     /// (Text)`: the index of the type in [`Schema::types`], and a type for
     /// each of its parameters, in the order of its slots.
     Generic(usize, Vec<Type>),
+    /// The slots of a record's field with several of them, as in
+    /// `between (Integer) and (Integer)`: a type for each, in order. It has
+    /// no syntax of its own; a value is written in the field's shape.
+    Tuple(Vec<Type>),
     /// A type parameter, by its name, within the generic record or choice
     /// that declares it. A use of that type puts its argument in its place,
     /// so a value is never of this type.
@@ -367,6 +371,12 @@ impl Type {
             ),
             Type::List(item) => Type::List(Box::new(item.substitute(parameters, arguments))),
             Type::Map(value) => Type::Map(Box::new(value.substitute(parameters, arguments))),
+            Type::Tuple(slots) => Type::Tuple(
+                slots
+                    .iter()
+                    .map(|slot| slot.substitute(parameters, arguments))
+                    .collect(),
+            ),
             Type::Generic(index, inner) => Type::Generic(
                 *index,
                 inner
@@ -384,7 +394,7 @@ impl Type {
             match r#type {
                 Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => walk(item, found),
-                Type::Generic(_, arguments) => {
+                Type::Generic(_, arguments) | Type::Tuple(arguments) => {
                     arguments.iter().for_each(|argument| walk(argument, found))
                 }
                 _ => {}
@@ -641,6 +651,11 @@ impl Schema {
                 fill_slots(&definition.name, &arguments)
             }
             Type::Parameter(name) => name.clone(),
+            Type::Tuple(slots) => slots
+                .iter()
+                .map(|slot| format!("({})", self.type_name(slot)))
+                .collect::<Vec<_>>()
+                .join(" "),
         }
     }
 
@@ -734,13 +749,9 @@ impl Schema {
 
     /// The forms a value of `type` is written in, which tell an `@`
     /// field's value from other entries of a record: a variant by its shape,
-    /// and other values by their kind. A nullable type is written as its
-    /// item, since leaving the field out is `null`. `None` for a type
-    /// parameter, whose form isn't known.
+    /// and other values by their kind. `None` for a type parameter, whose
+    /// form isn't known.
     pub fn written_forms(&self, r#type: &Type) -> Option<Vec<Written>> {
-        if let Some(item) = self.nullable_item(r#type) {
-            return self.written_forms(item);
-        }
         Some(match self.underlying(r#type) {
             Type::Text | Type::Bytes | Type::Instant => vec![Written::String],
             Type::Integer | Type::Float => vec![Written::Number],
@@ -1015,7 +1026,13 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
+            )];
+        }
+        if let Some(default) = default_in_slot(&nodes, error.span) {
+            return vec![found(
+                default,
+                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (Integer) DEFAULT age 0` or `(age: Integer) DEFAULT age 0`".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
@@ -1139,6 +1156,32 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
         .iter()
         .filter(|node| !has_word(node, "RECORD"))
         .find_map(|node| within(node, span))
+}
+
+/// Where the call with a `DEFAULT` that `span` is in is, when it fills a
+/// slot of a `RECORD`'s field, as in `age: Integer DEFAULT age 0`, which is
+/// `age (Integer DEFAULT age 0)`.
+fn default_in_slot(nodes: &[Node], span: Span) -> Option<Span> {
+    fn has_default(node: &Node) -> bool {
+        matches!(&node.kind, NodeKind::Call(call)
+            if call.name.iter().any(|part| matches!(part, NamePart::Word { text, .. } if text == "DEFAULT")))
+    }
+    fn within(node: &Node, span: Span, in_call: bool) -> Option<Span> {
+        if !(node.span.start <= span.start && span.end <= node.span.end) {
+            return None;
+        }
+        let (children, call): (&[Node], bool) = match &node.kind {
+            NodeKind::Call(call) => (&call.arguments, true),
+            NodeKind::Parens(nodes) => (nodes, in_call),
+            NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => (nodes, false),
+            _ => (&[], false),
+        };
+        children
+            .iter()
+            .find_map(|child| within(child, span, call))
+            .or_else(|| (in_call && has_default(node)).then_some(node.span))
+    }
+    nodes.iter().find_map(|node| within(node, span, false))
 }
 
 /// Whether `span` is in a top-level `ERROR`, which a schema no longer has:

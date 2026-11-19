@@ -1,14 +1,14 @@
 == a default of another type
-PROTOCOL a VERSION 1, RECORD Example { limit: Integer DEFAULT "50" },
-schema:1:63: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
-  PROTOCOL a VERSION 1, RECORD Example { limit: Integer DEFAULT "50" },
-                                                                ^^^^
+PROTOCOL a VERSION 1, RECORD Example { limit (Integer) DEFAULT limit "50" },
+schema:1:70: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
+  PROTOCOL a VERSION 1, RECORD Example { limit (Integer) DEFAULT limit "50" },
+                                                                       ^^^^
 
 == a default that is no variant
-PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade: Shade DEFAULT dim },
-schema:1:84: in the `DEFAULT` of `shade`: found the call `dim`; expected a variant of `Shade`: `dark`
-  PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade: Shade DEFAULT dim },
-                                                                                     ^^^
+PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade (Shade) DEFAULT shade (dim) },
+schema:1:92: in the `DEFAULT` of `shade`: found the call `dim`; expected a variant of `Shade`: `dark`
+  PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade (Shade) DEFAULT shade (dim) },
+                                                                                             ^^^
 
 == the removed OPTIONAL keyword
 PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },
@@ -18,6 +18,6 @@ schema:1:47: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
 
 == a default on a parameter
 PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text),
-schema:1:40: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written
+schema:1:40: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
   PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text),
                                          ^^^^^^^^^^^^^^^^^^

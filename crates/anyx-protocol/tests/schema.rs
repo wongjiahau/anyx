@@ -142,7 +142,7 @@ fn choice_variants_are_shapes_with_docs() {
 fn optional_fields_and_record_inputs_read() {
     let schema = schema(
         "PROTOCOL shop VERSION 2,
-        RECORD Filter { name: Text DEFAULT \"\", limit: Integer DEFAULT 0 },
+        RECORD Filter { name (Text) DEFAULT name \"\", limit (Integer) DEFAULT limit 0 },
         METHOD find (filter: Filter) RETURNS (names: LIST Text),",
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
@@ -229,11 +229,11 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type holding itself through an optional field",
-            "PROTOCOL a VERSION 1, RECORD Node { next: Node? DEFAULT null }, RECORD Tree { children: MAP: Tree },",
+            "PROTOCOL a VERSION 1, RECORD Node { next (Node?) DEFAULT next (null) }, RECORD Tree { children: MAP: Tree },",
         ),
         (
             "a map default that is not a map",
-            "PROTOCOL a VERSION 1, RECORD Example { a: MAP: Integer DEFAULT [] },",
+            "PROTOCOL a VERSION 1, RECORD Example { a (MAP: Integer) DEFAULT a [] },",
         ),
         (
             "a cycle through a choice",
@@ -407,18 +407,18 @@ fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         CHOICE Shade { dark, light },
-        RECORD Page { size: Integer DEFAULT 50, after: Text DEFAULT \"\" },
+        RECORD Page { size (Integer) DEFAULT size 50, after (Text) DEFAULT after \"\" },
         RECORD Search {
             query: Text,
-            limit: Integer DEFAULT 50,
-            include trash: Boolean DEFAULT false,
-            shade: Shade DEFAULT dark,
-            tags: LIST: Text DEFAULT [\"new\"],
-            shades: LIST Shade DEFAULT [light],
-            sizes: (LIST Integer) DEFAULT [],
-            wait: Duration DEFAULT 5 minutes,
-            page: Page DEFAULT { after \"a\" },
-            note: Text DEFAULT \"\",
+            limit (Integer) DEFAULT limit 50,
+            include trash (Boolean) DEFAULT include trash (false),
+            shade (Shade) DEFAULT shade (dark),
+            tags (LIST: Text) DEFAULT tags [\"new\"],
+            shades (LIST Shade) DEFAULT shades [light],
+            sizes (LIST Integer) DEFAULT sizes [],
+            wait (Duration) DEFAULT wait (5 minutes),
+            page (Page) DEFAULT page { after \"a\" },
+            note (Text) DEFAULT note \"\",
         },",
     );
     let TypeKind::Record(fields) = &schema.types[2].kind else {
@@ -491,11 +491,11 @@ fn mistakes_in_a_default_are_diagnosed() {
     let cases = [
         (
             "a default of another type",
-            "PROTOCOL a VERSION 1, RECORD Example { limit: Integer DEFAULT \"50\" },",
+            "PROTOCOL a VERSION 1, RECORD Example { limit (Integer) DEFAULT limit \"50\" },",
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade: Shade DEFAULT dim },",
+            "PROTOCOL a VERSION 1, CHOICE Shade { dark }, RECORD Example { shade (Shade) DEFAULT shade (dim) },",
         ),
         (
             "the removed OPTIONAL keyword",
@@ -520,7 +520,7 @@ fn mistakes_in_a_default_are_diagnosed() {
 fn a_schema_with_defaults_is_formatted_as_written() {
     let source = "PROTOCOL a VERSION 1,
 
-RECORD Search { limit: Integer DEFAULT 50, tags: LIST: Text DEFAULT [] },
+RECORD Search { limit (Integer) DEFAULT limit 50, tags (LIST Text) DEFAULT tags [] },
 ";
     assert_eq!(anyx_protocol::format_schema(source).unwrap(), source);
 }
@@ -533,9 +533,9 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
         RECORD Folder {
             files: MAP Integer,
             folders: MAP: Folder,
-            shades: MAP: Shade DEFAULT { \"a\": dark },
-            names: MAP: LIST: Text DEFAULT { \"b\" [\"c\"] },
-            lights: MAP Shade DEFAULT {},
+            shades (MAP: Shade) DEFAULT shades { \"a\": dark },
+            names (MAP: LIST: Text) DEFAULT names { \"b\" [\"c\"] },
+            lights (MAP Shade) DEFAULT lights {},
         },
         METHOD sizes (sizes: MAP Float) RETURNS (folder: Folder),",
     );

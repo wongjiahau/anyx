@@ -45,7 +45,7 @@ TYPE Opened At: Instant,
 
 TYPE Openings: MAP: Opened At,
 
-RECORD Visit { at: Opened At, by person: Openings, label: Share Id DEFAULT "none" },
+RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label "none" },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit),
 "#,

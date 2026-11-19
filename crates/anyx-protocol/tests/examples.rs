@@ -180,7 +180,7 @@ METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
 fn an_example_reads_its_values_with_their_defaults() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
-RECORD Reminder { at: Instant, times: Integer DEFAULT 3 },
+RECORD Reminder { at: Instant, times (Integer) DEFAULT times 3 },
 METHOD next RETURNS (reminder: Reminder) EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
 ",
     );

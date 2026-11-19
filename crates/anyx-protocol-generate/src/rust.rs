@@ -117,6 +117,14 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
             )
         }
         Type::Parameter(name) => type_parameter_name(name, |taken| rust_type_taken(schema, taken)),
+        Type::Tuple(slots) => format!(
+            "({})",
+            slots
+                .iter()
+                .map(|slot| rust_type(schema, slot))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 

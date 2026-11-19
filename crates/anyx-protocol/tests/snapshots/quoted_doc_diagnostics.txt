@@ -28,7 +28,7 @@ schema:1:23: found the quoted string "A file."; expected the word `INTRINSIC`, `
 
 == a quoted doc on a field
 PROTOCOL a VERSION 1, RECORD File { "Where it is." path: Text },
-schema:1:37: found the quoted string "Where it is."; expected the word `@`, the call `LIST _`, `LIST _ DEFAULT _`, `MAP _`, `MAP _ DEFAULT _`, `_ DEFAULT _`, `_ WHERE _`, a `#` line string, a call whose name has no keyword or the end of the call
+schema:1:37: found the string "Where it is."; expected the word `@`, the call `_? @ _`, `_ WHERE _`, `LIST _`, `MAP _`, a call whose name has no keyword and matches the regex `^(_ )*[^_@]`, a `#` line string, a call whose name has no keyword or the end of the call
   PROTOCOL a VERSION 1, RECORD File { "Where it is." path: Text },
                                       ^^^^^^^^^^^^^^
 

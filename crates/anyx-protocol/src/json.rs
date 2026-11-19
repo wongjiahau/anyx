@@ -315,6 +315,20 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                     .collect(),
             )
         }
+        // A field's slots, as an array of their values.
+        Value::Tuple(values) => {
+            let slots = match r#type {
+                Type::Tuple(slots) => &slots[..],
+                _ => &[],
+            };
+            Json::Array(
+                values
+                    .iter()
+                    .zip(slots)
+                    .map(|(value, slot)| to_json(schema, slot, value))
+                    .collect(),
+            )
+        }
         Value::Map(entries) => {
             let value_type = match r#type {
                 Type::Map(value) => value.as_ref(),
@@ -433,6 +447,18 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 .collect::<Result<_, _>>()
                 .map(Value::List),
             _ => mismatch("an array"),
+        },
+        Type::Tuple(slots) => match json {
+            Json::Array(items) if items.len() == slots.len() => slots
+                .iter()
+                .zip(items)
+                .map(|(slot, json)| from_json(schema, slot, json))
+                .collect::<Result<_, _>>()
+                .map(Value::Tuple),
+            _ => mismatch(&format!(
+                "an array of {} values, one for each slot",
+                slots.len()
+            )),
         },
         Type::Map(value_type) => match json {
             Json::Object(object) => object

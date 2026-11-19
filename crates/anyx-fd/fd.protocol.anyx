@@ -47,16 +47,16 @@ CHOICE Syntax {
     fixed text,
 },
 
-# How `find` searches, as in `{ (glob) pattern, hidden, max depth 2 }`.
+# How `find` searches, as in `{ (glob) pattern, hidden, max depth (value 2) }`.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
-    (Case DEFAULT smart) case,
-    (Syntax DEFAULT regex) pattern,
+    (Case) case DEFAULT (smart) case,
+    (Syntax) pattern DEFAULT (regex) pattern,
     # Match the pattern against the whole path, not just the name.
     full path,
     # Each file must match these patterns too, in the same syntax and case.
-    also matching: LIST Text DEFAULT [],
+    also matching (LIST Text) DEFAULT also matching [],
     # Find hidden files and directories too.
     hidden,
     # Don't skip what ignore files ignore.
@@ -69,34 +69,34 @@ RECORD Search {
     # Read `.gitignore` outside a git repository too.
     no require git,
     # Skip what these files ignore, each written as `.gitignore` is.
-    ignore files: LIST Text DEFAULT [],
+    ignore files (LIST Text) DEFAULT ignore files [],
     # Skip paths these globs match, as `--exclude` does.
-    excluding: LIST Text DEFAULT [],
+    excluding (LIST Text) DEFAULT excluding [],
     # Follow symbolic links into the directories they point to.
     follow links,
     # Don't go into another file system.
     one file system,
     # Don't go into a directory that matched.
     prune,
-    max depth: Depth? DEFAULT null,
-    min depth: Depth? DEFAULT null,
+    max depth (Depth?) DEFAULT max depth (null),
+    min depth (Depth?) DEFAULT min depth (null),
     # Find only these kinds of file, or every kind when empty.
-    only: LIST Kind DEFAULT [],
+    only (LIST Kind) DEFAULT only [],
     # Find only files with one of these extensions, such as `"rs"`, or
     # with any when empty.
-    extensions: LIST Text DEFAULT [],
-    at least (Size? DEFAULT null) bytes,
-    at most (Size? DEFAULT null) bytes,
-    changed within: Duration? DEFAULT null,
-    changed since: Instant? DEFAULT null,
-    changed before: Instant? DEFAULT null,
-    changed more than (Duration? DEFAULT null) ago,
+    extensions (LIST Text) DEFAULT extensions [],
+    at least (Size?) bytes DEFAULT at least (null) bytes,
+    at most (Size?) bytes DEFAULT at most (null) bytes,
+    changed within (Duration?) DEFAULT changed within (null),
+    changed since (Instant?) DEFAULT changed since (null),
+    changed before (Instant?) DEFAULT changed before (null),
+    changed more than (Duration?) ago DEFAULT changed more than (null) ago,
     # Owned by the user with this id.
-    owned by user: Integer? DEFAULT null,
+    owned by user (Integer?) DEFAULT owned by user (null),
     # Owned by the group with this id.
-    owned by group: Integer? DEFAULT null,
+    owned by group (Integer?) DEFAULT owned by group (null),
     # Stop after this many paths.
-    at most (Count? DEFAULT null) results,
+    at most (Count?) results DEFAULT at most (null) results,
 },
 
 # What a found file is, as `fd --list-details` shows it.

@@ -336,6 +336,12 @@ impl Interpreter {
                     .map(|argument| self.evaluate(source, argument))
                     .collect::<Result<_, _>>()?,
             },
+            ExpressionValue::Tuple(slots) => Value::Tuple(
+                slots
+                    .iter()
+                    .map(|slot| self.evaluate(source, slot))
+                    .collect::<Result<_, _>>()?,
+            ),
         })
     }
 }

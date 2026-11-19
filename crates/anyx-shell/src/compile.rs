@@ -31,6 +31,8 @@ pub(crate) enum ExpressionValue {
     Record(Vec<(String, Argument)>),
     Map(Vec<(String, Argument)>),
     Variant(String, Vec<Argument>),
+    /// The slots of a record's field with several of them.
+    Tuple(Vec<Argument>),
 }
 
 impl Argument {
@@ -58,6 +60,9 @@ impl Argument {
                 shape: shape.clone(),
                 arguments: arguments.iter().map(Self::literal).collect::<Option<_>>()?,
             },
+            ExpressionValue::Tuple(slots) => {
+                Value::Tuple(slots.iter().map(Self::literal).collect::<Option<_>>()?)
+            }
         })
     }
 
@@ -69,7 +74,9 @@ impl Argument {
         match &self.value {
             ExpressionValue::Literal(_) => Ok(()),
             ExpressionValue::Call(call) => check(call),
-            ExpressionValue::List(items) | ExpressionValue::Variant(_, items) => {
+            ExpressionValue::List(items)
+            | ExpressionValue::Variant(_, items)
+            | ExpressionValue::Tuple(items) => {
                 items.iter().try_for_each(|item| item.each_call(check))
             }
             ExpressionValue::Record(fields) | ExpressionValue::Map(fields) => fields
@@ -627,7 +634,22 @@ impl Compiler<'_> {
                                 arguments: Vec::new(),
                             }),
                         },
-                        _ => self.field_argument(schema, &call.arguments[0], &field.r#type)?,
+                        _ => match &field.r#type {
+                            // A field with several slots holds a value for each.
+                            Type::Tuple(slots) => Argument {
+                                r#type: field.r#type.clone(),
+                                value: ExpressionValue::Tuple(
+                                    slots
+                                        .iter()
+                                        .zip(&call.arguments)
+                                        .map(|(slot, argument)| {
+                                            self.argument(schema, argument, Some(slot))
+                                        })
+                                        .collect::<Result<_, _>>()?,
+                                ),
+                            },
+                            r#type => self.argument(schema, &call.arguments[0], Some(r#type))?,
+                        },
                     };
                     (field, value)
                 }
@@ -638,9 +660,7 @@ impl Compiler<'_> {
                     let field = record
                         .iter()
                         .find(|field| {
-                            field.form == FieldForm::Unnamed
-                                && (field.r#type == value.r#type
-                                    || schema.nullable_item(&field.r#type) == Some(&value.r#type))
+                            field.form == FieldForm::Unnamed && field.r#type == value.r#type
                         })
                         .ok_or_else(|| {
                             self.error(
@@ -682,28 +702,6 @@ impl Compiler<'_> {
         Ok(Argument {
             r#type,
             value: ExpressionValue::Record(values),
-        })
-    }
-
-    /// A field's value: a nullable field's may be written as its item,
-    /// `max depth 3` for `Integer?`.
-    fn field_argument(
-        &self,
-        schema: &Schema,
-        node: &Node,
-        r#type: &Type,
-    ) -> Result<Argument, Problem> {
-        let full = self.argument(schema, node, Some(r#type));
-        let Some(item) = schema.nullable_item(r#type) else {
-            return full;
-        };
-        if full.is_ok() {
-            return full;
-        }
-        let item = self.argument(schema, node, Some(item))?;
-        Ok(Argument {
-            r#type: r#type.clone(),
-            value: ExpressionValue::Variant("value _".into(), vec![item]),
         })
     }
 
@@ -811,6 +809,12 @@ fn transfer(
         ),
         Type::List(item) => Type::List(Box::new(transfer(origin, target, item, visited)?)),
         Type::Map(item) => Type::Map(Box::new(transfer(origin, target, item, visited)?)),
+        Type::Tuple(slots) => Type::Tuple(
+            slots
+                .iter()
+                .map(|slot| transfer(origin, target, slot, visited))
+                .collect::<Option<Vec<_>>>()?,
+        ),
         Type::Named(index) | Type::Generic(index, _) => {
             let definition = &origin.types[*index];
             let other = target.types.iter().position(|other| {

@@ -15,9 +15,9 @@ PROTOCOL shop VERSION 1,
 # A page of a long list, and where the next one starts.
 RECORD Page of (item: Type) {
     items: LIST: item,
-    next: Text? DEFAULT null,
+    next (Text?) DEFAULT next (null),
     # How many there are in all.
-    total: Integer DEFAULT 0,
+    total (Integer) DEFAULT total 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated

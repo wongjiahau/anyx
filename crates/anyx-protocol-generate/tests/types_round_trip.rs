@@ -85,6 +85,7 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         every: types::Nullable::Null,
         times: 3,
         seen: BTreeMap::new(),
+        quiet_from_to: (23, 6),
     };
     assert_eq!(
         run(client.remind(reminder.clone())),
@@ -127,7 +128,7 @@ fn a_field_left_out_reaches_the_server_with_its_default() {
     ));
     assert_eq!(
         response,
-        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {} }]\n"
+        "RETURNS [{ note \"tea\", at \"2026-11-14T06:00:09.000Z\", times 3, seen {}, quiet from 22 to 7 }]\n"
     );
 }
 
@@ -140,6 +141,7 @@ fn maps_reach_the_server_and_come_back() {
         every: types::Nullable::Null,
         times: 3,
         seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
+        quiet_from_to: (22, 7),
     };
     let reminders = BTreeMap::from([
         ("tea".to_string(), reminder.clone()),

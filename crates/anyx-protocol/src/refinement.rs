@@ -995,6 +995,19 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                     Err(format!("expected `{label}`"))
                 }
             }
+            Type::Tuple(slots) => match value {
+                Value::Tuple(values) if values.len() == slots.len() => {
+                    for (index, (slot, value)) in slots.iter().zip(values).enumerate() {
+                        validate(schema, slot, value)
+                            .map_err(|e| format!("in slot {}: {e}", index + 1))?;
+                    }
+                    Ok(())
+                }
+                _ => Err(format!(
+                    "expected a value for each of {} slots",
+                    slots.len()
+                )),
+            },
             _ if matches!(
                 (ty, value),
                 (Type::Integer, Value::Integer(_))
@@ -1036,7 +1049,7 @@ pub(crate) fn check_schema(schema: &Schema) -> Vec<Diagnostic> {
                 check(schema, base, errors);
             }
             Type::List(item) | Type::Map(item) => check(schema, item, errors),
-            Type::Generic(_, args) => {
+            Type::Generic(_, args) | Type::Tuple(args) => {
                 for arg in args {
                     check(schema, arg, errors);
                 }
@@ -1084,6 +1097,7 @@ pub fn has_refinements(schema: &Schema, ty: &Type) -> bool {
         match ty {
             Type::Refined(..) => true,
             Type::List(item) | Type::Map(item) => walk(schema, item, seen),
+            Type::Tuple(slots) => slots.iter().any(|slot| walk(schema, slot, seen)),
             Type::Named(index) | Type::Generic(index, _) => {
                 if seen.contains(index) {
                     return false;

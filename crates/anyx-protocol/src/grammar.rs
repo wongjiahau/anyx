@@ -77,9 +77,19 @@ pub enum TypeMarker {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Field {
+    Defaulted {
+        field: DeclaredField,
+        default: Node,
+        span: Span,
+    },
+    Declared(DeclaredField),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DeclaredField {
     Unnamed {
         doc: Option<Spanned<StringLiteral>>,
-        parameter: FieldParameter,
+        parameter: Parameter,
         span: Span,
     },
     Words {
@@ -92,47 +102,7 @@ pub enum Field {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldSlot {
     Doc(Spanned<StringLiteral>),
-    Type(FieldType),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct FieldParameter {
-    pub name: Spanned<String>,
-    pub r#type: FieldType,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum FieldType {
-    Defaulted(Defaulted),
     Type(Type),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Defaulted {
-    List {
-        item: Box<Defaulted>,
-        span: Span,
-    },
-    ListOfNamed {
-        item: Type,
-        default: Node,
-        span: Span,
-    },
-    Map {
-        value: Box<Defaulted>,
-        span: Span,
-    },
-    MapOfNamed {
-        value: Type,
-        default: Node,
-        span: Span,
-    },
-    Other {
-        r#type: Type,
-        default: Node,
-        span: Span,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -348,7 +318,16 @@ impl TypeMarker {
 impl Field {
     pub fn span(&self) -> Span {
         match self {
-            Field::Unnamed { span, .. } | Field::Words { span, .. } => *span,
+            Field::Defaulted { span, .. } => *span,
+            Field::Declared(value) => value.span(),
+        }
+    }
+}
+
+impl DeclaredField {
+    pub fn span(&self) -> Span {
+        match self {
+            DeclaredField::Unnamed { span, .. } | DeclaredField::Words { span, .. } => *span,
         }
     }
 }
@@ -358,27 +337,6 @@ impl FieldSlot {
         match self {
             FieldSlot::Doc(value) => value.span,
             FieldSlot::Type(value) => value.span(),
-        }
-    }
-}
-
-impl FieldType {
-    pub fn span(&self) -> Span {
-        match self {
-            FieldType::Defaulted(value) => value.span(),
-            FieldType::Type(value) => value.span(),
-        }
-    }
-}
-
-impl Defaulted {
-    pub fn span(&self) -> Span {
-        match self {
-            Defaulted::List { span, .. }
-            | Defaulted::ListOfNamed { span, .. }
-            | Defaulted::Map { span, .. }
-            | Defaulted::MapOfNamed { span, .. }
-            | Defaulted::Other { span, .. } => *span,
         }
     }
 }
@@ -525,11 +483,23 @@ impl support::Errors for TypeMarker {
 impl support::Errors for Field {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Field::Unnamed { doc, parameter, .. } => {
+            Field::Defaulted { field, default, .. } => {
+                support::Errors::errors(field, found);
+                support::Errors::errors(default, found);
+            }
+            Field::Declared(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for DeclaredField {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            DeclaredField::Unnamed { doc, parameter, .. } => {
                 support::Errors::errors(doc, found);
                 support::Errors::errors(parameter, found);
             }
-            Field::Words {
+            DeclaredField::Words {
                 name, arguments, ..
             } => {
                 support::Errors::errors(name, found);
@@ -544,49 +514,6 @@ impl support::Errors for FieldSlot {
         match self {
             FieldSlot::Doc(value) => support::Errors::errors(value, found),
             FieldSlot::Type(value) => support::Errors::errors(value, found),
-        }
-    }
-}
-
-impl support::Errors for FieldParameter {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.r#type, found);
-    }
-}
-
-impl support::Errors for FieldType {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            FieldType::Defaulted(value) => support::Errors::errors(value, found),
-            FieldType::Type(value) => support::Errors::errors(value, found),
-        }
-    }
-}
-
-impl support::Errors for Defaulted {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            Defaulted::List { item, .. } => {
-                support::Errors::errors(item, found);
-            }
-            Defaulted::ListOfNamed { item, default, .. } => {
-                support::Errors::errors(item, found);
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Map { value, .. } => {
-                support::Errors::errors(value, found);
-            }
-            Defaulted::MapOfNamed { value, default, .. } => {
-                support::Errors::errors(value, found);
-                support::Errors::errors(default, found);
-            }
-            Defaulted::Other {
-                r#type, default, ..
-            } => {
-                support::Errors::errors(r#type, found);
-                support::Errors::errors(default, found);
-            }
         }
     }
 }
@@ -931,30 +858,44 @@ pub fn decode_type_marker(node: &Node) -> Result<TypeMarker, DecodeError> {
 }
 
 pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
-    decode_field_unnamed(node).or_else(|error| error.or(decode_field_words(node)))
+    decode_field_defaulted(node)
+        .or_else(|error| error.or(decode_declared_field(node).map(Field::Declared)))
 }
 
-fn decode_field_unnamed(node: &Node) -> Result<Field, DecodeError> {
-    let mut parts = support::call(node, "the call `_? @ _`")?;
-    let decoded = Field::Unnamed {
-        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        parameter: parts
-            .word("@")?
-            .one(decode_field_parameter, "a field parameter")?,
+fn decode_field_defaulted(node: &Node) -> Result<Field, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = Field::Defaulted {
+        field: parts.one(decode_declared_field, "a declared field")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
 }
 
-fn decode_field_words(node: &Node) -> Result<Field, DecodeError> {
+pub fn decode_declared_field(node: &Node) -> Result<DeclaredField, DecodeError> {
+    decode_declared_field_unnamed(node).or_else(|error| error.or(decode_declared_field_words(node)))
+}
+
+fn decode_declared_field_unnamed(node: &Node) -> Result<DeclaredField, DecodeError> {
+    let mut parts = support::call(node, "the call `_? @ _`")?;
+    let decoded = DeclaredField::Unnamed {
+        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        parameter: parts.word("@")?.one(decode_parameter, "a parameter")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_declared_field_words(node: &Node) -> Result<DeclaredField, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
         |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
         "a call whose name has no keyword and matches the regex `^(_ )*[^_@]`",
     )?;
     let mut arguments = support::arguments(node, arguments);
-    let decoded = Field::Words {
+    let decoded = DeclaredField::Words {
         name,
         arguments: arguments.zero_or_more(decode_field_slot),
         span: node.span,
@@ -966,92 +907,7 @@ fn decode_field_words(node: &Node) -> Result<Field, DecodeError> {
 pub fn decode_field_slot(node: &Node) -> Result<FieldSlot, DecodeError> {
     support::line_string(node, |_| true, "a `#` line string")
         .map(FieldSlot::Doc)
-        .or_else(|error| error.or(decode_field_type(node).map(FieldSlot::Type)))
-}
-
-pub fn decode_field_parameter(node: &Node) -> Result<FieldParameter, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = FieldParameter {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        r#type: parts.one(decode_field_type, "a field type")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_field_type(node: &Node) -> Result<FieldType, DecodeError> {
-    decode_defaulted(node)
-        .map(FieldType::Defaulted)
-        .or_else(|error| error.or(decode_type(node).map(FieldType::Type)))
-}
-
-pub fn decode_defaulted(node: &Node) -> Result<Defaulted, DecodeError> {
-    decode_defaulted_list(node)
-        .or_else(|error| error.or(decode_defaulted_list_of_named(node)))
-        .or_else(|error| error.or(decode_defaulted_map(node)))
-        .or_else(|error| error.or(decode_defaulted_map_of_named(node)))
-        .or_else(|error| error.or(decode_defaulted_other(node)))
-}
-
-fn decode_defaulted_list(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `LIST _`")?;
-    let decoded = Defaulted::List {
-        item: parts
-            .word("LIST")?
-            .one(|node| decode_defaulted(node).map(Box::new), "a defaulted")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_list_of_named(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `LIST _ DEFAULT _`")?;
-    let decoded = Defaulted::ListOfNamed {
-        item: parts.word("LIST")?.one(decode_type, "a type")?,
-        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_map(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `MAP _`")?;
-    let decoded = Defaulted::Map {
-        value: parts
-            .word("MAP")?
-            .one(|node| decode_defaulted(node).map(Box::new), "a defaulted")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_map_of_named(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `MAP _ DEFAULT _`")?;
-    let decoded = Defaulted::MapOfNamed {
-        value: parts.word("MAP")?.one(decode_type, "a type")?,
-        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-fn decode_defaulted_other(node: &Node) -> Result<Defaulted, DecodeError> {
-    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
-    let decoded = Defaulted::Other {
-        r#type: parts.one(decode_type, "a type")?,
-        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
+        .or_else(|error| error.or(decode_type(node).map(FieldSlot::Type)))
 }
 
 pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {

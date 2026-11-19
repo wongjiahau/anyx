@@ -481,6 +481,17 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
     crate::request::decode(schema, r#type, &syntax)
 }
 
+/// Reads `node` as an entry of `fields[index]`, as a field's `DEFAULT` is.
+pub(crate) fn decode_entry(
+    schema: &Schema,
+    fields: &[Field],
+    index: usize,
+    node: &Node,
+) -> Result<Value, Mismatch> {
+    let syntax = request::decode_value(node).map_err(syntax_mismatch)?;
+    crate::request::decode_field_entry(schema, fields, index, &syntax)
+}
+
 fn syntax_mismatch(error: request::DecodeError) -> Mismatch {
     Mismatch {
         span: error.span,
@@ -754,6 +765,13 @@ pub(crate) fn write(
             }
             out.push(']');
         }
+        Value::Tuple(_) => {
+            return Err(EncodeError {
+                message:
+                    "found a field's slots where a value goes; expected them in the field's shape"
+                        .to_string(),
+            });
+        }
         Value::Map(entries) => {
             let Type::Map(value_type) = r#type else {
                 return Err(mismatched(schema, r#type, "a map"));
@@ -812,8 +830,8 @@ fn mismatched(schema: &Schema, r#type: &Type, found: &str) -> EncodeError {
 /// Writes fields in the schema's order, each as a reader writes it: a
 /// shape whose slot is last as its words, a `:`, and its value; another
 /// shape with its value in the slot; a checkbox as its words when `true`;
-/// an `@` field as `@` and its value. A nullable value is written as its
-/// item. The layout drops each `:` that a reader doesn't need.
+/// an `@` field as `@` and its value. The layout drops each `:` that a
+/// reader doesn't need.
 fn write_fields(
     schema: &Schema,
     fields: &[Field],
@@ -835,14 +853,20 @@ fn write_fields(
             continue;
         }
         let mut entry = String::new();
-        let (r#type, item) = match (schema.nullable_item(&field.r#type), value) {
-            (
-                Some(item),
-                Value::Variant {
-                    shape, arguments, ..
-                },
-            ) if shape == "value _" => (item, &arguments[0]),
-            _ => (&field.r#type, value),
+        // Each slot's type and value.
+        let slots: Vec<(&Type, &Value)> = match (&field.r#type, value) {
+            (Type::Tuple(types), Value::Tuple(values)) if types.len() == values.len() => {
+                types.iter().zip(values).collect()
+            }
+            (Type::Tuple(_), _) => {
+                return Err(EncodeError {
+                    message: format!(
+                        "found {value:?} for the field `{}`; expected a value for each of its slots",
+                        field.name
+                    ),
+                });
+            }
+            (r#type, value) => vec![(r#type, value)],
         };
         match &field.form {
             FieldForm::Checkbox => match value {
@@ -853,22 +877,29 @@ fn write_fields(
             FieldForm::Shape(shape)
                 if shape.ends_with(" _") && !shape[..shape.len() - 2].contains('_') =>
             {
+                let [(r#type, item)] = slots[..] else {
+                    unreachable!("a shape with one slot holds one value")
+                };
                 entry.push_str(&shape[..shape.len() - 2]);
                 entry.push_str(": ");
                 write(schema, r#type, item, &mut entry)?;
             }
             FieldForm::Shape(shape) => {
+                let mut slots = slots.iter();
                 for (index, word) in shape.split(' ').enumerate() {
                     if index > 0 {
                         entry.push(' ');
                     }
-                    match word {
-                        "_" => write_slot(schema, r#type, item, &mut entry)?,
-                        word => entry.push_str(word),
+                    match (word, if word == "_" { slots.next() } else { None }) {
+                        (_, Some((r#type, item))) => write_slot(schema, r#type, item, &mut entry)?,
+                        (word, None) => entry.push_str(word),
                     }
                 }
             }
             FieldForm::Unnamed => {
+                let [(r#type, item)] = slots[..] else {
+                    unreachable!("an `@` field holds one value")
+                };
                 let mut value = String::new();
                 write(schema, r#type, item, &mut value)?;
                 entry.push('@');

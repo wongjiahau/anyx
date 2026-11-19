@@ -61,7 +61,7 @@ fn a_search_changes_how_fd_searches() {
         (r#"find "NOTES" with { (any) case }"#, r#"["src/Notes.md"]"#),
         (r#"find "notes" with { (exact) case }"#, "[]"),
         (
-            r#"find "." with { (fixed text) pattern, max depth 1 }"#,
+            r#"find "." with { (fixed text) pattern, max depth (value 1) }"#,
             r#"["README.md"]"#,
         ),
         (
@@ -73,11 +73,11 @@ fn a_search_changes_how_fd_searches() {
             r#"["README.md", "src/Notes.md"]"#,
         ),
         (
-            r#"find "" with { min depth 2, max depth 2, only [file] }"#,
+            r#"find "" with { min depth (value 2), max depth (value 2), only [file] }"#,
             r#"["src/Notes.md", "src/lib.rs", "src/main.rs"]"#,
         ),
         (
-            r#"find "" with { min depth 3 }"#,
+            r#"find "" with { min depth (value 3) }"#,
             r#"["src/deep/inner.rs"]"#,
         ),
         (
@@ -93,14 +93,14 @@ fn a_search_changes_how_fd_searches() {
             r#"find "src/d" with { full path }"#,
             r#"["src/deep", "src/deep/inner.rs"]"#,
         ),
-        (r#"find "" with { at least 14 bytes }"#, r#"["src/lib.rs"]"#),
-        (r#"find "" with { at most 1 results }"#, r#"["README.md"]"#),
+        (r#"find "" with { at least (value 14) bytes }"#, r#"["src/lib.rs"]"#),
+        (r#"find "" with { at most (value 1) results }"#, r#"["README.md"]"#),
         (r#"find "^s" with { prune }"#, r#"["src"]"#),
         (
-            r#"find "" with { changed within (1 hour), only [file], at most 1 results }"#,
+            r#"find "" with { changed within (value (1 hour)), only [file], at most (value 1) results }"#,
             r#"["README.md"]"#,
         ),
-        (r#"find "" with { changed more than (1 hour) ago }"#, "[]"),
+        (r#"find "" with { changed more than (value (1 hour)) ago }"#, "[]"),
     ] {
         assert_eq!(
             answer(directory.path(), request),
@@ -116,7 +116,7 @@ fn paths_are_searched_and_written_as_given() {
     assert_eq!(
         answer(
             directory.path(),
-            r#"find "rs$" in ["src/deep", "src"] with { max depth 1 }"#
+            r#"find "rs$" in ["src/deep", "src"] with { max depth (value 1) }"#
         ),
         "RETURNS [\"src/deep/inner.rs\", \"src/lib.rs\", \"src/main.rs\"]\n"
     );
@@ -163,7 +163,7 @@ fn mistakes_are_errors_or_invalid_requests() {
         ),
         (r#"find "x" with { hidden, hidden }"#, "hidden"),
         (r#"find "x" with { glob }"#, "expected a field"),
-        (r#"find "x" with { at most 0 results }"#, "at most"),
+        (r#"find "x" with { at most (value 0) results }"#, "at most"),
     ] {
         let response = answer(directory.path(), request);
         assert!(
@@ -236,7 +236,7 @@ fn the_shell_brings_in_the_program_and_calls_it() {
         "USE fd FROM COMMAND {program:?},\n\
          fd / find \"lib\" in [{root:?}] with {{ only [file] }},\n\
          USE ALL FROM fd,\n\
-         any match of \"main\" in [{root:?}] with {{ max depth 2 }},\n"
+         any match of \"main\" in [{root:?}] with {{ max depth (value 2) }},\n"
     );
     let execution = shell.execute(&source).unwrap();
     assert_eq!(execution.error, None);

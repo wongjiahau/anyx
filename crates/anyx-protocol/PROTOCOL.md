@@ -15,7 +15,7 @@ RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
-    note: Text ? DEFAULT null,
+    note (Text ?) DEFAULT note (null),
 },
 
 CHOICE Shade { dark, light },
@@ -75,13 +75,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   type, `TYPE Tags: LIST Text`, but can't lead back to the named type.
 - **`RECORD Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
-  `DEFAULT value` after a field makes it omittable and supplies its value
-  when absent: `limit: Integer DEFAULT 50`, or `tags: LIST Text DEFAULT []`.
-  Without a default the field must be supplied. Defaults are checked against
-  the field's type; parameters cannot have defaults.
+  `DEFAULT` after a whole field makes it omittable, and says, as an entry
+  written as a value writes it, what it holds when absent:
+  `limit (Integer) DEFAULT limit 50`, or `tags (LIST Text) DEFAULT tags []`.
+  Without a default the field must be supplied. A default is checked as an
+  entry of its field; parameters cannot have defaults.
 - **Nullability** is the prelude's generic choice `T?`: `null`, or
-  `value (item)`. `note: Text?` is required but admits `null`;
-  `note: Text? DEFAULT null` may be omitted. `OPTIONAL` is no longer a
+  `value (item)`, and a value of it is always written as one of the two:
+  `note (value "hi")`. `note: Text?` is required but admits `null`;
+  `note (Text?) DEFAULT note (null)` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
 - **`CHOICE Name { variant, … }`**: one of its variants. A variant is a
   *shape*: words, with `(name: Type)` slots anywhere among them, as in
@@ -101,7 +103,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   # A page of a long list, and where the next one starts. (A slot at the end.)
   RECORD Page of (item: Type) {
       items: LIST: item,
-      next: Text? DEFAULT null,
+      next (Text?) DEFAULT next (null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
@@ -140,7 +142,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   variant, and not the name of a type visible there: a type declared in its file,
   or a directly imported `PUBLIC` type. A parameter has no slots, and a field
   whose type holds one can have a `DEFAULT` only if it can be checked
-  without knowing the argument, as in `content: item? DEFAULT null`. A use fills every slot, in order; a use whose
+  without knowing the argument, as in `content (item?) DEFAULT content (null)`. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
   with its own parameters as they are, `LIST Tree of (item)`, and only
@@ -201,7 +203,7 @@ TYPE Revision: Integer . WHERE [1 <= _],
 TYPE Probability: Float . WHERE [0 <= _ <= 1],
 TYPE Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE Limit: (Integer) WHERE [10 <= _ < 30],
-RECORD Settings { limit: Limit DEFAULT 10 },
+RECORD Settings { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30]),
 ```
@@ -346,27 +348,34 @@ can say.
 
 ### Records
 
-A record's field is a shape with one slot, which holds the field's type.
-Its words name it, in generated code too, and a value writes it as it is
-declared:
+A record's field is a shape whose slots hold types. Its words name it, in
+generated code too, and a value writes it as it is declared:
 
 | Declared | Written | Named |
 | --- | --- | --- |
 | `path: Text` | `path "a"` | `path` |
-| `(Case DEFAULT smart) case` | `(any) case` | `case` |
-| `at least (Size? DEFAULT null) bytes` | `at least 14 bytes` | `at least bytes` |
-| `changed more than (Duration? DEFAULT null) ago` | `changed more than (1 hour) ago` | `changed more than ago` |
+| `(Case) case DEFAULT (smart) case` | `(any) case` | `case` |
+| `at least (Size?) bytes DEFAULT at least (null) bytes` | `at least (value 14) bytes` | `at least bytes` |
+| `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
 | `hidden` | `hidden` | `hidden` |
-| `@(order: Order DEFAULT newest first)` | `@by name` | `order` |
+| `@(order: Order) DEFAULT @newest first` | `@by name` | `order` |
 
 - **Words alone are a checkbox**: a `Boolean`, `true` when written and
   `false` when left out. It takes no `DEFAULT`.
-- **A nullable field is written as its item**, `max depth 3` for
-  `max depth: Depth? DEFAULT null`; leaving it out says `null`.
 - **The slot holds a type, not a parameter**: `(Case) case`, since the words
-  already name the field. A `DEFAULT` is part of that type, in the slot:
-  `(Case DEFAULT smart) case`, `path: Text DEFAULT "a"`,
-  `@(order: Order DEFAULT newest first)`.
+  already name the field.
+- **A field with several slots holds a value for each**, as a tuple:
+  `between 1 and 3` is `[1, 3]` in JSON, `(i64, i64)` in Rust and
+  `[bigint, bigint]` in TypeScript. A tuple has no syntax of its own; it is
+  only ever a field's slots.
+- **A `DEFAULT` takes the whole field**, and is the entry the field holds
+  when left out, written as a value writes it: `age (Integer) DEFAULT age 0`,
+  `between (Integer) and (Integer) DEFAULT between 1 and 9`,
+  `@(order: Order) DEFAULT @newest first`. With a `:`, the field goes in
+  parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
+  age 0` is `age (Integer DEFAULT age 0)`, a `DEFAULT` in the slot.
+- **A value is written as its type writes it**, a nullable one too:
+  `at least (value 14) bytes`, never `at least 14 bytes` for a `Size?`.
 - **A value before the words keeps its parentheses**, `(any) case`: without
   them, `any case` is the one call `any case`, not `_ case`.
 - **Each field once.** A record says each thing once, so where a list of
@@ -380,9 +389,8 @@ alone: a variant's shape, a string, a number, a list, braces or a duration.
 No two `@` fields of a record may share a form, not even one variant's
 shape, and `Integer` and `Float` share the form of a number, `Text` and
 `Instant` that of a string. So finding the field never tries one and backs
-out. A nullable `@` field needs `DEFAULT null`, since leaving it out is the
-only way to say `null`; one of a type parameter has no known form, and is an
-error.
+out. A nullable `@` field's forms are `null` and `value _`, and one of a type
+parameter has no known form, which is an error.
 
 Readability decides between them, since a record is read far more than it is
 written:
@@ -734,8 +742,8 @@ annotate it, as in `read ("abc" AS: File Id)`". So adding an overload never
 breaks a call that worked: every call already states the types it depends
 on. Only a whole argument is annotated; a value inside one is read by the
 type around it, so `AS` inside a value is an error. The schema's
-`EXAMPLES` are calls, so they follow these rules too; a `DEFAULT` is read by
-its field's type.
+`EXAMPLES` are calls, so they follow these rules too; a `DEFAULT` is read as
+an entry of its field.
 
 A call of a shape with overloads runs the one whose parameters have exactly
 its arguments' types. When none has, or an argument has no type of its own,

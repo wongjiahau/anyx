@@ -36,6 +36,7 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
         message: format!("found {}; expected {expected}", describe(value)),
     };
     match (expected, value) {
+        (Type::Tuple(_), _) => Err(mismatch("a field's slots, written in its shape".into())),
         (Type::Text, Syntax::Text(text)) => Ok(Value::Text(text.value.value.clone())),
         (Type::Text, _) => Err(mismatch("a string, as in `\"text\"`".into())),
         (Type::Bytes, Syntax::Text(text)) => crate::bytes::decode(&text.value.value)
@@ -308,20 +309,10 @@ fn field_entry<'f>(
 ) -> Result<(&'f Field, Value), Mismatch> {
     if let Some(index) = entry_field(schema, fields, entry) {
         let field = &fields[index];
-        let within = |m: Mismatch| Mismatch {
+        let value = entry_value(schema, field, entry).map_err(|m| Mismatch {
             message: format!("in `{}`: {}", field.name, m.message),
             ..m
-        };
-        let value = match (&field.form, entry) {
-            (FieldForm::Checkbox, _) => Value::Variant {
-                shape: "true".into(),
-                arguments: Vec::new(),
-            },
-            (_, Syntax::Call(call)) => {
-                field_value(schema, &field.r#type, &call.arguments[0]).map_err(within)?
-            }
-            _ => unreachable!("a field is found by its entry's call"),
-        };
+        })?;
         return Ok((field, value));
     }
     // `any case` for the shape `_ case`: the value before the words needs
@@ -358,27 +349,51 @@ fn field_entry<'f>(
     })
 }
 
-/// A field's value. A nullable field's value may be written as its item:
-/// `max depth 3` for `max depth: Integer? DEFAULT null`.
-fn field_value(schema: &Schema, r#type: &Type, value: &Syntax) -> Result<Value, Mismatch> {
-    let Some(item) = schema.nullable_item(r#type) else {
-        return decode(schema, r#type, value);
+/// The value of `field` that `entry`, an entry found to fill it, holds:
+/// one for each slot of a field with several.
+fn entry_value(schema: &Schema, field: &Field, entry: &Syntax) -> Result<Value, Mismatch> {
+    let Syntax::Call(call) = entry else {
+        unreachable!("a field is found by its entry's call")
     };
-    if let Syntax::Call(call) = value
-        && (call.name.text == "null" || call.name.text == "value _")
-    {
-        return decode(schema, r#type, value);
+    match (&field.form, &field.r#type) {
+        (FieldForm::Checkbox, _) => Ok(Value::Variant {
+            shape: "true".into(),
+            arguments: Vec::new(),
+        }),
+        (_, Type::Tuple(slots)) => slots
+            .iter()
+            .zip(&call.arguments)
+            .map(|(slot, argument)| decode(schema, slot, argument))
+            .collect::<Result<_, _>>()
+            .map(Value::Tuple),
+        (_, r#type) => decode(schema, r#type, &call.arguments[0]),
     }
-    let item = decode(schema, item, value)?;
-    let nullable = Value::Variant {
-        shape: "value _".into(),
-        arguments: vec![item],
-    };
-    crate::refinement::validate(schema, r#type, &nullable).map_err(|message| Mismatch {
-        span: value.span(),
-        message,
-    })?;
-    Ok(nullable)
+}
+
+/// Reads `entry` as an entry of `fields[index]`, as a field's `DEFAULT`
+/// is: `age 0` for `age (Integer) DEFAULT age 0`.
+pub(crate) fn decode_field_entry(
+    schema: &Schema,
+    fields: &[Field],
+    index: usize,
+    entry: &Syntax,
+) -> Result<Value, Mismatch> {
+    let field = &fields[index];
+    match entry_field(schema, fields, entry) {
+        Some(found) if found == index => entry_value(schema, field, entry),
+        _ => Err(Mismatch {
+            span: entry.span(),
+            message: format!(
+                "found {}; expected an entry of the field, as a value writes it: {}",
+                describe(entry),
+                match &field.form {
+                    FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
+                    FieldForm::Checkbox => format!("`{}`", field.name),
+                    FieldForm::Unnamed => "`@…`".to_string(),
+                }
+            ),
+        }),
+    }
 }
 
 /// How `value` is written, to find the `@` field it fills.

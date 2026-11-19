@@ -33,6 +33,6 @@ schema:1:35: found `thing`, which is not a type of this schema; expected a built
 
 == a named type over an optional type
 PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT "",
-schema:1:35: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit: Integer DEFAULT 50`, since a parameter is always written
+schema:1:35: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
   PROTOCOL a VERSION 1, TYPE Alpha: Text DEFAULT "",
                                     ^^^^^^^^^^^^^^^

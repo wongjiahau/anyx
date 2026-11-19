@@ -173,29 +173,37 @@ entry had to be `name value`, so a record couldn't read like
 `{hidden, (any) case}`.
 
 Decided:
-- Every field is a shape with one slot, which holds a type, and a value
-  writes it as declared, in any order. There is no separate "named" kind:
-  `path: Text` is `path (Text)`, written `path "a"`. The field is named by
-  its words (`at least (Size?) bytes` is `at least bytes`).
+- Every field is a shape whose slots hold types, and a value writes it as
+  declared, in any order. There is no separate "named" kind: `path: Text`
+  is `path (Text)`, written `path "a"`. The field is named by its words
+  (`at least (Size?) bytes` is `at least bytes`).
 
   ```anyx
   RECORD Search {
-      (Case DEFAULT smart) case,
-      (Syntax DEFAULT regex) pattern,
+      (Case) case DEFAULT (smart) case,
+      (Syntax) pattern DEFAULT (regex) pattern,
       hidden,
-      max depth: Depth? DEFAULT null,
-      at least (Size? DEFAULT null) bytes,
-      changed more than (Duration? DEFAULT null) ago,
-      only: LIST Kind DEFAULT [],
+      max depth (Depth?) DEFAULT max depth (null),
+      at least (Size?) bytes DEFAULT at least (null) bytes,
+      only (LIST Kind) DEFAULT only [],
   },
   ```
   ```anyx
-  fd / find "*.md" in ["docs"] with { (glob) pattern, (any) case, max depth 3, hidden }
+  fd / find "*.md" in ["docs"] with { (glob) pattern, (any) case, max depth (value 3), hidden }
   ```
   - Words alone are a checkbox: a `Boolean`, true when written, false when
     left out, and never with a `DEFAULT`.
-  - A nullable field is written as its item, `max depth 3`; left out, it is
-    `null`.
+  - A field with several slots holds a tuple, a value for each:
+    `between (Integer) and (Integer)`, written `between 1 and 3`, is `[1, 3]`
+    in JSON and TypeScript and `(i64, i64)` in Rust. A tuple has no syntax
+    of its own.
+  - `DEFAULT` takes the whole field, `_ DEFAULT _` at the root, and holds
+    the entry the field takes when left out, written as a value writes it:
+    `age (Integer) DEFAULT age 0`. A default is read as an entry of its
+    field, so one entry covers every slot. With a `:`, the field goes in
+    parentheses: `(age: Integer) DEFAULT age 0`.
+  - A nullable value is written with its constructor, `max depth (value 3)`:
+    no syntax sugar without the owner's approval.
   - A value before the words keeps its parentheses, `(any) case`: `any case`
     is one call. Readability over writability; the decoder hints at it.
 - `@(name: T)` is a field written as `@` and its value alone, `@by name`,
@@ -208,8 +216,8 @@ Decided:
   variant's shape, a string, a number, a list, braces or a duration. No two
   `@` fields may share a form, even one variant's shape, and `Integer` and
   `Float` share the number's form, `Text` and `Instant` the string's. So
-  decoding never tries a field and backs out: no graph search. A nullable
-  `@` field needs `DEFAULT null`, and one of a type parameter is an error.
+  decoding never tries a field and backs out: no graph search. One of a type
+  parameter is an error.
 - The guideline is in `PROTOCOL.md` under Records: checkbox, separate fields
   for options that combine, a shape by default, the shared word in the
   shape, and `@` only when a word would stutter. fd uses no `@` field.
@@ -232,12 +240,12 @@ Tried and ruled out:
   slot name is ambiguous with a generic's type parameter
   (`other: item of (Text)` read as a parameter). The words name the field,
   so the slot holds a type.
-- `DEFAULT` after the shape, `(Case) case DEFAULT smart`: a default then
-  had two places, which needed a "two defaults" error, and sat apart from
-  the type it belongs to. It is part of the type in the slot,
-  `(Case DEFAULT smart) case`, so a checkbox, with no slot, can't have one.
-- Fields with several slots: one slot keeps the field one value, and a pair
-  is a record or a choice in that slot.
+- `DEFAULT` after the shape with a bare value, `(Case) case DEFAULT smart`,
+  and then `DEFAULT` in the slot, `(Case DEFAULT smart) case`: a slot's
+  default left a field with several slots needing a default on every slot
+  or none. The whole field's entry after `DEFAULT` says it once.
+- A nullable field written as its item, `max depth 3` for `Depth?`: an
+  implicit `value _` that the call tree didn't show.
 - Any choice field writable by its variant without a marker, and an
   `@` field found by trying each field's type: both make decoding a search.
 - `OPTIONS` as a new kind of type, groups by `|`, `REPEATABLE`, `NEEDS` and

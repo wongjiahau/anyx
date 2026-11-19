@@ -15,11 +15,13 @@ PROTOCOL types VERSION 1,
 RECORD Reminder {
     note: Text,
     at: Instant,
-    every: Duration? DEFAULT null,
+    every (Duration?) DEFAULT every (null),
     # How many times to remind before giving up.
-    times: Integer DEFAULT 3,
+    times (Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
-    seen: MAP: Instant DEFAULT {},
+    seen (MAP: Instant) DEFAULT seen {},
+    # The hours of the day it stays quiet, from and to.
+    quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
 },
 
 CHOICE Schedule { never, once at (at: Instant), every (period: Duration) },
@@ -63,6 +65,8 @@ pub struct Reminder {
     pub times: i64,
     /// When each person last saw it, by their name.
     pub seen: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
+    /// The hours of the day it stays quiet, from and to.
+    pub quiet_from_to: (i64, i64),
 }
 
 impl IntoValue for Reminder {
@@ -74,6 +78,7 @@ impl IntoValue for Reminder {
                 .field("every", self.every)
                 .field("times", self.times)
                 .field("seen", self.seen)
+                .field("quiet from to", self.quiet_from_to)
                 .build(),
         )
     }
@@ -91,6 +96,7 @@ impl FromValue for Reminder {
             every: fields.field("every")?,
             times: fields.field("times")?,
             seen: fields.field("seen")?,
+            quiet_from_to: fields.field("quiet from to")?,
         })
     }
 }

@@ -174,7 +174,7 @@ fn a_named_type_over_a_generic_type_is_written_like_it() {
     let response = run(generic::handle(&Shop, "payments", |_| {}));
     assert_eq!(
         response,
-        "RETURNS { items [{ amount 3, at \"2026-11-14T06:00:08.123Z\" }], next \"2\", total 7 }\n"
+        "RETURNS { items [{ amount 3, at \"2026-11-14T06:00:08.123Z\" }], next: value \"2\", total 7 }\n"
     );
 }
 
