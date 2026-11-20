@@ -27,6 +27,6 @@ schema:1:55: duplicate declaration `Alpha` in `schema.protocol.anyx` and `schema
 
 == a named type over an unknown type
 PROTOCOL a VERSION 1, NAMED TYPE Alpha (thing),
-schema:1:41: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:41: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, NAMED TYPE Alpha (thing),
                                           ^^^^^

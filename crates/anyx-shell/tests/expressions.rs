@@ -22,7 +22,7 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
                 schema: Schema::parse(
                     "PROTOCOL example VERSION 1,
             RECORD Envelope { items: LIST Text },
-            CHOICE Message { `message (text: Text) },
+            TYPE ALIAS Message: UNION [`message (text: Text)],
             METHOD text RETURNS (value: Text),
             METHOD integer RETURNS (value: Integer),
             METHOD names RETURNS (names: LIST Text),

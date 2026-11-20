@@ -33,16 +33,16 @@ schema:1:37: found the string "Where it is."; expected the word `` ` ``, the cal
                                       ^^^^^^^^^^^^^^
 
 == a quoted doc on a choice
-PROTOCOL a VERSION 1, "A shade." CHOICE Shade { `dark, `light },
+PROTOCOL a VERSION 1, "A shade." TYPE ALIAS Shade: UNION [`dark, `light],
 schema:1:23: found the quoted string "A shade."; expected the word `INTRINSIC`, `PUBLIC`, `RECORD`, `CHOICE`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
-  PROTOCOL a VERSION 1, "A shade." CHOICE Shade { `dark, `light },
+  PROTOCOL a VERSION 1, "A shade." TYPE ALIAS Shade: UNION [`dark, `light],
                         ^^^^^^^^^^
 
 == a quoted doc on a variant
-PROTOCOL a VERSION 1, CHOICE Shade { `"Dim." dark, light },
-schema:1:39: found the string "Dim."; expected the call `… _` or the end of the call
-  PROTOCOL a VERSION 1, CHOICE Shade { `"Dim." dark, light },
-                                        ^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`"Dim." dark, light],
+schema:1:49: found the string "Dim."; expected the call `… _` or the end of the call
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`"Dim." dark, light],
+                                                  ^^^^^^
 
 == a quoted doc on a type
 PROTOCOL a VERSION 1, "A path." TYPE ALIAS Path: Text,

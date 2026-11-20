@@ -1,6 +1,6 @@
 PROTOCOL native VERSION 1,
 NAMED TYPE Identifier (Integer),
-CHOICE Selection { `none, `selected (item: Text) },
+TYPE ALIAS Selection: UNION [`none, `selected (item: Text)],
 RECORD Packet {
   text: Text,
   bytes: Bytes,

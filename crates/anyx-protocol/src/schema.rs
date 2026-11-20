@@ -83,8 +83,11 @@ pub fn fill_slots(text: &str, arguments: &[String]) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
     Record(Vec<Field>),
-    /// Variants, each written in its own shape.
-    Choice(Vec<Shaped>),
+    /// An alias of a union of variants, `` TYPE ALIAS Case: UNION [`smart,
+    /// `any] ``: its variants, each written in its own shape. Unlike other
+    /// aliases it keeps its name, for generated code and messages, while
+    /// its values are its variants, written the same.
+    Variants(Vec<Shaped>),
     /// A named type, `NAMED TYPE File Id (Text)`: a type of its own, which no
     /// other type fits. A value is written with its constructor, the shape
     /// of its name with a value in each slot, `File Id "a"`, and holds the
@@ -629,7 +632,7 @@ impl TypeKind {
                     })
                     .collect(),
             ),
-            TypeKind::Choice(variants) => TypeKind::Choice(
+            TypeKind::Variants(variants) => TypeKind::Variants(
                 variants
                     .iter()
                     .map(|variant| Shaped {
@@ -974,7 +977,7 @@ impl Schema {
             }
             underlying => match self.instance(underlying).map(|(_, kind)| kind) {
                 Some(kind) => match kind.as_ref() {
-                    TypeKind::Choice(variants) => variants
+                    TypeKind::Variants(variants) => variants
                         .iter()
                         .map(|variant| JsonForm::Kind(camel_case(&variant.shape.words())))
                         .collect(),
@@ -1048,7 +1051,7 @@ impl Schema {
                         TypeKind::Distinct {
                             underlying: inner, ..
                         } => underlying = inner,
-                        TypeKind::Record(_) | TypeKind::Choice(_) => break,
+                        TypeKind::Record(_) | TypeKind::Variants(_) => break,
                     }
                 }
                 _ => break,
@@ -1111,7 +1114,7 @@ impl Schema {
             }
             underlying => match self.instance(underlying).map(|(_, kind)| kind) {
                 Some(kind) => match kind.as_ref() {
-                    TypeKind::Choice(variants) => variants
+                    TypeKind::Variants(variants) => variants
                         .iter()
                         .map(|variant| Written::Variant(variant.shape.parts.clone()))
                         .collect(),

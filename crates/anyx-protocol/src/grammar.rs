@@ -118,7 +118,6 @@ pub enum FieldSlot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Choice {
     pub doc: Option<Spanned<StringLiteral>>,
-    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: ChoiceBody,
     pub span: Span,
@@ -368,9 +367,15 @@ pub enum UnionMember {
     Union(UnionType),
     Named {
         name: CallName,
-        arguments: Vec<Type>,
+        arguments: Vec<MemberSlot>,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MemberSlot {
+    Doc(Spanned<StringLiteral>),
+    Type(Type),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -529,6 +534,15 @@ impl UnionMember {
     }
 }
 
+impl MemberSlot {
+    pub fn span(&self) -> Span {
+        match self {
+            MemberSlot::Doc(value) => value.span,
+            MemberSlot::Type(value) => value.span(),
+        }
+    }
+}
+
 impl support::Errors for Document {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.header, found);
@@ -648,7 +662,6 @@ impl support::Errors for FieldSlot {
 impl support::Errors for Choice {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
-        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -930,6 +943,15 @@ impl support::Errors for UnionMember {
     }
 }
 
+impl support::Errors for MemberSlot {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            MemberSlot::Doc(value) => support::Errors::errors(value, found),
+            MemberSlot::Type(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
 impl support::Errors for Reference {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
@@ -1143,14 +1165,6 @@ pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
     let mut parts = support::call(node, "the call `_? CHOICE _`")?;
     let decoded = Choice {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        intrinsic: if parts
-            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
-            .is_some()
-        {
-            Some(parts.word_span("INTRINSIC")?)
-        } else {
-            None
-        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1818,11 +1832,17 @@ fn decode_union_member_named(node: &Node) -> Result<UnionMember, DecodeError> {
     let mut arguments = support::arguments(node, arguments);
     let decoded = UnionMember::Named {
         name,
-        arguments: arguments.zero_or_more(decode_type),
+        arguments: arguments.zero_or_more(decode_member_slot),
         span: node.span,
     };
     arguments.finish()?;
     Ok(decoded)
+}
+
+pub fn decode_member_slot(node: &Node) -> Result<MemberSlot, DecodeError> {
+    support::line_string(node, |_| true, "a `#` line string")
+        .map(MemberSlot::Doc)
+        .or_else(|error| error.or(decode_type(node).map(MemberSlot::Type)))
 }
 
 pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {

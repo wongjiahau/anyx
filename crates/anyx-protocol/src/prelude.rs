@@ -5,8 +5,7 @@
 //! Intrinsic declarations name representations supplied by Rust; ordinary
 //! declarations are checked alongside user types. For an intrinsic,
 //! this module supplies its meaning, the [`Type`] its values have. The
-//! codec reads and writes those; for `Duration`, the prelude's variants are
-//! the units, and `time.rs` knows how long each is.
+//! codec reads and writes those; `time.rs` knows `Duration`'s units.
 
 use std::sync::LazyLock;
 
@@ -30,9 +29,6 @@ pub struct Intrinsic {
     pub doc: String,
     /// The type the implementation supplies for it.
     pub r#type: Type,
-    /// The variants of an `INTRINSIC CHOICE`, in order: `Duration`'s
-    /// units, `day` to `millisecond`. Empty for an `INTRINSIC TYPE`.
-    pub variants: Vec<String>,
 }
 
 /// What the implementation supplies for each name the prelude may declare.
@@ -126,41 +122,14 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
             continue;
         }
         let declared = match definition {
-            ast::Definition::IntrinsicType(ast::IntrinsicType { doc, name, .. }) => Some((
-                doc,
-                name.name.words().collect::<Vec<_>>().join(" "),
-                Vec::new(),
-            )),
-            ast::Definition::Choice(ast::Choice {
-                doc,
-                intrinsic: Some(_),
-                body,
-                ..
-            }) => match body.arguments.as_slice() {
-                [ast::ChoicePart::Variants(variants)]
-                    if variants
-                        .value
-                        .iter()
-                        .all(|variant| variant.body.arguments.is_empty()) =>
-                {
-                    let variants = variants
-                        .value
-                        .iter()
-                        .map(|variant| variant.body.name.text.clone())
-                        .collect();
-                    Some((
-                        doc,
-                        body.name.words().collect::<Vec<_>>().join(" "),
-                        variants,
-                    ))
-                }
-                _ => None,
-            },
+            ast::Definition::IntrinsicType(ast::IntrinsicType { doc, name, .. }) => {
+                Some((doc, name.name.words().collect::<Vec<_>>().join(" ")))
+            }
             _ => None,
         };
-        let Some((doc, name, variants)) = declared else {
+        let Some((doc, name)) = declared else {
             problems.push(format!(
-                "found `{}`; expected `INTRINSIC TYPE Name` or `INTRINSIC CHOICE Name {{ … }}` with variants of words alone, since the prelude declares only built-in types",
+                "found `{}`; expected `INTRINSIC TYPE Name`, since the prelude declares only built-in types",
                 &SOURCE[definition.span().start..definition.span().end]
             ));
             continue;
@@ -181,17 +150,7 @@ fn load() -> Result<Vec<Intrinsic>, Vec<String>> {
             problems.push(format!("found `{name}` twice; expected it once"));
             continue;
         }
-        if r#type == Type::Duration
-            && let Err(problem) = crate::time::check_units(&variants)
-        {
-            problems.push(problem);
-        }
-        intrinsics.push(Intrinsic {
-            name,
-            doc,
-            r#type,
-            variants,
-        });
+        intrinsics.push(Intrinsic { name, doc, r#type });
     }
     let all = [
         Type::Text,
@@ -233,7 +192,6 @@ pub(crate) fn declarations() -> ast::Document {
 fn is_intrinsic(definition: &ast::Definition) -> bool {
     match definition {
         ast::Definition::IntrinsicType(_) => true,
-        ast::Definition::Choice(d) => d.intrinsic.is_some(),
         ast::Definition::Record(d) => d.intrinsic.is_some(),
         ast::Definition::Errors(d) => d.intrinsic.is_some(),
         _ => false,
@@ -445,10 +403,6 @@ mod tests {
         assert_eq!(
             names,
             ["Text", "Bytes", "Integer", "Float", "Instant", "Duration"]
-        );
-        assert_eq!(
-            find("Duration").unwrap().variants,
-            ["day", "hour", "minute", "second", "millisecond"]
         );
     }
 

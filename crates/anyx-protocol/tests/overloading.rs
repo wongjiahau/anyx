@@ -10,9 +10,9 @@ use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
 NAMED TYPE File Id (Text),
-CHOICE Shade { `dark, `light },
-CHOICE Colour { `dark, `red },
-CHOICE Mood { `calm, `wild },
+TYPE ALIAS Shade: UNION [`dark, `light],
+TYPE ALIAS Colour: UNION [`dark, `red],
+TYPE ALIAS Mood: UNION [`calm, `wild],
 RECORD Point { x: Integer, y: Integer },
 RECORD Size { x: Integer, label (Text) DEFAULT label \"\" },
 RECORD Width { x: Integer },

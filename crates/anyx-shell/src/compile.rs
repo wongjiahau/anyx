@@ -459,7 +459,7 @@ impl Compiler<'_> {
                 };
                 let name = call.name_text();
                 let candidates: Vec<_> = schema.types.iter().enumerate().filter_map(|(index, definition)| {
-                    if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Choice(variants) if variants.iter().any(|variant| variant.shape.text == name)) {
+                    if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Variants(variants) if variants.iter().any(|variant| variant.shape.text == name)) {
                         Some(Type::Named(index))
                     } else { None }
                 }).collect();
@@ -471,7 +471,7 @@ impl Compiler<'_> {
                 let Some((_, kind)) = schema.instance(&r#type) else {
                     return Err(literal_error);
                 };
-                let TypeKind::Choice(variants) = kind.as_ref() else {
+                let TypeKind::Variants(variants) = kind.as_ref() else {
                     return Err(literal_error);
                 };
                 let Some(variant) = variants.iter().find(|variant| variant.shape.text == name)
@@ -831,7 +831,7 @@ fn transfer(
                                         == Some(&right.r#type)
                             })
                     }
-                    (TypeKind::Choice(left), TypeKind::Choice(right)) => {
+                    (TypeKind::Variants(left), TypeKind::Variants(right)) => {
                         left.len() == right.len()
                             && left.iter().zip(right).all(|(left, right)| {
                                 left.shape.text == right.shape.text

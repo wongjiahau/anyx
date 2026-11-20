@@ -163,7 +163,7 @@ pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
     for definition in &schema.types {
         match &definition.kind {
             TypeKind::Record(fields) => types.extend(fields.iter().map(|field| &field.r#type)),
-            TypeKind::Choice(variants) => types.extend(
+            TypeKind::Variants(variants) => types.extend(
                 variants
                     .iter()
                     .flat_map(|variant| &variant.shape.parameters)
@@ -383,7 +383,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                     .iter()
                     .map(|field| (snake_case(&field.name), format!("`{}`", field.name))),
             )?,
-            TypeKind::Choice(variants) => distinct(
+            TypeKind::Variants(variants) => distinct(
                 "variant",
                 variants.iter().map(|variant| {
                     (
@@ -416,7 +416,7 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                 .types
                 .iter()
                 .flat_map(|definition| match &definition.kind {
-                    TypeKind::Choice(variants) => {
+                    TypeKind::Variants(variants) => {
                         variants.iter().map(|variant| &variant.shape).collect()
                     }
                     TypeKind::Record(_) | TypeKind::Distinct { .. } => Vec::new(),

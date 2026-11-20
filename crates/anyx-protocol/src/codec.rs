@@ -841,7 +841,7 @@ pub(crate) fn write(
                 }
                 return write_shape(schema, &own, arguments, out);
             }
-            let TypeKind::Choice(variants) = kind.as_ref() else {
+            let TypeKind::Variants(variants) = kind.as_ref() else {
                 return Err(mismatched(schema, r#type, "a variant"));
             };
             let Some(variant) = variants.iter().find(|variant| variant.shape.text == *shape) else {

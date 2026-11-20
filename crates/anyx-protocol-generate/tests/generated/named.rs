@@ -23,7 +23,7 @@ RECORD File Link { share id: Share Id, file id: File Id, tags: Tags },
 # A link someone may open.
 TYPE ALIAS Link: File Link,
 
-CHOICE Access { `read, `write },
+TYPE ALIAS Access: UNION [`read, `write],
 
 TYPE ALIAS Level: Access,
 

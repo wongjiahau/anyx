@@ -16,7 +16,7 @@ TYPE ALIAS Size: Integer . WHERE [0 <= _],
 TYPE ALIAS Count: Integer . WHERE [1 <= _],
 
 # What a file is, for `only _`.
-CHOICE Kind {
+TYPE ALIAS Kind: UNION [
     `file,
     `directory,
     `symlink,
@@ -28,24 +28,24 @@ CHOICE Kind {
     `pipe,
     `block device,
     `char device,
-},
+],
 
 # The case a pattern is matched in.
-CHOICE Case {
+TYPE ALIAS Case: UNION [
     # Any case, unless the pattern has an uppercase letter.
     `smart case,
     `any case,
     `exact case,
-},
+],
 
 # How a pattern is read.
-CHOICE Syntax {
+TYPE ALIAS Syntax: UNION [
     `regex pattern,
     # A glob, such as `*.rs`.
     `glob pattern,
     # Plain text.
     `fixed text pattern,
-},
+],
 
 # How `find` searches, as in `` { `glob pattern, hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every

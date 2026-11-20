@@ -22,7 +22,7 @@ RECORD Page of (Item: TYPE) {
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) },
+TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)],
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
 RECORD (Item: TYPE) dated { item: Item, at: Instant },
@@ -35,7 +35,7 @@ RECORD Table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, values: LIST: 
 
 RECORD Payment { amount: Integer, at: Instant },
 
-CHOICE Decline { `insufficient funds, `card expired },
+TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
 
 TYPE ALIAS Payments: Page of (Payment),
 

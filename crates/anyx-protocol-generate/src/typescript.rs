@@ -28,7 +28,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         let generic = generic_name(schema, &name, &definition.parameters);
         match &definition.kind {
             TypeKind::Record(fields) => record(&mut out, schema, &generic, fields),
-            TypeKind::Choice(variants) => union(&mut out, schema, &generic, variants),
+            TypeKind::Variants(variants) => union(&mut out, schema, &generic, variants),
             TypeKind::Distinct {
                 constructor,
                 underlying,
@@ -406,7 +406,7 @@ fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, slots
     .unwrap();
 }
 
-/// A choice, or a method's errors: a union discriminated by `kind`.
+/// A union of variants, or a method's errors: a union discriminated by `kind`.
 fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
     writeln!(out, "export type {name} =").unwrap();
     for variant in variants {
@@ -608,7 +608,7 @@ fn native_schema(schema: &Schema) -> String {
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
-                TypeKind::Choice(variants) => format!(
+                TypeKind::Variants(variants) => format!(
                     "kind:'choice', variants:[{}]",
                     variants
                         .iter()
@@ -770,7 +770,7 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
                     many => format!("[{}]", many.join(",")),
                 };
             }
-            let TypeKind::Choice(variants) = kind.as_ref() else {
+            let TypeKind::Variants(variants) = kind.as_ref() else {
                 unreachable!()
             };
             let variant = variants

@@ -73,10 +73,10 @@ the account, such as by sending or sharing it.
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
   `` {{ status: `done }} ``, `{{ timeout: 5 minutes }}`.
-- A CHOICE is one of its variants, written as a backtick and the
-  variant's shape with a value in each slot: `` `dark ``,
-  `` `custom hue 0.5 ``. A call without the backtick is a function, such
-  as a named type's constructor.
+- A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is
+  one of its variants, written as a backtick and the variant's shape
+  with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
+  without the backtick is a function, such as a named type's constructor.
 - A `UNION` is a value of one of its members, written as that member
   writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
   value of `T`: `{{ max depth 3 }}`, `` {{ max depth: `null }} ``.
@@ -147,7 +147,7 @@ is a group of errors that methods share by joining it with `+`.{examples}{import
         },
         named_types = named_types(schema),
         built_in = built_in_types(),
-        prelude = prelude_choices(),
+        prelude = prelude(),
         generic_types = generic_types(schema),
         refinements = refinements(schema),
         examples = match schema.methods.iter().any(|method| has_examples(&method)) {
@@ -193,20 +193,12 @@ fn overloads(schema: &Schema) -> String {
 }
 
 /// The built-in types, each with its `#` lines from the prelude: "`Text`:
-/// A string: …". `Duration`'s are followed by its units.
+/// A string: …".
 fn built_in_types() -> String {
     crate::prelude::intrinsics()
         .iter()
         .map(|intrinsic| {
-            let mut doc = intrinsic.doc.clone();
-            if intrinsic.r#type == Type::Duration {
-                let units: Vec<String> = crate::time::units()
-                    .iter()
-                    .map(|unit| format!("`{}`", unit.singular))
-                    .collect();
-                let (last, others) = units.split_last().expect("Duration has units");
-                doc.push_str(&format!(" The units are {} and {last}.", others.join(", ")));
-            }
+            let doc = &intrinsic.doc;
             let item = wrap(&format!("- `{}`: {doc}", intrinsic.name), "  ");
             match doc.lines().any(str::is_empty) {
                 true => format!("{item}\n\n"),
@@ -287,7 +279,8 @@ fn wrap(text: &str, indent: &str) -> String {
 }
 
 /// The rule for generic types, shown with the schema's first one: "`RECORD
-/// page of (Item: TYPE)`", then a use of it. Empty for a schema without any.
+/// page of (Item: TYPE) { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
+/// TYPE): UNION [ … ]`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
@@ -296,9 +289,9 @@ fn generic_types(schema: &Schema) -> String {
     else {
         return String::new();
     };
-    let keyword = match definition.kind {
-        TypeKind::Choice(_) => "CHOICE",
-        TypeKind::Record(_) | TypeKind::Distinct { .. } => "RECORD",
+    let (keyword, body) = match definition.kind {
+        TypeKind::Variants(_) => ("TYPE ALIAS", ": UNION [ … ]"),
+        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("RECORD", " { … }"),
     };
     let declared: Vec<String> = definition
         .parameters
@@ -307,7 +300,7 @@ fn generic_types(schema: &Schema) -> String {
         .collect();
     let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(
-        "- A generic RECORD or CHOICE has a type parameter in each slot of its\n  name, which its fields or variants use as a type: `{keyword} {}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
+        "- A generic RECORD or TYPE ALIAS has a type parameter in each slot of\n  its name, which its fields or variants use as a type: `{keyword} {}{body}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
         fill_slots(&definition.name, &declared),
         fill_slots(&definition.name, &arguments),
     )
@@ -461,7 +454,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
             .join(" "),
         Type::Named(index) | Type::Generic(index, _) => match &schema.types[*index].kind {
             TypeKind::Record(_) => "{ … }".to_string(),
-            TypeKind::Choice(_) => "(…)".to_string(),
+            TypeKind::Variants(_) => "(…)".to_string(),
             TypeKind::Distinct {
                 constructor,
                 underlying,
@@ -532,7 +525,7 @@ fn refinements(schema: &Schema) -> String {
                     );
                 }
             }
-            TypeKind::Choice(variants) => {
+            TypeKind::Variants(variants) => {
                 for v in variants {
                     for p in &v.shape.parameters {
                         describe(
@@ -577,7 +570,7 @@ fn refinements(schema: &Schema) -> String {
 }
 
 /// Show the ordinary prelude library, including its docs and variant shapes.
-fn prelude_choices() -> String {
+fn prelude() -> String {
     let source = crate::prelude::declarations()
         .definition
         .iter()

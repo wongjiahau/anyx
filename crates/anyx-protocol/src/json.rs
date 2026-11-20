@@ -354,7 +354,7 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                 return named_to_json(schema, constructor, underlying, arguments);
             }
             let variants = match kind.as_deref() {
-                Some(TypeKind::Choice(variants)) => {
+                Some(TypeKind::Variants(variants)) => {
                     variants.iter().map(|variant| &variant.shape).collect()
                 }
                 _ => Vec::new(),
@@ -551,7 +551,7 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 TypeKind::Record(fields) => {
                     fields_from_json(schema, fields, object).map(Value::Record)
                 }
-                TypeKind::Choice(variants) => {
+                TypeKind::Variants(variants) => {
                     let shapes: Vec<&Shape> =
                         variants.iter().map(|variant| &variant.shape).collect();
                     variant_from_json(schema, &shapes, object)

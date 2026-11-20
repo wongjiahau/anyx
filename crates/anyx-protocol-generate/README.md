@@ -18,7 +18,9 @@ the file.
 
 ## Rust
 
-- A struct per `RECORD` and an enum per `CHOICE`, with a variant per shape:
+- A struct per `RECORD` and an enum per alias of a union of variants,
+  `` TYPE ALIAS Colour: UNION [`dark, `custom hue (hue: Float)] ``, with a
+  variant per shape:
   `custom hue (hue: Float)` is `CustomHue { hue: f64 }`.
 - `Instant` is `std::time::SystemTime` and `Duration` is
   `std::time::Duration`; the wire keeps both to the millisecond.
@@ -48,7 +50,7 @@ the file.
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
   is `PageOf<Order>`. `RECORD (Item: TYPE) history` is `History<Item>`,
   `RECORD Table from (Key: TYPE) to (Value: TYPE)` is
-  `TableFromTo<Key, Value>`, and `CHOICE (Left: TYPE) or (Right: TYPE)` is
+  `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left: TYPE) or (Right: TYPE): UNION [ … ]` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
   `page (Item: TYPE)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the

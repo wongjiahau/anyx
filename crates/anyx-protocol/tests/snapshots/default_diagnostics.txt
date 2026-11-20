@@ -5,10 +5,10 @@ schema:1:70: in the `DEFAULT` of `limit`: found a string; expected a whole numbe
                                                                        ^^^^
 
 == a default that is no variant
-PROTOCOL a VERSION 1, CHOICE Shade { `dark }, RECORD Example { shade (Shade) DEFAULT shade (`dim) },
-schema:1:93: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
-  PROTOCOL a VERSION 1, CHOICE Shade { `dark }, RECORD Example { shade (Shade) DEFAULT shade (`dim) },
-                                                                                              ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark], RECORD Example { shade (Shade) DEFAULT shade (`dim) },
+schema:1:102: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark], RECORD Example { shade (Shade) DEFAULT shade (`dim) },
+                                                                                                       ^^^^
 
 == the removed OPTIONAL keyword
 PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },

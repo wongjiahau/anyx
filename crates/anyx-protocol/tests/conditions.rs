@@ -194,7 +194,7 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
 fn list_tests_rule_out_repeats_and_contradicting_settings() {
     let schema = common::schema(
         r#"
-        CHOICE Setting { `any case, `smart case, `hidden, `(encoding: Text) encoding },
+        TYPE ALIAS Setting: UNION [`any case, `smart case, `hidden, `(encoding: Text) encoding],
         METHOD find (pattern: Text) with (settings: LIST Setting)
             REQUIRES [
                 settings . has no repeats,
@@ -233,22 +233,22 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
 }
 
 #[test]
-fn list_tests_name_variants_of_a_choice_in_a_method_condition() {
+fn list_tests_name_variants_of_a_union_in_a_method_condition() {
     for (source, expected) in [
         (
-            "CHOICE Case { `any case, `smart case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING",
+            "TYPE ALIAS Case: UNION [`any case, `smart case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING",
             "`exact case` is not a variant of Case",
         ),
         (
             "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [`a]] RETURNS NOTHING",
-            "tests a LIST of a CHOICE",
+            "tests a LIST of a union of variants",
         ),
         (
             "METHOD f (name: Text) REQUIRES [name . has no repeats] RETURNS NOTHING",
             "`has no repeats` tests a LIST",
         ),
         (
-            "CHOICE Case { `any case }, METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
+            "TYPE ALIAS Case: UNION [`any case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
             "expected variants in square brackets",
         ),
         (

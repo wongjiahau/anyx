@@ -18,7 +18,7 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 fn mixed() -> (anyx_protocol::Schema, Type) {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        CHOICE Shade { `dark, `light },
+        TYPE ALIAS Shade: UNION [`dark, `light],
         TYPE ALIAS Mixed: UNION [Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair],
         TYPE ALIAS (Item: TYPE) Pair: LIST Item,
         METHOD f (x: Mixed) RETURNS NOTHING,",
@@ -164,7 +164,7 @@ fn mistakes_in_unions_are_diagnosed() {
     let cases = [
         (
             "two members written alike",
-            "PROTOCOL a VERSION 1, CHOICE Shade { `dark, `none }, TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],",
         ),
         (
             "two members written alike only in JSON",
@@ -172,7 +172,7 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "a nullable nullable, and a nullable choice with null",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, CHOICE Gap { `null, `some }, METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,",
         ),
         (
             "a repeat made by a generic type's argument",

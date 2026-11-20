@@ -18,9 +18,9 @@ RECORD File Summary {
     note (Text ?) DEFAULT note (`null),
 },
 
-CHOICE Shade { `dark, `light },
+TYPE ALIAS Shade: UNION [`dark, `light],
 
-CHOICE Colour { `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed },
+TYPE ALIAS Colour: UNION [`dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed],
 
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
@@ -65,7 +65,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
   `Duration` (a length of time), declared in the [prelude](#the-prelude);
   `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
-  `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS`, `UNION [A, B]`, and a
+  `RECORD`, `NAMED TYPE` or `TYPE ALIAS`, `UNION [A, B]`, and a
   use of a generic type,
   `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
@@ -95,9 +95,11 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `TYPE ALIAS (Item: TYPE) Pair: LIST Item`, used as `(Text) Pair`. The
   type it stands for comes last and can't lead back to the alias, since an
   alias is only another name; a type that holds itself is a `RECORD` or a
-  `CHOICE`. `PUBLIC` shares an alias with direct importers, as it does a
+  `NAMED TYPE`. `PUBLIC` shares an alias with direct importers, as it does a
   type. Use `NAMED TYPE` when values should not mix with others that hold
   the same thing, and `TYPE ALIAS` when a long type only needs a short name.
+  An alias of a union of variants alone keeps its name in generated code,
+  as an enum, and in the guide and messages: see below.
 - **`RECORD Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
@@ -108,8 +110,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 - **`UNION [A, B, …]`** is a value of one of its members, written as that
   member writes it, on the wire and in JSON: a value of
   `` UNION [Integer, `none] `` is `3` or `` `none ``. A member is a variant,
-  written with a backtick as a `CHOICE`'s is, or a named type, an intrinsic, a refinement
-  or another union. A `LIST`, `MAP` or `RECORD` is named first, by `TYPE
+  written with a backtick, or a named type, an intrinsic, a refinement
+  or another union. A variant or a named type may have a `#` doc before it. A `LIST`, `MAP` or `RECORD` is named first, by `TYPE
   ALIAS`. A value's form alone tells its member, so the checker flattens a
   union and rejects one where two members share a form, in anyx or in JSON:
   `UNION [Integer, Float]` shares the number, and `Depth??` repeats `` `null ``.
@@ -120,17 +122,21 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `note: Text?` is required but admits `` `null ``;
   `` note (Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
-- **`` CHOICE Name { `variant, `… } ``**: one of its variants. A variant is a
-  *shape*: words, with `(name: Type)` slots anywhere among them, as in
-  `custom hue (hue: Float)` or `(base: Shade) dimmed`. Variants differ by
-  their words.
-- **A generic `RECORD` or `CHOICE`** has type parameters in its name. Its
+- **`` TYPE ALIAS Name: UNION [`variant, `…] ``**, a union of variants
+  alone: one of its variants. A variant is a *shape*: words, with
+  `(name: Type)` slots anywhere among them, as in `custom hue (hue: Float)`
+  or `(base: Shade) dimmed`. Variants differ by their words. Such an alias
+  keeps its name: generated code has an enum `Name`, and the guide and
+  messages say `Name`. Its values are its variants, written the same, and
+  it can't lead back to itself, as no alias can. `` CHOICE Name { `variant
+  } ``, which it replaced, is an error that says how to write it.
+- **A generic `RECORD` or `TYPE ALIAS`** has type parameters in its name. Its
   name is a shape, like a variant's: words, with a `(Parameter: TYPE)` slot
   anywhere among them, at the start, between words, or at the end. Its
   fields or variants use each parameter as a type. A use writes the same
   words with a type in parentheses in each slot, in the same places:
   `Page of (Order)`, `(Receipt) or (Decline)`. A value of it is written
-  exactly like the record or choice with those types in place of the
+  exactly like the record or union with those types in place of the
   parameters, on the wire and in JSON, and checked against them, in
   `DEFAULT`s and `EXAMPLES` too.
 
@@ -142,10 +148,10 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
-  CHOICE (Value: TYPE) or (Problem: TYPE) {
+  TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [
       `done (value: Value),
       `failed (problem: Problem),
-  },
+  ],
 
   # A value and who vouches for it. (A slot between words.)
   RECORD (Value: TYPE) signed by (Signer: TYPE) {
@@ -170,8 +176,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
-  declarations of the same shape are an error. Only a `RECORD`, a
-  `CHOICE` or a `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
+  declarations of the same shape are an error. Only a `RECORD` or a
+  `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
   `PUBLIC RECORD Page of (Item: TYPE)` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
@@ -334,7 +340,7 @@ They let a method take a list of settings, rather than optional words,
 and still rule out settings that contradict each other:
 
 ```anyx
-CHOICE Setting { `any case, `smart case, `hidden, `(name: Text) encoding },
+TYPE ALIAS Setting: UNION [`any case, `smart case, `hidden, `(name: Text) encoding],
 
 READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
     REQUIRES [
@@ -346,7 +352,7 @@ READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
 
 - `items . has no repeats` holds when no two items are equal.
 - `items . has at most one of [a, b]` holds when at most one item is a
-  variant of the shapes listed. `items` is a `LIST` of a `CHOICE`, and each
+  variant of the shapes listed. `items` is a `LIST` of a union of variants, and each
   shape is one of its variants, written by its words with `_` in each slot:
   `[_ encoding]` allows one `encoding` setting, whatever its text.
 
@@ -415,8 +421,9 @@ generated code too, and a value writes it as it is declared:
   or `` `null ``: `at least 14 bytes`, `` at least (`null) bytes `` for a `Size?`.
 - **No `Boolean?`.** Three states named `` `true ``, `` `false `` and `` `null ``
   leave the reader to guess what `` `null `` means. Use a checkbox when left out means
-  off, or a `CHOICE` that names each state: `` CHOICE Color { `always, `never,
-  `auto } ``, not `color (Boolean?)`.
+  off, or a union of variants that names each state:
+  `` TYPE ALIAS Color: UNION [`always, `never, `auto] ``, not
+  `color (Boolean?)`.
 - **A value before the words keeps its parentheses**, `` (`any) case ``:
   without them, `` `any case `` is the one variant `` `any case ``, not `_ case`.
 - **Each field once.** A record says each thing once, so where a list of
@@ -427,8 +434,8 @@ generated code too, and a value writes it as it is declared:
 and a slot with no words, so a parameter names the field. A value writes
 the field's variant alone, `` `by name ``: an entry that starts with a
 backtick can't be a field's shape, so it is the value of the field whose
-type has that variant. The field's type is a `CHOICE` or a union of
-variants, or one of them made nullable, so that every value is a variant;
+type has that variant. The field's type is a union of variants, or one
+made nullable, so that every value is a variant;
 a `Text`, a number, a list, a `Duration` or a type parameter is an error.
 No two such fields of a record may share a variant, so finding the field
 never tries one and backs out; two nullable ones share `` `null ``.
@@ -446,12 +453,12 @@ written:
    `"src"` and `3` alone would leave the reader guessing, which is why a
    field without words holds only variants.
 4. **A choice only one field uses → its word in every variant, and the
-   variant alone.** `` CHOICE Case { `smart case, `any case, `exact case } ``
+   variant alone.** `` TYPE ALIAS Case: UNION [`smart case, `any case, `exact case] ``
    with `` `(case: Case) DEFAULT `smart case `` is written `` `any case ``.
    Every variant carries the word, so that none reads bare, as `` `exact ``
    would.
 5. **A choice several fields or methods share → its shared word in the
-   shape.** `(Case) case` over `` CHOICE Case { `smart, `any, `exact } ``,
+   shape.** `(Case) case` over `` TYPE ALIAS Case: UNION [`smart, `any, `exact] ``,
    written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no
@@ -637,20 +644,20 @@ visible in every file, so a schema can't declare a type of the same name:
 # A whole number of 64 bits, written without a point: `3`, `-1`.
 INTRINSIC TYPE Integer,
 
-INTRINSIC CHOICE Duration { `day, `hour, `minute, `second, `millisecond },
+INTRINSIC TYPE Duration,
 
-CHOICE Boolean { `false, `true },
+TYPE ALIAS Boolean: UNION [`false, `true],
 
 TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
 ```
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
-  supplies: the prelude gives its name, its doc and, for `Duration`, its
-  units, and the Rust code gives how its values are read, written and
-  generated. Only the prelude may use it; `INTRINSIC` in a schema is an
+  supplies: the prelude gives its name and its doc, and the Rust code
+  gives how its values are read, written and generated, and `Duration`'s
+  units. Only the prelude may use it; `INTRINSIC` in a schema is an
   error. An `INTRINSIC TYPE` has no type after it.
 - The prelude also contains ordinary declarations, checked as user types are.
-  `Boolean` is an ordinary choice and postfix `?` an ordinary alias: both
+  `Boolean` and postfix `?` are ordinary aliases: both
   are declared here, without intrinsic Rust type or value cases.
 - The guide's list of built-in types is the prelude's docs, and a
   `Duration`'s units are the prelude's variants.
@@ -714,9 +721,9 @@ and base64 are checked in Rust.
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
-| a `CHOICE` | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
+| a union of variants | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
 | a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `` (`red) Color ``, `Unit` |
-| a use of a generic type | as the `RECORD` or `CHOICE`, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
+| a use of a generic type | as the `RECORD` or union, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 
 A number's type is how it is written, as in Rust: `3` and `-1` are
 `Integer`s, and `3.0`, `1.5` and `1e3` are `Float`s. So every number states
@@ -762,12 +769,12 @@ methods:
 | --- | --- |
 | a number | `Integer` without a point or an exponent, else `Float` |
 | a string | `Text` |
-| `` `true ``, `` `false `` | the unique matching choice, normally `Boolean`; annotate if ambiguous |
+| `` `true ``, `` `false `` | the unique matching union of variants, normally `Boolean`; annotate if ambiguous |
 | whole numbers each with a unit | `Duration` |
 | a list with items | `LIST` of its items' type, when they all have the same one |
 | braces of string keys | `MAP` of its values' type, the same way |
 | braces of fields | the record of the schema, not generic, that has each field written and is missing none it requires, when only one does |
-| a variant | the choice of the schema, not generic, with a variant of its shape, when only one has one |
+| a variant | the union of variants of the schema, not generic, with a variant of its shape, when only one has one |
 | a named type's constructor, `File Id "abc"` | that named type |
 
 Anything else has no type of its own: `[]`, `{}`, a value of a generic
@@ -856,7 +863,7 @@ array of its slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3]
 milliseconds: `5400000` for `1 hour 30 minutes`.
 A field with a `DEFAULT` that is left out takes its default. An explicitly
 supplied value is always checked against the field's type.
-`Boolean` uses an ordinary choice object, `{ "kind": "true" }`. A union's
+`Boolean` uses an ordinary variant object, `{ "kind": "true" }`. A union's
 value is written as its member writes it, so a `Text?` is `"hello"` or
 `{ "kind": "null" }`. Generated Rust uses a `Boolean` enum and `Option<T>`
 for `T?`, and supports no other union yet; TypeScript uses a union of the

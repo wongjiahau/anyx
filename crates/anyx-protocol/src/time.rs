@@ -8,39 +8,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MILLISECONDS_PER_DAY: i64 = 86_400_000;
 
-/// The length in milliseconds of each unit a duration may have: the
-/// variants of `Duration` in the prelude, which names them.
-fn unit_length(unit: &str) -> Option<u64> {
-    Some(match unit {
-        "day" => 86_400_000,
-        "hour" => 3_600_000,
-        "minute" => 60_000,
-        "second" => 1_000,
-        "millisecond" => 1,
-        _ => return None,
-    })
-}
-
-/// Checks the variants of `Duration` as the prelude declares them: each a
-/// unit with a length, largest first.
-pub(crate) fn check_units(variants: &[String]) -> Result<(), String> {
-    let mut previous: Option<u64> = None;
-    for unit in variants {
-        let Some(length) = unit_length(unit) else {
-            return Err(format!(
-                "found the unit `{unit}` of `Duration`, whose length the implementation doesn't know"
-            ));
-        };
-        if previous.is_some_and(|previous| length >= previous) {
-            return Err(format!(
-                "found the unit `{unit}` of `Duration` after a shorter or as long a unit; expected the units largest first"
-            ));
-        }
-        previous = Some(length);
-    }
-    Ok(())
-}
-
 /// A unit of a duration: written in the singular for 1 and the plural,
 /// the singular and `s`, otherwise.
 pub(crate) struct Unit {
@@ -49,19 +16,23 @@ pub(crate) struct Unit {
     pub milliseconds: u64,
 }
 
-/// The units of a duration, largest first: the variants of `Duration` in
-/// the prelude.
+/// The units of a duration, largest first, each with its length.
 pub(crate) fn units() -> &'static [Unit] {
     static UNITS: std::sync::LazyLock<Vec<Unit>> = std::sync::LazyLock::new(|| {
-        crate::prelude::of(&crate::schema::Type::Duration)
-            .map_or(&[][..], |duration| &duration.variants)
-            .iter()
-            .map(|unit| Unit {
-                singular: unit.as_str(),
-                plural: format!("{unit}s"),
-                milliseconds: unit_length(unit).unwrap_or(1),
-            })
-            .collect()
+        [
+            ("day", 86_400_000),
+            ("hour", 3_600_000),
+            ("minute", 60_000),
+            ("second", 1_000),
+            ("millisecond", 1),
+        ]
+        .into_iter()
+        .map(|(singular, milliseconds)| Unit {
+            singular,
+            plural: format!("{singular}s"),
+            milliseconds,
+        })
+        .collect()
     });
     &UNITS
 }
