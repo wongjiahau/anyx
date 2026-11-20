@@ -34,7 +34,8 @@ METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [],
 
 METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [],
 
-METHOD snooze (reminder: Reminder) for (duration: Duration)
+# Snoozed for 5 minutes, unless it says for how long.
+METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minutes)]
     RETURNS (reminders: LIST: Reminder)
     ERRORS [
         # Snoozed past its next time.
@@ -309,6 +310,8 @@ pub trait Server {
         reminders: ::std::collections::BTreeMap<String, Reminder>,
     ) -> Result<::std::collections::BTreeMap<String, i64>, Self::Error>;
 
+    /// Snoozed for 5 minutes, unless it says for how long.
+    ///
     /// `snooze _ for _`, returning `reminders`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
@@ -418,6 +421,8 @@ impl<T: Transport> Client<T> {
             .await
     }
 
+    /// Snoozed for 5 minutes, unless it says for how long.
+    ///
     /// `snooze _ for _`, returning `reminders`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
@@ -433,6 +438,15 @@ impl<T: Transport> Client<T> {
             vec![reminder.into_value(), duration.into_value()],
         )
         .await
+    }
+
+    /// `snooze _`: [`Self::snooze_for`] with each part left out at its default.
+    pub async fn snooze(
+        &self,
+        reminder: Reminder,
+    ) -> Result<Vec<Reminder>, CallError<SnoozeForError, T::Error>> {
+        self.snooze_for(reminder, anyx_protocol::client::default(schema(), 2, 1))
+            .await
     }
 
     /// `SCHEMA`, returning the guide to the schema.

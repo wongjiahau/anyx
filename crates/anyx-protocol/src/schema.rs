@@ -28,6 +28,18 @@ pub struct Schema {
     /// The calls every server answers, after its own methods: `SCHEMA`,
     /// then `SCHEMA FILES`.
     pub built_ins: Vec<Method>,
+    /// The prelude's `INTRINSIC FUNCTION`s, which a value may be written
+    /// as a call of, as a `Duration` is: `1 hours 30 minutes`.
+    pub intrinsic_functions: Vec<IntrinsicFunction>,
+}
+
+/// An `INTRINSIC FUNCTION` of the prelude: a value of the type it returns
+/// may be written as a call of it, and the implementation computes the
+/// value from the call's arguments (`src/prelude.rs`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntrinsicFunction {
+    pub shape: Shape,
+    pub returns: Type,
 }
 
 /// A file of a checked schema.
@@ -128,7 +140,6 @@ pub enum Written {
     Number,
     List,
     Braces,
-    Duration,
 }
 
 impl std::fmt::Display for Written {
@@ -140,21 +151,16 @@ impl std::fmt::Display for Written {
             Written::Number => f.write_str("a number"),
             Written::List => f.write_str("a list `[…]`"),
             Written::Braces => f.write_str("braces `{…}`"),
-            Written::Duration => f.write_str("a duration"),
         }
     }
 }
 
 impl Written {
     /// Whether an entry written as `found` may be a value of a type
-    /// written as `self`, or the two clash as members of a union: the same form, or
-    /// a named type's constructor shaped like a duration against a
-    /// `Duration`.
+    /// written as `self`, or the two clash as members of a union: the same
+    /// form.
     pub fn admits(&self, found: &Written) -> bool {
-        match (self, found) {
-            (Written::Duration, Written::Call(parts)) => crate::time::is_duration_shape(parts),
-            _ => self == found,
-        }
+        self == found
     }
 
     /// A node's outermost form, read with the request grammar, `None` for
@@ -259,6 +265,7 @@ pub fn constructor_shape(constructor: &[ShapePart], underlying: &Type) -> Shape 
                 r#type: r#type.clone(),
             })
             .collect(),
+        optional: Vec::new(),
     }
 }
 
@@ -278,7 +285,10 @@ pub enum FieldForm {
 }
 
 /// A call's shape: words with a typed slot between or around them, such as
-/// `conflict at revision (revision: Integer)`.
+/// `conflict at revision (revision: Integer)`. With optional parts, it is
+/// the full form, `find _ in _` for `find (pattern: Text) [in (paths: LIST
+/// Text) DEFAULT in ["."]]`, and a call may be written in any of its
+/// [`Shape::forms`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
     /// The words with `_` for each slot: `conflict at revision _`.
@@ -286,6 +296,43 @@ pub struct Shape {
     /// Its words and slots, in order, as the parser read them.
     pub parts: Vec<ShapePart>,
     pub parameters: Vec<Parameter>,
+    /// The parts a call may leave out, in order.
+    pub optional: Vec<OptionalPart>,
+}
+
+/// A part of a shape that a call may leave out, `[in (paths: LIST Text)
+/// DEFAULT in ["."]]`, and what its parameters hold then.
+#[derive(Clone, Debug)]
+pub struct OptionalPart {
+    /// Its words and slots among the shape's parts.
+    pub parts: std::ops::Range<usize>,
+    /// Its parameters among the shape's parameters.
+    pub parameters: std::ops::Range<usize>,
+    /// A value for each of its parameters, read from its `DEFAULT` once
+    /// every type is known.
+    pub default: Vec<Value>,
+    /// The `DEFAULT`'s entry as written, `in ["."]`, which the checker
+    /// reads into [`OptionalPart::default`].
+    pub(crate) entry: Node,
+}
+
+/// Two parts are the same when they cover the same parts and hold the same
+/// defaults, wherever their entries were written.
+impl PartialEq for OptionalPart {
+    fn eq(&self, other: &Self) -> bool {
+        self.parts == other.parts
+            && self.parameters == other.parameters
+            && self.default == other.default
+    }
+}
+
+/// A way to write a call of a shape: some of its optional parts left out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Form {
+    /// The words with `_` for each slot it writes: `find _`.
+    pub text: String,
+    /// Whether each of the shape's optional parts is written.
+    pub written: Vec<bool>,
 }
 
 impl Shape {
@@ -303,6 +350,155 @@ impl Shape {
                     r#type: parameter.r#type.substitute(parameters, arguments),
                 })
                 .collect(),
+            optional: self.optional.clone(),
+        }
+    }
+
+    /// Every way to write a call of it: the full form first, then with
+    /// optional parts left out, earlier parts varying slowest. A call has a
+    /// word, so leaving out every part of a shape made only of optional
+    /// parts, as `Duration`'s, is no way to write it.
+    pub fn forms(&self) -> Vec<Form> {
+        let count = self.optional.len();
+        (0..1usize << count)
+            .map(|left_out| {
+                let written: Vec<bool> = (0..count)
+                    .map(|index| left_out & (1 << (count - 1 - index)) == 0)
+                    .collect();
+                Form {
+                    text: ShapePart::text(&self.written_parts(&written)),
+                    written,
+                }
+            })
+            .filter(|form| form.text.split(' ').any(|part| part != "_"))
+            .collect()
+    }
+
+    /// The form a call named `text` is written in, if it is one of its.
+    pub fn form(&self, text: &str) -> Option<Form> {
+        if self.optional.is_empty() {
+            return (self.text == text).then(|| Form {
+                text: self.text.clone(),
+                written: Vec::new(),
+            });
+        }
+        self.forms().into_iter().find(|form| form.text == text)
+    }
+
+    /// Each way to write it as a variant, marked with a backtick.
+    pub fn written_forms(&self) -> Vec<Written> {
+        self.forms()
+            .iter()
+            .map(|form| Written::Variant(self.written_parts(&form.written)))
+            .collect()
+    }
+
+    /// The words of each way to write it, the full form's first: a
+    /// variant is told from another by these.
+    pub fn form_words(&self) -> Vec<String> {
+        self.forms()
+            .iter()
+            .map(|form| ShapePart::words(&self.written_parts(&form.written)))
+            .collect()
+    }
+
+    /// Its parts that `written` writes.
+    fn written_parts(&self, written: &[bool]) -> Vec<ShapePart> {
+        self.parts
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.writes(written, index, |part| &part.parts))
+            .map(|(_, part)| part.clone())
+            .collect()
+    }
+
+    /// Whether the part or parameter at `index` is written, where `range`
+    /// says which of them an optional part holds.
+    fn writes(
+        &self,
+        written: &[bool],
+        index: &usize,
+        range: impl Fn(&OptionalPart) -> &std::ops::Range<usize>,
+    ) -> bool {
+        self.optional
+            .iter()
+            .zip(written)
+            .all(|(part, written)| *written || !range(part).contains(index))
+    }
+
+    /// The shape as `form` writes it, with only the parameters it writes
+    /// and no optional parts: what a call written in it is read against.
+    pub fn written_as(&self, form: &Form) -> Shape {
+        Shape {
+            text: form.text.clone(),
+            parts: self.written_parts(&form.written),
+            parameters: self
+                .parameters
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| self.writes(&form.written, index, |part| &part.parameters))
+                .map(|(_, parameter)| parameter.clone())
+                .collect(),
+            optional: Vec::new(),
+        }
+    }
+
+    /// Every argument of a call written in `form`: the `written` ones, and
+    /// each left-out part's default. `None` while a default it needs isn't
+    /// read yet, which only the checker sees.
+    pub fn fill(&self, form: &Form, written: Vec<Value>) -> Option<Vec<Value>> {
+        self.fill_with(form, written, |_, value| value.clone())
+    }
+
+    /// Every argument of a call written in `form`, as [`Self::fill`] has
+    /// them, each left-out part's default made by `default` from the
+    /// parameter's index and the default value: for a caller
+    /// whose arguments aren't values yet, such as the shell's.
+    pub fn fill_with<T>(
+        &self,
+        form: &Form,
+        written: Vec<T>,
+        mut default: impl FnMut(usize, &Value) -> T,
+    ) -> Option<Vec<T>> {
+        let mut written = written.into_iter();
+        (0..self.parameters.len())
+            .map(|index| {
+                match self
+                    .optional
+                    .iter()
+                    .zip(&form.written)
+                    .find(|(part, _)| part.parameters.contains(&index))
+                {
+                    Some((part, false)) => part
+                        .default
+                        .get(index - part.parameters.start)
+                        .map(|value| default(index, value)),
+                    _ => written.next(),
+                }
+            })
+            .collect()
+    }
+
+    /// The default of the parameter at `index`, when an optional part
+    /// holds it: what a call that leaves the part out has there.
+    pub fn default_of(&self, index: usize) -> Option<&Value> {
+        let part = self
+            .optional
+            .iter()
+            .find(|part| part.parameters.contains(&index))?;
+        part.default.get(index - part.parameters.start)
+    }
+
+    /// The optional part at `index` alone, as its `DEFAULT` writes it:
+    /// `in (paths: LIST Text)`.
+    pub fn part(&self, index: usize) -> Shape {
+        let part = &self.optional[index];
+        let parts = self.parts[part.parts.clone()].to_vec();
+        Shape {
+            text: ShapePart::text(&parts),
+            parts,
+            parameters: self.parameters[part.parameters.clone()].to_vec(),
+            optional: Vec::new(),
         }
     }
 
@@ -316,6 +512,55 @@ impl Shape {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+}
+
+/// Calls `visit` on every shape in `schema`: methods', variants', and
+/// those in types, the shapes in their parameters' types after them.
+pub(crate) fn each_shape(schema: &mut Schema, visit: &mut dyn FnMut(&mut Shape)) {
+    fn in_type(r#type: &mut Type, visit: &mut dyn FnMut(&mut Shape)) {
+        match r#type {
+            Type::Refined(base, _) => in_type(base, visit),
+            Type::List(item) | Type::Map(item) => in_type(item, visit),
+            Type::Generic(_, types) | Type::Tuple(types) | Type::Union(types) => {
+                types.iter_mut().for_each(|r#type| in_type(r#type, visit))
+            }
+            Type::Variant(shape) => in_shape(shape, visit),
+            _ => {}
+        }
+    }
+    fn in_shape(shape: &mut Shape, visit: &mut dyn FnMut(&mut Shape)) {
+        visit(shape);
+        for parameter in &mut shape.parameters {
+            in_type(&mut parameter.r#type, visit);
+        }
+    }
+    for definition in &mut schema.types {
+        match &mut definition.kind {
+            TypeKind::Record(fields) => fields
+                .iter_mut()
+                .for_each(|field| in_type(&mut field.r#type, visit)),
+            TypeKind::Variants(variants) => variants
+                .iter_mut()
+                .for_each(|variant| in_shape(&mut variant.shape, visit)),
+            TypeKind::Distinct { underlying, .. } => in_type(underlying, visit),
+        }
+    }
+    for function in &mut schema.intrinsic_functions {
+        in_shape(&mut function.shape, visit);
+    }
+    for method in schema.methods.iter_mut().chain(&mut schema.built_ins) {
+        in_shape(&mut method.shape, visit);
+        if let Some(returns) = &mut method.returns {
+            in_type(&mut returns.r#type, visit);
+        }
+        for error in &mut method.errors {
+            in_shape(&mut error.shape, visit);
+        }
+        method
+            .error_groups
+            .iter_mut()
+            .for_each(|group| in_type(group, visit));
     }
 }
 
@@ -491,7 +736,7 @@ pub enum Type {
     /// UTC: `"2026-11-14T06:00:08.000Z"`.
     Instant,
     /// A length of time, to the millisecond. On the wire, whole numbers
-    /// with their units: `1 hour 30 minutes`.
+    /// with their units: `1 hours 30 minutes`.
     Duration,
     /// A type narrowed by a checked predicate: `(Integer) WHERE [1 <= _]`.
     Refined(Box<Type>, crate::refinement::Predicate),
@@ -621,6 +866,7 @@ impl TypeKind {
                         shape: Shape {
                             text: variant.shape.text.clone(),
                             parts: variant.shape.parts.clone(),
+                            optional: variant.shape.optional.clone(),
                             parameters: variant
                                 .shape
                                 .parameters
@@ -696,6 +942,7 @@ fn built_in(words: &[&str], doc: &str, returns: &str, r#type: Type) -> Method {
                 .map(|word| ShapePart::Word(word.to_string()))
                 .collect(),
             parameters: Vec::new(),
+            optional: Vec::new(),
         },
         returns: Some(Parameter {
             name: returns.to_string(),
@@ -919,7 +1166,12 @@ impl Schema {
         let found = match value {
             Value::Text(_) | Value::Bytes(_) | Value::Instant(_) => Written::String,
             Value::Integer(_) | Value::Float(_) => Written::Number,
-            Value::Duration(_) => Written::Duration,
+            Value::Duration(_) => {
+                return r#type
+                    .members()
+                    .into_iter()
+                    .find(|member| *self.underlying(member) == Type::Duration);
+            }
             Value::List(_) => Written::List,
             Value::Map(_) | Value::Record(_) => Written::Braces,
             Value::Variant { shape, .. } => {
@@ -1214,11 +1466,22 @@ impl Schema {
         Some(match self.underlying(r#type) {
             Type::Text | Type::Bytes | Type::Instant => vec![Written::String],
             Type::Integer | Type::Float => vec![Written::Number],
-            Type::Duration => vec![Written::Duration],
+            Type::Duration => self
+                .intrinsic_functions
+                .iter()
+                .filter(|function| function.returns == Type::Duration)
+                .flat_map(|function| {
+                    function
+                        .shape
+                        .forms()
+                        .into_iter()
+                        .map(|form| Written::Call(function.shape.written_parts(&form.written)))
+                })
+                .collect(),
             Type::List(_) => vec![Written::List],
             Type::Map(_) => vec![Written::Braces],
             Type::Parameter(_) => return None,
-            Type::Variant(shape) => vec![Written::Variant(shape.parts.clone())],
+            Type::Variant(shape) => shape.written_forms(),
             Type::Union(members) => {
                 let mut forms = Vec::new();
                 for member in members {
@@ -1230,7 +1493,7 @@ impl Schema {
                 Some(kind) => match kind.as_ref() {
                     TypeKind::Variants(variants) => variants
                         .iter()
-                        .map(|variant| Written::Variant(variant.shape.parts.clone()))
+                        .flat_map(|variant| variant.shape.written_forms())
                         .collect(),
                     TypeKind::Distinct { constructor, .. } => {
                         vec![Written::Call(constructor.clone())]
@@ -1489,6 +1752,12 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
                 "found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it".to_string(),
             )];
         }
+        if let Some(part) = optional_part_without_words(&nodes, error.span) {
+            return vec![found(
+                part,
+                "found an optional part with no words; expected a word in it before `DEFAULT`, as in `[in (paths: LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word".to_string(),
+            )];
+        }
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
@@ -1599,6 +1868,41 @@ fn unnamed_return(nodes: &[Node], span: Span) -> bool {
 
 /// Where the call with a `DEFAULT` that `span` is in is, when it is not in
 /// a `RECORD`, as in a parameter `(limit: Integer DEFAULT 50)`.
+/// Where the optional part that `span` is in is, when it holds a
+/// `DEFAULT` but no word before it: `[(factor: Integer) DEFAULT 1]`.
+fn optional_part_without_words(nodes: &[Node], span: Span) -> Option<Span> {
+    fn within(node: &Node, span: Span) -> Option<Span> {
+        if !(node.span.start <= span.start && span.end <= node.span.end) {
+            return None;
+        }
+        if let NodeKind::Brackets(items) = &node.kind
+            && let [item] = &items[..]
+            && let NodeKind::Call(call) = &item.kind
+            && matches!(call.name.first(), Some(NamePart::Slot))
+            && call
+                .name
+                .iter()
+                .any(|part| matches!(part, NamePart::Word { text, .. } if text == "DEFAULT"))
+            && call
+                .name
+                .iter()
+                .take_while(
+                    |part| !matches!(part, NamePart::Word { text, .. } if text == "DEFAULT"),
+                )
+                .all(|part| matches!(part, NamePart::Slot))
+        {
+            return Some(node.span);
+        }
+        let children: &[Node] = match &node.kind {
+            NodeKind::Call(call) => &call.arguments,
+            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            _ => &[],
+        };
+        children.iter().find_map(|child| within(child, span))
+    }
+    nodes.iter().find_map(|node| within(node, span))
+}
+
 fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
     fn has_word(node: &Node, word: &str) -> bool {
         matches!(&node.kind, NodeKind::Call(call)

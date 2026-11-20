@@ -58,9 +58,9 @@ the account, such as by sending or sharing it.
 - `Instant`: A point in time, in UTC to the millisecond, as a string:
   `"2026-11-14T06:00:08.000Z"`.
 - `Duration`: A length of time, to the millisecond: whole numbers each
-  followed by its unit, the largest first, as in `90 seconds` or
-  `1 hour 30 minutes`. The units are `day`, `hour`, `minute`, `second` and
-  `millisecond`, in the plural for any count but 1: `1 day 1 second`.
+  followed by its unit in the plural, the largest first, as in `90 seconds`
+  or `1 hours 30 minutes`. The units are `days`, `hours`, `minutes`,
+  `seconds` and `milliseconds`, and a unit left out counts 0.
 - `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
@@ -102,6 +102,17 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 ```anyx
 # `` `true `` or `` `false ``.
 TYPE ALIAS Boolean: UNION [`false, `true],
+
+# A `Duration` is written as a call of this function: each unit is an
+# optional part, so `1 hours 30 minutes` leaves out the days, seconds and
+# milliseconds, which count 0.
+INTRINSIC FUNCTION
+    [(days: Integer) days DEFAULT 0 days]
+    [(hours: Integer) hours DEFAULT 0 hours]
+    [(minutes: Integer) minutes DEFAULT 0 minutes]
+    [(seconds: Integer) seconds DEFAULT 0 seconds]
+    [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
+    RETURNS (duration: Duration),
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.

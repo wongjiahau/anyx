@@ -452,7 +452,8 @@ const TIMERS: &str = "PROTOCOL a VERSION 1,
 RECORD Timer { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant) ERRORS [],
 METHOD set (timer: Timer) RETURNS (left: Duration) ERRORS [],
-METHOD list RETURNS (durations: LIST Duration) ERRORS [],";
+METHOD list RETURNS (durations: LIST Duration) ERRORS [],
+METHOD snooze (duration: Duration?) RETURNS (left: Duration) ERRORS [],";
 
 fn instant(text: &str) -> Value {
     let milliseconds = |at: &str| -> u64 {
@@ -491,7 +492,7 @@ fn instants_and_durations_read_back_as_written() {
     assert_eq!(
         request,
         "wait (5 minutes) until (\"2026-11-14T06:00:08.000Z\" AS Instant),
-set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 seconds },
+set { at \"1970-01-01T00:00:00.250Z\", every: 1 hours 30 minutes, pause: 0 seconds },
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -502,7 +503,7 @@ set { at \"1970-01-01T00:00:00.250Z\", every: 1 hour 30 minutes, pause: 0 second
     let written = encode_response(&schema, &calls, &response).unwrap();
     assert_eq!(
         written,
-        "RETURNS \"2026-11-14T06:00:08.000Z\",\nRETURNS 1 minute 30 seconds 1 millisecond,\n"
+        "RETURNS \"2026-11-14T06:00:08.000Z\",\nRETURNS 1 minutes 30 seconds 1 milliseconds,\n"
     );
     assert_eq!(
         decode_response(&schema, &[0, 1], &written).unwrap(),
@@ -525,7 +526,7 @@ fn an_instant_and_a_duration_read_in_other_forms_too() {
     let list = decode_response(
         &schema,
         &[2],
-        "RETURNS [1 day, 2 hours 1 minute, 1 second 5 milliseconds]",
+        "RETURNS [1 days, 2 hours 1 minutes, 1 seconds 5 milliseconds]",
     )
     .unwrap();
     assert_eq!(
@@ -544,9 +545,12 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
     let cases = [
         "wait (5) until \"2026-11-14T06:00:08Z\"",
         "wait (5 weeks) until \"2026-11-14T06:00:08Z\"",
-        "wait (1 minute 1 hour) until \"2026-11-14T06:00:08Z\"",
+        "wait (1 minutes 1 hours) until \"2026-11-14T06:00:08Z\"",
         "wait (1.5 hours) until \"2026-11-14T06:00:08Z\"",
+        "wait (1 hour 30 minutes) until \"2026-11-14T06:00:08Z\"",
+        "wait (-1 hours) until \"2026-11-14T06:00:08Z\"",
         "wait (minutes) until \"2026-11-14T06:00:08Z\"",
+        "snooze (1 hour)",
         "wait (5 minutes) until \"2026-11-14 06:00:08\"",
         "wait (5 minutes) until \"2026-11-14T06:00:08+08:00\"",
         "wait (5 minutes) until 1794636008",

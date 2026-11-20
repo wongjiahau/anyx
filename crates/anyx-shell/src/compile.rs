@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyx::{Expression, Item, Node, NodeKind, Span, TokenKind};
 use anyx_protocol::{
     Problem, Schema, Value,
-    schema::{Field, FieldForm, Type, TypeKind, Written},
+    schema::{Field, FieldForm, Form, Shape, Type, TypeKind, Written},
 };
 
 use crate::{Interpreter, at};
@@ -17,6 +17,19 @@ pub(crate) struct Call {
     pub arguments: Vec<Argument>,
     /// Where the call is written, for a precondition that fails.
     pub span: Span,
+}
+
+/// The arguments of a call of the method at `method`, written in `form`:
+/// the `written` ones, and each left-out part's default, as the codec fills
+/// them in for a request.
+fn filled(schema: &Schema, method: usize, form: &Form, written: Vec<Argument>) -> Vec<Argument> {
+    let shape = &schema.method_at(method).shape;
+    shape
+        .fill_with(form, written, |index, value| Argument {
+            r#type: shape.parameters[index].r#type.clone(),
+            value: ExpressionValue::Literal(value.clone()),
+        })
+        .expect("a checked schema has read every default")
 }
 
 pub(crate) struct Argument {
@@ -144,9 +157,10 @@ impl Compiler<'_> {
             let schema = self.interpreter.tools[scope].schema();
             for index in schema.calls() {
                 let method = schema.method_at(index);
-                if method.shape.text != name {
+                let Some(form) = method.shape.form(&name) else {
                     continue;
-                }
+                };
+                let written = method.shape.written_as(&form);
                 if let Some((destination, expected)) = target {
                     let result = method.returns.as_ref().and_then(|value| {
                         transfer(schema, destination, &value.r#type, &mut BTreeSet::new())
@@ -164,11 +178,11 @@ impl Compiler<'_> {
                         }
                     }
                 }
-                match self.check_parameters(schema, &call.arguments, &method.shape.parameters) {
+                match self.check_parameters(schema, &call.arguments, &written.parameters) {
                     Ok(arguments) => fitting.push(Call {
                         scope: scope.clone(),
                         method: index,
-                        arguments,
+                        arguments: filled(schema, index, &form, arguments),
                         span: node.span,
                     }),
                     Err(error) => {
@@ -269,8 +283,16 @@ impl Compiler<'_> {
             return Err(self.error(node.span, "expected a method call after `/`"));
         };
         let name = call.name_text();
-        let methods: Vec<_> = (schema.calls())
-            .filter(|index| schema.method_at(*index).shape.text == name)
+        // Each method a call of `name` may be, with the form it is written
+        // in and its shape as written, which leaves out the optional parts
+        // the call does.
+        let methods: Vec<(usize, Form, Shape)> = (schema.calls())
+            .filter_map(|index| {
+                let shape = &schema.method_at(index).shape;
+                let form = shape.form(&name)?;
+                let written = shape.written_as(&form);
+                Some((index, form, written))
+            })
             .collect();
         if methods.is_empty() {
             return Err(self.error(
@@ -287,19 +309,15 @@ impl Compiler<'_> {
             Ok(arguments) => arguments,
             Err(error) if self.opened.is_empty() => return Err(error),
             Err(error) => {
-                let mut contextual = methods.iter().filter_map(|&method| {
-                    self.check_parameters(
-                        schema,
-                        &call.arguments,
-                        &schema.method_at(method).shape.parameters,
-                    )
-                    .ok()
-                    .map(|arguments| Call {
-                        scope: scope.text.clone(),
-                        method,
-                        arguments,
-                        span,
-                    })
+                let mut contextual = methods.iter().filter_map(|(method, form, written)| {
+                    self.check_parameters(schema, &call.arguments, &written.parameters)
+                        .ok()
+                        .map(|arguments| Call {
+                            scope: scope.text.clone(),
+                            method: *method,
+                            arguments: filled(schema, *method, form, arguments),
+                            span,
+                        })
                 });
                 match (contextual.next(), contextual.next()) {
                     (Some(call), None) => return Ok(call),
@@ -315,9 +333,8 @@ impl Compiler<'_> {
         };
         let fitting: Vec<_> = methods
             .iter()
-            .copied()
-            .filter(|index| {
-                let parameters = &schema.method_at(*index).shape.parameters;
+            .filter(|(_, _, written)| {
+                let parameters = &written.parameters;
                 parameters.len() == arguments.len()
                     && parameters
                         .iter()
@@ -325,13 +342,11 @@ impl Compiler<'_> {
                         .all(|(parameter, argument)| fits(schema, argument, &parameter.r#type))
             })
             .collect();
-        let [method] = fitting.as_slice() else {
+        let [(method, form, written)] = fitting.as_slice() else {
             let mismatch = methods
                 .iter()
-                .find_map(|index| {
-                    schema
-                        .method_at(*index)
-                        .shape
+                .find_map(|(_, _, written)| {
+                    written
                         .parameters
                         .iter()
                         .zip(&arguments)
@@ -349,21 +364,14 @@ impl Compiler<'_> {
                 .join(", ");
             let expected = methods
                 .iter()
-                .map(|index| schema.typed_shape(&schema.method_at(*index).shape))
+                .map(|(_, _, written)| schema.typed_shape(written))
                 .collect::<Vec<_>>()
                 .join(", ");
             // A result that fits a method once its refinements are left
             // out: say what its type would have to promise.
             let promise = methods
                 .iter()
-                .flat_map(|index| {
-                    schema
-                        .method_at(*index)
-                        .shape
-                        .parameters
-                        .iter()
-                        .zip(&arguments)
-                })
+                .flat_map(|(_, _, written)| written.parameters.iter().zip(&arguments))
                 .find(|(parameter, argument)| {
                     !fits(schema, argument, &parameter.r#type)
                         && schema.fits_literal(&argument.r#type, &parameter.r#type)
@@ -390,7 +398,7 @@ impl Compiler<'_> {
             .arguments
             .iter()
             .zip(arguments)
-            .zip(&schema.method_at(*method).shape.parameters)
+            .zip(&written.parameters)
             .map(|((node, argument), parameter)| {
                 if argument.r#type == parameter.r#type {
                     Ok(argument)
@@ -402,7 +410,7 @@ impl Compiler<'_> {
         Ok(Call {
             scope: scope.text.clone(),
             method: *method,
-            arguments,
+            arguments: filled(schema, *method, form, arguments),
             span,
         })
     }
@@ -484,7 +492,7 @@ impl Compiler<'_> {
                 };
                 let name = call.name_text();
                 let candidates: Vec<_> = schema.types.iter().enumerate().filter_map(|(index, definition)| {
-                    if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Variants(variants) if variants.iter().any(|variant| variant.shape.text == name)) {
+                    if definition.parameters.is_empty() && matches!(&definition.kind, TypeKind::Variants(variants) if variants.iter().any(|variant| variant.shape.form(&name).is_some())) {
                         Some(Type::Named(index))
                     } else { None }
                 }).collect();
@@ -499,22 +507,35 @@ impl Compiler<'_> {
                 let TypeKind::Variants(variants) = kind.as_ref() else {
                     return Err(literal_error);
                 };
-                let Some(variant) = variants.iter().find(|variant| variant.shape.text == name)
+                let Some((variant, form)) = variants
+                    .iter()
+                    .find_map(|variant| Some((variant, variant.shape.form(&name)?)))
                 else {
                     return Err(literal_error);
                 };
-                if call.arguments.len() != variant.shape.parameters.len() {
+                let written = variant.shape.written_as(&form);
+                if call.arguments.len() != written.parameters.len() {
                     return Err(literal_error);
                 }
                 let arguments = call
                     .arguments
                     .iter()
-                    .zip(&variant.shape.parameters)
+                    .zip(&written.parameters)
                     .map(|(node, parameter)| self.argument(schema, node, Some(&parameter.r#type)))
                     .collect::<Result<Vec<_>, _>>()?;
+                // A variant holds its full form, each left-out part's
+                // default among its arguments.
+                let arguments = variant
+                    .shape
+                    .fill_with(&form, arguments, |index, value| Argument {
+                        r#type: variant.shape.parameters[index].r#type.clone(),
+                        value: ExpressionValue::Literal(value.clone()),
+                    })
+                    .expect("a checked schema has read every default");
+                let shape = variant.shape.text.clone();
                 Ok(Argument {
                     r#type,
-                    value: ExpressionValue::Variant(name, arguments),
+                    value: ExpressionValue::Variant(shape, arguments),
                 })
             }
             _ => Err(literal_error),

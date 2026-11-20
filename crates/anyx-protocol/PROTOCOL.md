@@ -425,6 +425,51 @@ can say.
   `locked for (duration: Integer) seconds` is `LockedForSeconds { duration }`.
   Two variants can't differ only by where their slots sit.
 
+### Optional parts
+
+A part of a method's or a variant's shape in square brackets may be left
+out of a call. The part is words and slots, then `DEFAULT` and the part as
+a call writes it, which a call without the part holds:
+
+```anyx
+READ ONLY METHOD find (pattern: Text)
+    [in (paths: LIST Text) DEFAULT in ["."]]
+    [with (search: Search) DEFAULT with {}]
+    RETURNS (paths: LIST Text)
+    ERRORS [],
+```
+
+- **The full form is the method.** `find _ in _ with _` is the one method
+  a server implements, and its shape is the full form. `find "x"` is sugar
+  for `find "x" in ["."] with {}`: the request decoder fills in each
+  left-out part's default, so a server and the codec only see full calls.
+- **A call may leave out any of the parts**, and the rest keep their
+  order: `find "x"`, `find "x" in ["src"]`, `find "x" with { hidden }` and
+  `find "x" in ["src"] with { hidden }`. `find "x" with {} in ["src"]` is
+  an error.
+- **A part has a word and a slot.** Slots side by side can't be told apart,
+  so `[(factor: Integer) DEFAULT 1]` is an error; and a part with no slot
+  carries nothing a call doesn't, so `[descending DEFAULT descending]` is
+  an error too. A flag is a checkbox field in a record.
+- **No two ways to write a call may clash.** Each way to write a method,
+  with parts left out, must differ from every other method's in its words
+  or a parameter's type, and each way to write a variant from every other
+  variant's in its words. `find (pattern: Text)` next to the `find` above
+  is an error, since both are written `find "x"`.
+- **A default is checked as the part.** `DEFAULT in "."` is an error,
+  since `paths` is a `LIST Text`, and so is `DEFAULT at ["."]`, which isn't
+  a call of `in _`.
+- **JSON carries the full form.** A method's name in JSON is its full
+  form's, and its arguments are all of them.
+- **Generated clients get a function per form.** A server implements the
+  full form; a client has one function for each way to write the call,
+  and each shorter one calls the full form with the defaults filled in:
+  `find(pattern)` calls `findInWith(pattern, ["."], {})`.
+
+A `Duration` is written with optional parts too: its units are those of
+the prelude's `INTRINSIC FUNCTION`, so `1 hours 30 minutes` leaves out the
+days, seconds and milliseconds.
+
 ### Records
 
 A record's field is a shape whose slots hold types. Its words name it, in
@@ -683,6 +728,14 @@ INTRINSIC TYPE Integer,
 
 INTRINSIC TYPE Duration,
 
+INTRINSIC FUNCTION
+    [(days: Integer) days DEFAULT 0 days]
+    [(hours: Integer) hours DEFAULT 0 hours]
+    [(minutes: Integer) minutes DEFAULT 0 minutes]
+    [(seconds: Integer) seconds DEFAULT 0 seconds]
+    [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
+    RETURNS (duration: Duration),
+
 TYPE ALIAS Boolean: UNION [`false, `true],
 
 TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
@@ -690,14 +743,21 @@ TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
   supplies: the prelude gives its name and its doc, and the Rust code
-  gives how its values are read, written and generated, and `Duration`'s
-  units. Only the prelude may use it; `INTRINSIC` in a schema is an
-  error. An `INTRINSIC TYPE` has no type after it.
+  gives how its values are read, written and generated. Only the prelude
+  may use it; `INTRINSIC` in a schema is an error. An `INTRINSIC TYPE` has
+  no type after it.
+- **An `INTRINSIC FUNCTION`** may be written in a value: a value of the
+  type it returns is a call of it, and the implementation computes the
+  value from the arguments of its full form. `Duration`'s is the one, so
+  `1 hours 30 minutes` is the call `_ hours _ minutes`, with the days,
+  seconds and milliseconds left out. Two durations are equal when their
+  milliseconds are, so `90 seconds` equals `1 minutes 30 seconds`.
 - The prelude also contains ordinary declarations, checked as user types are.
   `Boolean` and postfix `?` are ordinary aliases: both
   are declared here, without intrinsic Rust type or value cases.
 - The guide's list of built-in types is the prelude's docs, and a
-  `Duration`'s units are the prelude's variants.
+  `Duration`'s units are the optional parts of the prelude's
+  `INTRINSIC FUNCTION`.
 - The built-in types were once keywords, `INTEGER`, `TEXT` and so on. An
   old name is an error that names the new one: "found `INTEGER`; expected
   `Integer`". `LIST`, `MAP` and `TYPE` stay keywords.
@@ -754,7 +814,7 @@ and base64 are checked in Rust.
 | `Float` | a number with a point or an exponent: `1.5`, `3.0`, `1e3`; never `3`, which is an `Integer` |
 | `Boolean` | `` `true ``, `` `false `` |
 | `Instant` | RFC 3339 text in UTC, to the millisecond: `"2026-11-14T06:00:08.000Z"`; read without the fraction too, `"2026-11-14T06:00:08Z"` |
-| `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hour 30 minutes` |
+| `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hours 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
 | a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
@@ -775,15 +835,16 @@ narrows the value itself. There is no exact decimal type: write money as an
 A value written as words, a variant or a `Duration`, goes in parentheses in
 a slot, where it would otherwise join the words around it:
 `` set (`custom hue 0.5) strict (`true) ``, `wait (5 minutes)`. In a record, such a
-value follows a `:`: `{ every: 1 hour 30 minutes }`, `{ "tea": 5 minutes }`.
+value follows a `:`: `{ every: 1 hours 30 minutes }`, `{ "tea": 5 minutes }`.
 
-A `Duration`'s units are the variants of its declaration in the
-[prelude](#the-prelude), `day`, `hour`, `minute`, `second` and
-`millisecond`, each in the plural for any count but 1: `1 day 1 second`,
-`90 seconds`. A reader takes either form for any count; a writer uses the
-singular only for 1. Each unit comes
-at most once, after the larger ones; a count may be more than the next unit
-holds, as in `90 seconds`. A duration is written with every count below the
+A `Duration` is written as a call of the `INTRINSIC FUNCTION` of the
+[prelude](#the-prelude) that returns it, whose every unit is an [optional
+part](#optional-parts): `days`, `hours`, `minutes`, `seconds` and
+`milliseconds`. A unit is in the plural for every count, `1 hours`, so a
+duration is read one way; `1 hour` is an error that says to write
+`1 hours`. A unit left out counts 0. Each unit comes at most once, after
+the larger ones, since the parts of a call keep their order; a count may be
+more than the next unit holds, as in `90 seconds`. A duration is written with every count below the
 next unit, and as `0 seconds` when it is empty. Time finer than a millisecond
 is dropped, rounding down, for both types.
 
@@ -897,7 +958,7 @@ A named type's value is an object whose one key is the type's words in
 camel case, starting with a capital, holding its one slot's value or an
 array of its slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3]
 }`, `{ "Unit": [] }`. An `Instant` is its text, as on the wire, and a `Duration` its whole
-milliseconds: `5400000` for `1 hour 30 minutes`.
+milliseconds: `5400000` for `1 hours 30 minutes`.
 A field with a `DEFAULT` that is left out takes its default. An explicitly
 supplied value is always checked against the field's type.
 `Boolean` uses an ordinary variant object, `{ "kind": "true" }`. A union's

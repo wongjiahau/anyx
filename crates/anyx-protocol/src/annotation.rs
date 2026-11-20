@@ -80,20 +80,13 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
                     .all(|(index, field)| field.default.is_some() || filled.contains(&index))
             }))
         }
-        Syntax::Duration(duration) => {
-            let pairs = duration
-                .name
-                .words()
-                .zip(&duration.arguments)
-                .map(|(unit, count)| (count.value.as_str(), unit))
-                .collect::<Vec<_>>();
-            if crate::time::parse_duration(&pairs).is_ok() {
-                return Some(Type::Duration);
-            }
-            constructed_by(schema, &duration.name.text)
-        }
         Syntax::Variant(variant) => variant_of(schema, &variant.body.name.text),
-        Syntax::Call(call) => constructed_by(schema, &call.name.text),
+        Syntax::Call(call) => schema
+            .intrinsic_functions
+            .iter()
+            .find(|function| function.shape.form(&call.name.text).is_some())
+            .map(|function| function.returns.clone())
+            .or_else(|| constructed_by(schema, &call.name.text)),
     }
 }
 
@@ -104,7 +97,7 @@ fn variant_of(schema: &Schema, text: &str) -> Option<Type> {
     only(schema.types.iter().enumerate().filter(|(_, definition)| {
         definition.parameters.is_empty()
             && matches!(&definition.kind, TypeKind::Variants(variants)
-                if variants.iter().any(|variant| variant.shape.text == text))
+                if variants.iter().any(|variant| variant.shape.form(text).is_some()))
     }))
 }
 

@@ -10,7 +10,7 @@ use anyx::{Node, NodeKind, Span, line_column};
 
 use crate::annotation::{own_syntax_type, own_type, request_type};
 use crate::request_grammar as request;
-use crate::schema::{Field, FieldForm, Method, Schema, Shape, Type, TypeKind, code};
+use crate::schema::{Field, FieldForm, Form, Method, Schema, Shape, Type, TypeKind, code};
 use crate::value::Value;
 
 /// One call of a request: which method, and its arguments in order.
@@ -151,9 +151,12 @@ fn decode_call(schema: &Schema, source: &str, syntax: &request::Call) -> Result<
         names.join(", ")
     };
     let text = &call.name.text;
-    let candidates: Vec<usize> = methods
+    let candidates: Vec<(usize, Form)> = methods
         .into_iter()
-        .filter(|index| schema.method_at(*index).shape.text == *text)
+        .filter_map(|index| {
+            let form = schema.method_at(index).shape.form(text)?;
+            Some((index, form))
+        })
         .collect();
     if candidates.is_empty() {
         return Err(Mismatch {
@@ -165,15 +168,48 @@ fn decode_call(schema: &Schema, source: &str, syntax: &request::Call) -> Result<
             ),
         });
     }
-    let methods: Vec<&Method> = candidates
-        .iter()
-        .map(|index| schema.method_at(*index))
-        .collect();
-    let (chosen, arguments) = decode_arguments(schema, source, &methods, span, call)?;
+    let (chosen, arguments) = decode_written(schema, source, &candidates, span, call)?;
     Ok(Call {
-        method: candidates[chosen],
+        method: candidates[chosen].0,
         arguments,
     })
+}
+
+/// Reads `call`, written in a form of one of `candidates`, the methods
+/// with their forms: which one it is a call of, and every argument of its
+/// full form, each left-out part's default among them.
+fn decode_written(
+    schema: &Schema,
+    source: &str,
+    candidates: &[(usize, Form)],
+    span: Span,
+    call: &request::Call,
+) -> Result<(usize, Vec<Value>), Mismatch> {
+    let as_written: Vec<Method> = candidates
+        .iter()
+        .map(|(index, form)| {
+            let method = schema.method_at(*index);
+            Method {
+                shape: method.shape.written_as(form),
+                ..method.clone()
+            }
+        })
+        .collect();
+    let as_written: Vec<&Method> = as_written.iter().collect();
+    let (chosen, arguments) = read_arguments(schema, source, &as_written, span, call)?;
+    let (index, form) = &candidates[chosen];
+    let method = schema.method_at(*index);
+    let arguments = method
+        .shape
+        .fill(form, arguments)
+        .expect("a checked schema has read every default");
+    crate::refinement::check_precondition(schema, method, &arguments).map_err(|message| {
+        Mismatch {
+            span,
+            message: format!("in {}: {message}", code(&written(source, span))),
+        }
+    })?;
+    Ok((chosen, arguments))
 }
 
 /// Reads `node` as a call of `method` alone, by its full name, with every
@@ -187,8 +223,14 @@ pub(crate) fn decode_call_of(
 ) -> Result<Vec<Value>, Mismatch> {
     let syntax = request::decode_call(node).map_err(syntax_mismatch)?;
     let call = &syntax;
-    if call.name.text == method.shape.text {
-        decode_arguments(schema, source, &[method], node.span, call).map(|(_, arguments)| arguments)
+    if let Some(form) = method.shape.form(&call.name.text) {
+        let index = schema
+            .methods
+            .iter()
+            .position(|known| std::ptr::eq(known, method))
+            .expect("an example's method is in its schema");
+        decode_written(schema, source, &[(index, form)], node.span, call)
+            .map(|(_, arguments)| arguments)
     } else {
         Err(Mismatch {
             span: node.span,
@@ -219,8 +261,8 @@ impl Argument<'_> {
 }
 
 /// Reads the arguments of `call`, a call of one of `methods`, all of the
-/// same shape: which one it is a call of, and the arguments.
-fn decode_arguments(
+/// same shape as written: which one it is a call of, and the arguments.
+fn read_arguments(
     schema: &Schema,
     source: &str,
     methods: &[&Method],
@@ -299,10 +341,6 @@ fn decode_arguments(
             Ok(value)
         })
         .collect::<Result<_, _>>()?;
-    crate::refinement::check_precondition(schema, method, &values).map_err(|message| Mismatch {
-        span,
-        message: format!("in {}: {message}", code(&written(source, span))),
-    })?;
     Ok((chosen, values))
 }
 
@@ -462,10 +500,9 @@ fn fix(
             }
             (_, Some((_, argument))) => match argument {
                 request::Argument::Annotated { .. }
-                | request::Argument::Value(
-                    request::Value::Call(_)
-                    | request::Value::Duration(_),
-                ) => format!("({})", written(source, argument.span())),
+                | request::Argument::Value(request::Value::Call(_)) => {
+                    format!("({})", written(source, argument.span()))
+                }
                 _ => written(source, argument.span()),
             },
             (word, None) => word.to_string(),
@@ -512,7 +549,18 @@ fn syntax_mismatch(error: request::DecodeError) -> Mismatch {
 }
 
 pub(crate) const INSTANT_EXAMPLE: &str = "2026-11-14T06:00:08.000Z";
-pub(crate) const DURATION_EXAMPLE: &str = "1 hour 30 minutes";
+pub(crate) const DURATION_EXAMPLE: &str = "1 hours 30 minutes";
+
+/// Reads `node`, an optional part's `DEFAULT`, as a call of `part`, the
+/// part alone: `in ["."]`.
+pub(crate) fn decode_part(
+    schema: &Schema,
+    part: &Shape,
+    node: &Node,
+) -> Result<Vec<Value>, Mismatch> {
+    let syntax = request::decode_value(node).map_err(syntax_mismatch)?;
+    crate::request::part_arguments(schema, part, &syntax)
+}
 
 /// Reads `node` as one of `shapes`, written as a variant: `` `missing ``,
 /// `` `conflict at revision 4 ``.

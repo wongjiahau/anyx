@@ -416,6 +416,42 @@ fn doc(doc: &Option<ast::Spanned<StringLiteral>>) -> Option<String> {
     doc.as_ref().map(|doc| doc.value.value.clone())
 }
 
+/// A way to write both `a` and `b` that their parameter types can't tell
+/// apart, if there is one: the first such form's text.
+fn clash(a: &Shape, b: &Shape) -> Option<String> {
+    a.forms().into_iter().find_map(|form| {
+        let written = a.written_as(&form);
+        b.forms()
+            .into_iter()
+            .filter(|other| other.text == form.text)
+            .any(|other| same_types(&written, &b.written_as(&other)))
+            .then_some(form.text)
+    })
+}
+
+/// A way to write `shape` twice, by leaving out different optional parts.
+fn own_clash(shape: &Shape) -> Option<String> {
+    let forms = shape.forms();
+    forms.iter().enumerate().find_map(|(index, form)| {
+        forms[index + 1..]
+            .iter()
+            .any(|other| {
+                other.text == form.text
+                    && same_types(&shape.written_as(form), &shape.written_as(other))
+            })
+            .then(|| form.text.clone())
+    })
+}
+
+/// Whether a call's arguments can't tell `a` from `b`, two shapes written
+/// alike.
+fn same_types(a: &Shape, b: &Shape) -> bool {
+    a.parameters
+        .iter()
+        .zip(&b.parameters)
+        .all(|(a, b)| crate::annotation::overlaps(&a.r#type, &b.r#type))
+}
+
 fn spanned_words(name: &ast::CallName) -> ast::Spanned<String> {
     ast::Spanned {
         value: name.words().collect::<Vec<_>>().join(" "),
@@ -444,6 +480,8 @@ pub(crate) struct Checker<'a> {
     /// The names of the aliases of unions of variants, which are types.
     variants_aliases: Vec<String>,
     defaults: Vec<PendingDefault>,
+    /// Each optional part's `DEFAULT` entry, and the file it is in.
+    part_defaults: Vec<(usize, Node)>,
     forms: Vec<PendingForms>,
     unions: Vec<PendingUnion>,
     examples: Vec<PendingExamples<'a>>,
@@ -562,6 +600,8 @@ impl<'a> Checker<'a> {
                         found.span,
                         "found an `ERRORS` group; expected `` TYPE ALIAS File Errors: UNION [`missing, Other Errors] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [`conflict, File Errors] ``; write its errors in the brackets, and each group it joined with `+` as a member",
                     ),
+                    ast::Definition::Function(function)
+                        if function.intrinsic.is_some() && self.file == self.prelude_file => {}
                     ast::Definition::Function(function) => self.error(
                         function.span,
                         "only the protocol prelude can declare a FUNCTION",
@@ -691,9 +731,19 @@ impl<'a> Checker<'a> {
             self.alias_type(index);
             self.check_alias_parameters_used(index);
         }
+        let mut intrinsic_functions = Vec::new();
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
             for definition in &file.document.definition {
+                if let ast::Definition::Function(found) = definition
+                    && found.intrinsic.is_some()
+                    && index == self.prelude_file
+                {
+                    intrinsic_functions.push(crate::schema::IntrinsicFunction {
+                        shape: self.shape(&found.shape.name, &found.shape.arguments, "a function"),
+                        returns: self.parameter(&found.returns).r#type,
+                    });
+                }
                 if let ast::Definition::Method(found) = definition {
                     let method = self.method(found, methods.len());
                     let parts = method_parts(found);
@@ -711,16 +761,30 @@ impl<'a> Checker<'a> {
                             examples,
                         });
                     }
-                    let overlapping = methods.iter().find(|other: &&Method| {
-                        other.shape.text == method.shape.text
-                            && other
-                                .shape
-                                .parameters
-                                .iter()
-                                .zip(&method.shape.parameters)
-                                .all(|(a, b)| crate::annotation::overlaps(&a.r#type, &b.r#type))
+                    if let Some(form) = own_clash(&method.shape) {
+                        self.error(
+                            parts.shape.name.span,
+                            format!(
+                                "found the method `{}` written as `{form}` in two ways, by leaving out different optional parts; expected each way to write it to differ in its words; reword one of the parts",
+                                method.shape.text
+                            ),
+                        );
+                    }
+                    let overlapping = methods.iter().find_map(|other: &Method| {
+                        clash(&other.shape, &method.shape).map(|form| (other, form))
                     });
-                    if let Some(other) = overlapping {
+                    if let Some((other, form)) = overlapping {
+                        if form != method.shape.text || other.shape.text != method.shape.text {
+                            self.error(
+                                parts.shape.name.span,
+                                format!(
+                                    "found the method `{}`, which may be written as `{form}` with the same parameter types as `{}` before it; expected each way to write a method to differ from every other method's, in its words or a parameter's type; reword one of them, or write `{}` in full",
+                                    method.shape.text, other.shape.text, method.shape.text
+                                ),
+                            );
+                            methods.push(method);
+                            continue;
+                        }
                         let only_returns = match other
                             .returns
                             .as_ref()
@@ -760,6 +824,7 @@ impl<'a> Checker<'a> {
             built_ins: crate::schema::built_ins(&types),
             types,
             methods,
+            intrinsic_functions,
         };
         for pending in std::mem::take(&mut self.method_errors) {
             let (errors, groups) = self.within(pending.file, |checker| {
@@ -794,8 +859,16 @@ impl<'a> Checker<'a> {
             self.diagnostics
                 .extend(crate::refinement::check_methods(&schema));
         }
+        // A field's default may hold a call with a part left out, and a
+        // part's default may hold a record with a field left out, so parts
+        // are read once before fields, and once after them with the
+        // mistakes reported.
         if self.diagnostics.is_empty() {
+            self.read_part_defaults(&mut schema, false);
             self.read_defaults(&mut schema);
+        }
+        if self.diagnostics.is_empty() {
+            self.read_part_defaults(&mut schema, true);
         }
         // Examples are read against the schema, defaults and all, which
         // must be whole first: a mistake elsewhere would only show up again
@@ -1049,6 +1122,61 @@ impl<'a> Checker<'a> {
             if !changed || !self.diagnostics.is_empty() {
                 break;
             }
+        }
+    }
+
+    /// Reads each optional part's `DEFAULT` as a call of the part alone,
+    /// once every type and field default is known. A default may hold a
+    /// variant whose own optional parts are left out, so it is read again
+    /// until nothing changes.
+    fn read_part_defaults(&mut self, schema: &mut Schema, report: bool) {
+        let mut mismatches: Vec<(Node, codec::Mismatch)> = Vec::new();
+        for _ in 0..=self.part_defaults.len() {
+            let mut read: Vec<(Node, Vec<crate::value::Value>)> = Vec::new();
+            mismatches.clear();
+            let snapshot = schema.clone();
+            crate::schema::each_shape(&mut snapshot.clone(), &mut |shape| {
+                for index in 0..shape.optional.len() {
+                    let entry = &shape.optional[index].entry;
+                    if read.iter().any(|(known, _)| known == entry) {
+                        continue;
+                    }
+                    match codec::decode_part(&snapshot, &shape.part(index), entry) {
+                        Ok(values) => read.push((entry.clone(), values)),
+                        Err(mismatch) => mismatches.push((entry.clone(), mismatch)),
+                    }
+                }
+            });
+            let mut changed = false;
+            crate::schema::each_shape(schema, &mut |shape| {
+                for part in &mut shape.optional {
+                    if let Some((_, values)) = read.iter().find(|(entry, _)| *entry == part.entry)
+                        && part.default != *values
+                    {
+                        part.default = values.clone();
+                        changed = true;
+                    }
+                }
+            });
+            if !changed {
+                break;
+            }
+        }
+        if !report {
+            return;
+        }
+        for (entry, mismatch) in mismatches {
+            let file = self
+                .part_defaults
+                .iter()
+                .find(|(_, known)| *known == entry)
+                .map_or(self.file, |(file, _)| *file);
+            self.within(file, |checker| {
+                checker.error(
+                    mismatch.span,
+                    format!("in a `DEFAULT`: {}", mismatch.message),
+                )
+            });
         }
     }
 
@@ -2006,14 +2134,13 @@ impl<'a> Checker<'a> {
                 let written: Vec<String> = pending
                     .entries
                     .iter()
-                    .filter_map(|entry| match entry {
-                        VariantsEntry::Variant(shaped) => Some(shaped.shape.words()),
-                        VariantsEntry::Alias(..) => None,
+                    .flat_map(|entry| match entry {
+                        VariantsEntry::Variant(shaped) => shaped.shape.form_words(),
+                        VariantsEntry::Alias(..) => Vec::new(),
                     })
                     .collect();
                 let mut seen: Vec<String> = Vec::new();
-                for variant in variants {
-                    let words = variant.shape.words();
+                for words in variants.iter().flat_map(|variant| variant.shape.form_words()) {
                     // Twice among its own variants is already reported.
                     let own_twice = written.iter().filter(|known| **known == words).count() > 1;
                     if seen.contains(&words) && !own_twice {
@@ -2036,17 +2163,23 @@ impl<'a> Checker<'a> {
         let mut checked: Vec<Shaped> = Vec::new();
         for variant in variants {
             let shaped = self.shaped(variant, "a variant");
-            if checked
-                .iter()
-                .any(|known| known.shape.words() == shaped.shape.words())
-            {
-                self.error(
-                    variant.body.name.span,
-                    format!(
-                        "found a second variant named `{}`; expected each variant's words once; rename or remove one of them",
-                        shaped.shape.words()
+            let words = shaped.shape.form_words();
+            let clash = checked.iter().find_map(|known| {
+                let known = known.shape.form_words();
+                let clash = known.iter().find(|known| words.contains(known))?.clone();
+                Some((known[0].clone(), clash))
+            });
+            if let Some((known, clash)) = clash {
+                let message = match words[0] == clash && known == clash {
+                    true => format!(
+                        "found a second variant named `{clash}`; expected each variant's words once; rename or remove one of them"
                     ),
-                );
+                    false => format!(
+                        "found the variants `{known}` and `{}`, which may both be written as `{clash}` by leaving out optional parts; expected each way to write a variant to have words of its own; reword one of them",
+                        words[0]
+                    ),
+                };
+                self.error(variant.body.name.span, message);
             }
             checked.push(shaped);
         }
@@ -2060,9 +2193,73 @@ impl<'a> Checker<'a> {
         Shaped { doc, shape }
     }
 
-    fn shape(&mut self, name: &ast::CallName, parameters: &[ast::Parameter], what: &str) -> Shape {
-        let words = spanned_words(name);
-        if words.value.is_empty() {
+    /// A shape in its full form: each optional part's words and slots in
+    /// the place of its brackets, as [`Shape`] keeps it.
+    fn shape(&mut self, name: &ast::CallName, arguments: &[ast::ShapePart], what: &str) -> Shape {
+        let mut parts = Vec::new();
+        let mut parameters: Vec<&ast::Parameter> = Vec::new();
+        let mut optional = Vec::new();
+        let mut words = Vec::new();
+        let mut arguments = arguments.iter();
+        for part in &name.parts {
+            match part {
+                NamePart::Word { text, .. } => {
+                    parts.push(ShapePart::Word(text.clone()));
+                    words.push(text.clone());
+                }
+                NamePart::Slot => match arguments.next() {
+                    Some(ast::ShapePart::Parameter(parameter)) => {
+                        parts.push(ShapePart::Slot);
+                        parameters.push(parameter);
+                    }
+                    Some(ast::ShapePart::Optional(written)) => {
+                        let inner = &written.value.part;
+                        let (start, first_parameter) = (parts.len(), parameters.len());
+                        let mut slots = inner.arguments.iter();
+                        for inner_part in &inner.name.parts {
+                            match inner_part {
+                                NamePart::Word { text, .. } => {
+                                    parts.push(ShapePart::Word(text.clone()));
+                                    words.push(text.clone());
+                                }
+                                NamePart::Slot => {
+                                    parts.push(ShapePart::Slot);
+                                    parameters.extend(slots.next());
+                                }
+                            }
+                        }
+                        if inner.name.words().next().is_none() {
+                            self.error(
+                                written.span,
+                                format!(
+                                    "found an optional part of {what} with no words, `[{}]`; expected a word in it, such as `[in (paths: LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word",
+                                    inner.name.text
+                                ),
+                            );
+                        }
+                        if inner.arguments.is_empty() {
+                            self.error(
+                                written.span,
+                                format!(
+                                    "found an optional part of {what} with no slot, `[{}]`; expected a parameter in it, since a call with the part and one without it would mean the same; write a separate shape, or a checkbox field in a record",
+                                    inner.name.text
+                                ),
+                            );
+                        }
+                        self.part_defaults
+                            .push((self.file, written.value.default.clone()));
+                        optional.push(crate::schema::OptionalPart {
+                            parts: start..parts.len(),
+                            parameters: first_parameter..parameters.len(),
+                            default: Vec::new(),
+                            entry: written.value.default.clone(),
+                        });
+                    }
+                    None => {}
+                },
+            }
+        }
+        if words.is_empty() {
             self.error(
                 name.span,
                 format!(
@@ -2070,7 +2267,13 @@ impl<'a> Checker<'a> {
                 ),
             );
         } else {
-            self.check_words(&words, what);
+            self.check_words(
+                &ast::Spanned {
+                    value: words.join(" "),
+                    span: name.span,
+                },
+                what,
+            );
         }
         let mut checked: Vec<Parameter> = Vec::new();
         for parameter in parameters {
@@ -2095,9 +2298,10 @@ impl<'a> Checker<'a> {
             checked.push(self.parameter(parameter));
         }
         Shape {
-            text: name.text.clone(),
-            parts: crate::schema::ShapePart::of(&name.parts),
+            text: ShapePart::text(&parts),
+            parts,
             parameters: checked,
+            optional,
         }
     }
 

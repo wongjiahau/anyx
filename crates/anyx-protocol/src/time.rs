@@ -1,53 +1,58 @@
 //! `Instant` and `Duration` as written on the wire.
 //!
 //! An instant is RFC 3339 text in UTC, to the millisecond:
-//! `2026-11-14T06:00:08.000Z`. A duration is a run of whole numbers, each
-//! followed by its unit, from the largest unit down: `1 hour 30 minutes`.
+//! `2026-11-14T06:00:08.000Z`. A duration is a call of the prelude's
+//! `INTRINSIC FUNCTION`, whole numbers each followed by its unit in the
+//! plural, from the largest unit down: `1 hours 30 minutes`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MILLISECONDS_PER_DAY: i64 = 86_400_000;
 
-/// A unit of a duration: written in the singular for 1 and the plural,
-/// the singular and `s`, otherwise.
+/// A unit of a duration, written in the plural for every count: `1 hours`.
 pub(crate) struct Unit {
-    pub singular: &'static str,
-    pub plural: String,
+    pub plural: &'static str,
     pub milliseconds: u64,
 }
 
-/// The units of a duration, largest first, each with its length.
-pub(crate) fn units() -> &'static [Unit] {
-    static UNITS: std::sync::LazyLock<Vec<Unit>> = std::sync::LazyLock::new(|| {
-        [
-            ("day", 86_400_000),
-            ("hour", 3_600_000),
-            ("minute", 60_000),
-            ("second", 1_000),
-            ("millisecond", 1),
-        ]
-        .into_iter()
-        .map(|(singular, milliseconds)| Unit {
-            singular,
-            plural: format!("{singular}s"),
-            milliseconds,
-        })
-        .collect()
-    });
-    &UNITS
-}
+/// The units of a duration, largest first, each with its length: the
+/// slots of the prelude's `INTRINSIC FUNCTION` in order.
+pub(crate) const UNITS: [Unit; 5] = [
+    Unit {
+        plural: "days",
+        milliseconds: 86_400_000,
+    },
+    Unit {
+        plural: "hours",
+        milliseconds: 3_600_000,
+    },
+    Unit {
+        plural: "minutes",
+        milliseconds: 60_000,
+    },
+    Unit {
+        plural: "seconds",
+        milliseconds: 1_000,
+    },
+    Unit {
+        plural: "milliseconds",
+        milliseconds: 1,
+    },
+];
 
-/// Whether a shape is a duration's, a unit after each slot: `_ hour`,
-/// `_ hours _ minutes`.
-pub(crate) fn is_duration_shape(parts: &[crate::schema::ShapePart]) -> bool {
-    use crate::schema::ShapePart;
-    !parts.is_empty()
-        && parts.chunks(2).all(|pair| match pair {
-            [ShapePart::Slot, ShapePart::Word(word)] => units()
-                .iter()
-                .any(|unit| unit.singular == *word || unit.plural == *word),
-            _ => false,
-        })
+/// The duration of `counts`, one per unit, largest first. `Err` says
+/// what is wrong.
+pub(crate) fn duration_of(counts: &[i64]) -> Result<Duration, String> {
+    let mut milliseconds: u64 = 0;
+    for (count, unit) in counts.iter().zip(&UNITS) {
+        let count = u64::try_from(*count)
+            .map_err(|_| format!("`{count} {}`; expected a whole number from 0", unit.plural))?;
+        milliseconds = count
+            .checked_mul(unit.milliseconds)
+            .and_then(|part| milliseconds.checked_add(part))
+            .ok_or_else(|| "a duration too long to hold".to_string())?;
+    }
+    Ok(Duration::from_millis(milliseconds))
 }
 
 /// Milliseconds since the Unix epoch, rounded down: what an instant keeps.
@@ -171,60 +176,22 @@ pub(crate) fn parse_instant(text: &str) -> Option<SystemTime> {
     from_milliseconds_since_epoch(milliseconds)
 }
 
-/// `duration` as words, to the millisecond: `1 hour 30 minutes`, or
+/// `duration` as words, to the millisecond: `1 hours 30 minutes`, or
 /// `0 seconds`. `None` when its milliseconds don't fit in 64 bits.
 pub(crate) fn format_duration(duration: Duration) -> Option<String> {
     let mut rest = u64::try_from(duration.as_millis()).ok()?;
     let mut parts = Vec::new();
-    for unit in units() {
+    for unit in &UNITS {
         let count = rest / unit.milliseconds;
         rest %= unit.milliseconds;
         if count > 0 {
-            parts.push(format!(
-                "{count} {}",
-                if count == 1 {
-                    unit.singular
-                } else {
-                    &unit.plural
-                }
-            ));
+            parts.push(format!("{count} {}", unit.plural));
         }
     }
     Some(match parts.is_empty() {
         true => "0 seconds".to_string(),
         false => parts.join(" "),
     })
-}
-
-/// Reads pairs of a whole number and a unit, such as `[("1", "hour"),
-/// ("30", "minutes")]`, each unit once and the largest first. `Err` says
-/// what is wrong.
-pub(crate) fn parse_duration(pairs: &[(&str, &str)]) -> Result<Duration, String> {
-    if pairs.is_empty() {
-        return Err("no number and unit".to_string());
-    }
-    let mut milliseconds: u64 = 0;
-    let mut smallest = None;
-    for (count, unit) in pairs {
-        let Some(position) = units()
-            .iter()
-            .position(|known| *unit == known.singular || *unit == known.plural)
-        else {
-            return Err(format!("the unit `{unit}`"));
-        };
-        if smallest.is_some_and(|smallest| position <= smallest) {
-            return Err(format!("`{unit}` after a smaller or the same unit"));
-        }
-        smallest = Some(position);
-        let count: u64 = count
-            .parse()
-            .map_err(|_| format!("`{count}`, which is not a whole number from 0"))?;
-        milliseconds = count
-            .checked_mul(units()[position].milliseconds)
-            .and_then(|part| milliseconds.checked_add(part))
-            .ok_or_else(|| "a duration too long to hold".to_string())?;
-    }
-    Ok(Duration::from_millis(milliseconds))
 }
 
 #[cfg(test)]
@@ -287,10 +254,10 @@ mod tests {
     fn durations_are_written_from_the_largest_unit() {
         let cases = [
             (0, "0 seconds"),
-            (1, "1 millisecond"),
-            (90_000, "1 minute 30 seconds"),
-            (5_400_000, "1 hour 30 minutes"),
-            (2 * 86_400_000 + 1_001, "2 days 1 second 1 millisecond"),
+            (1, "1 milliseconds"),
+            (90_000, "1 minutes 30 seconds"),
+            (5_400_000, "1 hours 30 minutes"),
+            (2 * 86_400_000 + 1_001, "2 days 1 seconds 1 milliseconds"),
         ];
         for (milliseconds, text) in cases {
             assert_eq!(
@@ -301,19 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn durations_read_in_any_count_of_their_units() {
-        assert_eq!(
-            parse_duration(&[("90", "seconds")]),
-            Ok(Duration::from_secs(90))
-        );
-        assert_eq!(
-            parse_duration(&[("1", "hours"), ("1", "minute")]),
-            Ok(Duration::from_secs(3660))
-        );
-        assert!(parse_duration(&[("1", "minute"), ("1", "hour")]).is_err());
-        assert!(parse_duration(&[("1", "minute"), ("1", "minute")]).is_err());
-        assert!(parse_duration(&[("1.5", "hours")]).is_err());
-        assert!(parse_duration(&[("-1", "hours")]).is_err());
-        assert!(parse_duration(&[("1", "weeks")]).is_err());
+    fn a_duration_sums_its_counts() {
+        assert_eq!(duration_of(&[0, 0, 0, 90, 0]), Ok(Duration::from_secs(90)));
+        assert_eq!(duration_of(&[0, 1, 1, 0, 0]), Ok(Duration::from_secs(3660)));
+        assert!(duration_of(&[0, -1, 0, 0, 0]).is_err());
+        assert!(duration_of(&[i64::MAX, 0, 0, 0, 0]).is_err());
     }
 }

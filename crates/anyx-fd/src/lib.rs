@@ -60,25 +60,18 @@ pub fn answer(request: &str, directory: &Path) -> String {
 fn invoke(call: &Call, directory: &Path) -> Outcome {
     let method = schema().method_at(call.method);
     let mut arguments = call.arguments.clone().into_iter();
+    // Every call is of the full form, `find _ in _ with _`: the codec fills
+    // in the parts a request leaves out.
     let pattern: String = argument(&mut arguments);
-    // `find _`, `details of _ in _ with _`: the verb, then which of the
-    // paths and the settings the shape has.
-    let shape = method.shape.text.as_str();
-    let (verb, rest) = ["find _", "details of _", "any match of _"]
+    let paths: Vec<String> = argument(&mut arguments);
+    let fields = match arguments.next() {
+        Some(Value::Record(fields)) => fields,
+        _ => unreachable!("the codec checked the search"),
+    };
+    let verb = ["find _", "details of _", "any match of _"]
         .into_iter()
-        .find_map(|verb| Some((verb, shape.strip_prefix(verb)?)))
-        .unwrap_or_else(|| unreachable!("fd has no method `{shape}`"));
-    let paths = match rest.starts_with(" in _") {
-        true => argument(&mut arguments),
-        false => Vec::new(),
-    };
-    let fields = match rest.ends_with(" with _") {
-        true => match arguments.next() {
-            Some(Value::Record(fields)) => fields,
-            _ => unreachable!("the codec checked the search"),
-        },
-        false => Default::default(),
-    };
+        .find(|verb| method.shape.text.starts_with(verb))
+        .unwrap_or_else(|| unreachable!("fd has no method `{}`", method.shape.text));
     let search = match Search::new(&pattern, paths, &Fields(fields), directory) {
         Ok(search) => search,
         Err(error) => return Outcome::Error(error),
@@ -103,8 +96,7 @@ fn invoke(call: &Call, directory: &Path) -> Outcome {
     })
 }
 
-/// The fields of a `Search`, each read as its type; a field left out, as
-/// in a method without `with _`, reads as its default.
+/// The fields of a `Search`, each read as its type.
 struct Fields(std::collections::BTreeMap<String, Value>);
 
 impl Fields {

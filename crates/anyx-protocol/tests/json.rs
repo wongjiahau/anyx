@@ -122,7 +122,7 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
     .unwrap();
     assert_eq!(
         request,
-        "wait (1 hour 30 minutes) from (\"2026-11-14T06:00:08.000Z\" AS Instant)\n"
+        "wait (1 hours 30 minutes) from (\"2026-11-14T06:00:08.000Z\" AS Instant)\n"
     );
     assert_eq!(
         decode_request_json(&schema, &request).unwrap(),
