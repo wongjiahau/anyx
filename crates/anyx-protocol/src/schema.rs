@@ -471,6 +471,13 @@ pub struct Parameter {
     pub r#type: Type,
 }
 
+/// What [`Schema::fits_as`] compares: a type, or a literal's own type.
+#[derive(Clone, Copy, PartialEq)]
+enum Fitting {
+    Type,
+    Literal,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Text,
@@ -525,28 +532,6 @@ impl Type {
         match self {
             Type::Union(members) => members.iter().flat_map(Type::members).collect(),
             other => vec![other],
-        }
-    }
-
-    /// Whether an argument's type matches this parameter before checking its
-    /// value against inline refinements. Named types retain their identity.
-    /// This is only a type check; the parameter's predicates must still run.
-    pub fn accepts_argument_type(&self, argument: &Type) -> bool {
-        if self == argument {
-            return true;
-        }
-        match (self, argument) {
-            (Type::Refined(base, _), argument) => base.accepts_argument_type(argument),
-            // `Depth` fits `Depth?`, and so does every member of a union.
-            (expected, Type::Union(members)) => members
-                .iter()
-                .all(|member| expected.accepts_argument_type(member)),
-            (Type::Union(members), argument) => members
-                .iter()
-                .any(|member| member.accepts_argument_type(argument)),
-            (Type::List(expected), Type::List(actual))
-            | (Type::Map(expected), Type::Map(actual)) => expected.accepts_argument_type(actual),
-            _ => false,
         }
     }
 
@@ -1013,6 +998,138 @@ impl Schema {
                     ),
                 ))
             }
+            _ => None,
+        }
+    }
+
+    /// Whether a value of type `actual` is a value of type `expected`, so
+    /// that it may be passed where `expected` is:
+    ///
+    /// - a refinement fits its base, `Integer WHERE [0 <= _]` fits
+    ///   `Integer`, and another refinement only with the same predicate. A
+    ///   base never fits its refinement: the type promises the predicate.
+    /// - a member fits its union, and a union fits when each of its members
+    ///   does. An alias of a union of variants is its variants.
+    /// - `LIST`, `MAP`, tuples, a variant's slots and a generic record's
+    ///   arguments are covariant: `LIST Depth` fits `LIST Integer`.
+    /// - a record fits another when each of their fields with the same
+    ///   words fits, and each field it lacks has a `DEFAULT`; a field the
+    ///   other lacks never fits.
+    /// - a named type fits only itself, by name.
+    pub fn fits(&self, actual: &Type, expected: &Type) -> bool {
+        self.fits_as(actual, expected, Fitting::Type, &mut Vec::new())
+    }
+
+    /// Whether a literal whose own type is `actual`, such as `Integer` for
+    /// `3`, may be read as `expected`, before its value is checked against
+    /// the predicates on the way: as [`Schema::fits`], except that a type
+    /// also fits its refinements, since the value itself is checked.
+    pub fn fits_literal(&self, actual: &Type, expected: &Type) -> bool {
+        self.fits_as(actual, expected, Fitting::Literal, &mut Vec::new())
+    }
+
+    /// `assumed` holds the pairs of named types being compared further up,
+    /// which fit unless something else doesn't: a record that holds a
+    /// `LIST` of itself fits another that does.
+    fn fits_as(
+        &self,
+        actual: &Type,
+        expected: &Type,
+        fitting: Fitting,
+        assumed: &mut Vec<(Type, Type)>,
+    ) -> bool {
+        if actual == expected {
+            return true;
+        }
+        let mut fits =
+            |actual: &Type, expected: &Type| self.fits_as(actual, expected, fitting, assumed);
+        match (actual, expected) {
+            (Type::Union(members), _) => members.iter().all(|member| fits(member, expected)),
+            (_, _) if self.variants_of(actual).is_some() => {
+                let members = self.variants_of(actual).unwrap_or_default();
+                members.iter().all(|member| fits(member, expected))
+            }
+            (Type::Refined(base, predicate), _) => {
+                matches!(expected, Type::Refined(other, same) if same == predicate && fits(base, other))
+                    || fits(base, expected)
+            }
+            (_, Type::Refined(base, _)) => fitting == Fitting::Literal && fits(actual, base),
+            (_, Type::Union(members)) => members.iter().any(|member| fits(actual, member)),
+            (_, _) if self.variants_of(expected).is_some() => {
+                let members = self.variants_of(expected).unwrap_or_default();
+                members.iter().any(|member| fits(actual, member))
+            }
+            (Type::List(actual), Type::List(expected))
+            | (Type::Map(actual), Type::Map(expected)) => fits(actual, expected),
+            (Type::Tuple(actual), Type::Tuple(expected)) => {
+                actual.len() == expected.len()
+                    && actual
+                        .iter()
+                        .zip(expected)
+                        .all(|(actual, expected)| fits(actual, expected))
+            }
+            (Type::Variant(actual), Type::Variant(expected)) => {
+                actual.text == expected.text
+                    && actual
+                        .parameters
+                        .iter()
+                        .zip(&expected.parameters)
+                        .all(|(actual, expected)| fits(&actual.r#type, &expected.r#type))
+            }
+            (Type::Named(_) | Type::Generic(..), Type::Named(_) | Type::Generic(..)) => {
+                let pair = (actual.clone(), expected.clone());
+                if assumed.contains(&pair) {
+                    return true;
+                }
+                let (Some((_, actual_kind)), Some((_, expected_kind))) =
+                    (self.instance(actual), self.instance(expected))
+                else {
+                    return false;
+                };
+                match (actual_kind.as_ref(), expected_kind.as_ref()) {
+                    (TypeKind::Record(actual_fields), TypeKind::Record(expected_fields)) => {
+                        assumed.push(pair);
+                        let fit = actual_fields.iter().all(|field| {
+                            expected_fields.iter().any(|other| other.name == field.name)
+                        }) && expected_fields.iter().all(|other| {
+                            match actual_fields.iter().find(|field| field.name == other.name) {
+                                Some(field) => {
+                                    field.form == other.form
+                                        && self.fits_as(
+                                            &field.r#type,
+                                            &other.r#type,
+                                            fitting,
+                                            assumed,
+                                        )
+                                }
+                                None => other.default.is_some(),
+                            }
+                        });
+                        assumed.pop();
+                        fit
+                    }
+                    // A named type fits only itself, which `==` found.
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// The variants of an alias of a union of variants, as types: `Shade`,
+    /// `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is `` `dark `` and
+    /// `` `light ``. `None` for any other type.
+    fn variants_of(&self, r#type: &Type) -> Option<Vec<Type>> {
+        if !matches!(r#type, Type::Named(_) | Type::Generic(..)) {
+            return None;
+        }
+        match self.instance(r#type)?.1.as_ref() {
+            TypeKind::Variants(variants) => Some(
+                variants
+                    .iter()
+                    .map(|variant| Type::Variant(Box::new(variant.shape.clone())))
+                    .collect(),
+            ),
             _ => None,
         }
     }

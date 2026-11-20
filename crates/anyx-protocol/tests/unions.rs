@@ -141,23 +141,17 @@ fn an_empty_union_and_nested_unions_are_allowed() {
 #[test]
 fn a_member_fits_where_its_union_is_expected() {
     let depth = Type::Integer;
-    let null =
-        match &schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [],")
-            .method("f _")
-            .unwrap()
-            .shape
-            .parameters[0]
-            .r#type
-        {
-            Type::Union(members) => members[1].clone(),
-            _ => panic!("`Integer?` is a union"),
-        };
+    let schema = schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [],");
+    let null = match &schema.method("f _").unwrap().shape.parameters[0].r#type {
+        Type::Union(members) => members[1].clone(),
+        _ => panic!("`Integer?` is a union"),
+    };
     let nullable = Type::Union(vec![depth.clone(), null.clone()]);
-    assert!(nullable.accepts_argument_type(&depth));
-    assert!(nullable.accepts_argument_type(&null));
-    assert!(nullable.accepts_argument_type(&nullable));
-    assert!(!depth.accepts_argument_type(&nullable));
-    assert!(!nullable.accepts_argument_type(&Type::Text));
+    assert!(schema.fits(&depth, &nullable));
+    assert!(schema.fits(&null, &nullable));
+    assert!(schema.fits(&nullable, &nullable));
+    assert!(!schema.fits(&nullable, &depth));
+    assert!(!schema.fits(&Type::Text, &nullable));
 }
 
 #[test]

@@ -185,8 +185,11 @@ bound, "less than 30". Revision `1` and the `.poentaro` path pass; revision
 `0` and `.txt` fail. The emoji passes the text length check. `broken limit`
 deliberately returns `30`, producing `INTERNAL ERROR`.
 
-Inline refinements accept arguments of their base type and check the predicate
-without an `AS:` annotation. Named types still use `AS:` with their name.
+Inline refinements accept a literal of their base type and check the predicate
+without an `AS:` annotation. Named types still use `AS:` with their name. A
+call's result is another matter: `checked / short (example / text)` is
+rejected before anything runs, since a `Text` result doesn't promise the
+predicate. Declare the method to return the refined type instead.
 `checked / SCHEMA` shows the guide and predicate
 explanations. The demo schema is
 [`examples/refinements.protocol.anyx`](examples/refinements.protocol.anyx).

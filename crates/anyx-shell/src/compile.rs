@@ -152,8 +152,8 @@ impl Compiler<'_> {
                         transfer(schema, destination, &value.r#type, &mut BTreeSet::new())
                     });
                     match result {
-                        Some(result)
-                            if expected.is_none_or(|ty| ty.accepts_argument_type(&result)) => {}
+                        Some(result) if expected.is_none_or(|ty| destination.fits(&result, ty)) => {
+                        }
                         _ => {
                             failure.get_or_insert_with(|| {
                                 self.error(node.span, format!(
@@ -322,9 +322,7 @@ impl Compiler<'_> {
                     && parameters
                         .iter()
                         .zip(&arguments)
-                        .all(|(parameter, argument)| {
-                            parameter.r#type.accepts_argument_type(&argument.r#type)
-                        })
+                        .all(|(parameter, argument)| fits(schema, argument, &parameter.r#type))
             })
             .collect();
         let [method] = fitting.as_slice() else {
@@ -339,7 +337,7 @@ impl Compiler<'_> {
                         .zip(&arguments)
                         .enumerate()
                         .find(|(_, (parameter, argument))| {
-                            !parameter.r#type.accepts_argument_type(&argument.r#type)
+                            !fits(schema, argument, &parameter.r#type)
                         })
                         .map(|(index, _)| call.arguments[index].span)
                 })
@@ -354,9 +352,36 @@ impl Compiler<'_> {
                 .map(|index| schema.typed_shape(&schema.method_at(*index).shape))
                 .collect::<Vec<_>>()
                 .join(", ");
+            // A result that fits a method once its refinements are left
+            // out: say what its type would have to promise.
+            let promise = methods
+                .iter()
+                .flat_map(|index| {
+                    schema
+                        .method_at(*index)
+                        .shape
+                        .parameters
+                        .iter()
+                        .zip(&arguments)
+                })
+                .find(|(parameter, argument)| {
+                    !fits(schema, argument, &parameter.r#type)
+                        && schema.fits_literal(&argument.r#type, &parameter.r#type)
+                })
+                .map(|(parameter, argument)| {
+                    format!(
+                        "; a `{}` result doesn't promise the predicate of `{}`, so declare the method to return `{}`, or write the value itself",
+                        schema.type_name(&argument.r#type),
+                        schema.type_name(&parameter.r#type),
+                        schema.type_name(&parameter.r#type)
+                    )
+                })
+                .unwrap_or_default();
             return Err(self.error(
                 mismatch,
-                format!("`{name}` has argument types [{found}]; expected one of: {expected}"),
+                format!(
+                    "`{name}` has argument types [{found}]; expected one of: {expected}{promise}"
+                ),
             ));
         };
         // Re-read in the selected parameter types so literals are checked
@@ -703,13 +728,20 @@ impl Compiler<'_> {
         argument: Argument,
         expected: Option<&Type>,
     ) -> Result<Argument, Problem> {
-        if let Some(expected) =
-            expected.filter(|expected| !expected.accepts_argument_type(&argument.r#type))
-        {
+        if let Some(expected) = expected.filter(|expected| !fits(schema, &argument, expected)) {
+            let promise = match schema.fits_literal(&argument.r#type, expected) {
+                // Only a refinement stands between them.
+                true => format!(
+                    "; a `{}` result doesn't promise its predicate, so declare the method to return `{}`, or write the value itself",
+                    schema.type_name(&argument.r#type),
+                    schema.type_name(expected)
+                ),
+                false => String::new(),
+            };
             return Err(self.error(
                 span,
                 format!(
-                    "expression returns `{}`; expected `{}`",
+                    "expression returns `{}`; expected `{}`{promise}",
                     schema.type_name(&argument.r#type),
                     schema.type_name(expected)
                 ),
@@ -784,6 +816,17 @@ fn relocate(node: &mut Node, offset: usize) {
 
 /// Translate protocol-local type indices by name, checking the complete
 /// reachable definitions so unrelated types with the same name cannot mix.
+/// Whether `argument` may be passed where `expected` is. A literal fits
+/// a refinement of its own type, as `3` fits `Integer WHERE [0 <= _]`,
+/// since its value is checked against the predicate; the result of a call
+/// fits only when its type promises the predicate.
+fn fits(schema: &Schema, argument: &Argument, expected: &Type) -> bool {
+    match argument.literal() {
+        Some(_) => schema.fits_literal(&argument.r#type, expected),
+        None => schema.fits(&argument.r#type, expected),
+    }
+}
+
 fn transfer(
     origin: &Schema,
     target: &Schema,
