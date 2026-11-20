@@ -6,11 +6,21 @@ export interface File {
   content: string;
 }
 
+export type FileErrors =
+  /** The note is in the trash. */
+  | { kind: "trashed" }
+  /** No note has this path. */
+  | { kind: "missing" };
+
 /** One problem in a note. */
 export interface Diagnostic {
   line: bigint;
   message: string;
 }
+
+export type CommonErrors =
+  /** No note has this path. */
+  | { kind: "missing" };
 
 /** A page of a note, with what is wrong on it. */
 export interface Page {
@@ -557,19 +567,21 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
   return n >= -(1n << 127n) && n < (1n << 127n) ? n : null;
 }
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"content _", form:"shape", name:"content", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:[],kind:'choice', variants:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
-{parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'union', args:[{k:'named', index:1, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'named', index:1, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})}]},
+{parameters:[],kind:'choice', variants:[{text:"missing", kind:"missing", params:[]}]},
+{parameters:[],kind:'record', fields:[{wire:"html _", form:"shape", name:"html", type:{k:'text'}, slots:[{k:'text'}]},{wire:"problem _", form:"shape", name:"problem", type:{k:'union', args:[{k:'named', index:2, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'named', index:2, args:[]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list"]:{shape:{text:"list", kind:"list", params:[]}, returns:{k:'list', item:{k:'text'}}, errors:[]},
 ["read _"]:{shape:{text:"read _", kind:"read", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'named', index:0, args:[]}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
-["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:1, args:[]}}, errors:[{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["write _ at revision _ content _"]:{shape:{text:"write _ at revision _ content _", kind:"writeAtRevisionContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"revision", type:{k:'integer'}, annotation:"Integer"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:2, args:[]}}, errors:[{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["trash _"]:{shape:{text:"trash _", kind:"trash", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:null, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["empty trash"]:{shape:{text:"empty trash", kind:"emptyTrash", params:[]}, returns:null, errors:[]},
-["html _"]:{shape:{text:"html _", kind:"html", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:2, args:[]}}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
-["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:1, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["html _"]:{shape:{text:"html _", kind:"html", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+["pdf _"]:{shape:{text:"pdf _", kind:"pdf", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"unreadable _", kind:"unreadable", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]},{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:6, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

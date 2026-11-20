@@ -90,7 +90,7 @@ fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
 NAMED TYPE Range from (Integer) to (Integer),
 NAMED TYPE Unit,
 NAMED TYPE (UNION [`red, `blue]) Color,
-METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING,
+METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING ERRORS [],
 ",
     );
     let call = Call {
@@ -127,7 +127,7 @@ fn a_union_of_named_types_picks_its_member_by_name() {
         "PROTOCOL sharing VERSION 1,
 NAMED TYPE File Id (Text),
 NAMED TYPE Share Id (Text),
-METHOD open (id: UNION [File Id, Share Id]) RETURNS NOTHING,
+METHOD open (id: UNION [File Id, Share Id]) RETURNS NOTHING ERRORS [],
 ",
     );
     let share = Value::Variant {
@@ -189,7 +189,7 @@ NAMED TYPE Range from (Integer) to (Integer),
 NAMED TYPE Unit,
 NAMED TYPE File Id (Text),
 NAMED TYPE Share Id (Text),
-METHOD mark (range: Range from to) and (unit: Unit) for (id: UNION [File Id, Share Id]) RETURNS NOTHING,
+METHOD mark (range: Range from to) and (unit: Unit) for (id: UNION [File Id, Share Id]) RETURNS NOTHING ERRORS [],
 ",
     );
     assert_eq!(
@@ -234,7 +234,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text) ERRORS [],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -248,7 +248,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -299,7 +299,7 @@ fn a_named_type_may_hold_itself_through_a_list() {
     let schema = schema(
         "PROTOCOL trees VERSION 1,
 NAMED TYPE Tree (LIST Tree),
-METHOD plant (tree: Tree) RETURNS NOTHING,
+METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [],
 ",
     );
     let leaf = Value::Variant {

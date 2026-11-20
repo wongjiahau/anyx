@@ -185,10 +185,9 @@ pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
         );
         types.extend(method.returns.iter().map(|returns| &returns.r#type));
     }
-    for error in &schema.errors {
+    for error in schema.methods.iter().flat_map(|method| &method.errors) {
         types.extend(
             error
-                .error
                 .shape
                 .parameters
                 .iter()
@@ -410,7 +409,13 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
         .methods
         .iter()
         .map(|method| &method.shape)
-        .chain(schema.errors.iter().map(|error| &error.error.shape))
+        .chain(
+            schema
+                .methods
+                .iter()
+                .flat_map(|method| &method.errors)
+                .map(|error| &error.shape),
+        )
         .chain(
             schema
                 .types

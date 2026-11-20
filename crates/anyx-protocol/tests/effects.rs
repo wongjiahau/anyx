@@ -11,16 +11,16 @@ const DOCUMENTS: &str = "PROTOCOL documents VERSION 1,
 READ ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [`missing],
 
 # Moves the document to the archive. Archiving it again changes nothing.
-IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING UNDONE BY unarchive (path: Text),
+IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [] UNDONE BY unarchive (path: Text),
 
-IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [],
 
 METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
     ERRORS [`taken]
     UNDONE BY move (new path: Text) to (path: Text)
     EXAMPLES [move \"a\" to \"b\" RETURNS NOTHING],
 
-METHOD send (path: Text) to (email: Text) RETURNS NOTHING,
+METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [],
 ";
 
 #[test]
@@ -87,8 +87,8 @@ fn an_undo_may_name_an_imported_method_declared_after_it() {
         ),
         (
             "trash.anyx",
-            "IDEMPOTENT METHOD trash (id: Integer) RETURNS NOTHING UNDONE BY restore (id: Integer),
-METHOD restore (id: Integer) RETURNS NOTHING,",
+            "IDEMPOTENT METHOD trash (id: Integer) RETURNS NOTHING ERRORS [] UNDONE BY restore (id: Integer),
+METHOD restore (id: Integer) RETURNS NOTHING ERRORS [],",
         ),
     ];
     let schema = common::parse_files(&files).unwrap();
@@ -100,8 +100,8 @@ METHOD restore (id: Integer) RETURNS NOTHING,",
 fn markers_are_formatted_in_place() {
     let formatted = anyx_protocol::format_schema(
         "PROTOCOL t VERSION 1,
-READ   ONLY METHOD read (path: Text) RETURNS (content: Text),
-IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
+READ   ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [],
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [],
 IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [`missing, `already archived by someone else] UNDONE BY unarchive (path: Text) EXAMPLES [archive \"a\" RETURNS NOTHING],
 ",
     )
@@ -109,8 +109,8 @@ IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING ERRORS [`missing, `alread
     assert_eq!(
         formatted,
         "PROTOCOL t VERSION 1,
-READ ONLY METHOD read (path: Text) RETURNS content: Text,
-IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING,
+READ ONLY METHOD read (path: Text) RETURNS (content: Text) ERRORS [],
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [],
 IDEMPOTENT METHOD archive (path: Text)
     RETURNS NOTHING
     ERRORS [`missing, `already archived by someone else]
@@ -133,35 +133,35 @@ fn mistakes_in_markers_are_diagnosed() {
     let cases = [
         (
             "read only and idempotent together",
-            "PROTOCOL a VERSION 1, READ ONLY IDEMPOTENT METHOD read RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, READ ONLY IDEMPOTENT METHOD read RETURNS NOTHING ERRORS [],",
         ),
         (
             "an undo of a read only method",
-            "PROTOCOL a VERSION 1, READ ONLY METHOD read (id: Text) RETURNS NOTHING UNDONE BY read (id: Text),",
+            "PROTOCOL a VERSION 1, READ ONLY METHOD read (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY read (id: Text),",
         ),
         (
             "a slot that is not a parameter",
-            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (key: Text), METHOD show (key: Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (key: Text), METHOD show (key: Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a slot in the undo of a method without parameters",
-            "PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING UNDONE BY unlock (id: Text), METHOD unlock (id: Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD lock RETURNS NOTHING ERRORS [] UNDONE BY unlock (id: Text), METHOD unlock (id: Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a slot of another type than its parameter",
-            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Integer), METHOD show (id: Integer) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (id: Integer), METHOD show (id: Integer) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a slot of an unknown type",
-            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "an undo naming no method",
-            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text),",
+            "PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (id: Text),",
         ),
         (
             "an undo whose types match no method of its words",
-            "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text), METHOD hide (id: Text) RETURNS NOTHING UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text), METHOD hide (id: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING ERRORS [],",
         ),
     ];
     let rendered: Vec<String> = cases

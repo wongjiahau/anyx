@@ -24,7 +24,6 @@ pub struct Schema {
     pub name: String,
     pub version: u32,
     pub types: Vec<TypeDefinition>,
-    pub errors: Vec<ErrorDefinition>,
     pub methods: Vec<Method>,
     /// The calls every server answers, after its own methods: `SCHEMA`,
     /// then `SCHEMA FILES`.
@@ -370,14 +369,6 @@ pub struct Shaped {
     pub shape: Shape,
 }
 
-/// An error, defined in the brackets of a method's or a group's `ERRORS`.
-/// On the wire it is written in its shape alone, without a file path.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ErrorDefinition {
-    pub public: bool,
-    pub error: Shaped,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Method {
     pub doc: Option<String>,
@@ -389,9 +380,14 @@ pub struct Method {
     pub requires: Option<crate::refinement::Predicate<usize>>,
     /// Conditions checked before sending a successful method result.
     pub ensures: Option<crate::refinement::Predicate<usize>>,
-    /// Indices into [`Schema::errors`], with aliases expanded, in the order
-    /// written.
-    pub errors: Vec<usize>,
+    /// Its errors, variants each written in its shape alone: those in its
+    /// `ERRORS` in the order written, with each alias's variants in its
+    /// place. Empty for `ERRORS []`.
+    pub errors: Vec<Shaped>,
+    /// The aliases of unions of variants its `ERRORS` names, such as `File
+    /// Errors`, whose variants are among [`Method::errors`]. Generated code
+    /// converts a value of each into the method's errors.
+    pub error_groups: Vec<Type>,
     /// Its `EXAMPLES`, in the order written, each checked against it.
     pub examples: Vec<Example>,
     /// What a call may do to the world: `READ ONLY`, `IDEMPOTENT`, or
@@ -723,6 +719,7 @@ fn built_in(words: &[&str], doc: &str, returns: &str, r#type: Type) -> Method {
         requires: None,
         ensures: None,
         errors: Vec::new(),
+        error_groups: Vec::new(),
         examples: Vec::new(),
         effect: Effect::ReadOnly,
         undone_by: None,
@@ -1195,12 +1192,8 @@ impl Schema {
     }
 
     /// The errors `method` may return.
-    pub fn errors_of(&self, method: &Method) -> Vec<&Shaped> {
-        method
-            .errors
-            .iter()
-            .map(|index| &self.errors[*index].error)
-            .collect()
+    pub fn errors_of<'m>(&self, method: &'m Method) -> Vec<&'m Shaped> {
+        method.errors.iter().collect()
     }
 }
 
@@ -1393,7 +1386,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
             (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an `ERRORS` group that methods share by joining it with `+`: `` ERRORS file errors [`trashed, `missing] ``".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors: UNION [`trashed, `missing] ``".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]

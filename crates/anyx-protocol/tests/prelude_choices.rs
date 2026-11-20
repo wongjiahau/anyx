@@ -9,7 +9,7 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 }
 
 fn null_shape() -> anyx_protocol::schema::Shape {
-    let schema = Schema::parse("METHOD f (x: Text?) RETURNS NOTHING").unwrap();
+    let schema = Schema::parse("METHOD f (x: Text?) RETURNS NOTHING ERRORS []").unwrap();
     let Type::Union(members) = &schema.method("f _").unwrap().shape.parameters[0].r#type else {
         panic!("`Text?` is a union")
     };
@@ -91,7 +91,7 @@ fn ordinary_prelude_names_cannot_be_redeclared() {
 #[test]
 fn boolean_inference_uses_ordinary_variant_ambiguity() {
     let schema = Schema::parse(
-        "TYPE ALIAS Another: UNION [`true], METHOD set (flag: Boolean) RETURNS NOTHING",
+        "TYPE ALIAS Another: UNION [`true], METHOD set (flag: Boolean) RETURNS NOTHING ERRORS []",
     )
     .unwrap();
     assert!(anyx_protocol::codec::decode_request(&schema, "set (`true)").is_err());

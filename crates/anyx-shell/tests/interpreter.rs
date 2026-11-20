@@ -201,8 +201,10 @@ fn invalid_tool_output_is_an_internal_failure() {
         .register(
             "broken",
             BrokenTool(
-                Schema::parse("PROTOCOL broken VERSION 1, METHOD count RETURNS (count: Integer)")
-                    .unwrap(),
+                Schema::parse(
+                    "PROTOCOL broken VERSION 1, METHOD count RETURNS (count: Integer) ERRORS []",
+                )
+                .unwrap(),
             ),
         )
         .unwrap();
@@ -231,7 +233,7 @@ impl Tool for ExampleTool {
 fn tool_bodies_keep_protocol_records_lists_and_nothing_returns() {
     let mut interpreter = interpreter();
     interpreter.register("example", ExampleTool(Schema::parse(
-        "PROTOCOL example VERSION 1, RECORD Entry { names: LIST Text }, METHOD echo (entry: Entry) RETURNS (entry: Entry), METHOD finish RETURNS NOTHING"
+        "PROTOCOL example VERSION 1, RECORD Entry { names: LIST Text }, METHOD echo (entry: Entry) RETURNS (entry: Entry) ERRORS [], METHOD finish RETURNS NOTHING ERRORS []"
     ).unwrap())).unwrap();
     let execution = interpreter.execute(
         "## a shell comment\nexample / echo { names: [\"a/b\", \"c,d\"] },\nexample / finish,\nenvironment / list variables,"
@@ -270,8 +272,9 @@ fn preconditions_are_checked_before_a_call_runs() {
                     TYPE ALIAS Setting: UNION [`any case, `exact case, `hidden],
                     METHOD echo (settings: LIST Setting)
                         REQUIRES [settings . has at most one of [`any case, `exact case]]
-                        RETURNS (settings: LIST Setting),
-                    METHOD both RETURNS (settings: LIST Setting),"#,
+                        RETURNS (settings: LIST Setting)
+                        ERRORS [],
+                    METHOD both RETURNS (settings: LIST Setting) ERRORS [],"#,
                 )
                 .unwrap(),
             ),

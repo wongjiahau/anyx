@@ -10,12 +10,6 @@ schema:1:45: found the word `Text`; expected the word `TYPE`
   PROTOCOL a VERSION 1, RECORD page of (Item: Text) { items: LIST: Item },
                                               ^^^^
 
-== an error group can't be generic
-PROTOCOL a VERSION 1, ERRORS failures of (Item: TYPE) [missing (item: Item)],
-schema:1:49: found the word `TYPE`; expected `[...]`, a call whose name has no keyword or the end of the call
-  PROTOCOL a VERSION 1, ERRORS failures of (Item: TYPE) [missing (item: Item)],
-                                                  ^^^^
-
 == the braces come last, once, and the name has words
 PROTOCOL a VERSION 1, RECORD page of (Item: TYPE), RECORD box { value: Text } of (Item: TYPE) { value: Item }, RECORD (Left: TYPE) (Right: TYPE) { left: Left, right: Right },
 schema:1:30: found the `RECORD` `page of (Item)` without its fields in braces; expected them last, after its name, as in `RECORD page of (Item: TYPE) { … }`
@@ -30,7 +24,7 @@ schema:1:119: found a `RECORD` whose name has no words; expected at least one wo
 
 == a shape twice, while the same words without the slot are another type
 PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE): UNION [`one (value: Other)],
-schema:1:118: duplicate declaration `Page of _` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+schema:1:118: duplicate declaration `Page of _` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
   PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE): UNION [`one (value: Other)],
                                                                                                                        ^^^^^^^
 
@@ -56,30 +50,30 @@ schema:1:72: found `Item of (Text)`, which is not a type of this schema; expecte
                                                                          ^^^^^^^^^^^^^^
 
 == a generic type without its arguments, and an argument for a type that isn't generic
-PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: Row (Text)),
+PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [], METHOD b RETURNS (x: Row (Text)) ERRORS [],
 schema:1:115: found `box`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `box`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `box` are `box of (Item)`
-  PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: Row (Text)),
+  PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [], METHOD b RETURNS (x: Row (Text)) ERRORS [],
                                                                                                                     ^^^
-schema:1:142: found `Row (Text)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `Row`; expected one of them, with a type in parentheses in each slot it has
-  PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: Row (Text)),
-                                                                                                                                               ^^^^^^^^^^
+schema:1:152: found `Row (Text)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `Row`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [], METHOD b RETURNS (x: Row (Text)) ERRORS [],
+                                                                                                                                                         ^^^^^^^^^^
 
 == the wrong number of arguments, or the slots in the wrong places
-PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),
+PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [], METHOD c RETURNS (x: (Text) or) ERRORS [],
 schema:1:147: found `(Text) or (Text) (Integer)`, with types in 3 slots, but this schema has no type of that shape; the types with its words are `(Value) or (Problem)`; expected one of them, with a type in parentheses in each slot it has
-  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),
+  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [], METHOD c RETURNS (x: (Text) or) ERRORS [],
                                                                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:197: found `or (Text) (Integer)`, with types in 2 slots, but this schema has no type of that shape; the types with its words are `(Value) or (Problem)`; expected one of them, with a type in parentheses in each slot it has
-  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),
-                                                                                                                                                                                                      ^^^^^^^^^^^^^^^^^^^
-schema:1:240: found `(Text) or`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `(Value) or (Problem)`; expected one of them, with a type in parentheses in each slot it has
-  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),
-                                                                                                                                                                                                                                                 ^^^^^^^^^
+schema:1:207: found `or (Text) (Integer)`, with types in 2 slots, but this schema has no type of that shape; the types with its words are `(Value) or (Problem)`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [], METHOD c RETURNS (x: (Text) or) ERRORS [],
+                                                                                                                                                                                                                ^^^^^^^^^^^^^^^^^^^
+schema:1:260: found `(Text) or`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `(Value) or (Problem)`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [], METHOD c RETURNS (x: (Text) or) ERRORS [],
+                                                                                                                                                                                                                                                                     ^^^^^^^^^
 
 == a type argument that names no type
-PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)),
+PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [],
 schema:1:104: found `prson`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `prson`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)),
+  PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [],
                                                                                                          ^^^^^
 
 == a generic type holding itself through an argument

@@ -21,7 +21,7 @@ RECORD Search {
     `(order: Order) DEFAULT `newest first,
     `(auth: Auth) DEFAULT `no auth,
 },
-METHOD find (search: Search) RETURNS (count: Integer),";
+METHOD find (search: Search) RETURNS (count: Integer) ERRORS [],";
 
 fn find(source: &str) -> Value {
     let schema = schema(SEARCH);
@@ -153,7 +153,7 @@ fn a_field_written_as_its_variant_holds_only_variants() {
         "PROTOCOL a VERSION 1,
         TYPE ALIAS Order: UNION [`newest first, `by name],
         RECORD Rec { `(order: Order?), `(mode: UNION [`fast, `slow]) },
-        METHOD find (rec: Rec) RETURNS (count: Integer),",
+        METHOD find (rec: Rec) RETURNS (count: Integer) ERRORS [],",
     );
     let calls = decode_request(&schema, "find { `slow, `null }").unwrap();
     assert_eq!(
@@ -211,7 +211,7 @@ RECORD Search {
     depth from (Depth) to (Depth?),
     between (Integer) and (Integer) bytes DEFAULT between 1 and 9 bytes,
 },
-METHOD find (search: Search) RETURNS (count: Integer),";
+METHOD find (search: Search) RETURNS (count: Integer) ERRORS [],";
 
 #[test]
 fn a_field_with_several_slots_holds_a_value_for_each() {

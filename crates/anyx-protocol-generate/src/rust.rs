@@ -81,14 +81,11 @@ fn body(out: &mut String, schema: &Schema) {
             let errors: Vec<Shaped> = schema.errors_of(method).into_iter().cloned().collect();
             let doc = format!("/// The errors of `{}`.\n", schema.call_name(method));
             let generics = Generics::new(schema, &[]);
-            choice(
-                out,
-                schema,
-                &doc,
-                &error_enum_name(schema, method),
-                &generics,
-                &errors,
-            );
+            let name = error_enum_name(schema, method);
+            choice(out, schema, &doc, &name, &generics, &errors);
+            for group in &method.error_groups {
+                error_group_conversion(out, schema, &name, group);
+            }
         }
     }
     root_server(out, schema);
@@ -411,6 +408,35 @@ fn choice(
         "{doc}#[derive(Clone, Debug, PartialEq)]\npub enum {declared_name} {{\n{declared}}}\n\n\
          {into_implementation} IntoValue for {declared_name} {{\n    fn into_value(self) -> Value {{\n        match self {{\n{into}        }}\n    }}\n}}\n\n\
          {from_implementation} FromValue for {declared_name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Variant {{ shape, arguments }} = value else {{ return None }};\n        let mut arguments = arguments.into_iter();\n        Some(match shape.as_str() {{\n{from}            _ => return None,\n        }})\n    }}\n}}\n\n"
+    )
+    .unwrap();
+}
+
+/// `impl From<FileErrors> for ReadError`: an alias of a union of variants
+/// that a method names among its errors becomes that method's error, the
+/// variant of the same shape, so that `?` carries it.
+fn error_group_conversion(out: &mut String, schema: &Schema, method_error: &str, group: &Type) {
+    let Some((definition, kind)) = schema.instance(group) else {
+        return;
+    };
+    let TypeKind::Variants(variants) = kind.as_ref() else {
+        return;
+    };
+    let group_type = rust_type(schema, group);
+    let group_name = pascal_case(&definition.name);
+    let arms: String = variants
+        .iter()
+        .map(|variant| {
+            let variant_name = pascal_case(&variant.shape.text);
+            let bound = bindings(&variant.shape);
+            format!(
+                "            {group_name}::{variant_name}{bound} => {method_error}::{variant_name}{bound},\n"
+            )
+        })
+        .collect();
+    write!(
+        out,
+        "impl From<{group_type}> for {method_error} {{\n    fn from(error: {group_type}) -> Self {{\n        match error {{\n{arms}        }}\n    }}\n}}\n\n"
     )
     .unwrap();
 }

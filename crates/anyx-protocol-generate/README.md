@@ -58,7 +58,10 @@ the file.
   a type of the protocol, gets `Parameter` after it: `ValueParameter`. The
   same goes in TypeScript, `interface PageOf<Item>`, against every type there.
 - An enum of each method's errors, named after the method:
-  `write _ at revision _ content _` has `WriteAtRevisionContentError`.
+  `write _ at revision _ content _` has `WriteAtRevisionContentError`. It
+  holds every error flat: the variants in its `ERRORS` brackets and those
+  of each alias named there. For each such alias, say `File Errors`, it
+  has `impl From<FileErrors>`, so `?` turns a `FileErrors` into it.
 - A `Server` trait with an `async fn` per method. A method with errors
   returns `Result<Result<T, MethodError>, Self::Error>`; the outer `Err` is
   the server's own failure, which the caller sees as `INTERNAL ERROR`. A

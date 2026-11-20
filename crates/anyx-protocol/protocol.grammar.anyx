@@ -9,7 +9,7 @@ ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 ## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
 ## where a doc goes is an error.
 
-## `INTRINSIC` before a `RECORD`, `TYPE` or `ERRORS` says that its
+## `INTRINSIC` before a `RECORD` or `TYPE` says that its
 ## shape is written here and the implementation supplies its meaning, as
 ## for the built-in types of `prelude.protocol.anyx`. The schema checker lets only
 ## the prelude use it.
@@ -160,19 +160,20 @@ variant: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", body: variant body],
 
 variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
 
-## A group of errors that methods share: its name and its own errors, then
-## other groups joined with `+`, as in
-## `ERRORS export errors [unreadable (diagnostics: LIST Diagnostic)] + file errors`.
-## `PUBLIC` lets direct importers use a type or a group, by its plain name.
+## A group of errors, `` ERRORS file errors [`missing] + other errors ``,
+## which an alias of a union of variants replaced: `` TYPE ALIAS File
+## Errors: UNION [`missing, Other Errors] ``. It is read only so that the
+## checker can say how to write it now.
 errors: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
-  intrinsic: OPTIONAL: WORD "INTRINSIC",
   public: OPTIONAL: WORD "PUBLIC",
-  WORD "ERRORS", body: error list,
+  WORD "ERRORS", body: ANY NODE,
 ],
 
 ## A method's clauses come in this order. It returns a value or `NOTHING`,
-## and the rest may be left out. `READ ONLY` and `IDEMPOTENT` claim it is
+## and has its errors, `ERRORS []` when it has none; the rest may be left
+## out. `ERRORS` is read when it is missing too, so that the checker can
+## say to write it. `READ ONLY` and `IDEMPOTENT` claim it is
 ## safe to call freely, or to retry; without them it may change anything,
 ## once per call. Both together are read, so that the schema checker can say
 ## that `READ ONLY` already means `IDEMPOTENT`.
@@ -233,19 +234,10 @@ example: ONE OF [
 ## What a method returns is named too: `RETURNS (new revision: Integer)`.
 returns: parameter,
 
-## A method's errors: its own in brackets, then groups joined with `+`:
-## `[conflict at revision (revision: Integer)] + file errors`. Joined terms
-## make one call, `_ + _`, so the checker reads the plain group names
-## from its arguments. A group's own errors follow its name.
-error list: error term,
-
-error term: ONE OF [
-  own: SQUARE BRACKET [ONE OR MORE: error],
-  call: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: error term],
-],
-
-## An error is written in its shape, like a variant, with its doc first.
-error: variant,
+## A method's errors, the members of a union: variants, and aliases of
+## unions of variants, as in `` [`conflict at revision (revision: Integer),
+## File Errors] ``. A method that can't fail has `[]`.
+error list: SQUARE BRACKET [ZERO OR MORE: union member],
 
 shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
 

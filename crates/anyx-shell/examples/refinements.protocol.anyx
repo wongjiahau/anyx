@@ -6,15 +6,18 @@ TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 
 # Echoes an integer from 10 inclusive to 30 exclusive.
 READ ONLY METHOD limit (value: Integer . WHERE [10 <= _ < 30])
-    RETURNS (value: Integer . WHERE [10 <= _ < 30]),
+    RETURNS (value: Integer . WHERE [10 <= _ < 30])
+    ERRORS [],
 
-READ ONLY METHOD revision (value: Revision) RETURNS (value: Revision),
-READ ONLY METHOD path (value: Score Path) RETURNS (value: Score Path),
+READ ONLY METHOD revision (value: Revision) RETURNS (value: Revision) ERRORS [],
+READ ONLY METHOD path (value: Score Path) RETURNS (value: Score Path) ERRORS [],
 
 # Counts Unicode scalar values, so an emoji has length 1.
 READ ONLY METHOD short (value: Text . WHERE [1 <= (_ length) <= 3])
-    RETURNS (value: Text . WHERE [1 <= (_ length) <= 3]),
+    RETURNS (value: Text . WHERE [1 <= (_ length) <= 3])
+    ERRORS [],
 
 # Deliberately returns 30 to demonstrate INTERNAL ERROR on a bad result.
 READ ONLY METHOD broken limit (value: Integer . WHERE [10 <= _ < 30])
-    RETURNS (value: Integer . WHERE [10 <= _ < 30]),
+    RETURNS (value: Integer . WHERE [10 <= _ < 30])
+    ERRORS [],

@@ -103,10 +103,10 @@ enough to count its results without slipping. A result is one of:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing.
-- `ERROR` and one of the method's errors, in the error's shape. They follow
-  `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `` ERROR `missing ``. The call didn't do anything. Each error's
-  `#` lines say what to do next.
+- `ERROR` and one of the method's errors, in the error's shape: a variant
+  in its `ERRORS` brackets, or one of the variants of an alias named there.
+  For example: `` ERROR `missing ``. The call didn't do anything. Each
+  error's `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
 
@@ -123,8 +123,9 @@ A request that can't be read gets one result, and none of its calls run:
 
 In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
-words; all-caps words belong to the schema language. `ERRORS name […]`
-is a group of errors that methods share by joining it with `+`.{examples}{imports}
+words; all-caps words belong to the schema language. Errors that methods
+share are an alias of a union of variants, such as `` TYPE ALIAS File
+Errors: UNION [`missing] ``, named in each method's `ERRORS`.{examples}{imports}
 
 {source}
 ",
@@ -351,7 +352,7 @@ fn named_types(schema: &Schema) -> String {
 const IMPORTS: &str = "
 
 Files form one flat namespace. `USE \"relative path\"` includes a file and
-makes its `PUBLIC` types and error groups visible to the importing file.
+makes its `PUBLIC` types visible to the importing file.
 Imports are direct, with no re-export. File paths never appear in calls or
 type names.";
 
@@ -549,12 +550,18 @@ fn refinements(schema: &Schema) -> String {
             );
         }
     }
-    for error in &schema.errors {
-        for p in &error.error.shape.parameters {
+    // An error an alias shares is among the errors of each method naming it.
+    let mut described: Vec<&str> = Vec::new();
+    for error in schema.methods.iter().flat_map(|method| &method.errors) {
+        if described.contains(&error.shape.text.as_str()) {
+            continue;
+        }
+        described.push(&error.shape.text);
+        for p in &error.shape.parameters {
             describe(
                 schema,
                 &p.r#type,
-                &format!("{} / {}", error.error.shape.text, p.name),
+                &format!("{} / {}", error.shape.text, p.name),
                 &mut rows,
             );
         }

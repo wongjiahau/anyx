@@ -21,7 +21,7 @@ fn mixed() -> (anyx_protocol::Schema, Type) {
         TYPE ALIAS Shade: UNION [`dark, `light],
         TYPE ALIAS Mixed: UNION [Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair],
         TYPE ALIAS (Item: TYPE) Pair: LIST Item,
-        METHOD f (x: Mixed) RETURNS NOTHING,",
+        METHOD f (x: Mixed) RETURNS NOTHING ERRORS [],",
     );
     let r#type = schema.method("f _").unwrap().shape.parameters[0]
         .r#type
@@ -87,7 +87,7 @@ fn a_nullable_value_is_null_or_a_value_of_its_item() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
         RECORD Limits { max depth (Integer?) DEFAULT max depth (`null) },
-        METHOD f (limits: Limits) RETURNS NOTHING,",
+        METHOD f (limits: Limits) RETURNS NOTHING ERRORS [],",
     );
     let limits = Type::Named(limits_index(&schema));
     let read = |source: &str| decode_value(&schema, &limits, source).unwrap();
@@ -120,7 +120,7 @@ fn an_empty_union_and_nested_unions_are_allowed() {
         "PROTOCOL p VERSION 1,
         TYPE ALIAS Nothing: UNION [],
         TYPE ALIAS Depth: Integer?,
-        METHOD f (x: UNION [Nothing, Depth, UNION [Text, `none]]) RETURNS NOTHING,",
+        METHOD f (x: UNION [Nothing, Depth, UNION [Text, `none]]) RETURNS NOTHING ERRORS [],",
     );
     let r#type = &schema.method("f _").unwrap().shape.parameters[0].r#type;
     assert_eq!(r#type.members().len(), 4);
@@ -141,16 +141,17 @@ fn an_empty_union_and_nested_unions_are_allowed() {
 #[test]
 fn a_member_fits_where_its_union_is_expected() {
     let depth = Type::Integer;
-    let null = match &schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING,")
-        .method("f _")
-        .unwrap()
-        .shape
-        .parameters[0]
-        .r#type
-    {
-        Type::Union(members) => members[1].clone(),
-        _ => panic!("`Integer?` is a union"),
-    };
+    let null =
+        match &schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [],")
+            .method("f _")
+            .unwrap()
+            .shape
+            .parameters[0]
+            .r#type
+        {
+            Type::Union(members) => members[1].clone(),
+            _ => panic!("`Integer?` is a union"),
+        };
     let nullable = Type::Union(vec![depth.clone(), null.clone()]);
     assert!(nullable.accepts_argument_type(&depth));
     assert!(nullable.accepts_argument_type(&null));
@@ -172,11 +173,11 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "a nullable nullable, and a nullable choice with null",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a repeat made by a generic type's argument",
-            "PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a list or a map as a member",

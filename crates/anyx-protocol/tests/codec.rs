@@ -159,8 +159,8 @@ const MODES: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Shade: UNION [`dark, `light],
 TYPE ALIAS Mode: UNION [`dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed],
 RECORD Options { mode: Mode, strict (Boolean) DEFAULT strict (`false) },
-METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean),
-METHOD apply (options: Options) RETURNS (modes: LIST: Mode),";
+METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean) ERRORS [],
+METHOD apply (options: Options) RETURNS (modes: LIST: Mode) ERRORS [],";
 
 #[test]
 fn words_in_slots_go_in_parentheses() {
@@ -236,7 +236,7 @@ fn text_that_a_raw_string_cannot_hold_is_quoted() {
 
 #[test]
 fn a_number_that_is_not_finite_has_no_form() {
-    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: Float) RETURNS (y: Float),");
+    let schema = schema("PROTOCOL a VERSION 1, METHOD f (x: Float) RETURNS (y: Float) ERRORS [],");
     let calls = vec![Call {
         method: 0,
         arguments: vec![Value::Float(f64::NAN)],
@@ -324,7 +324,7 @@ fn mistakes_in_a_response_point_at_where_they_are() {
 
 const ACCOUNTS: &str = "PROTOCOL a VERSION 1,
 METHOD change password from (old: Text) to (new: Text) RETURNS NOTHING ERRORS [`wrong password],
-METHOD tag (names: LIST Text) RETURNS (count: Integer),";
+METHOD tag (names: LIST Text) RETURNS (count: Integer) ERRORS [],";
 
 #[test]
 fn a_response_answers_each_call_by_position_without_repeating_it() {
@@ -386,8 +386,8 @@ fn a_result_is_read_as_an_outcome_of_the_call_in_its_place() {
 fn a_method_that_returns_nothing_answers_returns_nothing() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        METHOD sign out RETURNS NOTHING,
-        METHOD count RETURNS (count: Integer),",
+        METHOD sign out RETURNS NOTHING ERRORS [],
+        METHOD count RETURNS (count: Integer) ERRORS [],",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -417,8 +417,8 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
 fn nothing_and_a_value_are_not_mixed_up() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        METHOD sign out RETURNS NOTHING,
-        METHOD count RETURNS (count: Integer),",
+        METHOD sign out RETURNS NOTHING ERRORS [],
+        METHOD count RETURNS (count: Integer) ERRORS [],",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -450,9 +450,9 @@ fn nothing_and_a_value_are_not_mixed_up() {
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
 RECORD Timer { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
-METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant),
-METHOD set (timer: Timer) RETURNS (left: Duration),
-METHOD list RETURNS (durations: LIST Duration),";
+METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant) ERRORS [],
+METHOD set (timer: Timer) RETURNS (left: Duration) ERRORS [],
+METHOD list RETURNS (durations: LIST Duration) ERRORS [],";
 
 fn instant(text: &str) -> Value {
     let milliseconds = |at: &str| -> u64 {
@@ -565,7 +565,7 @@ fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         RECORD Search { query: Text, limit (Integer) DEFAULT limit 50, note (Text) DEFAULT note \"\" },
-        METHOD find (search: Search) RETURNS (search: Search),",
+        METHOD find (search: Search) RETURNS (search: Search) ERRORS [],",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
     let filled = record(&[
@@ -593,8 +593,8 @@ fn a_field_left_out_takes_its_default() {
 const COUNTS: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Mood: UNION [`calm, `wild],
 RECORD Tally { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
-METHOD count (tally: Tally) RETURNS (counts: MAP Integer),
-METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood),";
+METHOD count (tally: Tally) RETURNS (counts: MAP Integer) ERRORS [],
+METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood) ERRORS [],";
 
 fn map(entries: &[(&str, Value)]) -> Value {
     Value::Map(

@@ -10,7 +10,7 @@ METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer
     ENSURES [new revision =: revision + 1]
     ERRORS [`conflict]
     EXAMPLES [write "a.txt" at revision 2 before 4 RETURNS 3],
-METHOD ping RETURNS NOTHING,
+METHOD ping RETURNS NOTHING ERRORS [],
 "#;
 
 #[test]
@@ -147,9 +147,10 @@ fn lengths_and_float_arithmetic_use_the_refinement_rules() {
         r#"
         METHOD copy (source text: Text) into (target: Text)
             REQUIRES [(source text . length) <= (target . length)]
-            RETURNS NOTHING,
+            RETURNS NOTHING
+            ERRORS [],
         METHOD double (input: Float) RETURNS (output: Float)
-            ENSURES [output = (input * 2.0)],
+            ENSURES [output = (input * 2.0)] ERRORS [],
     "#,
     );
     assert!(decode_request(&schema, "copy \"🎵\" into \"x\"").is_ok());
@@ -168,10 +169,12 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
         METHOD admit (start: Integer) before (end: Integer) when (enabled: Boolean)
             REQUIRES [(start < end) and: enabled]
             RETURNS (admitted: Boolean)
-            ENSURES [(not (not (admitted))) xor: `false],
+            ENSURES [(not (not (admitted))) xor: `false]
+            ERRORS [],
         METHOD match (text: Text) with (prefix: Text) or (allowed: Boolean)
             REQUIRES [(text . starts with (prefix)) or: allowed]
-            RETURNS NOTHING,
+            RETURNS NOTHING
+            ERRORS [],
         "#,
     );
     let calls = decode_request(&schema, "admit 1 before 2 when (`true)").unwrap();
@@ -201,7 +204,8 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
                 settings . has at most one of [`any case, `smart case],
                 settings . has at most one of [`_ encoding],
             ]
-            RETURNS NOTHING,
+            RETURNS NOTHING
+            ERRORS [],
         "#,
     );
     for accepted in [
@@ -236,19 +240,19 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
 fn list_tests_name_variants_of_a_union_in_a_method_condition() {
     for (source, expected) in [
         (
-            "TYPE ALIAS Case: UNION [`any case, `smart case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING",
+            "TYPE ALIAS Case: UNION [`any case, `smart case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING ERRORS []",
             "`exact case` is not a variant of Case",
         ),
         (
-            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [`a]] RETURNS NOTHING",
+            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [`a]] RETURNS NOTHING ERRORS []",
             "tests a LIST of a union of variants",
         ),
         (
-            "METHOD f (name: Text) REQUIRES [name . has no repeats] RETURNS NOTHING",
+            "METHOD f (name: Text) REQUIRES [name . has no repeats] RETURNS NOTHING ERRORS []",
             "`has no repeats` tests a LIST",
         ),
         (
-            "TYPE ALIAS Case: UNION [`any case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING",
+            "TYPE ALIAS Case: UNION [`any case], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING ERRORS []",
             "expected variants in square brackets",
         ),
         (
@@ -269,7 +273,7 @@ fn conditions_require_a_declared_signature() {
         ("0 < value > 2", "unsupported predicate"),
     ] {
         let errors = common::diagnostics(&format!(
-            "METHOD check (value: Integer) REQUIRES [{condition}] RETURNS NOTHING"
+            "METHOD check (value: Integer) REQUIRES [{condition}] RETURNS NOTHING ERRORS []"
         ));
         assert!(errors.contains(expected), "{errors}");
     }

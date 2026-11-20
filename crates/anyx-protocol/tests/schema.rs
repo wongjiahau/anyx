@@ -96,13 +96,13 @@ fn poentaros_schema_reads_with_its_docs_shapes_and_errors() {
         "LIST File Summary"
     );
     assert!(list.errors.is_empty());
-    let conflict = schema
+    let conflict = write
         .errors
         .iter()
-        .find(|error| error.error.shape.words() == "conflict at revision content")
+        .find(|error| error.shape.words() == "conflict at revision content")
         .unwrap();
     assert_eq!(
-        conflict.error.doc.as_deref(),
+        conflict.doc.as_deref(),
         Some("Someone saved first. Apply your change to `content`, then write at\n`revision`.")
     );
 }
@@ -190,7 +190,7 @@ fn optional_fields_and_record_inputs_read() {
     let schema = schema(
         "PROTOCOL shop VERSION 2,
         RECORD Filter { name (Text) DEFAULT name \"\", limit (Integer) DEFAULT limit 0 },
-        METHOD find (filter: Filter) RETURNS (names: LIST Text),",
+        METHOD find (filter: Filter) RETURNS (names: LIST Text) ERRORS [],",
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
         panic!("filter is a record")
@@ -204,11 +204,11 @@ fn mistakes_in_a_schema_are_diagnosed() {
     let cases = [
         (
             "an unknown type",
-            "PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),",
+            "PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [],",
         ),
         (
             "a built-in type under its old all-caps name",
-            "PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text),",
+            "PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text) ERRORS [],",
         ),
         (
             "an old all-caps name inside a list",
@@ -224,7 +224,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "INTRINSIC on a method",
-            "PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text),",
+            "PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text) ERRORS [],",
         ),
         (
             "a type named like a built-in one",
@@ -236,7 +236,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an unnamed return",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (Text),",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (Text) ERRORS [],",
         ),
         (
             "a bad error after RETURNS NOTHING, which is not an unnamed return",
@@ -256,19 +256,19 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a parameter twice",
-            "PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),",
+            "PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text) ERRORS [],",
         ),
         (
             "a method twice",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [], METHOD f RETURNS (z: Text) ERRORS [],",
         ),
         (
             "overloads with the same parameter types",
-            "PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "overloads that differ only in what they return",
-            "PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),",
+            "PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [],",
         ),
         (
             "a type holding itself",
@@ -299,48 +299,48 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },",
         ),
         (
-            "an unknown group",
-            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,",
+            "a method without errors",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),",
         ),
         (
-            "an error where a group goes",
-            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,",
+            "an unknown alias among errors",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Gone],",
         ),
         (
-            "groups joining each other",
-            "PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,",
+            "a type among errors",
+            "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Integer, UNION [`a, `b]],",
         ),
         (
-            "an error listed twice through a group",
-            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,",
+            "an alias of other types among errors",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Maybe: UNION [Text, `none], METHOD f RETURNS (y: Text) ERRORS [Maybe],",
         ),
         (
-            "an error defined twice in a scope",
-            "PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],",
+            "aliases including each other",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Read Errors: UNION [`a, Write Errors], TYPE ALIAS Write Errors: UNION [`b, Read Errors], METHOD f RETURNS (y: Text) ERRORS [Read Errors],",
         ),
         (
-            "a group joining an unknown group",
-            "PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,",
+            "an error listed twice through an alias",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`gone], METHOD f RETURNS (y: Text) ERRORS [Shared, Shared],",
         ),
         (
-            "a group without a name",
+            "an alias including an unknown alias",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a, Lost], METHOD f RETURNS (y: Text) ERRORS [Shared],",
+        ),
+        (
+            "a group of errors",
+            "PROTOCOL a VERSION 1, ERRORS x [`a] + y,",
+        ),
+        (
+            "errors outside a method",
             "PROTOCOL a VERSION 1, ERRORS [`gone],",
-        ),
-        (
-            "a group defined twice",
-            "PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],",
         ),
         (
             "a name before a method's errors",
             "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],",
         ),
         (
-            "errors in brackets after a group",
-            "PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],",
-        ),
-        (
-            "an operator other than `+` among errors",
-            "PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,",
+            "an operator after a method's errors",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a], METHOD f RETURNS (y: Text) ERRORS [`b] + Shared,",
         ),
         (
             "an error defined on its own",
@@ -371,11 +371,11 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a method",
-            "PROTOCOL a VERSION 1,\n\"Moves a file.\" METHOD move (path: Text) to (new path: Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1,\n\"Moves a file.\" METHOD move (path: Text) to (new path: Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a raw doc on a method",
-            "PROTOCOL a VERSION 1,\n\"\"\"\nMoves a file.\n\"\"\" METHOD move (path: Text) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1,\n\"\"\"\nMoves a file.\n\"\"\" METHOD move (path: Text) RETURNS NOTHING ERRORS [],",
         ),
         (
             "a quoted doc on a record",
@@ -396,10 +396,6 @@ fn a_doc_is_a_line_string() {
         (
             "a quoted doc on a type",
             "PROTOCOL a VERSION 1, \"A path.\" TYPE ALIAS Path: Text,",
-        ),
-        (
-            "a quoted doc on a group of errors",
-            "PROTOCOL a VERSION 1, \"Shared.\" ERRORS file errors [`missing],",
         ),
         (
             "a quoted doc on an error",
@@ -438,7 +434,7 @@ fn the_example_in_protocol_md_reads() {
 fn a_method_may_return_nothing() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        METHOD sign out RETURNS NOTHING,
+        METHOD sign out RETURNS NOTHING ERRORS [],
         METHOD trash (path: Text) RETURNS NOTHING ERRORS [`missing],",
     );
     let sign_out = schema.method("sign out").unwrap();
@@ -550,7 +546,7 @@ fn mistakes_in_a_default_are_diagnosed() {
         ),
         (
             "a default on a parameter",
-            "PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text),",
+            "PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [],",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -584,7 +580,7 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
             names (MAP: LIST: Text) DEFAULT names { \"b\" [\"c\"] },
             lights (MAP Shade) DEFAULT lights {},
         },
-        METHOD sizes (sizes: MAP Float) RETURNS (folder: Folder),",
+        METHOD sizes (sizes: MAP Float) RETURNS (folder: Folder) ERRORS [],",
     );
     let TypeKind::Record(fields) = &schema.types[1].kind else {
         panic!("folder is a record")

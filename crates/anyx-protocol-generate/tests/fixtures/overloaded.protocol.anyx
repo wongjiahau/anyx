@@ -18,16 +18,16 @@ METHOD tag (ids: LIST: File Id)
     ERRORS [`unknown (id: File Id)]
     EXAMPLES [tag ([] AS: LIST: File Id) RETURNS 0],
 
-READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float),
+READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [],
 
-READ ONLY METHOD scale (times: Integer) RETURNS (scaled: Integer),
+READ ONLY METHOD scale (times: Integer) RETURNS (scaled: Integer) ERRORS [],
 
-IDEMPOTENT METHOD hide (path: Text) RETURNS NOTHING UNDONE BY show (path: Text),
+IDEMPOTENT METHOD hide (path: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (path: Text),
 
-IDEMPOTENT METHOD hide (id: File Id) RETURNS NOTHING UNDONE BY show (id: File Id),
+IDEMPOTENT METHOD hide (id: File Id) RETURNS NOTHING ERRORS [] UNDONE BY show (id: File Id),
 
-IDEMPOTENT METHOD show (path: Text) RETURNS NOTHING,
+IDEMPOTENT METHOD show (path: Text) RETURNS NOTHING ERRORS [],
 
-IDEMPOTENT METHOD show (id: File Id) RETURNS NOTHING,
+IDEMPOTENT METHOD show (id: File Id) RETURNS NOTHING ERRORS [],
 
-METHOD paint (shade: Shade) RETURNS NOTHING,
+METHOD paint (shade: Shade) RETURNS NOTHING ERRORS [],

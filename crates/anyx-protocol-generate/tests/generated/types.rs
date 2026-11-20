@@ -30,9 +30,9 @@ TYPE ALIAS Tone: UNION [`chime, `silent],
 
 TYPE ALIAS Schedule: UNION [`never, `once at (at: Instant), `every (period: Duration)],
 
-METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule),
+METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [],
 
-METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer),
+METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [],
 
 METHOD snooze (reminder: Reminder) for (duration: Duration)
     RETURNS (reminders: LIST: Reminder)

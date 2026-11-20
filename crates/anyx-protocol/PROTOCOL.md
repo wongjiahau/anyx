@@ -25,7 +25,7 @@ TYPE ALIAS Colour: UNION [`dark, `light, `custom hue (hue: Float), `(base: Shade
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
-ERRORS file errors [
+TYPE ALIAS File Errors: UNION [
     # The owner moved this file to the trash.
     `trashed,
     `missing,
@@ -38,7 +38,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ERRORS [
         # Someone saved first. Apply your change to `content`, then write at `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
-    ] + file errors
+        File Errors,
+    ]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title" RETURNS 4,
@@ -159,13 +160,16 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
       signer: Signer,
   },
 
-  METHOD orders RETURNS (orders: Page of (Order)),
+  METHOD orders RETURNS (orders: Page of (Order)) ERRORS [],
   METHOD pay (order: Order Id)
-      RETURNS (outcome: (Receipt) or (Decline)),
+      RETURNS (outcome: (Receipt) or (Decline))
+      ERRORS [],
   METHOD pay all (orders: LIST Page of (Order Id))
-      RETURNS (outcomes: Page of ((Receipt) or (Decline))),
+      RETURNS (outcomes: Page of ((Receipt) or (Decline)))
+      ERRORS [],
   METHOD search (words: Text)
-      RETURNS (results: Page of ((Document) signed by (Person))),
+      RETURNS (results: Page of ((Document) signed by (Person)))
+      ERRORS [],
   TYPE ALIAS Orders: Page of (Order),
   ```
 
@@ -196,10 +200,11 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   name reads better: `RECORD Trashed File { file: File Summary, trashed at: Instant }`,
   not `RECORD (Item: TYPE) in trash since (When: TYPE)` used only as
   `(File Summary) in trash since (Instant)`.
-- **`METHOD shape RETURNS (name: Type) ERRORS errors`**: the method's
+- **`METHOD shape RETURNS (name: Type) ERRORS [errors]`**: the method's
   shape, what it returns, and the errors it may return. The returned value
-  has a name, which says what it is. `ERRORS` may be left out. A method with
-  nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
+  has a name, which says what it is. `ERRORS` is always written, so that a
+  reader sees a method's errors were declared up front: a method that
+  can't fail says `ERRORS []`. A method with nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
   or `IDEMPOTENT` may come before `METHOD`, and `UNDONE BY` after `ERRORS`:
   see [Effects](#effects).
 - **`EXAMPLES [example, …]`**, last in a method, shows how it is used. Each
@@ -211,17 +216,18 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   schema is checked against its examples, so that they can't go stale:
   each call must be a call of its method, and each outcome one the method
   may have. The guide and generated code show them.
-- **Errors** are written where they are used, in full: a shape like a
-  variant's, with its `#` doc before it. A method's `ERRORS` has its own
-  errors in brackets, then the groups it shares joined with `+`:
-  `` [`conflict at revision (revision: Integer)] + file errors ``, or a group
-  alone, `file errors`.
-- **`ERRORS name [`errors]`** defines a group of errors that methods share.
-  It may join other groups with `+`: `ERRORS export errors [`unreadable] +
-  file errors`. A group exists only to be shared; an error used by one
-  method goes in that method's brackets.
-- Each error is defined once in the protocol, in the brackets of the one method
-  or group that has it. To share an error, put it in a group.
+- **Errors** are variants, written in a method's `ERRORS` brackets with
+  their `#` docs before them, since an error says by its words what went
+  wrong: `` ERRORS [`conflict at revision (revision: Integer)] ``. Errors
+  that methods share are an alias of a union of variants, named among
+  them: `` TYPE ALIAS File Errors: UNION [`trashed, `missing] `` and
+  `` ERRORS [`conflict at revision (revision: Integer), File Errors] ``. Such
+  an alias may include another: `` TYPE ALIAS Export Errors: UNION
+  [`unreadable, File Errors] ``. Nothing else goes in `ERRORS`: a value
+  an error carries goes in a slot of its variant.
+- A method's errors are flattened: its own variants and those of each
+  alias it names, in order, each once. The generated code has one error
+  type for each method, holding them all.
 - **Overloads:** methods of a protocol may share a shape and differ in their
   parameters' types, `METHOD tag (paths: LIST Text)` and `METHOD tag (ids:
   LIST File Id)`. A call runs the one whose parameters have its
@@ -247,7 +253,8 @@ TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
 RECORD Settings { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
-    RETURNS (value: Integer . WHERE [10 <= _ < 30]),
+    RETURNS (value: Integer . WHERE [10 <= _ < 30])
+    ERRORS [],
 ```
 
 The dot supplies the base type as the first argument; parentheses around the
@@ -320,7 +327,8 @@ A method can declare a `REQUIRES` clause before `RETURNS` and an
 METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer)
     REQUIRES [1 <= revision < limit]
     RETURNS (new revision: Integer)
-    ENSURES [new revision =: revision + 1],
+    ENSURES [new revision =: revision + 1]
+    ERRORS [],
 ```
 
 Conditions share the refinement predicate language. They refer to the
@@ -347,7 +355,8 @@ READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
         settings . has no repeats,
         settings . has at most one of [`any case, `smart case],
     ]
-    RETURNS (paths: LIST Text),
+    RETURNS (paths: LIST Text)
+    ERRORS [],
 ```
 
 - `items . has no repeats` holds when no two items are equal.
@@ -484,7 +493,8 @@ at such steps, which makes it worse.
 ```anyx
 ## Not this: the client works out what a transfer changes, and in what order.
 METHOD update account (id: Text) fields (fields: account fields)
-    RETURNS (account: account),
+    RETURNS (account: account)
+    ERRORS [],
 
 ## This: the server does the whole transfer, or none of it.
 METHOD transfer (amount: Integer) cents from (source: Text) to (target: Text)
@@ -586,27 +596,27 @@ USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
-PUBLIC ERRORS common errors [`missing],
+PUBLIC TYPE ALIAS Common Errors: UNION [`missing],
 
 ## notes/files.protocol.anyx
 USE "./common.protocol.anyx",
-PUBLIC ERRORS file errors [`trashed] + common errors,
-METHOD read (path: Text) RETURNS (text: Text) ERRORS file errors,
+PUBLIC TYPE ALIAS File Errors: UNION [`trashed, Common Errors],
+METHOD read (path: Text) RETURNS (text: Text) ERRORS [File Errors],
 
 ## notes/files/export.protocol.anyx
 USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
-    ERRORS [`unreadable (diagnostics: LIST Diagnostic)] + file errors,
+    ERRORS [`unreadable (diagnostics: LIST Diagnostic), File Errors],
 ```
 
 - `USE "relative path"` is the only import form. It includes that file in
-  the protocol and makes its `PUBLIC` types and error groups visible in the
+  the protocol and makes its `PUBLIC` types visible in the
   importing file, by their plain names. Private declarations are visible only
   in their own file. All methods in included files join the protocol.
 - There is no re-export: importing `files.protocol.anyx` does not make its imports
   visible. Each file must directly import the declarations it uses.
-- Every type and error-group name must be unique across the entire protocol,
+- Every type name must be unique across the entire protocol,
   including private declarations. Duplicate diagnostics name both files.
   Method shapes must be unique except for overloads distinguished by parameter
   types. Files and folders do not affect names.
@@ -629,7 +639,7 @@ names. Shared types are copied into each protocol's generated code, so outputs
 stand alone: `notes::Session` and `billing::Session` are distinct Rust types.
 
 To migrate a folder schema, add explicit `USE` lines, remove path prefixes
-from calls and type/error-group references, and rename duplicate declarations.
+from calls and type references, and rename duplicate declarations.
 Checker diagnostics identify missing imports, private names and collisions.
 
 ### The prelude

@@ -48,8 +48,8 @@ fn poentaros_examples_read_with_their_docs_values_and_outcomes() {
 fn an_example_may_go_without_a_doc_and_return_nothing() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS 3],
-METHOD ping RETURNS NOTHING EXAMPLES [
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [add 1 to 2 RETURNS 3],
+METHOD ping RETURNS NOTHING ERRORS [] EXAMPLES [
     # Always answers.
     ping RETURNS NOTHING,
 ],
@@ -69,7 +69,7 @@ fn examples_are_formatted_one_per_line_after_a_break() {
         "PROTOCOL t VERSION 1,
 METHOD add (first: Integer) to (second: Integer) RETURNS (total: Integer) ERRORS [`overflow] EXAMPLES [add 1 to 2 RETURNS 3, # Too big.
 add 9223372036854775807 to 1 ERROR `overflow],
-METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
+METHOD ping RETURNS NOTHING ERRORS [] EXAMPLES [ping RETURNS NOTHING],
 ",
     )
     .unwrap();
@@ -86,7 +86,7 @@ METHOD add (first: Integer) to (second: Integer)
         # Too big.
         add 9223372036854775807 to 1 ERROR `overflow,
     ],
-METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS NOTHING],
+METHOD ping RETURNS NOTHING ERRORS [] EXAMPLES [ping RETURNS NOTHING],
 "
     );
 }
@@ -100,7 +100,7 @@ fn an_imported_method_example_uses_its_flat_name() {
         ),
         (
             "files.protocol.anyx",
-            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [
+            "METHOD read (path: Text) RETURNS (content: Text) ERRORS [] EXAMPLES [
     # Reading a file.
     read \"a\" RETURNS \"x\",
 ],",
@@ -118,7 +118,7 @@ fn an_imported_method_example_uses_its_flat_name() {
         ),
         (
             "files.protocol.anyx",
-            "METHOD read (path: Text) RETURNS (content: Text) EXAMPLES [files/read \"a\" RETURNS \"x\"],",
+            "METHOD read (path: Text) RETURNS (content: Text) ERRORS [] EXAMPLES [files/read \"a\" RETURNS \"x\"],",
         ),
     ];
     let diagnostics = parse_files(&files).unwrap_err();
@@ -133,28 +133,28 @@ fn mistakes_in_examples_are_diagnosed() {
     let cases = [
         // A call of another method.
         "PROTOCOL t VERSION 1,
-METHOD ping RETURNS NOTHING,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [ping RETURNS NOTHING],
+METHOD ping RETURNS NOTHING ERRORS [],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [ping RETURNS NOTHING],
 ",
         // An argument of the wrong type.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add \"1\" to 2 RETURNS 3],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [add \"1\" to 2 RETURNS 3],
 ",
         // A value it doesn't return.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS \"3\"],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [add 1 to 2 RETURNS \"3\"],
 ",
         // A value from a method that returns nothing.
         "PROTOCOL t VERSION 1,
-METHOD ping RETURNS NOTHING EXAMPLES [ping RETURNS 3],
+METHOD ping RETURNS NOTHING ERRORS [] EXAMPLES [ping RETURNS 3],
 ",
         // `NOTHING` from a method that returns a value.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 RETURNS NOTHING],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [add 1 to 2 RETURNS NOTHING],
 ",
         // An error from a method without errors.
         "PROTOCOL t VERSION 1,
-METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) EXAMPLES [add 1 to 2 ERROR `overflow],
+METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [] EXAMPLES [add 1 to 2 ERROR `overflow],
 ",
         // An error that isn't one of the method's.
         "PROTOCOL t VERSION 1,
@@ -162,11 +162,11 @@ METHOD add (a: Integer) to (b: Integer) RETURNS (sum: Integer) ERRORS [`overflow
 ",
         // An empty list.
         "PROTOCOL t VERSION 1,
-METHOD ping RETURNS NOTHING EXAMPLES [],
+METHOD ping RETURNS NOTHING ERRORS [] EXAMPLES [],
 ",
         // Examples aren't checked while the schema has other mistakes.
         "PROTOCOL t VERSION 1,
-METHOD add (a: unknown) RETURNS NOTHING EXAMPLES [add 1 RETURNS 3],
+METHOD add (a: unknown) RETURNS NOTHING ERRORS [] EXAMPLES [add 1 RETURNS 3],
 ",
     ];
     let rendered: Vec<String> = cases.iter().map(|source| diagnostics(source)).collect();
@@ -181,7 +181,7 @@ fn an_example_reads_its_values_with_their_defaults() {
     let schema = schema(
         "PROTOCOL t VERSION 1,
 RECORD Reminder { at: Instant, times (Integer) DEFAULT times 3 },
-METHOD next RETURNS (reminder: Reminder) EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
+METHOD next RETURNS (reminder: Reminder) ERRORS [] EXAMPLES [next RETURNS { at \"2026-11-14T06:00:00Z\" }],
 ",
     );
     let Outcome::Value(Value::Record(fields)) = &schema.methods[0].examples[0].outcome else {

@@ -38,7 +38,7 @@ RECORD Diagnostic {
     message: Text,
 },
 
-ERRORS file errors [
+TYPE ALIAS File Errors: UNION [
     # The owner moved this file to the trash. Ask them to restore it.
     `trashed,
     # No file has this path. It may have been renamed: run `list files` to
@@ -46,15 +46,17 @@ ERRORS file errors [
     `missing,
 ],
 
-ERRORS score errors [
+TYPE ALIAS Score Errors: UNION [
     # The score doesn't parse. Nothing was saved.
     `rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
-READ ONLY METHOD list files RETURNS files: LIST File Summary,
+READ ONLY METHOD list files
+    RETURNS (files: LIST File Summary)
+    ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -63,7 +65,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
-    ] + score errors + file errors
+        Score Errors,
+        File Errors,
+    ]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
@@ -79,12 +83,13 @@ METHOD create (path: Text) content (content: Text)
         `already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
         `invalid path (message: Text),
-    ] + score errors,
+        Score Errors,
+    ],
 
 # The score as a Standard MIDI File.
 READ ONLY METHOD export midi (path: Text)
     RETURNS (midi: Bytes)
-    ERRORS file errors,
+    ERRORS [File Errors],
 "#,
 }];
 
@@ -208,6 +213,76 @@ impl FromValue for Diagnostic {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum FileErrors {
+    /// The owner moved this file to the trash. Ask them to restore it.
+    Trashed,
+    /// No file has this path. It may have been renamed: run `list files` to
+    /// see the exact paths.
+    Missing,
+}
+
+impl IntoValue for FileErrors {
+    fn into_value(self) -> Value {
+        match self {
+            FileErrors::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            FileErrors::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for FileErrors {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "trashed" => FileErrors::Trashed,
+            "missing" => FileErrors::Missing,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ScoreErrors {
+    /// The score doesn't parse. Nothing was saved.
+    Rejected { diagnostics: Vec<Diagnostic> },
+}
+
+impl IntoValue for ScoreErrors {
+    fn into_value(self) -> Value {
+        match self {
+            ScoreErrors::Rejected { diagnostics } => Value::Variant {
+                shape: "rejected _".to_string(),
+                arguments: vec![diagnostics.into_value()],
+            },
+        }
+    }
+}
+
+impl FromValue for ScoreErrors {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "rejected _" => ScoreErrors::Rejected {
+                diagnostics: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
+        })
+    }
+}
+
 /// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
@@ -315,6 +390,15 @@ impl FromValue for ReadError {
     }
 }
 
+impl From<FileErrors> for ReadError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => ReadError::Trashed,
+            FileErrors::Missing => ReadError::Missing,
+        }
+    }
+}
+
 /// The errors of `write _ at revision _ content _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WriteAtRevisionContentError {
@@ -378,6 +462,25 @@ impl FromValue for WriteAtRevisionContentError {
     }
 }
 
+impl From<ScoreErrors> for WriteAtRevisionContentError {
+    fn from(error: ScoreErrors) -> Self {
+        match error {
+            ScoreErrors::Rejected { diagnostics } => {
+                WriteAtRevisionContentError::Rejected { diagnostics }
+            }
+        }
+    }
+}
+
+impl From<FileErrors> for WriteAtRevisionContentError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => WriteAtRevisionContentError::Trashed,
+            FileErrors::Missing => WriteAtRevisionContentError::Missing,
+        }
+    }
+}
+
 /// The errors of `create _ content _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CreateContentError {
@@ -429,6 +532,14 @@ impl FromValue for CreateContentError {
     }
 }
 
+impl From<ScoreErrors> for CreateContentError {
+    fn from(error: ScoreErrors) -> Self {
+        match error {
+            ScoreErrors::Rejected { diagnostics } => CreateContentError::Rejected { diagnostics },
+        }
+    }
+}
+
 /// The errors of `export midi _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExportMidiError {
@@ -465,6 +576,15 @@ impl FromValue for ExportMidiError {
             "missing" => ExportMidiError::Missing,
             _ => return None,
         })
+    }
+}
+
+impl From<FileErrors> for ExportMidiError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => ExportMidiError::Trashed,
+            FileErrors::Missing => ExportMidiError::Missing,
+        }
     }
 }
 

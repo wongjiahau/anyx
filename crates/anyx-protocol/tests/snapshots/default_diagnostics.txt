@@ -17,7 +17,7 @@ schema:1:47: found the word `OPTIONAL`; expected the word `LIST`, `MAP` or `UNIO
                                                 ^^^^^^^^
 
 == a default on a parameter
-PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text),
+PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [],
 schema:1:40: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
-  PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text),
+  PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [],
                                          ^^^^^^^^^^^^^^^^^^

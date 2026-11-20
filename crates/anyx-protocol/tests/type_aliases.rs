@@ -15,7 +15,7 @@ fn an_alias_is_the_type_it_stands_for() {
         # Many paths.
         TYPE ALIAS Paths: LIST Text,
         TYPE ALIAS Payments: Page of (Payment),
-        METHOD list (paths: Paths) RETURNS (payments: Payments),",
+        METHOD list (paths: Paths) RETURNS (payments: Payments) ERRORS [],",
     );
     let list = schema.method("list _").unwrap();
     assert_eq!(
@@ -43,8 +43,8 @@ fn a_generic_alias_puts_its_arguments_in_place_of_its_parameters() {
         RECORD Box of (Item: TYPE) { pairs: (Item) Pair },
         RECORD Entry from (Key: TYPE) to (Value: TYPE) { key: Key, value: Value },
         TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): LIST: Entry from (Key) to (Value),
-        METHOD a (x: (Integer) Pair) RETURNS (y: Table from (Text) to (Integer)),
-        METHOD b (x: Box of (Text)) RETURNS NOTHING,",
+        METHOD a (x: (Integer) Pair) RETURNS (y: Table from (Text) to (Integer)) ERRORS [],
+        METHOD b (x: Box of (Text)) RETURNS NOTHING ERRORS [],",
     );
     let a = schema.method("a _").unwrap();
     assert_eq!(
@@ -68,7 +68,7 @@ fn a_generic_alias_puts_its_arguments_in_place_of_its_parameters() {
 fn an_alias_may_be_used_before_it_is_declared() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        METHOD a (x: Names) RETURNS NOTHING,
+        METHOD a (x: Names) RETURNS NOTHING ERRORS [],
         TYPE ALIAS Names: LIST Name,
         TYPE ALIAS Name: Text,",
     );
@@ -91,7 +91,7 @@ fn a_public_alias_is_shared_by_a_direct_import() {
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (paths: Paths) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (paths: Paths) RETURNS (text: Text) ERRORS [],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -104,7 +104,7 @@ fn a_public_alias_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text),",
+            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -147,7 +147,7 @@ fn mistakes_in_type_aliases_are_diagnosed() {
         ),
         (
             "a use with the wrong number of arguments",
-            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) Pair: LIST Item, METHOD a (x: Pair) RETURNS NOTHING,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) Pair: LIST Item, METHOD a (x: Pair) RETURNS NOTHING ERRORS [],",
         ),
     ];
     let rendered: Vec<String> = cases

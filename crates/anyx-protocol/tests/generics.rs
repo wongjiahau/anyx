@@ -33,18 +33,19 @@ TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
 
 TYPE ALIAS Orders: page of (Order),
 
-METHOD list orders RETURNS (orders: page of (Order)),
+METHOD list orders RETURNS (orders: page of (Order)) ERRORS [],
 
-METHOD pay (order: Integer) RETURNS (outcome: (Text) or (Decline))
+METHOD pay (order: Integer) RETURNS (outcome: (Text) or (Decline)) ERRORS []
     EXAMPLES [
         pay 7 RETURNS `done \"receipt 1\",
         pay 8 RETURNS `failed (`card expired),
     ],
 
 METHOD pay all (orders: LIST Integer)
-    RETURNS (outcomes: page of ((Text) or (Decline))),
+    RETURNS (outcomes: page of ((Text) or (Decline)))
+    ERRORS [],
 
-METHOD history RETURNS (orders: Orders),
+METHOD history RETURNS (orders: Orders) ERRORS [],
 ";
 
 fn order(number: i64, total: i64) -> Value {
@@ -168,7 +169,7 @@ fn a_value_of_a_generic_type_is_checked_against_its_arguments() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
 RECORD page of (Item: TYPE) { items: LIST: Item },
-METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer),
+METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer) ERRORS [],
 ",
     );
     let call = Call {
@@ -231,7 +232,7 @@ fn super_schema() -> anyx_protocol::Schema {
     schema(
         "PROTOCOL shop VERSION 1,
 RECORD page of (Item: TYPE) { items: LIST: Item },
-METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer),
+METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer) ERRORS [],
 ",
     )
 }
@@ -245,7 +246,7 @@ RECORD Search {
     first (page of (Text)) DEFAULT first { items [\"a\"] },
     pages (LIST page of (Integer)) DEFAULT pages [],
 },
-METHOD find (search: Search) RETURNS (found: page of (Text))
+METHOD find (search: Search) RETURNS (found: page of (Text)) ERRORS []
     EXAMPLES [find ({} AS: Search) RETURNS { items [\"a\"], size 3 }],
 ",
     );
@@ -272,7 +273,7 @@ METHOD find (search: Search) RETURNS (found: page of (Text))
             "PROTOCOL shop VERSION 1,
 RECORD page of (Item: TYPE) { items: LIST: Item },
 RECORD Search { first (page of (Text)) DEFAULT first { items [3] } },
-METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\"a\"] }],
+METHOD find RETURNS (found: page of (Integer)) ERRORS [] EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
         "schema:3:63: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
@@ -283,12 +284,12 @@ METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\
         diagnostics(
             "PROTOCOL shop VERSION 1,
 RECORD page of (Item: TYPE) { items: LIST: Item },
-METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\"a\"] }],
+METHOD find RETURNS (found: page of (Integer)) ERRORS [] EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
-        "schema:3:80: in an example of `find`: in `items`: found a string; expected a whole number, as in `3`
-  METHOD find RETURNS (found: page of (Integer)) EXAMPLES [find RETURNS { items [\"a\"] }],
-                                                                                 ^^^"
+        "schema:3:90: in an example of `find`: in `items`: found a string; expected a whole number, as in `3`
+  METHOD find RETURNS (found: page of (Integer)) ERRORS [] EXAMPLES [find RETURNS { items [\"a\"] }],
+                                                                                           ^^^"
     );
 }
 
@@ -305,7 +306,7 @@ fn a_public_generic_type_is_shared_by_a_direct_import() {
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", RECORD File { path: Text }, METHOD list RETURNS (files: page of (File)),",
+            "USE \"./common.protocol.anyx\", RECORD File { path: Text }, METHOD list RETURNS (files: page of (File)) ERRORS [],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -319,7 +320,7 @@ fn a_public_generic_type_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", RECORD (Page: TYPE) boxed { value: Page }, METHOD list RETURNS (files: secret of (Text)), METHOD all RETURNS (files: page (Text)),",
+            "USE \"./common.protocol.anyx\", RECORD (Page: TYPE) boxed { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [], METHOD all RETURNS (files: page (Text)) ERRORS [],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -351,14 +352,14 @@ RECORD box of (Item: TYPE) sealed { item: Item },
 ## The same words as a type that isn't generic.
 RECORD Page { number: Integer },
 
-METHOD list RETURNS (people: page of (Person)),
-METHOD history RETURNS (history: (Document) history),
-METHOD parse (input: Text) RETURNS (parsed: (Integer) or (Text)),
-METHOD table RETURNS (table: table from (Text) to (Person)),
-METHOD search (query: Text) RETURNS (results: page of ((Document) signed by (Person))),
-METHOD sealed RETURNS (box: box of (LIST Text) sealed),
-METHOD first page RETURNS (page: Page),
-METHOD nested RETURNS (pages: LIST page of ((page of (Integer)) or (MAP: (Text) history))),
+METHOD list RETURNS (people: page of (Person)) ERRORS [],
+METHOD history RETURNS (history: (Document) history) ERRORS [],
+METHOD parse (input: Text) RETURNS (parsed: (Integer) or (Text)) ERRORS [],
+METHOD table RETURNS (table: table from (Text) to (Person)) ERRORS [],
+METHOD search (query: Text) RETURNS (results: page of ((Document) signed by (Person))) ERRORS [],
+METHOD sealed RETURNS (box: box of (LIST Text) sealed) ERRORS [],
+METHOD first page RETURNS (page: Page) ERRORS [],
+METHOD nested RETURNS (pages: LIST page of ((page of (Integer)) or (MAP: (Text) history))) ERRORS [],
 ";
 
 #[test]
@@ -613,11 +614,11 @@ fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
         "{formatted}"
     );
     assert!(
-        formatted.contains("METHOD list orders RETURNS orders: page of (Order),"),
+        formatted.contains("METHOD list orders RETURNS (orders: page of (Order)) ERRORS [],"),
         "{formatted}"
     );
     assert!(
-        formatted.contains("RETURNS outcomes: page of ((Text) or (Decline)),"),
+        formatted.contains("RETURNS (outcomes: page of ((Text) or (Decline))) ERRORS [],"),
         "{formatted}"
     );
     // Formatting changes nothing a schema means.
@@ -638,10 +639,6 @@ fn mistakes_in_generic_types_are_diagnosed() {
         (
             "a slot of a declaration holds a type parameter, not a type",
             "PROTOCOL a VERSION 1, RECORD page of (Item: Text) { items: LIST: Item },",
-        ),
-        (
-            "an error group can't be generic",
-            "PROTOCOL a VERSION 1, ERRORS failures of (Item: TYPE) [missing (item: Item)],",
         ),
         (
             "the braces come last, once, and the name has words",
@@ -665,15 +662,15 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a generic type without its arguments, and an argument for a type that isn't generic",
-            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box), METHOD b RETURNS (x: Row (Text)),",
+            "PROTOCOL a VERSION 1, RECORD box of (Item: TYPE) { value: Item }, RECORD Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [], METHOD b RETURNS (x: Row (Text)) ERRORS [],",
         ),
         (
             "the wrong number of arguments, or the slots in the wrong places",
-            "PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [], METHOD c RETURNS (x: (Text) or) ERRORS [],",
         ),
         (
             "a type argument that names no type",
-            "PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)),",
+            "PROTOCOL a VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [],",
         ),
         (
             "a generic type holding itself through an argument",
@@ -704,8 +701,8 @@ fn a_generic_type_may_hold_itself_through_a_list_with_its_own_parameters() {
         "PROTOCOL a VERSION 1,
 RECORD tree of (Item: TYPE) { value: Item, children: LIST: tree of (Item) },
 RECORD (Item: TYPE) chain { value: Item, rest: MAP: (Item) chain },
-METHOD tree RETURNS (tree: tree of (Text)),
-METHOD chain RETURNS (chain: (Integer) chain),
+METHOD tree RETURNS (tree: tree of (Text)) ERRORS [],
+METHOD chain RETURNS (chain: (Integer) chain) ERRORS [],
 ",
     );
     let value = returned(

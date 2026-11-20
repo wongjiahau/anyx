@@ -107,7 +107,7 @@ RECORD Details {
     modified: Instant,
 },
 
-ERRORS fd errors [
+TYPE ALIAS Fd Errors: UNION [
     `(path: Text) does not exist,
     `invalid pattern (message: Text),
     `invalid glob (message: Text),
@@ -117,7 +117,7 @@ ERRORS fd errors [
 
 READ ONLY METHOD find (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (paths: LIST Text)
-    ERRORS fd errors
+    ERRORS [Fd Errors]
     EXAMPLES [
         find "\\.rs$" in ["src"] with { only [`file] } RETURNS ["src/lib.rs", "src/main.rs"],
         find "(" in ["src"] with { hidden } ERROR `invalid pattern "unclosed group",
@@ -126,58 +126,58 @@ READ ONLY METHOD find (pattern: Text) in (paths: LIST Text) with (search: Search
 # In the working directory.
 READ ONLY METHOD find (pattern: Text) with (search: Search)
     RETURNS (paths: LIST Text)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # As fd searches by default.
 READ ONLY METHOD find (pattern: Text) in (paths: LIST Text)
     RETURNS (paths: LIST Text)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # In the working directory, as fd searches by default.
 READ ONLY METHOD find (pattern: Text)
     RETURNS (paths: LIST Text)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # What `find` finds, with each file's details.
 READ ONLY METHOD details of (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (files: LIST Details)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # What `find` finds, with each file's details. In the working directory.
 READ ONLY METHOD details of (pattern: Text) with (search: Search)
     RETURNS (files: LIST Details)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # What `find` finds, with each file's details. As fd searches by default.
 READ ONLY METHOD details of (pattern: Text) in (paths: LIST Text)
     RETURNS (files: LIST Details)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # What `find` finds, with each file's details. In the working directory, as
 # fd searches by default.
 READ ONLY METHOD details of (pattern: Text)
     RETURNS (files: LIST Details)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # Whether `find` finds anything. It stops at the first.
 READ ONLY METHOD any match of (pattern: Text) in (paths: LIST Text) with (search: Search)
     RETURNS (found: Boolean)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # Whether `find` finds anything. It stops at the first. In the working
 # directory.
 READ ONLY METHOD any match of (pattern: Text) with (search: Search)
     RETURNS (found: Boolean)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # Whether `find` finds anything. It stops at the first. As fd searches by
 # default.
 READ ONLY METHOD any match of (pattern: Text) in (paths: LIST Text)
     RETURNS (found: Boolean)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],
 
 # Whether `find` finds anything. It stops at the first. In the working
 # directory, as fd searches by default.
 READ ONLY METHOD any match of (pattern: Text)
     RETURNS (found: Boolean)
-    ERRORS fd errors,
+    ERRORS [Fd Errors],

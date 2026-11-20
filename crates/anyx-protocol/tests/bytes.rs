@@ -9,8 +9,8 @@ use anyx_protocol::{
 use common::schema;
 
 const FILES: &str = "PROTOCOL a VERSION 1,
-METHOD export (path: Text) RETURNS (file: Bytes),
-METHOD upload (file: Bytes) RETURNS (size: Integer),";
+METHOD export (path: Text) RETURNS (file: Bytes) ERRORS [],
+METHOD upload (file: Bytes) RETURNS (size: Integer) ERRORS [],";
 
 /// Every byte value, so no byte is lost on the way.
 fn every_byte() -> Vec<u8> {

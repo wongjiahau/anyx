@@ -154,7 +154,7 @@ fn names_that_become_the_same_name_are_rejected() {
         "found the type `Record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean)"),
+        error("PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean) ERRORS []"),
         "found `send _`, which becomes the method `send`, like the client's `send`; expected names that stay distinct in the generated code, so rename one"
     );
 }
@@ -223,7 +223,7 @@ fn the_typescript_client_of_overloads_is_up_to_date() {
 fn an_overload_whose_name_another_method_has_is_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, METHOD tag (a: Text) RETURNS NOTHING, METHOD tag (a: Integer) RETURNS NOTHING, METHOD tag with text RETURNS NOTHING,"
+            "PROTOCOL p VERSION 1, METHOD tag (a: Text) RETURNS NOTHING ERRORS [], METHOD tag (a: Integer) RETURNS NOTHING ERRORS [], METHOD tag with text RETURNS NOTHING ERRORS [],"
         ),
         "found `tag with text`, which becomes the method `tag_with_text`, like `tag (Text)`; expected names that stay distinct in the generated code, so rename one"
     );
