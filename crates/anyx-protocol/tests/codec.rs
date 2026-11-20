@@ -452,7 +452,8 @@ const TIMERS: &str = "PROTOCOL a VERSION 1,
 RECORD Timer { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant) ERRORS [],
 METHOD set (timer: Timer) RETURNS (left: Duration) ERRORS [],
-METHOD list RETURNS (durations: LIST Duration) ERRORS [],";
+METHOD list RETURNS (durations: LIST Duration) ERRORS [],
+METHOD snooze (duration: Duration?) RETURNS (left: Duration) ERRORS [],";
 
 fn instant(text: &str) -> Value {
     let milliseconds = |at: &str| -> u64 {
@@ -549,6 +550,7 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
         "wait (1 hour 30 minutes) until \"2026-11-14T06:00:08Z\"",
         "wait (-1 hours) until \"2026-11-14T06:00:08Z\"",
         "wait (minutes) until \"2026-11-14T06:00:08Z\"",
+        "snooze (1 hour)",
         "wait (5 minutes) until \"2026-11-14 06:00:08\"",
         "wait (5 minutes) until \"2026-11-14T06:00:08+08:00\"",
         "wait (5 minutes) until 1794636008",

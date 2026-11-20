@@ -19,6 +19,9 @@ wait (-1 hours) until "2026-11-14T06:00:08Z"
 wait (minutes) until "2026-11-14T06:00:08Z"
 => 1:7: in `duration` of `wait _ until _`: found the call `minutes`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
 
+snooze (1 hour)
+=> 1:9: in `duration` of `snooze _`: found the call `_ hour`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`; write `hours` for every count, as in `1 hours`
+
 wait (5 minutes) until "2026-11-14 06:00:08"
 => 1:24: in `instant` of `wait _ until _`: found a string; expected an instant in UTC in the string, as in `"2026-11-14T06:00:08.000Z"`
 

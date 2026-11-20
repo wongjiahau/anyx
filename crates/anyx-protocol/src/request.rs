@@ -199,6 +199,14 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
         }
         (Type::Union(_), _) => match schema.member_written_as(expected, &written(value)) {
             Some(member) => decode(schema, member, value),
+            // A call that is no member's way of writing it, in a union with
+            // a duration, is a mistaken duration far more often than
+            // anything else: say how to write one, as `Duration` alone does.
+            None if matches!(value, Syntax::Call(_))
+                && expected.members().contains(&&Type::Duration) =>
+            {
+                decode(schema, &Type::Duration, value)
+            }
             None => Err(match unmarked_variant(schema, expected, value) {
                 Some(text) => Mismatch {
                     span: value.span(),
