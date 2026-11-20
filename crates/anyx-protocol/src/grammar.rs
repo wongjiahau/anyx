@@ -205,7 +205,7 @@ pub struct Variant {
 #[derive(Clone, Debug, PartialEq)]
 pub struct VariantBody {
     pub name: CallName,
-    pub arguments: Vec<Parameter>,
+    pub arguments: Vec<ShapePart>,
     pub span: Span,
 }
 
@@ -241,6 +241,7 @@ pub enum MethodReturns {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub doc: Option<Spanned<StringLiteral>>,
+    pub intrinsic: Option<Span>,
     pub shape: Shape,
     pub returns: Returns,
     pub span: Span,
@@ -252,7 +253,7 @@ pub struct Condition {
     pub span: Span,
 }
 
-pub type Undo = Shape;
+pub type Undo = FixedShape;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Examples {
@@ -277,6 +278,26 @@ pub struct ErrorList {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
+    pub name: CallName,
+    pub arguments: Vec<ShapePart>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShapePart {
+    Parameter(Parameter),
+    Optional(Spanned<OptionalPart>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OptionalPart {
+    pub part: FixedShape,
+    pub default: Node,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FixedShape {
     pub name: CallName,
     pub arguments: Vec<Parameter>,
     pub span: Span,
@@ -476,6 +497,15 @@ impl Example {
             Example::ReturnsNothing { span, .. }
             | Example::Returns { span, .. }
             | Example::Error { span, .. } => *span,
+        }
+    }
+}
+
+impl ShapePart {
+    pub fn span(&self) -> Span {
+        match self {
+            ShapePart::Parameter(value) => value.span,
+            ShapePart::Optional(value) => value.span,
         }
     }
 }
@@ -776,6 +806,7 @@ impl support::Errors for MethodReturns {
 impl support::Errors for Function {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
+        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.shape, found);
         support::Errors::errors(&self.returns, found);
     }
@@ -818,6 +849,29 @@ impl support::Errors for ErrorList {
 }
 
 impl support::Errors for Shape {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for ShapePart {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            ShapePart::Parameter(value) => support::Errors::errors(value, found),
+            ShapePart::Optional(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for OptionalPart {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.part, found);
+        support::Errors::errors(&self.default, found);
+    }
+}
+
+impl support::Errors for FixedShape {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
@@ -1338,7 +1392,7 @@ pub fn decode_variant_body(node: &Node) -> Result<VariantBody, DecodeError> {
     let mut arguments = support::arguments(node, arguments);
     let decoded = VariantBody {
         name,
-        arguments: arguments.zero_or_more(decode_parameter),
+        arguments: arguments.zero_or_more(decode_shape_part),
         span: node.span,
     };
     arguments.finish()?;
@@ -1470,6 +1524,14 @@ pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
     let mut parts = support::call(node, "the call `_? FUNCTION _ RETURNS _`")?;
     let decoded = Function {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
+        intrinsic: if parts
+            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
+            .is_some()
+        {
+            Some(parts.word_span("INTRINSIC")?)
+        } else {
+            None
+        },
         shape: parts.word("FUNCTION")?.one(decode_shape, "a shape")?,
         returns: parts.word("RETURNS")?.one(decode_returns, "returns")?,
         span: node.span,
@@ -1489,7 +1551,7 @@ pub fn decode_condition(node: &Node) -> Result<Condition, DecodeError> {
 }
 
 pub fn decode_undo(node: &Node) -> Result<Undo, DecodeError> {
-    decode_shape(node)
+    decode_fixed_shape(node)
 }
 
 pub fn decode_examples(node: &Node) -> Result<Examples, DecodeError> {
@@ -1563,6 +1625,49 @@ pub fn decode_shape(node: &Node) -> Result<Shape, DecodeError> {
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Shape {
+        name,
+        arguments: arguments.zero_or_more(decode_shape_part),
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_shape_part(node: &Node) -> Result<ShapePart, DecodeError> {
+    decode_parameter(node)
+        .map(ShapePart::Parameter)
+        .or_else(|error| error.or(decode_shape_part_optional(node).map(ShapePart::Optional)))
+}
+
+fn decode_shape_part_optional(node: &Node) -> Result<Spanned<OptionalPart>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.one(decode_optional_part, "an optional part")?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+pub fn decode_optional_part(node: &Node) -> Result<OptionalPart, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = OptionalPart {
+        part: parts.one(decode_fixed_shape, "a fixed shape")?,
+        default: parts.word("DEFAULT")?.one(support::any_node, "a node")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_fixed_shape(node: &Node) -> Result<FixedShape, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| !name.split(' ').any(anyx::is_keyword),
+        "a call whose name has no keyword",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = FixedShape {
         name,
         arguments: arguments.zero_or_more(decode_parameter),
         span: node.span,

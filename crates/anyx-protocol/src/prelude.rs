@@ -13,6 +13,7 @@ use anyx::NamePart;
 
 use crate::grammar as ast;
 use crate::schema::Type;
+use crate::value::Value;
 
 /// The name the prelude's diagnostics are under.
 pub const PATH: &str = "prelude.protocol.anyx";
@@ -181,8 +182,9 @@ pub(crate) fn declarations() -> ast::Document {
     static DECLARATIONS: LazyLock<ast::Document> = LazyLock::new(|| {
         let mut document = document().expect("the prelude parses").clone();
         functions();
-        document.definition.retain(|definition| {
-            !is_intrinsic(definition) && !matches!(definition, ast::Definition::Function(_))
+        document.definition.retain(|definition| match definition {
+            ast::Definition::Function(function) => function.intrinsic.is_some(),
+            _ => !is_intrinsic(definition),
         });
         document
     });
@@ -340,7 +342,9 @@ fn functions() -> &'static std::collections::HashMap<String, DeclaredFunction> {
         LazyLock::new(|| {
             let mut functions = std::collections::HashMap::new();
             for definition in &document().expect("the prelude parses").definition {
-                if let ast::Definition::Function(function) = definition {
+                if let ast::Definition::Function(function) = definition
+                    && function.intrinsic.is_none()
+                {
                     let shape = &function.shape.name.text;
                     let implementation = Function::implementation(shape).unwrap_or_else(|| {
                         panic!("no implementation of prelude FUNCTION `{shape}`")
@@ -349,6 +353,12 @@ fn functions() -> &'static std::collections::HashMap<String, DeclaredFunction> {
                         .shape
                         .arguments
                         .iter()
+                        .flat_map(|part| match part {
+                            ast::ShapePart::Parameter(parameter) => vec![parameter],
+                            ast::ShapePart::Optional(optional) => {
+                                optional.value.part.arguments.iter().collect()
+                            }
+                        })
                         .map(|p| signature_type(&p.r#type))
                         .collect::<Vec<_>>();
                     let returns = signature_type(&function.returns.r#type);
@@ -373,6 +383,25 @@ fn functions() -> &'static std::collections::HashMap<String, DeclaredFunction> {
             functions
         });
     &FUNCTIONS
+}
+
+/// The value a call of the `INTRINSIC FUNCTION` of the shape `shape`
+/// makes from `arguments`, those of its full form. `Err` says what is
+/// wrong with them.
+pub(crate) fn evaluate_intrinsic(shape: &str, arguments: &[Value]) -> Result<Value, String> {
+    match shape {
+        "_ days _ hours _ minutes _ seconds _ milliseconds" => {
+            let counts: Vec<i64> = arguments
+                .iter()
+                .map(|argument| match argument {
+                    Value::Integer(count) => *count,
+                    _ => unreachable!("a checked call of `Duration` has Integer counts"),
+                })
+                .collect();
+            crate::time::duration_of(&counts).map(Value::Duration)
+        }
+        _ => unreachable!("no implementation of the prelude's INTRINSIC FUNCTION `{shape}`"),
+    }
 }
 
 pub(crate) fn function(shape: &str) -> Option<Function> {

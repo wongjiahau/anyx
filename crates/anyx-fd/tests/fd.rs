@@ -97,10 +97,10 @@ fn a_search_changes_how_fd_searches() {
         (r#"find "" with { at most 1 results }"#, r#"["README.md"]"#),
         (r#"find "^s" with { prune }"#, r#"["src"]"#),
         (
-            r#"find "" with { changed within (1 hour), only [`file], at most 1 results }"#,
+            r#"find "" with { changed within (1 hours), only [`file], at most 1 results }"#,
             r#"["README.md"]"#,
         ),
-        (r#"find "" with { changed more than (1 hour) ago }"#, "[]"),
+        (r#"find "" with { changed more than (1 hours) ago }"#, "[]"),
     ] {
         assert_eq!(
             answer(directory.path(), request),
@@ -195,11 +195,12 @@ fn the_examples_and_built_ins_answer() {
 #[test]
 fn the_examples_hold() {
     use anyx_protocol::{Call, Response};
-    // The examples search a crate with a library and a program.
+    // The examples search a crate with a readme, a library and a program.
     let directory = tempfile::tempdir().unwrap();
     fs::create_dir(directory.path().join("src")).unwrap();
     fs::write(directory.path().join("src/lib.rs"), "").unwrap();
     fs::write(directory.path().join("src/main.rs"), "").unwrap();
+    fs::write(directory.path().join("README.md"), "").unwrap();
     let schema = anyx_fd::schema();
     let mut count = 0;
     for (index, method) in schema.methods.iter().enumerate() {
@@ -223,7 +224,7 @@ fn the_examples_hold() {
             count += 1;
         }
     }
-    assert_eq!(count, 2);
+    assert_eq!(count, 3);
 }
 
 #[test]

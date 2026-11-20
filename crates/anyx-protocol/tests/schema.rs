@@ -628,9 +628,7 @@ fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
 fn the_request_decoder_is_what_its_grammar_generates() {
     let grammar = read("request.grammar.anyx");
     let output = anyx_generator::generate(&grammar).unwrap();
-    // A duration also has a neutral choice-call reading. The first wins.
-    assert_eq!(output.warnings.len(), 1);
-    assert!(output.warnings[0].message.contains("`duration` and `call`"));
+    assert!(output.warnings.is_empty(), "{:?}", output.warnings);
     let code = anyx_generator::format(&output.code).expect("rustfmt is installed");
     assert_snapshot("src/request_grammar.rs", &code);
 }

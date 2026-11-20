@@ -619,10 +619,35 @@ fn client(out: &mut String, schema: &Schema) {
                 .map(|parameter| format!("{}.into_value()", snake_case(&parameter.name)))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let full = snake_case(&method_words(schema, method));
+            let shorter: String = crate::shorter_forms(method)
+                .into_iter()
+                .map(|(form, written)| {
+                    let written_parameters: Vec<Parameter> = written
+                        .iter()
+                        .map(|index| method.shape.parameters[*index].clone())
+                        .collect();
+                    let forwarded = (0..method.shape.parameters.len())
+                        .map(|parameter| match written.contains(&parameter) {
+                            true => snake_case(&method.shape.parameters[parameter].name),
+                            false => format!(
+                                "anyx_protocol::client::default(schema(), {index}, {parameter})"
+                            ),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "    /// `{}`: [`Self::{full}`] with each part left out at its default.\n    pub async fn {}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        self.{full}({forwarded}).await\n    }}\n\n",
+                        form.text,
+                        snake_case(&crate::form_words(schema, method, &form)),
+                        parameters(schema, &written_parameters),
+                        returned_value(schema, method),
+                    )
+                })
+                .collect();
             format!(
-                "{}    pub async fn {}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {index}, vec![{arguments}]).await\n    }}\n\n",
+                "{}    pub async fn {full}(&self{}) -> Result<{}, CallError<{errors}, T::Error>> {{\n        anyx_protocol::client::call(&self.transport, schema(), {index}, vec![{arguments}]).await\n    }}\n\n{shorter}",
                 method_doc(schema, method),
-                snake_case(&method_words(schema, method)),
                 parameters(schema, &method.shape.parameters),
                 returned_value(schema, method),
             )

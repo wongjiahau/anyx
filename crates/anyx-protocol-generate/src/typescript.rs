@@ -61,10 +61,34 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
         .iter()
         .map(|method| {
             let signature = signature(schema, method);
+            let full = camel_case(&method_words(schema, method));
+            let shorter: String = crate::shorter_forms(method)
+                .into_iter()
+                .map(|(form, written)| {
+                    let shape = method.shape.written_as(&form);
+                    let short = signature_of(schema, method, &shape.parameters);
+                    let forwarded = (0..method.shape.parameters.len())
+                        .map(|index| {
+                            let parameter = &method.shape.parameters[index];
+                            match (written.contains(&index), method.shape.default_of(index)) {
+                                (false, Some(value)) => native_default(schema, &parameter.r#type, value),
+                                _ => camel_case(&parameter.name),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "\n  /** `{}`: `{full}` with each part left out at its default. */\n  {}({}): {} {{\n    return this.{full}({forwarded});\n  }}\n",
+                        form.text,
+                        camel_case(&crate::form_words(schema, method, &form)),
+                        short.parameters,
+                        short.returned,
+                    )
+                })
+                .collect();
             format!(
-                "{}  {}({}): {} {{\n    return this.call({:?}, [{}]);\n  }}\n",
+                "{}  {full}({}): {} {{\n    return this.call({:?}, [{}]);\n  }}\n{shorter}",
                 doc(&method_doc(method), "  "),
-                camel_case(&method_words(schema, method)),
                 signature.parameters,
                 signature.returned,
                 schema.call_name(method),
@@ -92,7 +116,15 @@ struct Signature {
 }
 
 fn signature(schema: &Schema, method: &Method) -> Signature {
-    let parameters = &method.shape.parameters;
+    signature_of(schema, method, &method.shape.parameters)
+}
+
+/// The signature of a call of `method` that writes `parameters`.
+fn signature_of(
+    schema: &Schema,
+    method: &Method,
+    parameters: &[anyx_protocol::schema::Parameter],
+) -> Signature {
     let errors = match method.errors.is_empty() {
         true => "never".to_string(),
         false => typescript_error_name(schema, method),
@@ -463,7 +495,6 @@ fn native_form(form: &Written) -> String {
         Written::Number => "number".into(),
         Written::List => "list".into(),
         Written::Braces => "braces".into(),
-        Written::Duration => "duration".into(),
     }
 }
 

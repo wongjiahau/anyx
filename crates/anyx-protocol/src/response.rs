@@ -325,7 +325,7 @@ pub(crate) fn read_outcome(
                         if schema
                             .errors_of(method)
                             .iter()
-                            .any(|error| error.shape.text == call.name_text()) =>
+                            .any(|error| error.shape.form(&call.name_text()).is_some()) =>
                     {
                         Mismatch {
                             message: format!(

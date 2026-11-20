@@ -58,6 +58,23 @@ pub enum CallError<E, T> {
     Response(Problem),
 }
 
+/// The default of the parameter at `parameter` of the method at `method`
+/// in [`Schema::methods`], which a client's shorter form passes for a part
+/// it leaves out.
+///
+/// # Panics
+///
+/// When the parameter has no default of type `V`, which a client
+/// generated from `schema` never asks for.
+pub fn default<V: FromValue>(schema: &Schema, method: usize, parameter: usize) -> V {
+    schema.methods[method]
+        .shape
+        .default_of(parameter)
+        .cloned()
+        .and_then(V::from_value)
+        .expect("a generated client asks for a default of its own type")
+}
+
 /// Calls the method at `method` in [`Schema::methods`] and reads its value.
 /// A method without errors uses [`std::convert::Infallible`] for `E`.
 pub async fn call<T: Transport, R: FromValue, E: FromValue>(

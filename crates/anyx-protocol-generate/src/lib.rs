@@ -14,7 +14,7 @@ mod wasm;
 use std::collections::BTreeMap;
 
 use anyx_protocol::Schema;
-use anyx_protocol::schema::{Effect, Method, Type, TypeKind};
+use anyx_protocol::schema::{Effect, Form, Method, Type, TypeKind};
 
 pub use names::{camel_case, pascal_case, snake_case};
 pub use rust::rust;
@@ -88,16 +88,61 @@ pub fn effects_doc(method: &Method) -> String {
 /// `open (id: file id)` is `open with file id`. A method without overloads
 /// keeps its shape's words.
 pub fn method_words(schema: &Schema, method: &Method) -> String {
-    if !schema.is_overloaded(method) {
-        return method.shape.text.clone();
+    let full = Form {
+        text: method.shape.text.clone(),
+        written: vec![true; method.shape.optional.len()],
+    };
+    form_words(schema, method, &full)
+}
+
+/// The words that name a call of `method` written in `form`, as
+/// [`method_words`] names the full form: the form's words, or when another
+/// method may be written alike, an overload, then `with` and the written
+/// parameters' types. `find (pattern: Text) [in (paths: LIST Text) DEFAULT
+/// in ["."]]` is `find in` and `find`.
+pub fn form_words(schema: &Schema, method: &Method, form: &Form) -> String {
+    let alike = schema
+        .methods
+        .iter()
+        .filter(|other| other.shape.form(&form.text).is_some())
+        .nth(1)
+        .is_some();
+    if !alike {
+        return form.text.clone();
     }
     let types: Vec<String> = method
         .shape
+        .written_as(form)
         .parameters
         .iter()
         .map(|parameter| type_words(schema, &parameter.r#type))
         .collect();
-    format!("{} with {}", method.shape.text, types.join(" and "))
+    format!("{} with {}", form.text, types.join(" and "))
+}
+
+/// The ways to write `method` but its full form, each with its parameters'
+/// indexes among the full form's, for a client's shorter functions.
+pub fn shorter_forms(method: &Method) -> Vec<(Form, Vec<usize>)> {
+    method
+        .shape
+        .forms()
+        .into_iter()
+        .skip(1)
+        .map(|form| {
+            let written = (0..method.shape.parameters.len())
+                .filter(|index| {
+                    method
+                        .shape
+                        .optional
+                        .iter()
+                        .zip(&form.written)
+                        .find(|(part, _)| part.parameters.contains(index))
+                        .is_none_or(|(_, written)| *written)
+                })
+                .collect();
+            (form, written)
+        })
+        .collect()
 }
 
 /// A type in lowercase words, for a name: `LIST Text` is `list of text`,

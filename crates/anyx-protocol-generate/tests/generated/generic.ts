@@ -118,7 +118,8 @@ function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Object.prototype.toString.call(value) !== "[object Object]") return fail("expected an object");
   return value as Record<string, unknown>;
 }
-const durationUnits: [string, bigint][] = [["day",86400000n], ["hour",3600000n], ["minute",60000n], ["second",1000n], ["millisecond",1n]];
+// A duration's units, in the plural for every count: `1 hours`.
+const durationUnits: [string, bigint][] = [["days",86400000n], ["hours",3600000n], ["minutes",60000n], ["seconds",1000n], ["milliseconds",1n]];
 function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = {}): string {
   type = resolved(type, bindings);
   switch (type.k) {
@@ -134,7 +135,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
     case "instant": if (value instanceof Date && Number.isFinite(value.valueOf())) { const text = value.toISOString(); if (/^\d{4}-/.test(text)) return quoted(text); } break;
     case "duration": if (typeof value === "bigint" && value >= 0n && value <= (1n << 64n) - 1n) {
       let rest = value; const output: string[] = [];
-      for (const [name, size] of durationUnits) { const n = rest / size; rest %= size; if (n) output.push(`${n} ${name}${n === 1n ? "" : "s"}`); }
+      for (const [name, size] of durationUnits) { const n = rest / size; rest %= size; if (n) output.push(`${n} ${name}`); }
       return output.join(" ") || "0 seconds";
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
@@ -452,7 +453,8 @@ function decodeValue(type: TypeDescriptor, node: Syntax, bindings: Bindings = {}
     case "instant": if (node.tag === "text" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(node.text)) { const date = new Date(node.text); const canonical = node.text.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction || "").padEnd(3, "0")}Z`); if (Number.isFinite(date.valueOf()) && date.toISOString() === canonical) return date; } break;
     case "duration": { const p = parts(node); if (!p.length || p.length % 2) break; let total = 0n, previous = -1;
       for (let i = 0; i < p.length; i += 2) { const count = p[i], unit = p[i + 1]; if (count.tag !== "number" || !/^\d+$/.test(count.text) || unit.tag !== "word") return fail("invalid duration");
-        const index = durationUnits.findIndex(([name]) => unit.text === name || unit.text === `${name}s`);
+        const index = durationUnits.findIndex(([name]) => unit.text === name);
+        if (index < 0) return fail(`invalid duration unit ${unit.text}; a unit is in the plural for every count, as in 1 hours`);
         if (index <= previous) return fail("invalid duration unit order"); previous = index;
         total += BigInt(count.text) * durationUnits[index][1]; if (total > (1n << 64n) - 1n) return fail("duration exceeds unsigned 64-bit range");
       } return total; }

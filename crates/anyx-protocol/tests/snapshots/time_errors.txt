@@ -1,17 +1,23 @@
 wait (5) until "2026-11-14T06:00:08Z"
-=> 1:7: in `duration` of `wait _ until _`: found the number `5`; expected a duration, as in `1 hour 30 minutes`, which goes in parentheses in a slot
+=> 1:7: in `duration` of `wait _ until _`: found the number `5`; expected a duration, as in `1 hours 30 minutes`, which goes in parentheses in a slot
 
 wait (5 weeks) until "2026-11-14T06:00:08Z"
-=> 1:7: in `duration` of `wait _ until _`: found the unit `weeks`; expected a duration, whole numbers each with a unit, the largest first, as in `1 hour 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
+=> 1:7: in `duration` of `wait _ until _`: found the call `_ weeks`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
 
-wait (1 minute 1 hour) until "2026-11-14T06:00:08Z"
-=> 1:7: in `duration` of `wait _ until _`: found `hour` after a smaller or the same unit; expected a duration, whole numbers each with a unit, the largest first, as in `1 hour 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
+wait (1 minutes 1 hours) until "2026-11-14T06:00:08Z"
+=> 1:7: in `duration` of `wait _ until _`: found the call `_ minutes _ hours`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
 
 wait (1.5 hours) until "2026-11-14T06:00:08Z"
-=> 1:7: in `duration` of `wait _ until _`: found `1.5`, which is not a whole number from 0; expected a duration, whole numbers each with a unit, the largest first, as in `1 hour 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
+=> 1:7: in `duration` of `wait _ until _`: in `hours` of `_ hours`: found the Float `1.5`; expected an Integer, a whole number written without a point, such as `3`
+
+wait (1 hour 30 minutes) until "2026-11-14T06:00:08Z"
+=> 1:7: in `duration` of `wait _ until _`: found the call `_ hour _ minutes`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`; write `hours` for every count, as in `1 hours`
+
+wait (-1 hours) until "2026-11-14T06:00:08Z"
+=> 1:7: in `duration` of `wait _ until _`: found `-1 hours`; expected a whole number from 0
 
 wait (minutes) until "2026-11-14T06:00:08Z"
-=> 1:7: in `duration` of `wait _ until _`: found the call `minutes`; expected a duration, whole numbers each with a unit, as in `1 hour 30 minutes`
+=> 1:7: in `duration` of `wait _ until _`: found the call `minutes`; expected a duration, whole numbers each with its unit in the plural, the largest first, as in `1 hours 30 minutes`; the units are `days`, `hours`, `minutes`, `seconds`, `milliseconds`
 
 wait (5 minutes) until "2026-11-14 06:00:08"
 => 1:24: in `instant` of `wait _ until _`: found a string; expected an instant in UTC in the string, as in `"2026-11-14T06:00:08.000Z"`

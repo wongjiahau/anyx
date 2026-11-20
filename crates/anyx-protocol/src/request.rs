@@ -12,7 +12,6 @@ fn describe(value: &Syntax) -> String {
         Syntax::Text(_) => "a string".into(),
         Syntax::List(_) => "a list `[…]`".into(),
         Syntax::Braces(_) => "braces `{…}`".into(),
-        Syntax::Duration(duration) => format!("the call {}", code(&duration.name.text)),
         Syntax::Variant(variant) => format!("the variant `` `{} ``", variant.body.name.text),
         Syntax::Call(call) => format!("the call {}", code(&call.name.text)),
     }
@@ -28,9 +27,6 @@ pub(crate) fn decode(schema: &Schema, expected: &Type, value: &Syntax) -> Result
 }
 
 fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value, Mismatch> {
-    if let Syntax::Duration(duration) = value {
-        return decode(schema, expected, &duration_call(duration));
-    }
     let expected = schema.underlying(expected);
     let mismatch = |expected: String| Mismatch {
         span: value.span(),
@@ -83,14 +79,19 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
             "an instant in UTC in a string, as in `\"{INSTANT_EXAMPLE}\"`"
         ))),
         (Type::Duration, Syntax::Call(call)) => {
-            let pairs = duration_pairs(call).ok_or_else(|| {
-                mismatch(format!(
-                    "a duration, whole numbers each with a unit, as in `{DURATION_EXAMPLE}`"
-                ))
-            })?;
-            crate::time::parse_duration(&pairs).map(Value::Duration).map_err(|found| Mismatch {
-                span: value.span(),
-                message: format!("found {found}; expected a duration, whole numbers each with a unit, the largest first, as in `{DURATION_EXAMPLE}`; the units are {}", crate::time::units().iter().map(|unit| format!("`{}`", unit.plural)).collect::<Vec<_>>().join(", ")),
+            intrinsic_call(schema, expected, call).unwrap_or_else(|| {
+                let units = crate::time::UNITS.map(|unit| format!("`{}`", unit.plural)).join(", ");
+                let singular = call
+                    .name
+                    .words()
+                    .find_map(|word| crate::time::UNITS.iter().find(|unit| unit.plural.strip_suffix('s') == Some(word)));
+                let hint = match singular {
+                    Some(unit) => format!("; write `{}` for every count, as in `1 {}`", unit.plural, unit.plural),
+                    None => String::new(),
+                };
+                Err(mismatch(format!(
+                    "a duration, whole numbers each with its unit in the plural, the largest first, as in `{DURATION_EXAMPLE}`; the units are {units}{hint}"
+                )))
             })
         }
         (Type::Duration, _) => Err(mismatch(format!(
@@ -171,13 +172,8 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
                     underlying,
                 } => {
                     let text = ShapePart::text(constructor);
-                    let call = match value {
-                        Syntax::Duration(duration) => Some(duration_call(duration)),
-                        Syntax::Call(call) => Some(Syntax::Call(call.clone())),
-                        _ => None,
-                    };
-                    match &call {
-                        Some(Syntax::Call(call)) if call.name.text == text => Ok(Value::Variant {
+                    match value {
+                        Syntax::Call(call) if call.name.text == text => Ok(Value::Variant {
                             shape: text,
                             arguments: arguments(
                                 schema,
@@ -241,25 +237,39 @@ fn unmarked_variant(schema: &Schema, expected: &Type, value: &Syntax) -> Option<
         .map(|_| ShapePart::text(&parts))
 }
 
-pub(crate) fn duration_pairs(
+/// A value of `type` written as a call of the prelude's `INTRINSIC
+/// FUNCTION` that returns it, as `1 hours 30 minutes` is a `Duration`:
+/// `None` when `call` is written in none of its forms.
+fn intrinsic_call(
+    schema: &Schema,
+    r#type: &Type,
     call: &crate::request_grammar::ValueCall,
-) -> Option<Vec<(&str, &str)>> {
-    use anyx::NamePart;
-    if call.name.parts.len() != call.arguments.len() * 2 {
-        return None;
-    }
-    call.name
-        .parts
-        .chunks(2)
-        .zip(&call.arguments)
-        .map(|(parts, value)| match (parts, value) {
-            (
-                [NamePart::Slot, NamePart::Word { text, .. }],
-                Syntax::Integer(n) | Syntax::Float(n),
-            ) => Some((n.value.as_str(), text.as_str())),
-            _ => None,
-        })
-        .collect()
+) -> Option<Result<Value, Mismatch>> {
+    let function = schema
+        .intrinsic_functions
+        .iter()
+        .find(|function| function.returns == *r#type)?;
+    let form = function.shape.form(&call.name.text)?;
+    Some(
+        arguments(schema, &function.shape.written_as(&form), call).and_then(|written| {
+            let arguments = function
+                .shape
+                .fill(&form, written)
+                .ok_or_else(|| Mismatch {
+                    span: call.span,
+                    message: format!(
+                        "found `{}`, whose left-out parts' defaults aren't read yet",
+                        form.text
+                    ),
+                })?;
+            crate::prelude::evaluate_intrinsic(&function.shape.text, &arguments).map_err(
+                |message| Mismatch {
+                    span: call.span,
+                    message: format!("found {message}"),
+                },
+            )
+        }),
+    )
 }
 
 /// A variant of one of `shapes`, marked with a backtick: `` `red ``. An
@@ -272,22 +282,31 @@ pub(crate) fn variant(
     what: &str,
 ) -> Result<Value, Mismatch> {
     if let Syntax::Variant(variant) = value
-        && let Some(shape) = shapes
+        && let Some((shape, form)) = shapes
             .iter()
-            .find(|shape| shape.text == variant.body.name.text)
+            .find_map(|shape| Some((shape, shape.form(&variant.body.name.text)?)))
     {
+        let written = arguments(schema, &shape.written_as(&form), &variant.body)?;
+        let Some(arguments) = shape.fill(&form, written) else {
+            return Err(Mismatch {
+                span: value.span(),
+                message: format!(
+                    "found `` `{} ``, whose left-out parts' defaults aren't read yet; expected a variant whose defaults don't refer to each other in a loop",
+                    form.text
+                ),
+            });
+        };
         return Ok(Value::Variant {
             shape: shape.text.clone(),
-            arguments: arguments(schema, shape, &variant.body)?,
+            arguments,
         });
     }
     let unmarked = match value {
         Syntax::Call(call) => Some(call.name.text.clone()),
-        Syntax::Duration(duration) => Some(duration.name.text.clone()),
         _ => None,
     };
     if let Some(text) = unmarked
-        && shapes.iter().any(|shape| shape.text == text)
+        && shapes.iter().any(|shape| shape.form(&text).is_some())
     {
         return Err(Mismatch {
             span: value.span(),
@@ -306,6 +325,26 @@ pub(crate) fn variant(
                 .join(", ")
         ),
     })
+}
+
+/// The arguments of `value`, a call of `shape`, which has no optional
+/// parts, as an optional part's `DEFAULT` writes it: `in ["."]`.
+pub(crate) fn part_arguments(
+    schema: &Schema,
+    shape: &Shape,
+    value: &Syntax,
+) -> Result<Vec<Value>, Mismatch> {
+    match value {
+        Syntax::Call(call) if call.name.text == shape.text => arguments(schema, shape, call),
+        _ => Err(Mismatch {
+            span: value.span(),
+            message: format!(
+                "found {}; expected the part written as a call writes it, `{}`",
+                describe(value),
+                shape.text
+            ),
+        }),
+    }
 }
 
 /// The arguments of `call`, a call of `shape`, each decoded as its
@@ -501,25 +540,9 @@ pub(crate) fn written(value: &Syntax) -> Written {
         Syntax::Text(_) => Written::String,
         Syntax::List(_) => Written::List,
         Syntax::Braces(_) => Written::Braces,
-        Syntax::Duration(duration) => Written::Call(ShapePart::of(&duration.name.parts)),
         Syntax::Variant(variant) => Written::Variant(ShapePart::of(&variant.body.name.parts)),
         Syntax::Call(call) => Written::Call(ShapePart::of(&call.name.parts)),
     }
-}
-
-// Preserve the neutral call reading: `(5 minutes)` may be a named type's
-// constructor `(count) minutes` instead of a Duration.
-fn duration_call(duration: &crate::request_grammar::Duration) -> Syntax {
-    Syntax::Call(crate::request_grammar::ValueCall {
-        name: duration.name.clone(),
-        arguments: duration
-            .arguments
-            .iter()
-            .cloned()
-            .map(Syntax::Integer)
-            .collect(),
-        span: duration.span,
-    })
 }
 
 #[cfg(test)]
@@ -548,23 +571,6 @@ mod tests {
             let nodes = anyx::parse(source).syntax.nodes();
             assert!(crate::grammar::decode_type(&nodes[0]).is_err(), "{source}");
             assert!(syntax::decode_type(&nodes[0]).is_err(), "{source}");
-        }
-    }
-
-    #[test]
-    fn duration_syntax_covers_every_prelude_unit() {
-        for unit in crate::time::units() {
-            for word in [unit.singular, &unit.plural] {
-                let source = format!("1 {word}");
-                let nodes = anyx::parse(&source).syntax.nodes();
-                assert!(
-                    matches!(
-                        syntax::decode_value(&nodes[0]).unwrap(),
-                        Syntax::Duration(_)
-                    ),
-                    "{source}"
-                );
-            }
         }
     }
 

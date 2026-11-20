@@ -24,7 +24,8 @@ METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [],
 
 METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [],
 
-METHOD snooze (reminder: Reminder) for (duration: Duration)
+# Snoozed for 5 minutes, unless it says for how long.
+METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minutes)]
     RETURNS (reminders: LIST: Reminder)
     ERRORS [
         # Snoozed past its next time.

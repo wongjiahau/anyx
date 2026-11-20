@@ -36,10 +36,21 @@ TYPE ALIAS Boolean: UNION [`false, `true],
 INTRINSIC TYPE Instant,
 
 # A length of time, to the millisecond: whole numbers each followed by its
-# unit, the largest first, as in `90 seconds` or `1 hour 30 minutes`. The
-# units are `day`, `hour`, `minute`, `second` and `millisecond`, in the
-# plural for any count but 1: `1 day 1 second`.
+# unit in the plural, the largest first, as in `90 seconds` or
+# `1 hours 30 minutes`. The units are `days`, `hours`, `minutes`, `seconds`
+# and `milliseconds`, and a unit left out counts 0.
 INTRINSIC TYPE Duration,
+
+# A `Duration` is written as a call of this function: each unit is an
+# optional part, so `1 hours 30 minutes` leaves out the days, seconds and
+# milliseconds, which count 0.
+INTRINSIC FUNCTION
+    [(days: Integer) days DEFAULT 0 days]
+    [(hours: Integer) hours DEFAULT 0 hours]
+    [(minutes: Integer) minutes DEFAULT 0 minutes]
+    [(seconds: Integer) seconds DEFAULT 0 seconds]
+    [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
+    RETURNS (duration: Duration),
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.

@@ -5,11 +5,7 @@
 use anyx::{Node, Span, StringLiteral};
 pub use support::{CallName, DecodeError, Spanned};
 
-static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new("^(_ (days?|hours?|minutes?|seconds?|milliseconds?))( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$").expect("the generator checked it")
-});
-
-static REGEX_2: std::sync::LazyLock<regex::Regex> =
+static REGEX_1: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new("^[^`]").expect("the generator checked it"));
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,7 +33,6 @@ pub enum Argument {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    Duration(Duration),
     Integer(Spanned<String>),
     Float(Spanned<String>),
     Text(Spanned<StringLiteral>),
@@ -52,15 +47,6 @@ pub struct Variant {
     pub body: ValueCall,
     pub span: Span,
 }
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Duration {
-    pub name: CallName,
-    pub arguments: Vec<Count>,
-    pub span: Span,
-}
-
-pub type Count = Spanned<String>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValueCall {
@@ -153,7 +139,6 @@ impl Argument {
 impl Value {
     pub fn span(&self) -> Span {
         match self {
-            Value::Duration(value) => value.span,
             Value::Integer(value) => value.span,
             Value::Float(value) => value.span,
             Value::Text(value) => value.span,
@@ -226,7 +211,6 @@ impl support::Errors for Argument {
 impl support::Errors for Value {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Value::Duration(value) => support::Errors::errors(value, found),
             Value::Integer(value) => support::Errors::errors(value, found),
             Value::Float(value) => support::Errors::errors(value, found),
             Value::Text(value) => support::Errors::errors(value, found),
@@ -241,13 +225,6 @@ impl support::Errors for Value {
 impl support::Errors for Variant {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.body, found);
-    }
-}
-
-impl support::Errors for Duration {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.arguments, found);
     }
 }
 
@@ -378,35 +355,31 @@ fn decode_argument_annotated(node: &Node) -> Result<Argument, DecodeError> {
 }
 
 pub fn decode_value(node: &Node) -> Result<Value, DecodeError> {
-    decode_duration(node)
-        .map(Value::Duration)
-        .or_else(|error| {
-            error.or(support::float(
-                node,
-                f64::NEG_INFINITY,
-                f64::INFINITY,
-                false,
-                "an integer literal",
-            )
-            .and_then(|_| support::number_literal(node, false, "an integer literal"))
-            .map(Value::Integer))
-        })
-        .or_else(|error| {
-            error.or(support::float(
-                node,
-                f64::NEG_INFINITY,
-                f64::INFINITY,
-                false,
-                "a float literal",
-            )
-            .and_then(|_| support::number_literal(node, true, "a float literal"))
-            .map(Value::Float))
-        })
-        .or_else(|error| error.or(support::string(node, |_| true, "a string").map(Value::Text)))
-        .or_else(|error| error.or(decode_value_list(node).map(Value::List)))
-        .or_else(|error| error.or(decode_value_braces(node).map(Value::Braces)))
-        .or_else(|error| error.or(decode_variant(node).map(Value::Variant)))
-        .or_else(|error| error.or(decode_value_call(node).map(Value::Call)))
+    support::float(
+        node,
+        f64::NEG_INFINITY,
+        f64::INFINITY,
+        false,
+        "an integer literal",
+    )
+    .and_then(|_| support::number_literal(node, false, "an integer literal"))
+    .map(Value::Integer)
+    .or_else(|error| {
+        error.or(support::float(
+            node,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            false,
+            "a float literal",
+        )
+        .and_then(|_| support::number_literal(node, true, "a float literal"))
+        .map(Value::Float))
+    })
+    .or_else(|error| error.or(support::string(node, |_| true, "a string").map(Value::Text)))
+    .or_else(|error| error.or(decode_value_list(node).map(Value::List)))
+    .or_else(|error| error.or(decode_value_braces(node).map(Value::Braces)))
+    .or_else(|error| error.or(decode_variant(node).map(Value::Variant)))
+    .or_else(|error| error.or(decode_value_call(node).map(Value::Call)))
 }
 
 fn decode_value_list(node: &Node) -> Result<Spanned<Vec<Value>>, DecodeError> {
@@ -439,37 +412,10 @@ pub fn decode_variant(node: &Node) -> Result<Variant, DecodeError> {
     Ok(decoded)
 }
 
-pub fn decode_duration(node: &Node) -> Result<Duration, DecodeError> {
-    let (name, arguments) = support::any_call(
-        node,
-        |name| REGEX_1.is_match(name),
-        "a call whose name matches the regex `^(_ (days?|hours?|minutes?|seconds?|milliseconds?))( _ (days?|hours?|minutes?|seconds?|milliseconds?))*$`",
-    )?;
-    let mut arguments = support::arguments(node, arguments);
-    let decoded = Duration {
-        name,
-        arguments: arguments.one_or_more(decode_count, "a count")?,
-        span: node.span,
-    };
-    arguments.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_count(node: &Node) -> Result<Count, DecodeError> {
-    support::float(
-        node,
-        f64::NEG_INFINITY,
-        f64::INFINITY,
-        false,
-        "an integer literal",
-    )
-    .and_then(|_| support::number_literal(node, false, "an integer literal"))
-}
-
 pub fn decode_value_call(node: &Node) -> Result<ValueCall, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
         "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
@@ -575,7 +521,7 @@ fn decode_term_variants(node: &Node) -> Result<Spanned<Vec<TermVariant>>, Decode
 fn decode_term_call(node: &Node) -> Result<Term, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
         "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);

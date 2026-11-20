@@ -158,7 +158,7 @@ alias part: ONE OF [type parameter, type],
 ## union, from a type. Its doc comes first, before the backtick.
 variant: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", body: variant body],
 
-variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
+variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: shape part],
 
 ## A group of errors, `` ERRORS file errors [`missing] + other errors ``,
 ## which an alias of a union of variants replaced: `` TYPE ALIAS File
@@ -198,9 +198,11 @@ method: ANYFIX CALL [
 ],
 
 ## Functions are evaluated locally by the codec. Bodyless declarations are
-## reserved for the bundled prelude.
+## reserved for the bundled prelude. An `INTRINSIC` one may also be written
+## in a value, as `Duration`'s constructor is: `1 hours 30 minutes`.
 function: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
+  intrinsic: OPTIONAL: WORD "INTRINSIC",
   WORD "FUNCTION", shape,
   WORD "RETURNS", returns,
 ] FORMAT [BREAK BEFORE WORD "RETURNS"],
@@ -210,7 +212,7 @@ condition: SQUARE BRACKET [predicate: ONE OR MORE: term],
 ## The call that undoes a method, written like a shape whose slots are the
 ## method's own parameters: `UNDONE BY move (new path: Text) to (path: Text)`.
 ## The types say which method it is, among methods of the same words.
-undo: shape,
+undo: fixed shape,
 
 ## Examples of a method, each a call of it and its outcome side by side, the
 ## call as a request writes it and the outcome as a response writes it:
@@ -239,7 +241,24 @@ returns: parameter,
 ## File Errors] ``. A method that can't fail has `[]`.
 error list: SQUARE BRACKET [ZERO OR MORE: union member],
 
-shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
+## A method's, a variant's or a function's shape: its words, and a
+## parameter in each slot. A part in square brackets may be left out of a
+## call, which then holds the entry after `DEFAULT`, written as a call
+## writes the part: `find (pattern: Text) [in (paths: LIST Text) DEFAULT in
+## ["."]]` is called `find "x"` or `find "x" in ["src"]`. The full form is
+## the one method; a shorter call is sugar for it, filled in from the
+## defaults.
+shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: shape part],
+
+shape part: ONE OF [
+  parameter: parameter,
+  optional: SQUARE BRACKET [optional part],
+],
+
+optional part: ANYFIX CALL [part: fixed shape, WORD "DEFAULT", default: ANY NODE],
+
+## A shape with no optional parts.
+fixed shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
 
 parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 

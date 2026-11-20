@@ -139,7 +139,7 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
             }]
         )]
     );
-    assert_eq!(calls("wait (1 hour)")[0].0, 12);
+    assert_eq!(calls("wait (1 hours)")[0].0, 12);
 }
 
 #[test]
