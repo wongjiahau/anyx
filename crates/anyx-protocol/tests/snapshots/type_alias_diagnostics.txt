@@ -1,9 +1,9 @@
 == an alias that leads back to itself, directly or through another
 PROTOCOL a VERSION 1, TYPE ALIAS Tree: LIST Tree, TYPE ALIAS Alpha: Beta, TYPE ALIAS Beta: LIST Alpha,
-schema:1:34: found the type alias `Tree` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or `CHOICE` that holds them through a `LIST`
+schema:1:34: found the type alias `Tree` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or a `NAMED TYPE` that holds them through a `LIST`
   PROTOCOL a VERSION 1, TYPE ALIAS Tree: LIST Tree, TYPE ALIAS Alpha: Beta, TYPE ALIAS Beta: LIST Alpha,
                                    ^^^^
-schema:1:62: found the type alias `Alpha` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or `CHOICE` that holds them through a `LIST`
+schema:1:62: found the type alias `Alpha` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or a `NAMED TYPE` that holds them through a `LIST`
   PROTOCOL a VERSION 1, TYPE ALIAS Tree: LIST Tree, TYPE ALIAS Alpha: Beta, TYPE ALIAS Beta: LIST Alpha,
                                                                ^^^^^
 
@@ -27,7 +27,7 @@ schema:1:73: found a type in the name of a `TYPE ALIAS`, before its end; expecte
 
 == an alias over an unknown type
 PROTOCOL a VERSION 1, TYPE ALIAS Paths: LIST Path,
-schema:1:46: found `Path`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Path`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:46: found `Path`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Path`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, TYPE ALIAS Paths: LIST Path,
                                                ^^^^
 

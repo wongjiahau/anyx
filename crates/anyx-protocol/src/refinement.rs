@@ -672,7 +672,7 @@ impl<B> Test<B> {
                 };
                 let variants = match schema.instance(item) {
                     Some((_, kind)) => match kind.as_ref() {
-                        TypeKind::Choice(variants) => variants
+                        TypeKind::Variants(variants) => variants
                             .iter()
                             .map(|variant| variant.shape.text.clone())
                             .collect::<Vec<_>>(),
@@ -682,7 +682,7 @@ impl<B> Test<B> {
                 };
                 if variants.is_empty() {
                     return Err(format!(
-                        "`has at most one of` tests a LIST of a CHOICE, not a LIST {}",
+                        "`has at most one of` tests a LIST of a union of variants, not a LIST {}",
                         schema.type_name(item)
                     ));
                 }
@@ -1007,7 +1007,7 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
                         }
                         Ok(())
                     }
-                    (TypeKind::Choice(variants), Value::Variant { shape, arguments }) => {
+                    (TypeKind::Variants(variants), Value::Variant { shape, arguments }) => {
                         let variant = variants
                             .iter()
                             .find(|v| v.shape.text == *shape)
@@ -1142,7 +1142,7 @@ pub(crate) fn check_schema(schema: &Schema, aliases: &[&Type]) -> Vec<Diagnostic
                     check(schema, &f.r#type, &mut errors);
                 }
             }
-            TypeKind::Choice(variants) => {
+            TypeKind::Variants(variants) => {
                 for v in variants {
                     for p in &v.shape.parameters {
                         check(schema, &p.r#type, &mut errors);
@@ -1201,7 +1201,7 @@ pub fn has_refinements(schema: &Schema, ty: &Type) -> bool {
                     TypeKind::Record(fields) => {
                         fields.iter().any(|f| walk(schema, &f.r#type, seen))
                     }
-                    TypeKind::Choice(variants) => variants.iter().any(|v| {
+                    TypeKind::Variants(variants) => variants.iter().any(|v| {
                         v.shape
                             .parameters
                             .iter()

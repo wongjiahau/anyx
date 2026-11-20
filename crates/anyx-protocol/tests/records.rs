@@ -7,9 +7,9 @@ use anyx_protocol::{Value, decode_request, encode_request};
 use common::{diagnostics, schema};
 
 const SEARCH: &str = "PROTOCOL a VERSION 1,
-CHOICE Case { `smart, `any, `exact },
-CHOICE Order { `newest first, `by name, `largest first },
-CHOICE Auth { `bearer (token: Text), `no auth },
+TYPE ALIAS Case: UNION [`smart, `any, `exact],
+TYPE ALIAS Order: UNION [`newest first, `by name, `largest first],
+TYPE ALIAS Auth: UNION [`bearer (token: Text), `no auth],
 RECORD Search {
     # The pattern to look for.
     pattern: Text,
@@ -120,8 +120,8 @@ fn a_value_before_words_without_parentheses_gets_a_hint() {
 fn two_fields_written_as_their_variant_may_not_share_one() {
     let found = diagnostics(
         "PROTOCOL a VERSION 1,
-        CHOICE Order { `by (key: Text), `newest first },
-        CHOICE Sort { `by (rank: Integer) },
+        TYPE ALIAS Order: UNION [`by (key: Text), `newest first],
+        TYPE ALIAS Sort: UNION [`by (rank: Integer)],
         RECORD Rec { `(order: Order), `(sort: Sort) },",
     );
     assert!(
@@ -143,7 +143,7 @@ fn a_field_written_as_its_variant_holds_only_variants() {
         let found = diagnostics(&source);
         assert!(
             found.contains(&format!(
-                "of {type}; expected a `CHOICE` or a union of variants, since the field is written as its variant alone"
+                "of {type}; expected a union of variants, since the field is written as its variant alone"
             )),
             "{field}: {found}"
         );
@@ -151,7 +151,7 @@ fn a_field_written_as_its_variant_holds_only_variants() {
     // A choice, a union of variants, and either made nullable.
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Order { `newest first, `by name },
+        TYPE ALIAS Order: UNION [`newest first, `by name],
         RECORD Rec { `(order: Order?), `(mode: UNION [`fast, `slow]) },
         METHOD find (rec: Rec) RETURNS (count: Integer),",
     );
@@ -200,9 +200,7 @@ fn mistakes_in_fields_are_diagnosed() {
 fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
     let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { `(value: Item) },");
     assert!(
-        found.contains(
-            "found the field `value` of `Item`; expected a `CHOICE` or a union of variants"
-        ),
+        found.contains("found the field `value` of `Item`; expected a union of variants"),
         "{found}"
     );
 }

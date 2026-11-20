@@ -1,8 +1,8 @@
 //! Generic types: `RECORD page of (Item: TYPE) { … }` declares a record or a
-//! choice whose name is a shape with a type parameter in each slot, and
+//! union of variants whose name is a shape with a type parameter in each slot, and
 //! `page of (Text)` uses it, with a type in each slot. A slot may sit
 //! anywhere among the words. A value of a use is written exactly like the
-//! record or choice with the arguments in place of the parameters.
+//! record or union with the arguments in place of the parameters.
 
 mod common;
 
@@ -22,14 +22,14 @@ RECORD page of (Item: TYPE) {
 },
 
 # What came of an attempt.
-CHOICE (Value: TYPE) or (Problem: TYPE) {
+TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [
     `done (value: Value),
     `failed (problem: Problem),
-},
+],
 
 RECORD Order { number: Integer, total: Integer },
 
-CHOICE Decline { `insufficient funds, `card expired },
+TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
 
 TYPE ALIAS Orders: page of (Order),
 
@@ -341,7 +341,7 @@ RECORD page of (Item: TYPE) { items: LIST: Item },
 ## A slot, then the words.
 RECORD (Item: TYPE) history { versions: LIST: Item },
 ## A slot, a word, a slot.
-CHOICE (Left: TYPE) or (Right: TYPE) { `first (value: Left), `second (value: Right) },
+TYPE ALIAS (Left: TYPE) or (Right: TYPE): UNION [`first (value: Left), `second (value: Right)],
 ## Slots between words.
 RECORD table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, rows: LIST: Value },
 ## A slot first, then words, then a slot.
@@ -586,8 +586,8 @@ fn the_guide_explains_generic_types() {
     let guide = anyx_protocol::guide(&schema(SHOP), "");
     assert!(
         guide.contains(
-            "- A generic RECORD or CHOICE has a type parameter in each slot of its
-  name, which its fields or variants use as a type: `RECORD page of (Item: TYPE)`.
+            "- A generic RECORD or TYPE ALIAS has a type parameter in each slot of
+  its name, which its fields or variants use as a type: `RECORD page of (Item: TYPE) { … }`.
   A use puts a type in each slot, in parentheses, `page of (Text)`, and its value
   is written with those types in place of the parameters.
 "
@@ -595,7 +595,7 @@ fn the_guide_explains_generic_types() {
         "{guide}"
     );
     assert!(
-        guide.contains("CHOICE (Value: TYPE) or (Problem: TYPE) {"),
+        guide.contains("TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION ["),
         "{guide}"
     );
     assert!(guide.contains("    pay 7\n"), "{guide}");
@@ -609,7 +609,7 @@ fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
         "{formatted}"
     );
     assert!(
-        formatted.contains("CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) },"),
+        formatted.contains("TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [\n    `done (value: Value),\n    `failed (problem: Problem),\n],"),
         "{formatted}"
     );
     assert!(
@@ -649,7 +649,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a shape twice, while the same words without the slot are another type",
-            "PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, CHOICE Page of (Other: TYPE) { `one (value: Other) },",
+            "PROTOCOL a VERSION 1, RECORD Page { number: Integer }, RECORD Page of (Item: TYPE) { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE): UNION [`one (value: Other)],",
         ),
         (
             "a parameter twice and an unused parameter",
@@ -669,7 +669,7 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "the wrong number of arguments, or the slots in the wrong places",
-            "PROTOCOL a VERSION 1, CHOICE (Value: TYPE) or (Problem: TYPE) { `done (value: Value), `failed (problem: Problem) }, METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)], METHOD a RETURNS (x: (Text) or (Text) (Integer)), METHOD b RETURNS (x: or (Text) (Integer)), METHOD c RETURNS (x: (Text) or),",
         ),
         (
             "a type argument that names no type",
@@ -743,7 +743,7 @@ NAMED TYPE Order Id (Integer),
 RECORD Receipt {{ number: Integer }},
 RECORD Document {{ title: Text }},
 RECORD Person {{ name: Text }},
-CHOICE Decline {{ `insufficient funds, `card expired }},
+TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
 {example}"
     ));
     let pay_all = schema.method("pay all _").unwrap();

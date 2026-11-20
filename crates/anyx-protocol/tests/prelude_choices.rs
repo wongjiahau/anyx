@@ -21,7 +21,7 @@ fn null_shape() -> anyx_protocol::schema::Shape {
 }
 
 #[test]
-fn prelude_choices_are_checked_schema_definitions() {
+fn prelude_unions_are_checked_schema_definitions() {
     let schema =
         Schema::parse("RECORD Example { flag: Boolean, note (Text?) DEFAULT note (`null) }")
             .unwrap();
@@ -32,8 +32,8 @@ fn prelude_choices_are_checked_schema_definitions() {
         .unwrap();
     // `?` is an alias, so it makes no type of its own.
     assert!(schema.types.iter().all(|d| d.name != "_ ?"));
-    let TypeKind::Choice(variants) = &schema.types[boolean].kind else {
-        panic!("Boolean is a choice")
+    let TypeKind::Variants(variants) = &schema.types[boolean].kind else {
+        panic!("Boolean is a union of variants")
     };
     assert_eq!(
         variants
@@ -84,15 +84,16 @@ fn nullable_and_omittable_are_independent() {
 
 #[test]
 fn ordinary_prelude_names_cannot_be_redeclared() {
-    assert!(Schema::parse("CHOICE Boolean { `maybe }").is_err());
-    assert!(Schema::parse("CHOICE (Item: TYPE) ? { `empty, `full (Item) }").is_err());
+    assert!(Schema::parse("TYPE ALIAS Boolean: UNION [`maybe]").is_err());
+    assert!(Schema::parse("TYPE ALIAS (Item: TYPE) ?: UNION [`empty, `full (Item)]").is_err());
 }
 
 #[test]
-fn boolean_inference_uses_ordinary_choice_ambiguity() {
-    let schema =
-        Schema::parse("CHOICE Another { `true }, METHOD set (flag: Boolean) RETURNS NOTHING")
-            .unwrap();
+fn boolean_inference_uses_ordinary_variant_ambiguity() {
+    let schema = Schema::parse(
+        "TYPE ALIAS Another: UNION [`true], METHOD set (flag: Boolean) RETURNS NOTHING",
+    )
+    .unwrap();
     assert!(anyx_protocol::codec::decode_request(&schema, "set (`true)").is_err());
     assert!(anyx_protocol::codec::decode_request(&schema, "set (`true AS Boolean)").is_ok());
 }
@@ -120,7 +121,7 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
 
 #[cfg(feature = "json")]
 #[test]
-fn json_uses_ordinary_choice_values_and_only_omission_uses_defaults() {
+fn json_uses_ordinary_variant_values_and_only_omission_uses_defaults() {
     use anyx_protocol::json::{from_json, to_json};
     use serde_json::json;
     let schema = Schema::parse(

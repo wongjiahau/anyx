@@ -1,6 +1,6 @@
 == an unknown type
 PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
-schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `CHOICE`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
                                      ^^^^^
 
@@ -59,10 +59,10 @@ schema:1:62: found the number `3`; expected the call `… _` or the end of the c
                                                                ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },
-schema:1:58: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },
-                                                           ^^^^^^^
+PROTOCOL a VERSION 1, RECORD Example { a: Text }, TYPE ALIAS Example: UNION [`b],
+schema:1:62: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+  PROTOCOL a VERSION 1, RECORD Example { a: Text }, TYPE ALIAS Example: UNION [`b],
+                                                               ^^^^^^^
 
 == a field twice
 PROTOCOL a VERSION 1, RECORD Example { a: Text, a: Integer },
@@ -71,10 +71,10 @@ schema:1:49: found a second field named `a`; expected each field once; rename or
                                                   ^
 
 == a variant twice
-PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },
-schema:1:45: found a second variant named `a`; expected each variant's words once; rename or remove one of them
-  PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },
-                                              ^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`a, `a (b: Text)],
+schema:1:55: found a second variant named `a`; expected each variant's words once; rename or remove one of them
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`a, `a (b: Text)],
+                                                        ^
 
 == a parameter twice
 PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
@@ -118,14 +118,14 @@ schema:1:67: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of In
   PROTOCOL a VERSION 1, RECORD Example { a (MAP: Integer) DEFAULT a [] },
                                                                     ^^
 
-== a cycle through a choice
-PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
+== a cycle through a union of variants
+PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, TYPE ALIAS Beta: UNION [`has (a: Alpha), `none],
 schema:1:30: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, TYPE ALIAS Beta: UNION [`has (a: Alpha), `none],
                                ^^^^^
-schema:1:56: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },
-                                                         ^^^^
+schema:1:60: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, TYPE ALIAS Beta: UNION [`has (a: Alpha), `none],
+                                                             ^^^^
 
 == names that are not lowercase ASCII
 PROTOCOL a VERSION 1, RECORD Example { Path: Text, café: Text },
@@ -137,10 +137,10 @@ schema:1:52: found `café` as the name of a field; expected words of lowercase A
                                                      ^^^^
 
 == a parameter named kind
-PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },
-schema:1:44: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
-  PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },
-                                             ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (kind: Text)],
+schema:1:54: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (kind: Text)],
+                                                       ^^^^
 
 == a keyword in a name
 PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },
@@ -228,8 +228,8 @@ schema:1:74: found the string "doc"; expected the call `… _` or the end of the
                                                                            ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc
-},
-schema:1:53: found the string "doc"; expected the call `… _` or the end of the call
-  PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc
-                                                      ^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (a: Text) # doc
+],
+schema:1:63: found the string "doc"; expected the call `… _` or the end of the call
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (a: Text) # doc
+                                                                ^^^^^

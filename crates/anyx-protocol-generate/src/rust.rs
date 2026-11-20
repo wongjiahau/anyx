@@ -68,7 +68,7 @@ fn body(out: &mut String, schema: &Schema) {
         let generics = Generics::new(schema, &definition.parameters);
         match &definition.kind {
             TypeKind::Record(fields) => record(out, schema, &doc, &name, &generics, fields),
-            TypeKind::Choice(variants) => choice(out, schema, &doc, &name, &generics, variants),
+            TypeKind::Variants(variants) => choice(out, schema, &doc, &name, &generics, variants),
             TypeKind::Distinct {
                 constructor,
                 underlying,
@@ -145,7 +145,7 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
     }
 }
 
-/// The type parameters of a generic record or choice, which its
+/// The type parameters of a generic record or union of variants, which its
 /// conversions need to convert too: `<Item>`, and
 /// `impl<Item: IntoValue> IntoValue for PageOf<Item>`.
 struct Generics {
@@ -326,7 +326,7 @@ fn newtype(
     .unwrap();
 }
 
-/// A choice, or a method's errors: an enum with a variant per shape.
+/// A union of variants, or a method's errors: an enum with a variant per shape.
 fn choice(
     out: &mut String,
     schema: &Schema,

@@ -9,7 +9,7 @@ ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 ## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
 ## where a doc goes is an error.
 
-## `INTRINSIC` before a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` says that its
+## `INTRINSIC` before a `RECORD`, `TYPE` or `ERRORS` says that its
 ## shape is written here and the implementation supplies its meaning, as
 ## for the built-in types of `prelude.protocol.anyx`. The schema checker lets only
 ## the prelude use it.
@@ -41,7 +41,7 @@ record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: record par
 
 record part: ONE OF [fields: CURLY BRACE [ZERO OR MORE: field], type parameter],
 
-## A type parameter of a generic `RECORD`, `CHOICE` or `TYPE ALIAS`, in a
+## A type parameter of a generic `RECORD` or `TYPE ALIAS`, in a
 ## slot of its name: `(Item: TYPE)`. Its name is Title Case, as a type's
 ## is. `TYPE` is a keyword, not a type, so a type parameter never reads as
 ## the use of a generic type, and no type of types is needed.
@@ -85,9 +85,11 @@ declared field: ONE OF [
 
 field slot: ONE OF [doc: LINE STRING, type],
 
+## `` CHOICE Case { `smart, `any } ``, which a union of variants replaced:
+## read only so that the checker can name what replaces it,
+## `` TYPE ALIAS Case: UNION [`smart, `any] ``.
 choice: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
-  intrinsic: OPTIONAL: WORD "INTRINSIC",
   public: OPTIONAL: WORD "PUBLIC",
   WORD "CHOICE", body: choice body,
 ],
@@ -137,6 +139,9 @@ untagged type body: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
 ## each other slot of its name, anywhere among the words:
 ## `TYPE ALIAS (Item: TYPE) Pair: LIST Item`. The type it stands for fills
 ## the last slot; the checker reads the parameters from the others.
+## An alias of a union of variants, `` TYPE ALIAS Case: UNION [`smart,
+## `any] ``, keeps its name, so generated code has an enum `Case` and
+## messages say `Case`.
 type alias: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   public: OPTIONAL: WORD "PUBLIC",
@@ -290,13 +295,17 @@ union type: ANYFIX CALL [WORD "UNION", members: SQUARE BRACKET [ZERO OR MORE: un
 ## in `` `null `` or `` `custom hue (hue: Float) ``, and a type is not, as
 ## in `Integer`, `Text?` or `(Text) Pair`. A list or a map is named first,
 ## as a record is: `TYPE ALIAS Paths: LIST Text`, then
-## `` UNION [Paths, `none] ``.
+## `` UNION [Paths, `none] ``. A variant or a named type may have a doc
+## before it, as a field does; the checker reads a named type's from the
+## slot before its first word.
 union member: ONE OF [
   variant: variant,
   refined: refined type,
   union: union type,
-  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^`_]"], ARGUMENTS: ZERO OR MORE: type],
+  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^`_]"], ARGUMENTS: ZERO OR MORE: member slot],
 ],
+
+member slot: ONE OF [doc: LINE STRING, type],
 
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a
 ## type in each slot, in parentheses: `Page of (File)`, `(Integer) or

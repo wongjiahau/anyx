@@ -59,9 +59,8 @@ the account, such as by sending or sharing it.
   `"2026-11-14T06:00:08.000Z"`.
 - `Duration`: A length of time, to the millisecond: whole numbers each
   followed by its unit, the largest first, as in `90 seconds` or
-  `1 hour 30 minutes`. A unit is in the plural for any count but 1:
-  `1 day 1 second`. The units are `day`, `hour`, `minute`, `second` and
-  `millisecond`.
+  `1 hour 30 minutes`. The units are `day`, `hour`, `minute`, `second` and
+  `millisecond`, in the plural for any count but 1: `1 day 1 second`.
 - `LIST: T` is `[a, b, c]`.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
@@ -75,10 +74,10 @@ the account, such as by sending or sharing it.
   then holds the entry after `DEFAULT`. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.
-- A CHOICE is one of its variants, written as a backtick and the
-  variant's shape with a value in each slot: `` `dark ``,
-  `` `custom hue 0.5 ``. A call without the backtick is a function, such
-  as a named type's constructor.
+- A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is
+  one of its variants, written as a backtick and the variant's shape
+  with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
+  without the backtick is a function, such as a named type's constructor.
 - A `UNION` is a value of one of its members, written as that member
   writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
   value of `T`: `{ max depth 3 }`, `` { max depth: `null } ``.
@@ -102,7 +101,7 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 
 ```anyx
 # `` `true `` or `` `false ``.
-CHOICE Boolean { `false, `true },
+TYPE ALIAS Boolean: UNION [`false, `true],
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.

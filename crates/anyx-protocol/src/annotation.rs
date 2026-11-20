@@ -103,7 +103,7 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
 fn variant_of(schema: &Schema, text: &str) -> Option<Type> {
     only(schema.types.iter().enumerate().filter(|(_, definition)| {
         definition.parameters.is_empty()
-            && matches!(&definition.kind, TypeKind::Choice(variants)
+            && matches!(&definition.kind, TypeKind::Variants(variants)
                 if variants.iter().any(|variant| variant.shape.text == text))
     }))
 }

@@ -26,9 +26,9 @@ RECORD Reminder {
     `(tone: Tone) DEFAULT `chime,
 },
 
-CHOICE Tone { `chime, `silent },
+TYPE ALIAS Tone: UNION [`chime, `silent],
 
-CHOICE Schedule { `never, `once at (at: Instant), `every (period: Duration) },
+TYPE ALIAS Schedule: UNION [`never, `once at (at: Instant), `every (period: Duration)],
 
 METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule),
 

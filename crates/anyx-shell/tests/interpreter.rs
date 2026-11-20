@@ -267,7 +267,7 @@ fn preconditions_are_checked_before_a_call_runs() {
             SettingsTool(
                 Schema::parse(
                     r#"PROTOCOL example VERSION 1,
-                    CHOICE Setting { `any case, `exact case, `hidden },
+                    TYPE ALIAS Setting: UNION [`any case, `exact case, `hidden],
                     METHOD echo (settings: LIST Setting)
                         REQUIRES [settings . has at most one of [`any case, `exact case]]
                         RETURNS (settings: LIST Setting),

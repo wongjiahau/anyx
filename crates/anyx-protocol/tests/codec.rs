@@ -156,8 +156,8 @@ fn an_invalid_request_reads_back() {
 }
 
 const MODES: &str = "PROTOCOL a VERSION 1,
-CHOICE Shade { `dark, `light },
-CHOICE Mode { `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed },
+TYPE ALIAS Shade: UNION [`dark, `light],
+TYPE ALIAS Mode: UNION [`dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed],
 RECORD Options { mode: Mode, strict (Boolean) DEFAULT strict (`false) },
 METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean),
 METHOD apply (options: Options) RETURNS (modes: LIST: Mode),";
@@ -591,7 +591,7 @@ fn a_field_left_out_takes_its_default() {
 }
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
-CHOICE Mood { `calm, `wild },
+TYPE ALIAS Mood: UNION [`calm, `wild],
 RECORD Tally { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
 METHOD count (tally: Tally) RETURNS (counts: MAP Integer),
 METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood),";

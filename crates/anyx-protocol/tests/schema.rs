@@ -108,20 +108,67 @@ fn poentaros_schema_reads_with_its_docs_shapes_and_errors() {
 }
 
 #[test]
-fn choice_variants_are_shapes_with_docs() {
+fn a_choice_names_the_union_that_replaced_it() {
+    let message = diagnostics("PROTOCOL a VERSION 1, CHOICE Case { `smart, `any },");
+    assert!(
+        message.contains("expected `TYPE ALIAS Case: UNION ["),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_union_member_may_have_a_doc_before_it() {
+    schema(
+        "PROTOCOL a VERSION 1,
+        NAMED TYPE File Id (Text),
+        TYPE ALIAS Target: UNION [
+            # A file by its id.
+            File Id,
+            # Nothing at all.
+            `none,
+        ],",
+    );
+    let message = diagnostics(
+        "PROTOCOL a VERSION 1, TYPE ALIAS Target: UNION [Integer # A count.
+        ],",
+    );
+    assert!(
+        message.contains(
+            "found a doc among the types of a union's member; expected it before the member"
+        ),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_union_of_variants_cannot_lead_back_to_itself() {
+    for source in [
+        "PROTOCOL a VERSION 1, TYPE ALIAS Tree: UNION [`leaf, `node (children: LIST Tree)],",
+        "PROTOCOL a VERSION 1, TYPE ALIAS Alpha: UNION [`beta (b: Beta)], TYPE ALIAS Beta: UNION [`alpha (a: MAP Alpha), `none],",
+    ] {
+        let message = diagnostics(source);
+        assert!(
+            message.contains("a union of variants that leads back to itself"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn variants_are_shapes_with_docs() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Mode {
+        TYPE ALIAS Mode: UNION [
             `dark,
             # A colour of the wheel.
             `custom hue (hue: Float) lightness (lightness: Float),
             # Plain.
             `plain,
             `(base: Text) tinted,
-        },",
+        ],",
     );
-    let TypeKind::Choice(variants) = &schema.types[0].kind else {
-        panic!("mode is a choice")
+    let TypeKind::Variants(variants) = &schema.types[0].kind else {
+        panic!("mode is a union of variants")
     };
     let shapes: Vec<(&str, Option<&str>)> = variants
         .iter()
@@ -197,7 +244,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type defined twice",
-            "PROTOCOL a VERSION 1, RECORD Example { a: Text }, CHOICE Example { `b },",
+            "PROTOCOL a VERSION 1, RECORD Example { a: Text }, TYPE ALIAS Example: UNION [`b],",
         ),
         (
             "a field twice",
@@ -205,7 +252,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a variant twice",
-            "PROTOCOL a VERSION 1, CHOICE Example { `a, `a (b: Text) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`a, `a (b: Text)],",
         ),
         (
             "a parameter twice",
@@ -236,8 +283,8 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, RECORD Example { a (MAP: Integer) DEFAULT a [] },",
         ),
         (
-            "a cycle through a choice",
-            "PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, CHOICE Beta { `has (a: Alpha), `none },",
+            "a cycle through a union of variants",
+            "PROTOCOL a VERSION 1, RECORD Alpha { b: Beta }, TYPE ALIAS Beta: UNION [`has (a: Alpha), `none],",
         ),
         (
             "names that are not lowercase ASCII",
@@ -245,7 +292,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a parameter named kind",
-            "PROTOCOL a VERSION 1, CHOICE Example { `y (kind: Text) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (kind: Text)],",
         ),
         (
             "a keyword in a name",
@@ -305,7 +352,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a string inside a variant",
-            "PROTOCOL a VERSION 1, CHOICE Example { `y (a: Text) # doc\n},",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example: UNION [`y (a: Text) # doc\n],",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -340,11 +387,11 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a choice",
-            "PROTOCOL a VERSION 1, \"A shade.\" CHOICE Shade { `dark, `light },",
+            "PROTOCOL a VERSION 1, \"A shade.\" TYPE ALIAS Shade: UNION [`dark, `light],",
         ),
         (
             "a quoted doc on a variant",
-            "PROTOCOL a VERSION 1, CHOICE Shade { `\"Dim.\" dark, light },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`\"Dim.\" dark, light],",
         ),
         (
             "a quoted doc on a type",
@@ -406,7 +453,7 @@ fn a_method_may_return_nothing() {
 fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Shade { `dark, `light },
+        TYPE ALIAS Shade: UNION [`dark, `light],
         RECORD Page { size (Integer) DEFAULT size 50, after (Text) DEFAULT after \"\" },
         RECORD Search {
             query: Text,
@@ -495,7 +542,7 @@ fn mistakes_in_a_default_are_diagnosed() {
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, CHOICE Shade { `dark }, RECORD Example { shade (Shade) DEFAULT shade (`dim) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark], RECORD Example { shade (Shade) DEFAULT shade (`dim) },",
         ),
         (
             "the removed OPTIONAL keyword",
@@ -529,7 +576,7 @@ RECORD Search { limit (Integer) DEFAULT limit 50, tags (LIST Text) DEFAULT tags 
 fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        CHOICE Shade { `dark, `light },
+        TYPE ALIAS Shade: UNION [`dark, `light],
         RECORD Folder {
             files: MAP Integer,
             folders: MAP: Folder,
@@ -595,12 +642,12 @@ fn the_request_decoder_is_what_its_grammar_generates() {
 #[test]
 fn simple_type_names_use_title_case() {
     schema(
-        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, CHOICE File Format { `pdf }, TYPE ALIAS Some Format: File Format,",
+        "PROTOCOL a VERSION 1, RECORD File Summary { path: Text }, TYPE ALIAS File Format: UNION [`pdf], TYPE ALIAS Some Format: File Format,",
     );
     for name in ["file summary", "FileSummary", "File summary"] {
         for declaration in [
             format!("RECORD {name} {{ path: Text }}"),
-            format!("CHOICE {name} {{ `pdf }}"),
+            format!("TYPE ALIAS {name}: UNION [`pdf]"),
             format!("TYPE {name}: Text"),
         ] {
             let message = diagnostics(&format!("PROTOCOL a VERSION 1, {declaration},"));
