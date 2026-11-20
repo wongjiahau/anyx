@@ -5,12 +5,10 @@ use anyx::{NamePart, Node, NodeKind, Span, StringKind, StringLiteral};
 use crate::codec;
 use crate::response::{self, WrittenOutcome};
 
-use crate::error_terms::{self, ErrorTerms, GroupReference, Misplaced};
 use crate::grammar as ast;
 use crate::schema::{
-    DecodedFile, Diagnostic, Effect, ErrorDefinition, Example, Field, FieldForm, Method, Parameter,
-    Schema, Shape, ShapePart, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written,
-    code, fill_slots,
+    DecodedFile, Diagnostic, Effect, Example, Field, FieldForm, Method, Parameter, Schema, Shape,
+    ShapePart, Shaped, SourceFile, Type, TypeDefinition, TypeKind, Undo, Written, code, fill_slots,
 };
 
 /// A type, error or alias, where it is declared.
@@ -20,19 +18,6 @@ struct Declared {
     /// The index of its file.
     file: usize,
     public: bool,
-}
-
-/// An `ERRORS` group: `` ERRORS file errors [`trashed, `missing] + other ``.
-struct Group<'a> {
-    declared: Declared,
-    /// Its own errors, as written.
-    own: &'a [ast::Error],
-    /// Their indices into the errors, once read.
-    own_errors: Vec<usize>,
-    /// The groups it joins with `+`, unresolved.
-    joined: Vec<GroupReference>,
-    /// Every error it stands for, once expanded: `None` when it can't be.
-    expanded: Option<Option<Vec<usize>>>,
 }
 
 /// A field's `DEFAULT`, to read once every type is known.
@@ -71,10 +56,28 @@ struct PendingUnion {
     file: usize,
 }
 
-/// An error of a method, and where its list names it.
-struct Listed {
+/// The entries of an alias of a union of variants, the type at `index`,
+/// flattened once every type is known.
+struct PendingIncludes {
     index: usize,
-    span: Span,
+    file: usize,
+    entries: Vec<VariantsEntry>,
+}
+
+/// A method's errors as written, flattened once the schema is read, since
+/// an alias's variants are known only then.
+struct PendingErrors {
+    /// The method's index in the schema.
+    method: usize,
+    file: usize,
+    entries: Vec<VariantsEntry>,
+}
+
+/// An entry of a union of variants, or of a method's `ERRORS`: a variant,
+/// or the use of an alias of a union of variants, where it is named.
+enum VariantsEntry {
+    Variant(Shaped),
+    Alias(Type, Span),
 }
 
 /// A `TYPE ALIAS`: a name for a type, which each use stands for.
@@ -102,7 +105,7 @@ struct Path {
     name: String,
 }
 
-/// What a `RECORD`, `CHOICE`, `TYPE` or `ERRORS` group declares, public or
+/// What a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` declares, public or
 /// not.
 struct Declaration<'b, T> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
@@ -135,15 +138,6 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Varian
         intrinsic: None,
         public: choice.public.is_some(),
         body: type_shape(&choice.body.name, parts),
-    }
-}
-
-fn errors(errors: &ast::Errors) -> Declaration<'_, &ast::ErrorList> {
-    Declaration {
-        doc: &errors.doc,
-        intrinsic: errors.intrinsic,
-        public: errors.public.is_some(),
-        body: &errors.body,
     }
 }
 
@@ -229,23 +223,85 @@ fn alias_shape(body: &ast::AliasBody) -> AliasShape<'_> {
     }
 }
 
-/// The variants of an alias of a union of variants alone, `` TYPE ALIAS
-/// Case: UNION [`smart, `any] ``, which keeps its name as a type; `None`
-/// for any other alias.
-fn union_of_variants(alias: &ast::TypeAlias) -> Option<Vec<&ast::Variant>> {
+/// A member of an alias of a union of variants: a variant, or another
+/// such alias that it includes.
+enum VariantsMember<'b> {
+    Variant(&'b ast::Variant),
+    Alias {
+        name: &'b ast::CallName,
+        slots: &'b [ast::MemberSlot],
+        span: Span,
+    },
+}
+
+/// The members of an alias of a union of variants, `` TYPE ALIAS Case:
+/// UNION [`smart, `any] ``, which keeps its name as a type: each member a
+/// variant, or one of the `known` aliases of unions of variants, by name.
+/// `None` for any other alias, such as `` UNION [Integer, `none] ``.
+fn variants_members<'b>(
+    alias: &'b ast::TypeAlias,
+    known: &[String],
+) -> Option<Vec<VariantsMember<'b>>> {
     let Some(ast::Type::Union(union)) = alias_shape(&alias.body).r#type else {
         return None;
     };
-    let variants: Option<Vec<&ast::Variant>> = union
+    let members: Option<Vec<VariantsMember>> = union
         .members
         .value
         .iter()
         .map(|member| match member {
-            ast::UnionMember::Variant(variant) => Some(variant),
+            ast::UnionMember::Variant(variant) => Some(VariantsMember::Variant(variant)),
+            ast::UnionMember::Named {
+                name,
+                arguments,
+                span,
+            } if known.contains(&member_name(name, arguments)) => Some(VariantsMember::Alias {
+                name,
+                slots: arguments,
+                span: *span,
+            }),
             _ => None,
         })
         .collect();
-    variants.filter(|variants| !variants.is_empty())
+    members.filter(|members| !members.is_empty())
+}
+
+/// The names of the aliases of unions of variants in `decoded`. An alias
+/// may include one declared after it, or in another file, so they are read
+/// until no more are found: `` UNION [`trashed, Common Errors] `` is one once
+/// `Common Errors` is. An alias that leads back to itself never is.
+fn variants_aliases(decoded: &[DecodedFile]) -> Vec<String> {
+    let aliases: Vec<&ast::TypeAlias> = decoded
+        .iter()
+        .flat_map(|file| &file.document.definition)
+        .filter_map(|definition| match definition {
+            ast::Definition::TypeAlias(alias) => Some(alias),
+            _ => None,
+        })
+        .collect();
+    let mut known: Vec<String> = Vec::new();
+    loop {
+        let before = known.len();
+        for alias in &aliases {
+            let name = alias_shape(&alias.body).name.value;
+            if !known.contains(&name) && variants_members(alias, &known).is_some() {
+                known.push(name);
+            }
+        }
+        if known.len() == before {
+            return known;
+        }
+    }
+}
+
+/// A union member's name, as its type is known by, without a doc before
+/// it: `# Where it is.` then `Text` is the call `_ Text`.
+fn member_name(name: &ast::CallName, slots: &[ast::MemberSlot]) -> String {
+    let mut parts = name.parts.clone();
+    if let (Some(NamePart::Slot), Some(ast::MemberSlot::Doc(_))) = (parts.first(), slots.first()) {
+        parts.remove(0);
+    }
+    ShapePart::text(&ShapePart::of(&parts))
 }
 
 /// A slot of a `RECORD`'s or `CHOICE`'s name, as written: the braces of its
@@ -384,15 +440,15 @@ pub(crate) struct Checker<'a> {
     /// The type parameters of the generic record or alias being checked,
     /// which its fields and variants may use as types.
     parameters: Vec<String>,
-    groups: Vec<Group<'a>>,
     aliases: Vec<Alias<'a>>,
-    /// Each error, in the order of the schema's errors.
-    errors: Vec<Declared>,
+    /// The names of the aliases of unions of variants, which are types.
+    variants_aliases: Vec<String>,
     defaults: Vec<PendingDefault>,
     forms: Vec<PendingForms>,
     unions: Vec<PendingUnion>,
     examples: Vec<PendingExamples<'a>>,
     undos: Vec<PendingUndo<'a>>,
+    method_errors: Vec<PendingErrors>,
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
@@ -441,6 +497,7 @@ impl<'a> Checker<'a> {
         self.paths = files.iter().map(|file| file.path.clone()).collect();
         self.sources = files.iter().map(|file| file.source.clone()).collect();
         self.imports = decoded.iter().map(|file| file.imports.clone()).collect();
+        self.variants_aliases = variants_aliases(decoded);
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
             for definition in &file.document.definition {
@@ -497,15 +554,14 @@ impl<'a> Checker<'a> {
                         self.declare_type(name, found.public.is_some());
                         self.declare_type_parameters(&[]);
                     }
-                    ast::Definition::TypeAlias(found) => match union_of_variants(found) {
+                    ast::Definition::TypeAlias(found) => match self.union_of_variants(found) {
                         Some(_) => self.declare_variants_alias(found),
                         None => self.declare_alias(found),
                     },
-                    ast::Definition::Errors(found) => {
-                        let found = errors(found);
-                        self.check_intrinsic(found.intrinsic);
-                        self.declare_group(found.body, found.public);
-                    }
+                    ast::Definition::Errors(found) => self.error(
+                        found.span,
+                        "found an `ERRORS` group; expected `` TYPE ALIAS File Errors: UNION [`missing, Other Errors] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [`conflict, File Errors] ``; write its errors in the brackets, and each group it joined with `+` as a member",
+                    ),
                     ast::Definition::Function(function) => self.error(
                         function.span,
                         "only the protocol prelude can declare a FUNCTION",
@@ -515,7 +571,7 @@ impl<'a> Checker<'a> {
             }
         }
         let mut types = Vec::new();
-        let mut errors_found = Vec::new();
+        let mut includes = Vec::new();
         let mut methods: Vec<Method> = Vec::new();
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
@@ -602,19 +658,24 @@ impl<'a> Checker<'a> {
                         });
                     }
                     ast::Definition::TypeAlias(found) => {
-                        let Some(variants) = union_of_variants(found) else {
+                        let Some(members) = self.union_of_variants(found) else {
                             continue;
                         };
                         let index = types.len();
-                        let variants = self.generic(index, |checker| checker.variants(&variants));
-                        let kind = TypeKind::Variants(variants);
-                        self.check_parameters_used(index, &kind);
+                        let entries =
+                            self.generic(index, |checker| checker.variants_entries(&members));
+                        includes.push(PendingIncludes {
+                            index,
+                            file: self.file,
+                            entries,
+                        });
                         types.push(TypeDefinition {
                             public: found.public.is_some() || self.file == self.prelude_file,
                             doc: doc(&found.doc),
                             name: alias_shape(&found.body).name.value,
                             parameters: self.parameter_names(index),
-                            kind,
+                            // Its variants, once those it includes are known.
+                            kind: TypeKind::Variants(Vec::new()),
                         });
                     }
                     ast::Definition::Errors(_)
@@ -624,29 +685,17 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        self.include_variants(&mut types, includes);
         for index in 0..self.aliases.len() {
             // Reports mistakes in an alias once, used or not.
             self.alias_type(index);
             self.check_alias_parameters_used(index);
         }
-        for index in 0..self.groups.len() {
-            let declared = &self.groups[index].declared;
-            let (file, public) = (declared.file, declared.public);
-            let own = self.groups[index].own;
-            let own_errors = self.within(file, |checker| {
-                checker.declare_errors(own, public, &mut errors_found)
-            });
-            self.groups[index].own_errors = own_errors;
-        }
-        for index in 0..self.groups.len() {
-            // Reports unknown groups and cycles once, here.
-            self.expand(index, &mut Vec::new());
-        }
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
             for definition in &file.document.definition {
                 if let ast::Definition::Method(found) = definition {
-                    let method = self.method(found, &mut errors_found);
+                    let method = self.method(found, methods.len());
                     let parts = method_parts(found);
                     if let Some(undo) = parts.undone_by {
                         self.undos.push(PendingUndo {
@@ -710,9 +759,15 @@ impl<'a> Checker<'a> {
             version: header.map_or(0, |header| header.version.value),
             built_ins: crate::schema::built_ins(&types),
             types,
-            errors: errors_found,
             methods,
         };
+        for pending in std::mem::take(&mut self.method_errors) {
+            let (errors, groups) = self.within(pending.file, |checker| {
+                checker.flatten_errors(&schema, pending.entries)
+            });
+            schema.methods[pending.method].errors = errors;
+            schema.methods[pending.method].error_groups = groups;
+        }
         for pending in std::mem::take(&mut self.undos) {
             let undo = self.within(pending.file, |checker| {
                 checker.undo(&schema, &schema.methods[pending.method], pending.undo)
@@ -1508,99 +1563,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Declares the group an `ERRORS` defines, which starts with its name
-    /// and its own errors.
-    fn declare_group(&mut self, list: &'a ast::ErrorList, public: bool) {
-        let Some(terms) = self.error_terms(list) else {
-            return;
-        };
-        let Some(name) = terms.name else {
-            self.error(
-                error_terms::span(list),
-                "found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `` ERRORS file errors [`trashed, `missing] ``",
-            );
-            return;
-        };
-        self.check_words(&name, "an error group");
-        self.check_duplicate_name(&name);
-        let declared = self.declared(&name, public);
-        self.groups.push(Group {
-            declared,
-            own: terms.own,
-            own_errors: Vec::new(),
-            joined: terms.groups,
-            expanded: None,
-        });
-    }
-
-    /// `list` read as its terms, or `None` after reporting what doesn't fit.
-    fn error_terms(&mut self, list: &'a ast::ErrorList) -> Option<ErrorTerms<'a>> {
-        match error_terms::read(list) {
-            Ok(terms) => Some(terms),
-            Err(Misplaced::NotATerm(span)) => {
-                let written = self.written(span).to_string();
-                self.error(
-                    span,
-                    format!(
-                        "found `{written}` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`"
-                    ),
-                );
-                None
-            }
-            Err(Misplaced::OwnAfterGroup(span)) => {
-                self.error(
-                    span,
-                    "found errors in brackets after a `+`; expected the errors in brackets first, then the groups joined with `+`, such as `[missing] + file errors`",
-                );
-                None
-            }
-        }
-    }
-
-    /// Reads the errors defined in brackets, as indices into `found`, each
-    /// once in the protocol.
-    fn declare_errors(
-        &mut self,
-        own: &[ast::Error],
-        public: bool,
-        found: &mut Vec<ErrorDefinition>,
-    ) -> Vec<usize> {
-        own.iter()
-            .map(|error| {
-                let shaped = self.shaped(error, "an error");
-                let words = shaped.shape.words();
-                if let Some(other) = self
-                    .errors
-                    .iter()
-                    .find(|known| known.name == words)
-                {
-                    let line = anyx::line_column(&self.sources[other.file], other.span.start).line;
-                    self.error(
-                        error.body.name.span,
-                        format!(
-                            "found a second error `{words}` in {}, after the one on line {line}; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`",
-                            self.this_schema()
-                        ),
-                    );
-                }
-                let declared = self.declared(
-                    &ast::Spanned {
-                        value: words,
-                        span: error.body.name.span,
-                    },
-                    public,
-                );
-                self.errors.push(declared);
-                found.push(ErrorDefinition {
-
-                    public,
-                    error: shaped,
-                });
-                found.len() - 1
-            })
-            .collect()
-    }
-
     /// A plain type shape, with its type arguments. Rejects legacy file paths.
     fn path<'r>(&mut self, reference: &'r ast::Reference) -> Option<(Path, &'r [ast::Type])> {
         let parts = &reference.name.parts;
@@ -1623,11 +1585,10 @@ impl<'a> Checker<'a> {
         if let Some(known) = self
             .types
             .iter()
-            .chain(self.groups.iter().map(|group| &group.declared))
             .chain(self.aliases.iter().map(|alias| &alias.declared))
             .find(|known| known.name == name.value)
         {
-            self.error(name.span, format!("duplicate declaration `{}` in `{}` and `{}`; every type and error group must have a unique name in the protocol", name.value, self.paths[known.file], self.paths[self.file]));
+            self.error(name.span, format!("duplicate declaration `{}` in `{}` and `{}`; every type must have a unique name in the protocol", name.value, self.paths[known.file], self.paths[self.file]));
         }
     }
 
@@ -1744,66 +1705,6 @@ impl<'a> Checker<'a> {
         );
         self.error(span, message);
         None
-    }
-
-    fn resolve_group(&mut self, reference: &GroupReference) -> Option<usize> {
-        match self
-            .groups
-            .iter()
-            .position(|group| group.declared.name == reference.name)
-        {
-            Some(index) => {
-                let known = &self.groups[index].declared;
-                if !self.accessible(known) {
-                    self.unavailable(reference.span, &reference.name, known.file, known.public);
-                }
-                Some(index)
-            }
-            None => {
-                self.error(reference.span, format!("found `{}`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`", reference.name));
-                None
-            }
-        }
-    }
-
-    /// The errors that the group at `index` stands for, in order: its own,
-    /// then those of the groups it joins. `None` when one of those can't be
-    /// resolved. `visiting` holds the groups being expanded, to catch one
-    /// that joins itself.
-    fn expand(&mut self, index: usize, visiting: &mut Vec<usize>) -> Option<Vec<usize>> {
-        if let Some(expanded) = &self.groups[index].expanded {
-            return expanded.clone();
-        }
-        let group = &self.groups[index];
-        let (file, span, name) = (
-            group.declared.file,
-            group.declared.span,
-            group.declared.name.clone(),
-        );
-        let (own, joined) = (group.own_errors.clone(), group.joined.clone());
-        if visiting.contains(&index) {
-            self.within(file, |checker| {
-                checker.error(
-                    span,
-                    format!(
-                        "found the error group `{name}` joining itself; expected a group to join only groups that don't lead back to it"
-                    ),
-                )
-            });
-            return None;
-        }
-        visiting.push(index);
-        let expanded = self.within(file, |checker| {
-            joined.iter().try_fold(own, |mut expanded, reference| {
-                if let Some(found) = checker.resolve_group(reference) {
-                    expanded.extend(checker.expand(found, visiting)?);
-                }
-                Some(expanded)
-            })
-        });
-        visiting.pop();
-        self.groups[index].expanded = Some(expanded.clone());
-        expanded
     }
 
     /// `INTRINSIC` before a declaration of a schema: only the prelude may
@@ -2004,6 +1905,133 @@ impl<'a> Checker<'a> {
         (field, name.span)
     }
 
+    /// Whether `alias` is an alias of a union of variants, and its members.
+    fn union_of_variants<'b>(&self, alias: &'b ast::TypeAlias) -> Option<Vec<VariantsMember<'b>>> {
+        variants_members(alias, &self.variants_aliases)
+    }
+
+    /// The members of an alias of a union of variants, checked: its
+    /// variants, and the uses of the aliases it includes.
+    fn variants_entries(&mut self, members: &[VariantsMember]) -> Vec<VariantsEntry> {
+        let written: Vec<&ast::Variant> = members
+            .iter()
+            .filter_map(|member| match member {
+                VariantsMember::Variant(variant) => Some(*variant),
+                VariantsMember::Alias { .. } => None,
+            })
+            .collect();
+        let mut variants = self.variants(&written).into_iter();
+        members
+            .iter()
+            .map(|member| match member {
+                VariantsMember::Variant(_) => {
+                    VariantsEntry::Variant(variants.next().expect("a variant for each written"))
+                }
+                VariantsMember::Alias { name, slots, span } => {
+                    let (name, arguments) = self.member_reference(name, slots);
+                    let r#type = self.type_use(&ast::Reference {
+                        name,
+                        arguments,
+                        span: *span,
+                    });
+                    VariantsEntry::Alias(r#type, *span)
+                }
+            })
+            .collect()
+    }
+
+    /// Gives each alias of a union of variants its variants: those written,
+    /// and those of each alias it includes, in their place, with its type
+    /// arguments in place of that alias's parameters. Then checks that its
+    /// type parameters are used and that no variant is there twice.
+    fn include_variants(&mut self, types: &mut [TypeDefinition], includes: Vec<PendingIncludes>) {
+        fn flattened(
+            index: usize,
+            types: &[TypeDefinition],
+            includes: &[PendingIncludes],
+            done: &mut Vec<Option<Vec<Shaped>>>,
+            visiting: &mut Vec<usize>,
+        ) -> Vec<Shaped> {
+            if let Some(variants) = &done[index] {
+                return variants.clone();
+            }
+            let Some(pending) = includes.iter().find(|pending| pending.index == index) else {
+                return match &types[index].kind {
+                    TypeKind::Variants(variants) => variants.clone(),
+                    _ => Vec::new(),
+                };
+            };
+            if visiting.contains(&index) {
+                // Can't happen: an alias that leads back to itself is never
+                // a union of variants. Stop rather than loop.
+                return Vec::new();
+            }
+            visiting.push(index);
+            let mut variants = Vec::new();
+            for entry in &pending.entries {
+                match entry {
+                    VariantsEntry::Variant(shaped) => variants.push(shaped.clone()),
+                    VariantsEntry::Alias(Type::Named(other), _) => {
+                        variants.extend(flattened(*other, types, includes, done, visiting));
+                    }
+                    VariantsEntry::Alias(Type::Generic(other, arguments), _) => {
+                        let included =
+                            TypeKind::Variants(flattened(*other, types, includes, done, visiting));
+                        if let TypeKind::Variants(substituted) =
+                            included.substitute(&types[*other].parameters, arguments)
+                        {
+                            variants.extend(substituted);
+                        }
+                    }
+                    // A use that names no type is already reported.
+                    VariantsEntry::Alias(..) => {}
+                }
+            }
+            visiting.pop();
+            done[index] = Some(variants.clone());
+            variants
+        }
+        let mut done = vec![None; types.len()];
+        for pending in &includes {
+            let variants = flattened(pending.index, types, &includes, &mut done, &mut Vec::new());
+            types[pending.index].kind = TypeKind::Variants(variants);
+        }
+        for pending in &includes {
+            let index = pending.index;
+            self.within(pending.file, |checker| {
+                checker.check_parameters_used(index, &types[index].kind);
+                let TypeKind::Variants(variants) = &types[index].kind else {
+                    return;
+                };
+                let written: Vec<String> = pending
+                    .entries
+                    .iter()
+                    .filter_map(|entry| match entry {
+                        VariantsEntry::Variant(shaped) => Some(shaped.shape.words()),
+                        VariantsEntry::Alias(..) => None,
+                    })
+                    .collect();
+                let mut seen: Vec<String> = Vec::new();
+                for variant in variants {
+                    let words = variant.shape.words();
+                    // Twice among its own variants is already reported.
+                    let own_twice = written.iter().filter(|known| **known == words).count() > 1;
+                    if seen.contains(&words) && !own_twice {
+                        let declared = &checker.types[index];
+                        let (span, name) = (declared.span, declared.name.clone());
+                        checker.error(
+                            span,
+                            format!(
+                                "found the variant `{words}` twice in `{name}`, counting the variants of the aliases it includes; expected each variant's words once; remove one, or rename it"
+                            ),
+                        );
+                    }
+                    seen.push(words);
+                }
+            });
+        }
+    }
+
     fn variants(&mut self, variants: &[&ast::Variant]) -> Vec<Shaped> {
         let mut checked: Vec<Shaped> = Vec::new();
         for variant in variants {
@@ -2081,7 +2109,9 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn method(&mut self, method: &'a ast::Method, found: &mut Vec<ErrorDefinition>) -> Method {
+    /// Checks a method, the one at `index` in the schema. Its errors are
+    /// flattened once the schema is read, by [`Self::flatten_errors`].
+    fn method(&mut self, method: &'a ast::Method, index: usize) -> Method {
         let MethodParts {
             doc: doc_string,
             shape,
@@ -2109,62 +2139,7 @@ impl<'a> Checker<'a> {
             );
         }
         let checked_shape = self.shape(&shape.name, &shape.arguments, "a method");
-        let terms = list.and_then(|list| self.error_terms(list));
-        let mut listed: Vec<Listed> = Vec::new();
-        if let Some(terms) = terms {
-            if let Some(name) = &terms.name {
-                self.error(
-                    name.span,
-                    format!(
-                        "found the name `{}` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `` ERRORS [`missing] + file errors ``",
-                        name.value
-                    ),
-                );
-            }
-            let own = self.declare_errors(terms.own, false, found);
-            listed.extend(terms.own.iter().zip(own).map(|(error, index)| Listed {
-                index,
-                span: error.body.name.span,
-            }));
-            for reference in &terms.groups {
-                let Some(group) = self.resolve_group(reference) else {
-                    continue;
-                };
-                let expanded = self.expand(group, &mut Vec::new()).unwrap_or_default();
-                listed.extend(expanded.into_iter().map(|index| Listed {
-                    index,
-                    span: reference.span,
-                }));
-            }
-        }
-        let mut errors: Vec<usize> = Vec::new();
-        for Listed { index, span } in listed {
-            let declared = &self.errors[index];
-            let this = declared.name.clone();
-            let same_words = errors
-                .iter()
-                .map(|known| &self.errors[*known])
-                .find(|other| other.name == declared.name)
-                .map(|other| other.name.clone());
-            if errors.contains(&index) {
-                let words = declared.name.clone();
-                self.error(
-                    span,
-                    format!(
-                        "found the error `{words}` twice among this method's errors, counting those of its groups; expected each error once; remove one"
-                    ),
-                );
-            } else if let Some(other) = same_words {
-                self.error(
-                    span,
-                    format!(
-                        "found the errors `{other}` and `{this}` both listed for this method; expected errors of distinct words, since a response writes an error by its shape alone, without a file path; rename one of them"
-                    ),
-                );
-            } else {
-                errors.push(index);
-            }
-        }
+        self.method_errors(list, &shape.name, index);
         let returns = returns.map(|returns| self.parameter(returns));
         let requires = method
             .requires
@@ -2179,11 +2154,106 @@ impl<'a> Checker<'a> {
             returns,
             requires,
             ensures,
-            errors,
+            errors: Vec::new(),
+            error_groups: Vec::new(),
             examples: Vec::new(),
             effect,
             undone_by: None,
         }
+    }
+
+    /// Reads a method's `ERRORS`, to flatten once the schema is read. A
+    /// method without one is reported: one that can't fail says `ERRORS []`.
+    fn method_errors(&mut self, list: Option<&ast::ErrorList>, name: &ast::CallName, index: usize) {
+        let Some(list) = list else {
+            self.error(
+                name.span,
+                "found a method without `ERRORS`; expected its errors after what it returns, as in `` ERRORS [`missing] ``, or `ERRORS []` when it can't fail, so that a reader sees that its errors were declared up front",
+            );
+            return;
+        };
+        let mut entries = Vec::new();
+        let mut members = Vec::new();
+        for member in &list.union_member {
+            match member {
+                ast::UnionMember::Variant(variant) => {
+                    let shaped = self.shaped(variant, "an error");
+                    members.push(Type::Variant(Box::new(shaped.shape.clone())));
+                    entries.push(VariantsEntry::Variant(shaped));
+                }
+                ast::UnionMember::Named {
+                    name,
+                    arguments,
+                    span,
+                } => {
+                    let (name, arguments) = self.member_reference(name, arguments);
+                    let r#type = self.type_use(&ast::Reference {
+                        name,
+                        arguments,
+                        span: *span,
+                    });
+                    members.push(r#type.clone());
+                    entries.push(VariantsEntry::Alias(r#type, *span));
+                }
+                ast::UnionMember::Refined(ast::RefinedType { span, .. })
+                | ast::UnionMember::Union(ast::UnionType { span, .. }) => {
+                    self.not_an_error(*span);
+                }
+            }
+        }
+        // Two errors written alike are reported as a union's members are.
+        self.unions.push(PendingUnion {
+            r#type: Type::Union(members),
+            parameters: Vec::new(),
+            arguments: Vec::new(),
+            written: true,
+            span: list.span,
+            file: self.file,
+        });
+        self.method_errors.push(PendingErrors {
+            method: index,
+            file: self.file,
+            entries,
+        });
+    }
+
+    /// A method's errors in the order written, each alias's variants in its
+    /// place, and the aliases it names.
+    fn flatten_errors(
+        &mut self,
+        schema: &Schema,
+        entries: Vec<VariantsEntry>,
+    ) -> (Vec<Shaped>, Vec<Type>) {
+        let mut errors = Vec::new();
+        let mut groups = Vec::new();
+        for entry in entries {
+            match entry {
+                VariantsEntry::Variant(shaped) => errors.push(shaped),
+                VariantsEntry::Alias(r#type, span) => match schema.instance(&r#type) {
+                    Some((_, kind)) if matches!(kind.as_ref(), TypeKind::Variants(_)) => {
+                        let TypeKind::Variants(variants) = kind.as_ref() else {
+                            unreachable!("matched as variants")
+                        };
+                        errors.extend(variants.iter().cloned());
+                        groups.push(r#type);
+                    }
+                    // A name that isn't a type is already reported.
+                    _ if self.diagnostics.iter().any(|known| known.span == span) => {}
+                    _ => self.not_an_error(span),
+                },
+            }
+        }
+        (errors, groups)
+    }
+
+    fn not_an_error(&mut self, span: Span) {
+        let written = self.written(span).to_string();
+        self.error(
+            span,
+            format!(
+                "found `{written}` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong"
+            ),
+        );
     }
 
     fn condition(

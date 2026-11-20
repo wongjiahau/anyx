@@ -1,7 +1,7 @@
 # One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
-PUBLIC ERRORS common errors [
+PUBLIC TYPE ALIAS Common Errors: UNION [
     # No note has this path.
     `missing,
 ],

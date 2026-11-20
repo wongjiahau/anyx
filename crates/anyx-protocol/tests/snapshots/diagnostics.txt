@@ -1,13 +1,13 @@
 == an unknown type
-PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
+PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [],
 schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text),
+  PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [],
                                      ^^^^^
 
 == a built-in type under its old all-caps name
-PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text),
+PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text) ERRORS [],
 schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text),
+  PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text) ERRORS [],
                                      ^^^^^^^
 
 == an old all-caps name inside a list
@@ -29,9 +29,9 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == INTRINSIC on a method
-PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text),
+PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text) ERRORS [],
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text),
+  PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text) ERRORS [],
                         ^^^^^^^^^
 
 == a type named like a built-in one
@@ -47,9 +47,9 @@ schema:1:39: found the end of the call; expected an alias part
                                         ^
 
 == an unnamed return
-PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
+PROTOCOL a VERSION 1, METHOD f RETURNS (Text) ERRORS [],
 schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is
-  PROTOCOL a VERSION 1, METHOD f RETURNS (Text),
+  PROTOCOL a VERSION 1, METHOD f RETURNS (Text) ERRORS [],
                                               ^
 
 == a bad error after RETURNS NOTHING, which is not an unnamed return
@@ -60,7 +60,7 @@ schema:1:62: found the number `3`; expected the call `… _` or the end of the c
 
 == a type defined twice
 PROTOCOL a VERSION 1, RECORD Example { a: Text }, TYPE ALIAS Example: UNION [`b],
-schema:1:62: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+schema:1:62: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
   PROTOCOL a VERSION 1, RECORD Example { a: Text }, TYPE ALIAS Example: UNION [`b],
                                                                ^^^^^^^
 
@@ -77,28 +77,28 @@ schema:1:55: found a second variant named `a`; expected each variant's words onc
                                                         ^
 
 == a parameter twice
-PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
+PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text) ERRORS [],
 schema:1:45: found a second parameter named `x`; expected each parameter once; rename one of them
-  PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text),
+  PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text) ERRORS [],
                                               ^
 
 == a method twice
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
-schema:1:58: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text), METHOD f RETURNS (z: Text),
-                                                           ^
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [], METHOD f RETURNS (z: Text) ERRORS [],
+schema:1:68: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [], METHOD f RETURNS (z: Text) ERRORS [],
+                                                                     ^
 
 == overloads with the same parameter types
-PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
-schema:1:143: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING, METHOD tag (ids: LIST: Id) RETURNS NOTHING, METHOD tag (other: LIST Text) RETURNS NOTHING,
-                                                                                                                                                ^^^
+PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [],
+schema:1:163: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [],
+                                                                                                                                                                    ^^^
 
 == overloads that differ only in what they return
-PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
-schema:1:80: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
-  PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float), METHOD scale (by: Float) RETURNS (scaled: Integer),
-                                                                                 ^^^^^
+PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [],
+schema:1:90: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
+  PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [],
+                                                                                           ^^^^^
 
 == a type holding itself
 PROTOCOL a VERSION 1, RECORD Node { next: Node }, RECORD Tree { children: LIST: Tree },
@@ -148,75 +148,84 @@ schema:1:40: found `a Text b` as the name of a field; expected words of lowercas
   PROTOCOL a VERSION 1, RECORD Example { a Text b: Text },
                                          ^^^^^^^^
 
-== an unknown group
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
-schema:1:57: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS gone,
-                                                          ^^^^
-
-== an error where a group goes
-PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,
-schema:1:85: found `gone`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
-  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`lost] + gone,
-                                                                                      ^^^^
-
-== groups joining each other
-PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,
-schema:1:30: found the error group `x` joining itself; expected a group to join only groups that don't lead back to it
-  PROTOCOL a VERSION 1, ERRORS x [`a] + y, ERRORS y [`b] + x,
+== a method without errors
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),
+schema:1:30: found a method without `ERRORS`; expected its errors after what it returns, as in `` ERRORS [`missing] ``, or `ERRORS []` when it can't fail, so that a reader sees that its errors were declared up front
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),
                                ^
 
-== an error listed twice through a group
-PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,
-schema:1:79: found the error `gone` twice among this method's errors, counting those of its groups; expected each error once; remove one
-  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS x + x,
-                                                                                ^
+== an unknown alias among errors
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Gone],
+schema:1:58: found `Gone`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Gone`, or fix the name; import the declaration directly with `USE` if it is in another file
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Gone],
+                                                           ^^^^
 
-== an error defined twice in a scope
-PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],
-schema:1:77: found a second error `gone` in this schema, after the one on line 1; expected each error once in the protocol; to share one, put it in an `ERRORS` group and join the group with `+`
-  PROTOCOL a VERSION 1, ERRORS x [`gone], METHOD f RETURNS (y: Text) ERRORS [`gone],
-                                                                              ^^^^
+== a type among errors
+PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Integer, UNION [`a, `b]],
+schema:1:58: found `Integer` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Integer, UNION [`a, `b]],
+                                                           ^^^^^^^
+schema:1:67: found `UNION [`a, `b]` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [Integer, UNION [`a, `b]],
+                                                                    ^^^^^^^^^^^^^^
 
-== a group joining an unknown group
-PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
-schema:1:39: found `lost`, which is not a visible error group; expected the name of an `ERRORS` group; define it or import its file with `USE`
-  PROTOCOL a VERSION 1, ERRORS x [`a] + lost, METHOD f RETURNS (y: Text) ERRORS x,
-                                        ^^^^
+== an alias of other types among errors
+PROTOCOL a VERSION 1, TYPE ALIAS Maybe: UNION [Text, `none], METHOD f RETURNS (y: Text) ERRORS [Maybe],
+schema:1:97: found `Maybe` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Maybe: UNION [Text, `none], METHOD f RETURNS (y: Text) ERRORS [Maybe],
+                                                                                                  ^^^^^
 
-== a group without a name
+== aliases including each other
+PROTOCOL a VERSION 1, TYPE ALIAS Read Errors: UNION [`a, Write Errors], TYPE ALIAS Write Errors: UNION [`b, Read Errors], METHOD f RETURNS (y: Text) ERRORS [Read Errors],
+schema:1:34: found the type alias `Read Errors` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or a `NAMED TYPE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors: UNION [`a, Write Errors], TYPE ALIAS Write Errors: UNION [`b, Read Errors], METHOD f RETURNS (y: Text) ERRORS [Read Errors],
+                                   ^^^^^^^^^^^
+schema:1:158: found `Read Errors` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors: UNION [`a, Write Errors], TYPE ALIAS Write Errors: UNION [`b, Read Errors], METHOD f RETURNS (y: Text) ERRORS [Read Errors],
+                                                                                                                                                               ^^^^^^^^^^^
+
+== an error listed twice through an alias
+PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`gone], METHOD f RETURNS (y: Text) ERRORS [Shared, Shared],
+schema:1:91: found `` `gone `` as a value of both `Shared` and `Shared` in `UNION [Shared, Shared]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`gone], METHOD f RETURNS (y: Text) ERRORS [Shared, Shared],
+                                                                                            ^^^^^^^^^^^^^^^^
+
+== an alias including an unknown alias
+PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a, Lost], METHOD f RETURNS (y: Text) ERRORS [Shared],
+schema:1:53: found `Lost`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Lost`, or fix the name; import the declaration directly with `USE` if it is in another file
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a, Lost], METHOD f RETURNS (y: Text) ERRORS [Shared],
+                                                      ^^^^
+schema:1:95: found `Shared` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a, Lost], METHOD f RETURNS (y: Text) ERRORS [Shared],
+                                                                                                ^^^^^^
+
+== a group of errors
+PROTOCOL a VERSION 1, ERRORS x [`a] + y,
+schema:1:23: found an `ERRORS` group; expected `` TYPE ALIAS File Errors: UNION [`missing, Other Errors] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [`conflict, File Errors] ``; write its errors in the brackets, and each group it joined with `+` as a member
+  PROTOCOL a VERSION 1, ERRORS x [`a] + y,
+                        ^^^^^^^^^^^^^^^^^
+
+== errors outside a method
 PROTOCOL a VERSION 1, ERRORS [`gone],
-schema:1:30: found an `ERRORS` without a name before its errors; expected a group's name, its own errors in brackets, then any groups it joins with `+`, such as `` ERRORS file errors [`trashed, `missing] ``
+schema:1:23: found an `ERRORS` group; expected `` TYPE ALIAS File Errors: UNION [`missing, Other Errors] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [`conflict, File Errors] ``; write its errors in the brackets, and each group it joined with `+` as a member
   PROTOCOL a VERSION 1, ERRORS [`gone],
-                               ^^^^^^^
-
-== a group defined twice
-PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],
-schema:1:45: duplicate declaration `x` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
-  PROTOCOL a VERSION 1, ERRORS x [`a], ERRORS x [`b],
-                                              ^
+                        ^^^^^^^^^^^^^^
 
 == a name before a method's errors
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],
-schema:1:57: found the name `mine` before a method's errors; expected its errors in brackets alone, since only an `ERRORS` group has a name, such as `` ERRORS [`missing] + file errors ``
+schema:1:57: found the call `mine _`; expected `[...]`
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [`gone],
-                                                          ^^^^
+                                                          ^^^^^^^^^^^^
 
-== errors in brackets after a group
-PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],
-schema:1:77: found the word `b`; expected the word `` ` ``
-  PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS x + [b],
-                                                                              ^
-
-== an operator other than `+` among errors
-PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,
-schema:1:72: found `[`b] - x` among errors; expected errors in brackets, then groups joined with `+`, such as `[missing (path: Text)] + file errors` or `[missing] + files/file errors`
-  PROTOCOL a VERSION 1, ERRORS x [`a], METHOD f RETURNS (y: Text) ERRORS [`b] - x,
-                                                                         ^^^^^^^^
+== an operator after a method's errors
+PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a], METHOD f RETURNS (y: Text) ERRORS [`b] + Shared,
+schema:1:88: found the call `_ + _`; expected `[...]`
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared: UNION [`a], METHOD f RETURNS (y: Text) ERRORS [`b] + Shared,
+                                                                                         ^^^^^^^^^^^^^
 
 == an error defined on its own
 PROTOCOL a VERSION 1, ERROR `gone,
-schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an `ERRORS` group that methods share by joining it with `+`: `` ERRORS file errors [`trashed, `missing] ``
+schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors: UNION [`trashed, `missing] ``
   PROTOCOL a VERSION 1, ERROR `gone,
                         ^^^^^
 

@@ -26,12 +26,13 @@ RECORD Box of (Item: TYPE) { value: Item },
 METHOD write (path: Score Path) at (revision: Revision)
     REQUIRES [revision < 10]
     RETURNS (saved revision: Revision)
-    ENSURES [saved revision = revision],
-METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]),
-METHOD summary (value: Summary) RETURNS (value: Summary),
-METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS (value: Box of (Limit)),
-METHOD score (value: Probability) RETURNS (value: Probability),
-METHOD names (value: Names) RETURNS (value: Names),
+    ENSURES [saved revision = revision]
+    ERRORS [],
+METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]) ERRORS [],
+METHOD summary (value: Summary) RETURNS (value: Summary) ERRORS [],
+METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS (value: Box of (Limit)) ERRORS [],
+METHOD score (value: Probability) RETURNS (value: Probability) ERRORS [],
+METHOD names (value: Names) RETURNS (value: Names) ERRORS [],
 "#,
 }];
 

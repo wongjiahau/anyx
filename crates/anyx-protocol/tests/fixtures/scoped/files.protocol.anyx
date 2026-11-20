@@ -2,14 +2,15 @@ USE "./common.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 
-PUBLIC ERRORS file errors [
+PUBLIC TYPE ALIAS File Errors: UNION [
     # The note is in the trash.
     `trashed,
-] + common errors,
+    Common Errors,
+],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text),
+READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -17,10 +18,11 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ERRORS [
         # The note has errors, so nothing was saved.
         `rejected (diagnostics: LIST Diagnostic),
-    ] + file errors,
+        File Errors,
+    ],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [File Errors],
 
 # Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING,
+METHOD empty trash RETURNS NOTHING ERRORS [],

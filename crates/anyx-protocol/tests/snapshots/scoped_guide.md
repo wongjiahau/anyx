@@ -124,10 +124,10 @@ enough to count its results without slipping. A result is one of:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing.
-- `ERROR` and one of the method's errors, in the error's shape. They follow
-  `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `` ERROR `missing ``. The call didn't do anything. Each error's
-  `#` lines say what to do next.
+- `ERROR` and one of the method's errors, in the error's shape: a variant
+  in its `ERRORS` brackets, or one of the variants of an alias named there.
+  For example: `` ERROR `missing ``. The call didn't do anything. Each
+  error's `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
 
@@ -144,11 +144,12 @@ A request that can't be read gets one result, and none of its calls run:
 
 In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
-words; all-caps words belong to the schema language. `ERRORS name […]`
-is a group of errors that methods share by joining it with `+`.
+words; all-caps words belong to the schema language. Errors that methods
+share are an alias of a union of variants, such as `` TYPE ALIAS File
+Errors: UNION [`missing] ``, named in each method's `ERRORS`.
 
 Files form one flat namespace. `USE "relative path"` includes a file and
-makes its `PUBLIC` types and error groups visible to the importing file.
+makes its `PUBLIC` types visible to the importing file.
 Imports are direct, with no re-export. File paths never appear in calls or
 type names.
 
@@ -166,14 +167,15 @@ USE "./common.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 
-PUBLIC ERRORS file errors [
+PUBLIC TYPE ALIAS File Errors: UNION [
     # The note is in the trash.
     `trashed,
-] + common errors,
+    Common Errors,
+],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text),
+READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -181,20 +183,21 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ERRORS [
         # The note has errors, so nothing was saved.
         `rejected (diagnostics: LIST Diagnostic),
-    ] + file errors,
+        File Errors,
+    ],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [File Errors],
 
 # Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING,
+METHOD empty trash RETURNS NOTHING ERRORS [],
 
 ### `common.protocol.anyx`
 
 # One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
-PUBLIC ERRORS common errors [
+PUBLIC TYPE ALIAS Common Errors: UNION [
     # No note has this path.
     `missing,
 ],
@@ -207,10 +210,11 @@ USE "../files.protocol.anyx",
 # A page of a note, with what is wrong on it.
 RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [File Errors],
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
         `unreadable (diagnostics: LIST Diagnostic),
-    ] + file errors,
+        File Errors,
+    ],

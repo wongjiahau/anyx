@@ -12,8 +12,8 @@ use std::task::{Context, Poll, Waker};
 
 use anyx_protocol::client::{CallError, Transport};
 use poentaro::{
-    Client, CreateContentError, Diagnostic, ExportMidiError, File, FileSummary, ReadError, Server,
-    WriteAtRevisionContentError,
+    Client, CreateContentError, Diagnostic, ExportMidiError, File, FileErrors, FileSummary,
+    ReadError, Server, WriteAtRevisionContentError,
 };
 
 /// Runs a future that never waits, as every future here is.
@@ -59,7 +59,9 @@ impl Server for Files {
             return Err(Broken);
         }
         if self.trashed.contains(&path) {
-            return Ok(Err(ReadError::Trashed));
+            // `read` names `File Errors` among its errors, so a `FileErrors`
+            // becomes its error.
+            return Ok(Err(FileErrors::Trashed.into()));
         }
         Ok(match self.files.borrow().get(&path) {
             Some((revision, content)) => Ok(File {

@@ -7,8 +7,8 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SCALE: &str = "PROTOCOL a VERSION 1,
-METHOD scale (factor: Float) RETURNS (scaled: Float),
-METHOD repeat (count: Integer) RETURNS NOTHING,";
+METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [],
+METHOD repeat (count: Integer) RETURNS NOTHING ERRORS [],";
 
 #[test]
 fn a_number_with_a_point_or_an_exponent_is_a_float() {
@@ -66,14 +66,14 @@ fn a_default_and_an_example_type_their_numbers_too() {
         "{default}"
     );
     let example = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) EXAMPLES [scale 2 RETURNS 4.0],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [] EXAMPLES [scale 2 RETURNS 4.0],",
     );
     assert!(
         example.contains("found the Integer `2`; expected a Float, such as `2.0`"),
         "{example}"
     );
     let returned = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) EXAMPLES [scale 2.0 RETURNS 4],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [] EXAMPLES [scale 2.0 RETURNS 4],",
     );
     assert!(
         returned.contains("found the Integer `4`; expected a Float, such as `4.0`"),

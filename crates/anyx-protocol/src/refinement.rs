@@ -1159,8 +1159,8 @@ pub(crate) fn check_schema(schema: &Schema, aliases: &[&Type]) -> Vec<Diagnostic
             check(schema, &p.r#type, &mut errors);
         }
     }
-    for error in &schema.errors {
-        for p in &error.error.shape.parameters {
+    for error in schema.methods.iter().flat_map(|method| &method.errors) {
+        for p in &error.shape.parameters {
             check(schema, &p.r#type, &mut errors);
         }
     }

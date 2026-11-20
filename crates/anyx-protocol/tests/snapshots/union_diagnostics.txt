@@ -3,9 +3,9 @@ PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts:
 schema:1:82: found a number as a value of both `Integer` and `Integer` in `UNION [Integer, Integer]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
   PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:127: found `` `none `` as a value of both `Shade` and `` `none `` in `` UNION [Shade, `none] ``; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+schema:1:119: found the variant `none` twice in `Shades`, counting the variants of the aliases it includes; expected each variant's words once; remove one, or rename it
   PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
-                                                                                                                                ^^^^^^^^^^^^^^^^^^^^
+                                                                                                                        ^^^^^^
 schema:1:167: found a string as a value of both `Text` and `Bytes` in `UNION [Text, Bytes]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
   PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
                                                                                                                                                                         ^^^^^^^^^^^^^^^^^^^
@@ -20,18 +20,18 @@ schema:1:137: found braces `{…}` as a value of both `Row` and `MAP Text` in `U
                                                                                                                                           ^^^^^^^^^^^^^^^^^^
 
 == a nullable nullable, and a nullable choice with null
-PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,
+PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
 schema:1:102: found `` `null `` as a value of both `Integer?` and `` `null `` in `Integer??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
                                                                                                        ^^^^^^
 schema:1:116: found `` `null `` as a value of both `Gap` and `` `null `` in `Gap?`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
                                                                                                                      ^^^^
 
 == a repeat made by a generic type's argument
-PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING,
+PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],
 schema:1:81: found `` `null `` as a value of both `Text?` and `` `null `` in `Text??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING,
+  PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],
                                                                                   ^^^^^^^^^^^^^^
 
 == a list or a map as a member

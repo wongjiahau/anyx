@@ -23,6 +23,19 @@ export interface Diagnostic {
   message: string;
 }
 
+export type FileErrors =
+  /** The owner moved this file to the trash. Ask them to restore it. */
+  | { kind: "trashed" }
+  /**
+   * No file has this path. It may have been renamed: run `list files` to
+   * see the exact paths.
+   */
+  | { kind: "missing" };
+
+export type ScoreErrors =
+  /** The score doesn't parse. Nothing was saved. */
+  | { kind: "rejected"; diagnostics: Diagnostic[] };
+
 /** `` `true `` or `` `false ``. */
 export type Boolean =
   | { kind: "false" }
@@ -571,6 +584,8 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"content _", form:"shape", name:"content", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"line _", form:"shape", name:"line", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"column _", form:"shape", name:"column", type:{k:'integer'}, slots:[{k:'integer'}]},{wire:"code _", form:"shape", name:"code", type:{k:'text'}, slots:[{k:'text'}]},{wire:"message _", form:"shape", name:"message", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:[],kind:'choice', variants:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
+{parameters:[],kind:'choice', variants:[{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["list files"]:{shape:{text:"list files", kind:"listFiles", params:[]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[]},
@@ -579,7 +594,7 @@ const methods: Record<string, MethodDescriptor> = {["list files"]:{shape:{text:"
 ["create _ content _"]:{shape:{text:"create _ content _", kind:"createContent", params:[{name:"path", type:{k:'text'}, annotation:"Text"},{name:"content", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'integer'}, errors:[{text:"already exists at revision _", kind:"alreadyExistsAtRevision", params:[{name:"revision", type:{k:'integer'}, annotation:"Integer"}]},{text:"invalid path _", kind:"invalidPath", params:[{name:"message", type:{k:'text'}, annotation:"Text"}]},{text:"rejected _", kind:"rejected", params:[{name:"diagnostics", type:{k:'list', item:{k:'named', index:2, args:[]}}, annotation:"LIST Diagnostic"}]}]},
 ["export midi _"]:{shape:{text:"export midi _", kind:"exportMidi", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:{k:'bytes'}, errors:[{text:"trashed", kind:"trashed", params:[]},{text:"missing", kind:"missing", params:[]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:6, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }

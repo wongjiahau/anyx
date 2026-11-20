@@ -29,17 +29,18 @@ TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
 
 TYPE ALIAS Payments: Page of (Payment),
 
-METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)),
+METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)) ERRORS [],
 
 METHOD pay all (amounts: LIST Integer)
-    RETURNS (attempts: Page of ((Payment) or (Decline))),
+    RETURNS (attempts: Page of ((Payment) or (Decline)))
+    ERRORS [],
 
-METHOD payments RETURNS (payments: Payments),
+METHOD payments RETURNS (payments: Payments) ERRORS [],
 
-METHOD count (payments: Page of (Payment)) RETURNS (count: Integer),
+METHOD count (payments: Page of (Payment)) RETURNS (count: Integer) ERRORS [],
 
-METHOD categories RETURNS (categories: Tree of (Text)),
+METHOD categories RETURNS (categories: Tree of (Text)) ERRORS [],
 
-METHOD latest RETURNS (latest: (Text) dated),
+METHOD latest RETURNS (latest: (Text) dated) ERRORS [],
 
-METHOD prices RETURNS (prices: Table from (Text) to (Integer)),
+METHOD prices RETURNS (prices: Table from (Text) to (Integer)) ERRORS [],

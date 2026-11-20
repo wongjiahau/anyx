@@ -21,7 +21,7 @@ schema:1:59: found the type `Alpha` holding itself; expected a type that holds i
 
 == a named type defined twice
 PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), RECORD Alpha { b: Text },
-schema:1:55: duplicate declaration `Alpha` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type and error group must have a unique name in the protocol
+schema:1:55: duplicate declaration `Alpha` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
   PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), RECORD Alpha { b: Text },
                                                         ^^^^^
 

@@ -34,7 +34,7 @@ RECORD Diagnostic {
     message: Text,
 },
 
-ERRORS file errors [
+TYPE ALIAS File Errors: UNION [
     # The owner moved this file to the trash. Ask them to restore it.
     `trashed,
     # No file has this path. It may have been renamed: run `list files` to
@@ -42,15 +42,17 @@ ERRORS file errors [
     `missing,
 ],
 
-ERRORS score errors [
+TYPE ALIAS Score Errors: UNION [
     # The score doesn't parse. Nothing was saved.
     `rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
-READ ONLY METHOD list files RETURNS files: LIST File Summary,
+READ ONLY METHOD list files
+    RETURNS (files: LIST File Summary)
+    ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -59,7 +61,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
-    ] + score errors + file errors
+        Score Errors,
+        File Errors,
+    ]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
@@ -75,12 +79,13 @@ METHOD create (path: Text) content (content: Text)
         `already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
         `invalid path (message: Text),
-    ] + score errors,
+        Score Errors,
+    ],
 
 # The score as a Standard MIDI File.
 READ ONLY METHOD export midi (path: Text)
     RETURNS (midi: Bytes)
-    ERRORS file errors,
+    ERRORS [File Errors],
 "#,
 }];
 

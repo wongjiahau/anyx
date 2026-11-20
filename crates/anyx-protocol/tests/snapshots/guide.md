@@ -124,10 +124,10 @@ enough to count its results without slipping. A result is one of:
 
 - `RETURNS` and the value the method returns, or `RETURNS NOTHING` for a
   method that returns nothing.
-- `ERROR` and one of the method's errors, in the error's shape. They follow
-  `ERRORS`: its own in brackets, then those of each group joined with `+`.
-  For example: `` ERROR `missing ``. The call didn't do anything. Each error's
-  `#` lines say what to do next.
+- `ERROR` and one of the method's errors, in the error's shape: a variant
+  in its `ERRORS` brackets, or one of the variants of an alias named there.
+  For example: `` ERROR `missing ``. The call didn't do anything. Each
+  error's `#` lines say what to do next.
 - `INTERNAL ERROR`: the server failed. Calls after it don't run.
 - `NOT RUN`: the call didn't run, because an earlier call failed that way.
 
@@ -144,8 +144,9 @@ A request that can't be read gets one result, and none of its calls run:
 
 In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
-words; all-caps words belong to the schema language. `ERRORS name […]`
-is a group of errors that methods share by joining it with `+`.
+words; all-caps words belong to the schema language. Errors that methods
+share are an alias of a union of variants, such as `` TYPE ALIAS File
+Errors: UNION [`missing] ``, named in each method's `ERRORS`.
 `EXAMPLES […]` after a method lists calls of it, each with its result side
 by side, as in `read "a" RETURNS …`, and a `#` line saying what it shows.
 A response writes the result alone.
@@ -180,7 +181,7 @@ RECORD Diagnostic {
     message: Text,
 },
 
-ERRORS file errors [
+TYPE ALIAS File Errors: UNION [
     # The owner moved this file to the trash. Ask them to restore it.
     `trashed,
     # No file has this path. It may have been renamed: run `list files` to
@@ -188,15 +189,17 @@ ERRORS file errors [
     `missing,
 ],
 
-ERRORS score errors [
+TYPE ALIAS Score Errors: UNION [
     # The score doesn't parse. Nothing was saved.
     `rejected (diagnostics: LIST Diagnostic),
 ],
 
 # Every file this account owns.
-READ ONLY METHOD list files RETURNS files: LIST File Summary,
+READ ONLY METHOD list files
+    RETURNS (files: LIST File Summary)
+    ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -205,7 +208,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
-    ] + score errors + file errors
+        Score Errors,
+        File Errors,
+    ]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
@@ -221,9 +226,10 @@ METHOD create (path: Text) content (content: Text)
         `already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
         `invalid path (message: Text),
-    ] + score errors,
+        Score Errors,
+    ],
 
 # The score as a Standard MIDI File.
 READ ONLY METHOD export midi (path: Text)
     RETURNS (midi: Bytes)
-    ERRORS file errors,
+    ERRORS [File Errors],

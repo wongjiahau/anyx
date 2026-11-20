@@ -21,14 +21,14 @@ METHOD share (id: File Id) tagged (tags: Tags)
     RETURNS (link: Link)
     ERRORS [`missing (id: File Id)],
 
-IDEMPOTENT METHOD revoke (id: Share Id) RETURNS NOTHING UNDONE BY restore (id: Share Id),
+IDEMPOTENT METHOD revoke (id: Share Id) RETURNS NOTHING ERRORS [] UNDONE BY restore (id: Share Id),
 
 # Opens a revoked link again.
-IDEMPOTENT METHOD restore (id: Share Id) RETURNS NOTHING,
+IDEMPOTENT METHOD restore (id: Share Id) RETURNS NOTHING ERRORS [],
 
-READ ONLY METHOD links RETURNS (ids: LIST: Share Id),
+READ ONLY METHOD links RETURNS (ids: LIST: Share Id) ERRORS [],
 
-METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level),
+METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level) ERRORS [],
 
 # Lines of a file, counted from 1.
 NAMED TYPE Span from (Integer) to (Integer),
@@ -36,7 +36,7 @@ NAMED TYPE Span from (Integer) to (Integer),
 # Everyone with the link.
 NAMED TYPE Everyone,
 
-METHOD show (span: Span from to) to (who: Everyone) RETURNS (shown: Span from to),
+METHOD show (span: Span from to) to (who: Everyone) RETURNS (shown: Span from to) ERRORS [],
 
 # When a link was last opened.
 TYPE ALIAS Opened At: Instant,
@@ -45,4 +45,4 @@ TYPE ALIAS Openings: MAP: Opened At,
 
 RECORD Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label (Share Id "none") },
 
-READ ONLY METHOD visits RETURNS (visits: LIST: Visit),
+READ ONLY METHOD visits RETURNS (visits: LIST: Visit) ERRORS [],

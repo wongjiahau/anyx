@@ -80,7 +80,7 @@ fn relative_paths_diamonds_and_unused_files() {
     let files = [
         (
             "notes/Entry File.anyx",
-            "PROTOCOL notes VERSION 1, USE \"./a.anyx\", USE \"./sub/b.anyx\", METHOD root RETURNS (x: Text),",
+            "PROTOCOL notes VERSION 1, USE \"./a.anyx\", USE \"./sub/b.anyx\", METHOD root RETURNS (x: Text) ERRORS [],",
         ),
         (
             "notes/a.anyx",
@@ -122,7 +122,7 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
         ),
         (
             "shared.anyx",
-            "PUBLIC RECORD Session { user: Text }, METHOD current RETURNS (session: Session),",
+            "PUBLIC RECORD Session { user: Text }, METHOD current RETURNS (session: Session) ERRORS [],",
         ),
     ];
     for entry in ["notes.anyx", "billing.anyx", "shared.anyx"] {
@@ -136,11 +136,12 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
 #[test]
 fn own_declarations_and_direct_public_imports_are_visible() {
     let schema = load("entry.protocol.anyx", &[
-        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS failures,"),
-        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC ERRORS failures [`gone],"),
+        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS [Failures],"),
+        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC TYPE ALIAS Failures: UNION [`gone],"),
     ]).unwrap();
-    assert_eq!(schema.types.len(), 4);
-    assert_eq!(schema.errors.len(), 1);
+    // `Failures`, an alias of a union of variants, is a type of its own.
+    assert_eq!(schema.types.len(), 5);
+    assert_eq!(schema.methods[0].errors.len(), 1);
 }
 
 #[test]
@@ -172,9 +173,9 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
         &[
             (
                 "entry.protocol.anyx",
-                "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS failures,",
+                "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS [Failures],",
             ),
-            ("lib.anyx", "ERRORS failures [`gone],"),
+            ("lib.anyx", "TYPE ALIAS Failures: UNION [`gone],"),
         ],
     )
     .unwrap_err();
@@ -187,7 +188,10 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
 
 #[test]
 fn duplicate_names_include_both_files_even_when_private() {
-    for second in ["RECORD Item { value: Text },", "ERRORS Item [`gone],"] {
+    for second in [
+        "RECORD Item { value: Text },",
+        "TYPE ALIAS Item: UNION [`gone],",
+    ] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[
@@ -213,8 +217,8 @@ fn duplicate_methods_across_files_are_rejected() {
             "entry.protocol.anyx",
             &[
                 ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
-                ("a.anyx", "METHOD f RETURNS (x: Text),"),
-                ("b.anyx", "METHOD f RETURNS (x: Text),"),
+                ("a.anyx", "METHOD f RETURNS (x: Text) ERRORS [],"),
+                ("b.anyx", "METHOD f RETURNS (x: Text) ERRORS [],"),
             ]
         )
         .unwrap_err()
@@ -291,11 +295,11 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
             ),
             (
                 "files.protocol.anyx",
-                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text),",
+                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [],",
             ),
             (
                 "shares.anyx",
-                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text),",
+                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text) ERRORS [],",
             ),
         ],
     )
@@ -326,8 +330,7 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
 
 #[test]
 fn moving_an_imported_file_does_not_change_wire_names() {
-    let declaration =
-        "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text),";
+    let declaration = "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [],";
     let before = load(
         "entry.protocol.anyx",
         &[

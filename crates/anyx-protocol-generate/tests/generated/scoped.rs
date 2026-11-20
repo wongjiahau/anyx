@@ -22,14 +22,15 @@ USE "./files/export.protocol.anyx",
 
 RECORD File { path: Text, revision: Integer, content: Text },
 
-PUBLIC ERRORS file errors [
+PUBLIC TYPE ALIAS File Errors: UNION [
     # The note is in the trash.
     `trashed,
-] + common errors,
+    Common Errors,
+],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text),
+READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS file errors,
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
@@ -37,13 +38,14 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ERRORS [
         # The note has errors, so nothing was saved.
         `rejected (diagnostics: LIST Diagnostic),
-    ] + file errors,
+        File Errors,
+    ],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS file errors,
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [File Errors],
 
 # Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING,
+METHOD empty trash RETURNS NOTHING ERRORS [],
 "#,
     },
     anyx_protocol::SchemaFile {
@@ -51,7 +53,7 @@ METHOD empty trash RETURNS NOTHING,
         source: r#"# One problem in a note.
 PUBLIC RECORD Diagnostic { line: Integer, message: Text },
 
-PUBLIC ERRORS common errors [
+PUBLIC TYPE ALIAS Common Errors: UNION [
     # No note has this path.
     `missing,
 ],
@@ -65,13 +67,14 @@ USE "../files.protocol.anyx",
 # A page of a note, with what is wrong on it.
 RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS file errors,
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [File Errors],
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
     ERRORS [
         # The note has errors, so it can't be exported.
         `unreadable (diagnostics: LIST Diagnostic),
-    ] + file errors,
+        File Errors,
+    ],
 "#,
     },
 ];
@@ -125,6 +128,43 @@ impl FromValue for File {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum FileErrors {
+    /// The note is in the trash.
+    Trashed,
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for FileErrors {
+    fn into_value(self) -> Value {
+        match self {
+            FileErrors::Trashed => Value::Variant {
+                shape: "trashed".to_string(),
+                arguments: vec![],
+            },
+            FileErrors::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for FileErrors {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "trashed" => FileErrors::Trashed,
+            "missing" => FileErrors::Missing,
+            _ => return None,
+        })
+    }
+}
+
 /// One problem in a note.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
@@ -152,6 +192,36 @@ impl FromValue for Diagnostic {
         Some(Self {
             line: fields.field("line")?,
             message: fields.field("message")?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CommonErrors {
+    /// No note has this path.
+    Missing,
+}
+
+impl IntoValue for CommonErrors {
+    fn into_value(self) -> Value {
+        match self {
+            CommonErrors::Missing => Value::Variant {
+                shape: "missing".to_string(),
+                arguments: vec![],
+            },
+        }
+    }
+}
+
+impl FromValue for CommonErrors {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "missing" => CommonErrors::Missing,
+            _ => return None,
         })
     }
 }
@@ -293,6 +363,15 @@ impl FromValue for ReadError {
     }
 }
 
+impl From<FileErrors> for ReadError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => ReadError::Trashed,
+            FileErrors::Missing => ReadError::Missing,
+        }
+    }
+}
+
 /// The errors of `write _ at revision _ content _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WriteAtRevisionContentError {
@@ -340,6 +419,15 @@ impl FromValue for WriteAtRevisionContentError {
     }
 }
 
+impl From<FileErrors> for WriteAtRevisionContentError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => WriteAtRevisionContentError::Trashed,
+            FileErrors::Missing => WriteAtRevisionContentError::Missing,
+        }
+    }
+}
+
 /// The errors of `trash _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrashError {
@@ -378,6 +466,15 @@ impl FromValue for TrashError {
     }
 }
 
+impl From<FileErrors> for TrashError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => TrashError::Trashed,
+            FileErrors::Missing => TrashError::Missing,
+        }
+    }
+}
+
 /// The errors of `html _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlError {
@@ -413,6 +510,15 @@ impl FromValue for HtmlError {
             "missing" => HtmlError::Missing,
             _ => return None,
         })
+    }
+}
+
+impl From<FileErrors> for HtmlError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => HtmlError::Trashed,
+            FileErrors::Missing => HtmlError::Missing,
+        }
     }
 }
 
@@ -460,6 +566,15 @@ impl FromValue for PdfError {
             "missing" => PdfError::Missing,
             _ => return None,
         })
+    }
+}
+
+impl From<FileErrors> for PdfError {
+    fn from(error: FileErrors) -> Self {
+        match error {
+            FileErrors::Trashed => PdfError::Trashed,
+            FileErrors::Missing => PdfError::Missing,
+        }
     }
 }
 
