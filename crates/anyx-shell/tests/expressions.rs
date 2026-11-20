@@ -34,6 +34,9 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
             METHOD mapping (value: MAP Text) RETURNS (value: MAP Text) ERRORS [],
             METHOD message (value: Message) RETURNS (value: Message) ERRORS [],
             METHOD pair (left: Text) with (right: Text) RETURNS (pair: LIST Text) ERRORS [],
+            TYPE ALIAS Depth: Integer WHERE [0 <= _],
+            METHOD depth RETURNS (depth: Depth) ERRORS [],
+            METHOD dig (depth: Depth) RETURNS (depth: Depth) ERRORS [],
             METHOD finish RETURNS NOTHING ERRORS []",
                 )
                 .unwrap(),
@@ -56,6 +59,7 @@ impl Tool for Example {
         Outcome::Value(match method.shape.text.as_str() {
             "text" => Value::Text("hello".into()),
             "integer" => Value::Integer(42),
+            "depth" => Value::Integer(2),
             "names" => Value::List(vec![]),
             "finish" => Value::Nothing,
             "handle _" => Value::Text(self.schema.type_name(&method.shape.parameters[0].r#type)),
@@ -118,6 +122,30 @@ fn argument_types_are_checked_before_any_calls_run() {
         assert!(interpreter.execute(source).is_err(), "{source}");
         assert!(calls.borrow().is_empty(), "{source}");
     }
+}
+
+#[test]
+fn a_result_fits_a_refinement_only_when_its_type_promises_it() {
+    let (mut interpreter, calls) = interpreter();
+    let error = interpreter
+        .execute("example / text, example / dig (example / integer)")
+        .err()
+        .map(|error| format!("{error:?}"))
+        .expect("an `Integer` result doesn't promise `0 <= _`");
+    assert!(error.contains("doesn't promise"), "{error}");
+    assert!(calls.borrow().is_empty());
+    // A literal's value is checked against the predicate instead.
+    let execution = interpreter.execute("example / dig 3").unwrap();
+    assert_eq!(execution.values, vec![Value::Integer(3)]);
+    // A `Depth` fits where a `Depth` or an `Integer` is expected.
+    let execution = interpreter
+        .execute("example / dig (example / depth), example / handle (example / depth)")
+        .unwrap();
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(
+        execution.values,
+        vec![Value::Integer(2), Value::Text("Integer".into())]
+    );
 }
 
 #[test]
@@ -375,7 +403,7 @@ fn inline_refinement_literals_are_checked_before_any_tool_runs() {
 }
 
 #[test]
-fn computed_refinement_arguments_are_checked_before_the_parent_runs() {
+fn a_computed_argument_must_promise_a_refinement_before_anything_runs() {
     let (mut interpreter, calls) = interpreter();
     struct Tracked {
         schema: Schema,
@@ -400,13 +428,15 @@ fn computed_refinement_arguments_are_checked_before_the_parent_runs() {
             },
         )
         .unwrap();
-    let result = interpreter
+    // `example / text` returns a `Text`, which doesn't promise the
+    // refinement of `short`'s parameter, so nothing runs.
+    let error = interpreter
         .execute("checked / short (example / text)")
-        .unwrap();
-    // The source returns `hello`, which violates the consuming parameter.
-    assert_eq!(result.error.as_deref(), Some("INTERNAL ERROR\n"));
-    assert!(result.values.is_empty());
-    assert_eq!(*calls.borrow(), ["text"]);
+        .err()
+        .map(|error| format!("{error:?}"))
+        .expect("a `Text` result doesn't promise `1 <= (_ length) <= 3`");
+    assert!(error.contains("doesn't promise"), "{error}");
+    assert!(calls.borrow().is_empty());
 }
 
 #[test]

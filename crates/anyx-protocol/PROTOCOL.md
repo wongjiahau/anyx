@@ -296,9 +296,9 @@ numerically. Refined types can still be passed as generic arguments, or
 used in a generic declaration's `LIST` length constraint. Type annotations
 compare the predicate's structure, ignoring its whitespace and source spans.
 Overloads cannot be distinguished solely by refinements of the same type;
-use distinct `NAMED TYPE`s to identify them. Satisfiability, compatibility
-checking, and relations between several method arguments or results are
-outside this feature.
+use distinct `NAMED TYPE`s to identify them. How one refinement fits
+another is under [Subtyping](#subtyping). Satisfiability, and relations
+between several method arguments or results, are outside this feature.
 
 The wire and JSON keep the base type's representation, and a value needs
 no annotation beyond its base type's: `write "a.poentaro" at revision 1`.
@@ -317,6 +317,33 @@ A returned value or declared error payload that breaks its refinement is
 an encoding error; generated servers turn it into `INTERNAL ERROR` and stop
 before running the next call. A client rejects an invalid returned value.
 The generated guide explains both the predicate and its bounds in words.
+
+### Subtyping
+
+A value of one type may be passed where another is expected when every
+value of the first is a value of the second. The shell checks this when
+one call's result is another call's argument, before anything runs.
+
+- **A refinement fits its base,** so `Depth`, `` TYPE ALIAS Depth: Integer
+  WHERE [0 <= _] ``, fits `Integer`. It fits another refinement only when
+  their predicates are the same. A base never fits its refinement: an
+  `Integer` result doesn't promise `0 <= _`, so `dig (count)` is rejected
+  when `count` returns `Integer`. Declare `count` to return `Depth`. A
+  literal is checked by its value instead, so `dig 3` works.
+- **A member fits its union,** and a union fits another that holds each of
+  its members: `` UNION [`dark, `light] `` fits `` UNION [`dark, `light,
+  `custom hue (hue: Float)] ``. An alias is the type it stands for.
+- **`LIST`, `MAP`, `?` and a generic record's slots are covariant:** `LIST
+  Depth` fits `LIST Integer`, and `Page of (Depth)` fits `Page of
+  (Integer)`.
+- **A record fits a larger one** when each field it lacks has a `DEFAULT`:
+  `{ x: Integer, y: Integer }` fits `{ x: Integer, y: Integer, label (Text)
+  DEFAULT label "" }`. A field the larger record lacks never fits, since
+  the receiver would reject it.
+- **A named type fits only itself.** `File Id` doesn't fit `Text`, nor
+  `Text` it, nor another named type that holds `Text`.
+
+There is no type inference and no intersection of types.
 
 ### Method conditions
 

@@ -278,7 +278,7 @@ fn decode_arguments(
                 .map_err(in_parameter)?;
             if !argument
                 .stated()
-                .is_some_and(|stated| parameter.r#type.accepts_argument_type(stated))
+                .is_some_and(|stated| schema.fits_literal(stated, &parameter.r#type))
             {
                 let fix = fix(schema, source, method, call, index);
                 let written = code(&written(source, argument.value.span()));
@@ -358,7 +358,7 @@ fn choose(
                         if argument.annotated.is_some() {
                             stated == &parameter.r#type
                         } else {
-                            parameter.r#type.accepts_argument_type(stated)
+                            schema.fits_literal(stated, &parameter.r#type)
                         }
                     })
             })
@@ -656,7 +656,7 @@ fn write_call(
             Ok([node]) => own_type(schema, node),
             _ => None,
         };
-        match own.is_some_and(|own| parameter.r#type.accepts_argument_type(&own)) {
+        match own.is_some_and(|own| schema.fits_literal(&own, &parameter.r#type)) {
             true => write_slot(schema, &parameter.r#type, value, out)?,
             false => out.push_str(&format!(
                 "({written} AS: {})",
