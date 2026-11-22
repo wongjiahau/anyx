@@ -302,7 +302,7 @@ fn generic_records_and_defaults_can_contain_computed_fields() {
 fn a_field_with_several_slots_takes_a_computed_value_in_each() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("range", Identity(Schema::parse(
-        "PROTOCOL range VERSION 1, TYPE Span { between (Text) and (Integer) or (Integer?) }, METHOD identity (value: Span) RETURNS (value: Span) ERRORS [| |]"
+        "PROTOCOL range VERSION 1, TYPE Span { between (label: Text) and (start: Integer) or (end: Integer?) }, METHOD identity (value: Span) RETURNS (value: Span) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("range / identity { between (example / text) and 2 or 3 }")
@@ -312,7 +312,7 @@ fn a_field_with_several_slots_takes_a_computed_value_in_each() {
         panic!()
     };
     assert_eq!(
-        record["between and or"],
+        record["between"],
         Value::Tuple(vec![
             Value::Text("hello".into()),
             Value::Integer(2),
