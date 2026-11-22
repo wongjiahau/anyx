@@ -1,6 +1,6 @@
 == a named type can't be generic
 PROTOCOL a VERSION 1, TYPE list of (Value: TYPE): LIST: Value,
-schema:1:44: found the word `TYPE`; expected the word `LIST`, `MAP`, `UNION`, the call `_ WHERE _`, a call whose name has no keyword or the end of the call
+schema:1:44: found the word `TYPE`; expected the word `LIST`, `MAP`, `UNION`, the call `_ WHERE _`, a call whose name has no keyword and matches the regex `` ^(_ )*[^_`]|^_( _)*$ `` or the end of the call
   PROTOCOL a VERSION 1, TYPE list of (Value: TYPE): LIST: Value,
                                              ^^^^
 

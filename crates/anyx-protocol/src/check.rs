@@ -841,7 +841,6 @@ impl<'a> Checker<'a> {
         }
         self.check_recursion(&schema);
         self.check_variants_recursion(&schema);
-        self.check_forms(&schema);
         self.check_unions(&schema);
         if self.diagnostics.is_empty() {
             // An alias makes no type in the schema, so its type is checked
@@ -870,6 +869,7 @@ impl<'a> Checker<'a> {
         if self.diagnostics.is_empty() {
             self.read_part_defaults(&mut schema, true);
         }
+        self.check_forms(&schema);
         // Examples are read against the schema, defaults and all, which
         // must be whole first: a mistake elsewhere would only show up again
         // in them.
@@ -886,8 +886,8 @@ impl<'a> Checker<'a> {
 
     /// A field without a name is written as its variant alone, `` `by name ``,
     /// so its type's every value is a variant, and the variant's shape leads
-    /// to one field: no two such fields of a record may share a variant, so
-    /// a record value never has to try a field and back out.
+    /// to one field. A shared variant must be fully represented by leaving
+    /// each field out, so it must have no slots and be each field's default.
     fn check_forms(&mut self, schema: &Schema) {
         for pending in std::mem::take(&mut self.forms) {
             let TypeKind::Record(fields) = &schema.types[pending.r#type].kind else {
@@ -910,7 +910,7 @@ impl<'a> Checker<'a> {
                     self.error(
                         span,
                         format!(
-                            "found the field `{}` of {}; expected a union of variants, since the field is written as its variant alone; give the field a shape with words",
+                            "found the field `{}` of {}; expected a variant or a union of variants, since the field is written as its variant alone; give the field a shape with words",
                             field.name,
                             code(&schema.type_name(&field.r#type))
                         ),
@@ -918,14 +918,24 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 for form in forms {
-                    let clash = seen
-                        .iter()
-                        .find(|(known, _)| known.admits(&form) || form.admits(known));
+                    let Written::Variant(parts) = &form else {
+                        unreachable!("unnamed fields only admit variants");
+                    };
+                    let default = crate::value::Value::Variant {
+                        shape: ShapePart::text(parts),
+                        arguments: Vec::new(),
+                    };
+                    let omittable = !parts.contains(&ShapePart::Slot)
+                        && field.default.as_ref() == Some(&default);
+                    let clash = seen.iter().find(|(known, other)| {
+                        known.admits(&form)
+                            && (!omittable || fields[*other].default.as_ref() != Some(&default))
+                    });
                     if let Some((known, other)) = clash {
                         self.error(
                             span,
                             format!(
-                                "found {known} as a value of both fields `{}` and `{}`; expected each field written as its variant alone to have variants of its own, since the variant finds the field; give one of them a shape with words",
+                                "found {known} as a value of both fields `{}` and `{}`; expected a shared variant to have no slots and be the `DEFAULT` of both fields; give one of them a shape with words or use distinct variants",
                                 fields[*other].name, field.name
                             ),
                         );
@@ -1094,8 +1104,7 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 let field = &fields[default.field];
-                let read =
-                    crate::codec::decode_entry(schema, fields, default.field, &default.entry);
+                let read = crate::codec::decode_entry(schema, field, &default.entry);
                 let name = field.name.clone();
                 match read {
                     Ok(value) => {
@@ -1923,8 +1932,8 @@ impl<'a> Checker<'a> {
     }
 
     /// A field, and the span of its name. Every field is a shape: words
-    /// alone are a checkbox, `` `(order: Order) `` a field written as its
-    /// variant alone, and any other shape holds the field's type in its one slot, or
+    /// and typed slots make a shaped field. A backtick and slot declare a
+    /// field written as its variant alone. A shaped field holds its one slot, or
     /// a tuple of its slots' types when it has several. A `DEFAULT` holds
     /// an entry of the field, read once every type is known.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
@@ -1934,22 +1943,12 @@ impl<'a> Checker<'a> {
         };
         let (field, span) = self.declared_field(declared);
         if let Some(default) = default {
-            match field.form {
-                // A checkbox left out is `false`.
-                FieldForm::Checkbox => self.error(
-                    default.span,
-                    format!(
-                        "found a `DEFAULT` on the checkbox `{}`; expected none, since a checkbox left out is `false`",
-                        field.name
-                    ),
-                ),
-                _ => self.defaults.push(PendingDefault {
-                    r#type: record,
-                    field: index,
-                    entry: default.clone(),
-                    file: self.file,
-                }),
-            }
+            self.defaults.push(PendingDefault {
+                r#type: record,
+                field: index,
+                entry: default.clone(),
+                file: self.file,
+            });
         }
         (field, span)
     }
@@ -1989,22 +1988,14 @@ impl<'a> Checker<'a> {
         let words = spanned_words(&name);
         self.check_words(&words, "a field");
         if slots.is_empty() {
-            let boolean = self
-                .types
-                .iter()
-                .position(|known| known.name == "Boolean" && known.file == self.prelude_file)
-                .map_or(Type::Text, Type::Named);
-            let field = Field {
-                doc,
-                name: words.value,
-                r#type: boolean,
-                default: Some(crate::value::Value::Variant {
-                    shape: "false".into(),
-                    arguments: Vec::new(),
-                }),
-                form: FieldForm::Checkbox,
-            };
-            return (field, name.span);
+            self.error(
+                name.span,
+                format!(
+                    "found the field `{}` with words alone; write {} to make it a variant when present and `null` when omitted",
+                    words.value,
+                    code(&format!("`({0}: UNION [`{0}, `null]) DEFAULT `null", words.value)),
+                ),
+            );
         }
         let types: Vec<Type> = slots
             .iter()
@@ -2241,7 +2232,7 @@ impl<'a> Checker<'a> {
                             self.error(
                                 written.span,
                                 format!(
-                                    "found an optional part of {what} with no slot, `[{}]`; expected a parameter in it, since a call with the part and one without it would mean the same; write a separate shape, or a checkbox field in a record",
+                                    "found an optional part of {what} with no slot, `[{}]`; expected a parameter in it, since a call with the part and one without it would mean the same; write a separate shape, or use an unnamed field with a default in a record",
                                     inner.name.text
                                 ),
                             );

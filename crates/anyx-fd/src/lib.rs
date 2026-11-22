@@ -108,10 +108,6 @@ impl Fields {
         }
     }
 
-    fn checked(&self, name: &str) -> bool {
-        matches!(self.get(name), Some(Value::Variant { shape, .. }) if shape == "true")
-    }
-
     fn variant(&self, name: &str) -> Option<&str> {
         match self.get(name)? {
             Value::Variant { shape, .. } => Some(shape),
@@ -378,17 +374,17 @@ impl Search {
                 false => paths.into_iter().map(Some).collect(),
             },
             matchers,
-            full_path: fields.checked("full path"),
-            hidden: fields.checked("hidden"),
-            no_ignore: fields.checked("no ignore"),
-            no_ignore_vcs: fields.checked("no ignore vcs"),
-            no_ignore_parent: fields.checked("no ignore parent"),
-            no_require_git: fields.checked("no require git"),
+            full_path: fields.variant("full path").is_some(),
+            hidden: fields.variant("hidden").is_some(),
+            no_ignore: fields.variant("no ignore").is_some(),
+            no_ignore_vcs: fields.variant("no ignore vcs").is_some(),
+            no_ignore_parent: fields.variant("no ignore parent").is_some(),
+            no_require_git: fields.variant("no require git").is_some(),
             ignore_files,
             excluding: fields.texts("excluding"),
-            follow_links: fields.checked("follow links"),
-            one_file_system: fields.checked("one file system"),
-            prune: fields.checked("prune"),
+            follow_links: fields.variant("follow links").is_some(),
+            one_file_system: fields.variant("one file system").is_some(),
+            prune: fields.variant("prune").is_some(),
             min_depth: depth("min depth"),
             max_depth: depth("max depth"),
             kinds: fields.list("only").iter().map(Kind::read).collect(),

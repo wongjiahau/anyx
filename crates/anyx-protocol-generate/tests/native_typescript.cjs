@@ -33,6 +33,18 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
     .then(result => assert.equal(result.value[0].tone.kind, 'silent'));
   assert.match(sent, /`silent/);
   assert.doesNotMatch(sent, /@/);
+  const flags = await new Client(async request => {
+    assert.match(request, /`hidden/);
+    assert.doesNotMatch(request, /`null/);
+    return 'RETURNS [{ note "tea", at "2026-11-01T08:00:00Z", `pinned }]';
+  }).snoozeFor({...reminder, hidden: {kind: 'hidden'}, pinned: {kind: 'null'}}, 1000n);
+  assert.equal(flags.value[0].hidden.kind, 'null');
+  assert.equal(flags.value[0].pinned.kind, 'pinned');
+  await assert.rejects(
+    new Client(async () => 'RETURNS [{ note "tea", at "2026-11-01T08:00:00Z", `null }]')
+      .snoozeFor(reminder, 1000n),
+    /could fill more than one unnamed field.*leave it out/,
+  );
   const batch = await client.batch(c => [c.remind(reminder), c.count({tea: reminder})]);
   assert.equal(batch[0].value.kind, 'onceAt');
   assert.equal(batch[1].value.tea, reminder.times);

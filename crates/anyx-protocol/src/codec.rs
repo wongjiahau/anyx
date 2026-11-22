@@ -530,15 +530,10 @@ pub(crate) fn decode(schema: &Schema, r#type: &Type, node: &Node) -> Result<Valu
     crate::request::decode(schema, r#type, &syntax)
 }
 
-/// Reads `node` as an entry of `fields[index]`, as a field's `DEFAULT` is.
-pub(crate) fn decode_entry(
-    schema: &Schema,
-    fields: &[Field],
-    index: usize,
-    node: &Node,
-) -> Result<Value, Mismatch> {
+/// Reads `node` as an entry of `field`, as a field's `DEFAULT` is.
+pub(crate) fn decode_entry(schema: &Schema, field: &Field, node: &Node) -> Result<Value, Mismatch> {
     let syntax = request::decode_value(node).map_err(syntax_mismatch)?;
-    crate::request::decode_field_entry(schema, fields, index, &syntax)
+    crate::request::decode_field_entry(schema, field, &syntax)
 }
 
 fn syntax_mismatch(error: request::DecodeError) -> Mismatch {
@@ -915,7 +910,7 @@ fn mismatched(schema: &Schema, r#type: &Type, found: &str) -> EncodeError {
 
 /// Writes fields in the schema's order, each as a reader writes it: a
 /// shape whose slot is last as its words, a `:`, and its value; another
-/// shape with its value in the slot; a checkbox as its words when `true`;
+/// shape with its value in the slot;
 /// a field without a name as its variant alone. The layout drops each `:` that a
 /// reader doesn't need.
 fn write_fields(
@@ -929,13 +924,11 @@ fn write_fields(
         let Some(value) = values.get(&field.name) else {
             continue;
         };
-        // A checkbox, a field written as its variant and a `null` read best
+        // A field written as its variant and a `null` read best
         // left out; any other default is written, so a reader sees it.
         let null = matches!(value, Value::Variant { shape, .. } if shape == "null")
             && schema.nullable_item(&field.r#type).is_some();
-        if field.default.as_ref() == Some(value)
-            && (null || matches!(field.form, FieldForm::Checkbox | FieldForm::Unnamed))
-        {
+        if field.default.as_ref() == Some(value) && (null || field.form == FieldForm::Unnamed) {
             continue;
         }
         let mut entry = String::new();
@@ -955,10 +948,6 @@ fn write_fields(
             (r#type, value) => vec![(r#type, value)],
         };
         match &field.form {
-            FieldForm::Checkbox => match value {
-                Value::Variant { shape, .. } if shape == "true" => entry.push_str(&field.name),
-                _ => continue,
-            },
             // `path: "a"`: a slot last takes its value after a `:`.
             FieldForm::Shape(shape)
                 if shape.ends_with(" _") && !shape[..shape.len() - 2].contains('_') =>

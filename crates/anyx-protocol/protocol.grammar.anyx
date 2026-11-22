@@ -56,8 +56,6 @@ type marker: ONE OF [WORD "TYPE"],
 ## - `(Case) case`, written `(any) case`;
 ## - `between (Integer) and (Integer)`, written `between 1 and 3`, holds a
 ##   value for each slot;
-## - `hidden`, words alone: a `Boolean`, `` `true `` when written and
-##   `` `false `` when left out;
 ## - `` `(order: Order) ``, a backtick and a slot, so a parameter names it.
 ##   It is written as its variant alone: `` `newest first ``. Its type's
 ##   every value is a variant, and the checker finds which such field an
@@ -321,6 +319,6 @@ member slot: ONE OF [doc: LINE STRING, type],
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a
 ## type in each slot, in parentheses: `Page of (File)`, `(Integer) or
 ## (Text)`. Names are always unqualified; the checker rejects legacy paths.
-reference: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
+reference: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_`]|^_( _)*$"], ARGUMENTS: ZERO OR MORE: type],
 
 type name: ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS],

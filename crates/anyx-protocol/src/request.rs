@@ -425,14 +425,22 @@ fn fields_value(
 }
 
 /// The field an entry of a record fills, by the entry's shape alone:
-/// `path "a"` is the shape `path _`, `hidden` a checkbox, and the variant
-/// `` `newest first `` the field without a name whose type has that variant.
-/// The schema checker makes sure at most one fits, so nothing is tried.
-pub(crate) fn entry_field(schema: &Schema, fields: &[Field], entry: &Syntax) -> Option<usize> {
+/// `path "a"` fills the shape `path _`, and `` `newest first `` fills
+/// the unnamed field whose type admits that variant.
+pub(crate) fn entry_field(
+    schema: &Schema,
+    fields: &[Field],
+    entry: &Syntax,
+) -> Result<Option<usize>, Mismatch> {
     match entry {
-        Syntax::Variant(_) => schema.unnamed_field(fields, &written(entry)),
-        Syntax::Call(call) => schema.shaped_field(fields, &call.name.text),
-        _ => None,
+        Syntax::Variant(_) => schema
+            .resolve_unnamed_field(fields, &written(entry))
+            .map_err(|message| Mismatch {
+                span: entry.span(),
+                message,
+            }),
+        Syntax::Call(call) => Ok(schema.shaped_field(fields, &call.name.text)),
+        _ => Ok(None),
     }
 }
 
@@ -442,7 +450,7 @@ fn field_entry<'f>(
     fields: &'f [Field],
     entry: &Syntax,
 ) -> Result<(&'f Field, Value), Mismatch> {
-    if let Some(index) = entry_field(schema, fields, entry) {
+    if let Some(index) = entry_field(schema, fields, entry)? {
         let field = &fields[index];
         let value = entry_value(schema, field, entry).map_err(|m| Mismatch {
             message: format!("in `{}`: {}", field.name, m.message),
@@ -481,7 +489,6 @@ fn field_entry<'f>(
                 .iter()
                 .map(|field| match &field.form {
                     FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
-                    FieldForm::Checkbox => format!("`{}`", field.name),
                     FieldForm::Unnamed => format!("a variant for `{}`", field.name),
                 })
                 .collect::<Vec<_>>()
@@ -500,44 +507,43 @@ fn entry_value(schema: &Schema, field: &Field, entry: &Syntax) -> Result<Value, 
         Syntax::Call(call) => call,
         _ => unreachable!("a field is found by its entry's call or variant"),
     };
-    match (&field.form, &field.r#type) {
-        (FieldForm::Checkbox, _) => Ok(Value::Variant {
-            shape: "true".into(),
-            arguments: Vec::new(),
-        }),
-        (_, Type::Tuple(slots)) => slots
+    match &field.r#type {
+        Type::Tuple(slots) => slots
             .iter()
             .zip(&call.arguments)
             .map(|(slot, argument)| decode(schema, slot, argument))
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
-        (_, r#type) => decode(schema, r#type, &call.arguments[0]),
+        r#type => decode(schema, r#type, &call.arguments[0]),
     }
 }
 
-/// Reads `entry` as an entry of `fields[index]`, as a field's `DEFAULT`
+/// Reads `entry` as an entry of `field`, as a field's `DEFAULT`
 /// is: `age 0` for `age (Integer) DEFAULT age 0`.
 pub(crate) fn decode_field_entry(
     schema: &Schema,
-    fields: &[Field],
-    index: usize,
+    field: &Field,
     entry: &Syntax,
 ) -> Result<Value, Mismatch> {
-    let field = &fields[index];
-    match entry_field(schema, fields, entry) {
-        Some(found) if found == index => entry_value(schema, field, entry),
-        _ => Err(Mismatch {
+    let fits = match (&field.form, entry) {
+        (FieldForm::Unnamed, Syntax::Variant(_)) => true,
+        (FieldForm::Shape(shape), Syntax::Call(call)) => *shape == call.name.text,
+        _ => false,
+    };
+    if fits {
+        entry_value(schema, field, entry)
+    } else {
+        Err(Mismatch {
             span: entry.span(),
             message: format!(
                 "found {}; expected an entry of the field, as a value writes it: {}",
                 describe(entry),
                 match &field.form {
                     FieldForm::Shape(shape) => format!("`{}`", shape.replace('_', "…")),
-                    FieldForm::Checkbox => format!("`{}`", field.name),
                     FieldForm::Unnamed => "a variant".to_string(),
                 }
             ),
-        }),
+        })
     }
 }
 

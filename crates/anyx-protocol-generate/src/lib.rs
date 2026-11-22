@@ -187,23 +187,8 @@ fn type_words(schema: &Schema, r#type: &Type) -> String {
     }
 }
 
-/// The first union anywhere in the schema that isn't a nullable `T?`, by
-/// its name.
-pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
-    fn walk(schema: &Schema, r#type: &Type) -> Option<String> {
-        match r#type {
-            Type::Union(_) => match schema.nullable_item(r#type) {
-                Some(item) => walk(schema, item),
-                None => Some(schema.type_name(r#type)),
-            },
-            Type::Variant(_) => Some(schema.type_name(r#type)),
-            Type::Refined(item, _) | Type::List(item) | Type::Map(item) => walk(schema, item),
-            Type::Generic(_, arguments) | Type::Tuple(arguments) => {
-                arguments.iter().find_map(|argument| walk(schema, argument))
-            }
-            _ => None,
-        }
-    }
+/// Types used at the roots of generated Rust declarations.
+fn schema_types(schema: &Schema) -> Vec<&Type> {
     let mut types: Vec<&Type> = Vec::new();
     for definition in &schema.types {
         match &definition.kind {
@@ -239,7 +224,55 @@ pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
                 .map(|parameter| &parameter.r#type),
         );
     }
-    types.into_iter().find_map(|r#type| walk(schema, r#type))
+    types
+}
+
+/// The first anonymous union or variant that cannot be generated as Rust.
+pub fn union_beyond_nullable(schema: &Schema) -> Option<String> {
+    rust_variants(schema)
+        .err()
+        .map(|r#type| schema.type_name(r#type))
+}
+
+/// Checks the anonymous types supported by the Rust generator and collects
+/// the slotless variants that need a generated type.
+pub(crate) fn rust_variants(schema: &Schema) -> Result<Vec<&anyx_protocol::schema::Shape>, &Type> {
+    use anyx_protocol::schema::Shape;
+
+    fn walk<'a>(
+        schema: &'a Schema,
+        r#type: &'a Type,
+        variants: &mut Vec<&'a Shape>,
+    ) -> Result<(), &'a Type> {
+        match r#type {
+            Type::Union(_) => match schema.nullable_item(r#type) {
+                Some(item) => walk(schema, item, variants)?,
+                None => return Err(r#type),
+            },
+            Type::Variant(shape) if shape.parameters.is_empty() => {
+                if !variants.contains(&shape.as_ref()) {
+                    variants.push(shape);
+                }
+            }
+            Type::Variant(_) => return Err(r#type),
+            Type::Refined(item, _) | Type::List(item) | Type::Map(item) => {
+                walk(schema, item, variants)?
+            }
+            Type::Generic(_, arguments) | Type::Tuple(arguments) => {
+                for argument in arguments {
+                    walk(schema, argument, variants)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    let mut variants = Vec::new();
+    for r#type in schema_types(schema) {
+        walk(schema, r#type, &mut variants)?;
+    }
+    Ok(variants)
 }
 
 /// The enum of a method's errors:

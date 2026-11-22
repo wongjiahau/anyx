@@ -24,6 +24,8 @@ RECORD Reminder {
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
     `(tone: Tone) DEFAULT `chime,
+    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
+    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
 },
 
 TYPE ALIAS Tone: UNION [`chime, `silent],
@@ -60,6 +62,56 @@ pub fn schema() -> &'static anyx_protocol::Schema {
     &SCHEMA_READ
 }
 
+#[allow(non_camel_case_types)]
+pub mod variants {
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Hidden;
+    impl ::anyx_protocol::IntoValue for Hidden {
+        fn into_value(self) -> ::anyx_protocol::Value {
+            ::anyx_protocol::Value::Variant {
+                shape: "hidden".to_string(),
+                arguments: ::std::vec::Vec::new(),
+            }
+        }
+    }
+    impl ::anyx_protocol::FromValue for Hidden {
+        fn from_value(value: ::anyx_protocol::Value) -> ::std::option::Option<Self> {
+            match value {
+                ::anyx_protocol::Value::Variant { shape, arguments }
+                    if shape == "hidden" && arguments.is_empty() =>
+                {
+                    ::std::option::Option::Some(Self)
+                }
+                _ => ::std::option::Option::None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Pinned;
+    impl ::anyx_protocol::IntoValue for Pinned {
+        fn into_value(self) -> ::anyx_protocol::Value {
+            ::anyx_protocol::Value::Variant {
+                shape: "pinned".to_string(),
+                arguments: ::std::vec::Vec::new(),
+            }
+        }
+    }
+    impl ::anyx_protocol::FromValue for Pinned {
+        fn from_value(value: ::anyx_protocol::Value) -> ::std::option::Option<Self> {
+            match value {
+                ::anyx_protocol::Value::Variant { shape, arguments }
+                    if shape == "pinned" && arguments.is_empty() =>
+                {
+                    ::std::option::Option::Some(Self)
+                }
+                _ => ::std::option::Option::None,
+            }
+        }
+    }
+}
+
 /// When to remind the owner.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reminder {
@@ -74,6 +126,8 @@ pub struct Reminder {
     pub quiet_from_to: (i64, i64),
     /// How it sounds, written as the variant alone.
     pub tone: Tone,
+    pub hidden: Option<variants::Hidden>,
+    pub pinned: Option<variants::Pinned>,
 }
 
 impl IntoValue for Reminder {
@@ -87,6 +141,8 @@ impl IntoValue for Reminder {
                 .field("seen", self.seen)
                 .field("quiet from to", self.quiet_from_to)
                 .field("tone", self.tone)
+                .field("hidden", self.hidden)
+                .field("pinned", self.pinned)
                 .build(),
         )
     }
@@ -106,6 +162,8 @@ impl FromValue for Reminder {
             seen: fields.field("seen")?,
             quiet_from_to: fields.field("quiet from to")?,
             tone: fields.field("tone")?,
+            hidden: fields.field("hidden")?,
+            pinned: fields.field("pinned")?,
         })
     }
 }

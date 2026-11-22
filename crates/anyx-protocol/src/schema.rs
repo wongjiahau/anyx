@@ -275,9 +275,6 @@ pub enum FieldForm {
     /// Its shape with its value in the one slot: `path _` for
     /// `path: Text`, `_ case`, `at least _ bytes`.
     Shape(String),
-    /// Its words alone, for `true`: `hidden`. Its type is `Boolean`, and
-    /// it is `false` when left out.
-    Checkbox,
     /// Its variant alone, `` `newest first ``, declared `` `(order: Order) ``
     /// and found by the variant's shape. Every value of its type is a
     /// variant. The field's name is its parameter's.
@@ -1438,25 +1435,48 @@ impl Schema {
     }
 
     /// The field of `fields` that an entry of this call shape fills, as in
-    /// `path _`, `_ case` or the checkbox `hidden`; a variant is found by
+    /// `path _` or `_ case`; a variant is found by
     /// its shape instead, with [`Schema::unnamed_field`].
     pub fn shaped_field(&self, fields: &[Field], shape: &str) -> Option<usize> {
         fields.iter().position(|field| match &field.form {
             FieldForm::Shape(text) => shape == text,
-            FieldForm::Checkbox => shape == field.name,
             FieldForm::Unnamed => false,
         })
     }
 
-    /// The field of `fields` without a name whose type has the variant
-    /// `found`. The schema checker makes sure at most one does.
+    /// Finds the unnamed field when exactly one field accepts the variant.
     pub fn unnamed_field(&self, fields: &[Field], found: &Written) -> Option<usize> {
-        fields.iter().position(|field| {
+        self.resolve_unnamed_field(fields, found).ok().flatten()
+    }
+
+    /// Finds the unnamed field for a variant. If several fields share the
+    /// variant, it can only be written by leaving the fields out.
+    pub fn resolve_unnamed_field(
+        &self,
+        fields: &[Field],
+        found: &Written,
+    ) -> Result<Option<usize>, String> {
+        let mut matches = fields.iter().enumerate().filter(|(_, field)| {
             field.form == FieldForm::Unnamed
                 && self
                     .written_forms(&field.r#type)
                     .is_some_and(|forms| forms.iter().any(|known| known.admits(found)))
-        })
+        });
+        let Some((index, first)) = matches.next() else {
+            return Ok(None);
+        };
+        let Some((_, second)) = matches.next() else {
+            return Ok(Some(index));
+        };
+        let names = [first, second]
+            .into_iter()
+            .chain(matches.map(|(_, field)| field))
+            .map(|field| code(&field.name))
+            .collect::<Vec<_>>();
+        Err(format!(
+            "{found} could fill more than one unnamed field ({}): leave it out",
+            names.join(", ")
+        ))
     }
 
     /// The forms a value of `type` is written in: a variant by its shape,

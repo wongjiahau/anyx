@@ -12,7 +12,7 @@ In the anyx shell:
 
 ```anyx
 USE fd FROM COMMAND "anyx-fd",
-fd / find "\\.rs$" in ["src"] with { only [`file], hidden },
+fd / find "\\.rs$" in ["src"] with { only [`file], `hidden },
 fd / details of "Cargo" with { max depth 2 },
 fd / any match of "TODO",
 ```
@@ -21,7 +21,7 @@ fd / any match of "TODO",
 `any match of` returns whether anything matched. Each takes two optional
 parts: `in (paths)`, which defaults to the working directory, and
 `with (search)`, which defaults to fd's own defaults. A search is a
-record of `fd`'s flags, each written as it reads: `hidden`,
+record of `fd`'s flags, each written as it reads: `` `hidden ``,
 `` `glob pattern ``, `` `any case ``, `at least 14 bytes`,
 `changed within (1 hours)`. Each field comes at most once, so a search can't
 contradict itself: the pattern's syntax and case are each one choice.

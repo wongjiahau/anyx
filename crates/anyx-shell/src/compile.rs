@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use anyx::{Expression, Item, Node, NodeKind, Span, TokenKind};
 use anyx_protocol::{
     Problem, Schema, Value,
-    schema::{Field, FieldForm, Form, Shape, Type, TypeKind, Written},
+    schema::{Field, FieldForm, Form, Shape, ShapePart, Type, TypeKind, Written},
 };
 
 use crate::{Interpreter, at};
@@ -501,19 +501,29 @@ impl Compiler<'_> {
                     (None, [only]) => only.clone(),
                     _ => return Err(literal_error),
                 };
-                let Some((_, kind)) = schema.instance(&r#type) else {
+                let variant_type = match schema.underlying(&r#type) {
+                    Type::Union(_) => {
+                        let form = Written::Variant(ShapePart::of(&call.name));
+                        schema
+                            .member_written_as(&r#type, &form)
+                            .ok_or_else(|| literal_error.clone())?
+                    }
+                    other => other,
+                };
+                let kind = schema.instance(variant_type).map(|(_, kind)| kind);
+                let shape = match (variant_type, kind.as_deref()) {
+                    (Type::Variant(shape), _) => shape.as_ref(),
+                    (_, Some(TypeKind::Variants(variants))) => variants
+                        .iter()
+                        .find(|variant| variant.shape.form(&name).is_some())
+                        .map(|variant| &variant.shape)
+                        .ok_or_else(|| literal_error.clone())?,
+                    _ => return Err(literal_error),
+                };
+                let Some(form) = shape.form(&name) else {
                     return Err(literal_error);
                 };
-                let TypeKind::Variants(variants) = kind.as_ref() else {
-                    return Err(literal_error);
-                };
-                let Some((variant, form)) = variants
-                    .iter()
-                    .find_map(|variant| Some((variant, variant.shape.form(&name)?)))
-                else {
-                    return Err(literal_error);
-                };
-                let written = variant.shape.written_as(&form);
+                let written = shape.written_as(&form);
                 if call.arguments.len() != written.parameters.len() {
                     return Err(literal_error);
                 }
@@ -525,14 +535,13 @@ impl Compiler<'_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 // A variant holds its full form, each left-out part's
                 // default among its arguments.
-                let arguments = variant
-                    .shape
+                let arguments = shape
                     .fill_with(&form, arguments, |index, value| Argument {
-                        r#type: variant.shape.parameters[index].r#type.clone(),
+                        r#type: shape.parameters[index].r#type.clone(),
                         value: ExpressionValue::Literal(value.clone()),
                     })
                     .expect("a checked schema has read every default");
-                let shape = variant.shape.text.clone();
+                let shape = shape.text.clone();
                 Ok(Argument {
                     r#type,
                     value: ExpressionValue::Variant(shape, arguments),
@@ -587,7 +596,7 @@ impl Compiler<'_> {
             ));
         }
         // Each entry is a map's key and value, or a record's entry: a call
-        // whose shape finds its field, as in `path _`, `hidden`, or a
+        // whose shape finds its field, as in `path _`, or a
         // variant, `` `by name ``.
         let mut fields: Vec<(String, &Node)> = Vec::new();
         let mut entry_calls: Vec<&anyx::Call> = Vec::new();
@@ -648,7 +657,7 @@ impl Compiler<'_> {
                 let found: Vec<Option<usize>> = entries
                     .iter()
                     .zip(&entry_calls)
-                    .map(|(entry, call)| record_entry(schema, record, entry, call))
+                    .map(|(entry, call)| record_entry(schema, record, entry, call).ok().flatten())
                     .collect();
                 (definition.parameters.is_empty()
                     && found.iter().all(Option::is_some)
@@ -676,17 +685,12 @@ impl Compiler<'_> {
         };
         let mut values: Vec<(String, Argument)> = Vec::new();
         for (entry, call) in entries.iter().zip(&entry_calls) {
-            let (field, value) = match record_entry(schema, record, entry, call) {
+            let (field, value) = match record_entry(schema, record, entry, call)
+                .map_err(|message| self.error(entry.span, message))?
+            {
                 Some(index) => {
                     let field = &record[index];
                     let value = match field.form {
-                        FieldForm::Checkbox => Argument {
-                            r#type: field.r#type.clone(),
-                            value: ExpressionValue::Literal(Value::Variant {
-                                shape: "true".into(),
-                                arguments: Vec::new(),
-                            }),
-                        },
                         // `` `by name ``: the entry is the value.
                         FieldForm::Unnamed => self.argument(schema, entry, Some(&field.r#type))?,
                         _ => match &field.r#type {
@@ -939,9 +943,12 @@ fn record_entry(
     record: &[Field],
     entry: &Node,
     call: &anyx::Call,
-) -> Option<usize> {
+) -> Result<Option<usize>, String> {
     match call.name_text().as_str() {
-        "` _" => schema.unnamed_field(record, &Written::of(entry)?),
-        shape => schema.shaped_field(record, shape),
+        "` _" => match Written::of(entry) {
+            Some(form) => schema.resolve_unnamed_field(record, &form),
+            None => Ok(None),
+        },
+        shape => Ok(schema.shaped_field(record, shape)),
     }
 }

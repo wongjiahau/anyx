@@ -14,13 +14,18 @@ const IMPORTS: &str = "use anyx_protocol::client::{CallError, Transport};\nuse a
 
 pub fn rust(schema: &Schema) -> Result<String, Error> {
     crate::check_names(schema)?;
-    if let Some(union) = crate::union_beyond_nullable(schema) {
-        return Err(Error {
-            message: format!(
-                "found the union `{union}`; expected only nullable unions, `T?`, in generated Rust, which writes them as `Option<T>`; other unions wait for named types"
+    let variants = crate::rust_variants(schema).map_err(|r#type| {
+        let name = schema.type_name(r#type);
+        let message = match r#type {
+            Type::Variant(_) => format!(
+                "found the standalone variant `{name}` with slots; give it a name with a `TYPE ALIAS` of a one-member `UNION` to generate Rust"
             ),
-        });
-    }
+            _ => format!(
+                "found the union `{name}`; expected only nullable unions, `T?`, in generated Rust, which writes them as `Option<T>`; other unions wait for named types"
+            ),
+        };
+        Error { message }
+    })?;
     let mut out = String::new();
     writeln!(
         out,
@@ -41,6 +46,29 @@ pub fn rust(schema: &Schema) -> Result<String, Error> {
     out.push_str(
         "/// The schema, read once.\npub fn schema() -> &'static anyx_protocol::Schema {\n    static SCHEMA_READ: ::std::sync::LazyLock<anyx_protocol::Schema> =\n        ::std::sync::LazyLock::new(|| anyx_protocol::Schema::load(SCHEMA_FILES[0].path, |path| SCHEMA_FILES.iter().find(|file| file.path == path).map(|file| file.source.to_string()).ok_or_else(|| format!(\"missing embedded file: {path}\"))).expect(\"the generator checked the schema\"));\n    &SCHEMA_READ\n}\n\n",
     );
+    if !variants.is_empty() {
+        out.push_str("#[allow(non_camel_case_types)]\npub mod variants {\n");
+        for shape in variants {
+            let name = variant_type_name(shape);
+            writeln!(out, r#"
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct {name};
+impl ::anyx_protocol::IntoValue for {name} {{
+    fn into_value(self) -> ::anyx_protocol::Value {{
+        ::anyx_protocol::Value::Variant {{ shape: {wire:?}.to_string(), arguments: ::std::vec::Vec::new() }}
+    }}
+}}
+impl ::anyx_protocol::FromValue for {name} {{
+    fn from_value(value: ::anyx_protocol::Value) -> ::std::option::Option<Self> {{
+        match value {{
+            ::anyx_protocol::Value::Variant {{ shape, arguments }} if shape == {wire:?} && arguments.is_empty() => ::std::option::Option::Some(Self),
+            _ => ::std::option::Option::None,
+        }}
+    }}
+}}"#, wire = shape.text).unwrap();
+        }
+        out.push_str("}\n\n");
+    }
     body(&mut out, schema);
     Ok(out)
 }
@@ -94,6 +122,21 @@ fn body(out: &mut String, schema: &Schema) {
     effects(out, schema, &methods);
 }
 
+/// Preserve word boundaries so distinct shapes have distinct Rust names.
+fn variant_type_name(shape: &Shape) -> String {
+    let name = shape
+        .text
+        .split(' ')
+        .map(pascal_case)
+        .collect::<Vec<_>>()
+        .join("_");
+    if name == "Self" {
+        "Self_".to_string()
+    } else {
+        name
+    }
+}
+
 /// `r#type` as written in the generated module.
 pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
     match r#type {
@@ -126,7 +169,8 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
             )
         }
         Type::Parameter(name) => type_parameter_name(name, |taken| rust_type_taken(schema, taken)),
-        Type::Union(_) | Type::Variant(_) => match schema.nullable_item(r#type) {
+        Type::Variant(shape) => format!("variants::{}", variant_type_name(shape)),
+        Type::Union(_) => match schema.nullable_item(r#type) {
             Some(item) => format!("Option<{}>", rust_type(schema, item)),
             // `rust` reports any other union before it writes a type.
             None => "()".to_string(),
