@@ -254,3 +254,15 @@ fn groups_are_told_apart_by_their_first_word() {
         ]),
     );
 }
+
+#[test]
+fn a_custom_bracket_pattern_requires_a_valid_opener() {
+    for opener in ["[", "|]", "[x", "[.", "[| "] {
+        let source = format!("ENTRY: value, value: BRACKET {opener:?} []");
+        let diagnostic = report(&source);
+        assert!(
+            diagnostic.contains("expected a custom bracket opener"),
+            "{diagnostic}"
+        );
+    }
+}

@@ -201,6 +201,18 @@ impl Lowerer<'_> {
                     ast::Container::Parenthesis { contents, .. } => {
                         (ContainerKind::Parenthesis, contents)
                     }
+                    ast::Container::CustomBracket { arguments, .. } => {
+                        let opener = &arguments.opener;
+                        let Some(bracket) = anyx::CustomBracket::from_opener(&opener.value.value)
+                        else {
+                            self.error(
+                                opener.span,
+                                "expected a custom bracket opener such as `\"[|\"`: write an opening bracket followed by one or more symbol characters",
+                            );
+                            return Pattern::String(StringPattern::any());
+                        };
+                        (ContainerKind::Custom(bracket), &arguments.contents)
+                    }
                 };
                 let names = match position {
                     Position::Rule => Names::Required,

@@ -144,12 +144,13 @@ Only a missing required element fails the whole match. So every element is
 named, none is an unnamed `WORD`, none is `EACH`, and none is called
 `errors`.
 
-### `CURLY BRACE`, `SQUARE BRACKET`, `PARENTHESIS`
+### `CURLY BRACE`, `SQUARE BRACKET`, `PARENTHESIS`, `BRACKET`
 
 ```text
 CURLY BRACE: ZERO OR MORE: member    ## { ... }: any number of members
 SQUARE BRACKET [x: NUMBER, y: NUMBER] ## [1, 2]: exactly these, in order
 PARENTHESIS []                        ## (): nothing inside
+BRACKET "[|>" [item: NUMBER]           ## [|> 1 <|]: one number
 ```
 
 After the bracket's name comes what it holds: `[elements]` in order,
@@ -160,6 +161,11 @@ always a list of the grammar language, never a bracket of your language.
 `PARENTHESIS` matches what anyx keeps as parentheses: `()`, `(a, b)` and
 `(a,)`. Parentheses around one element with no comma only group, so `(x)`
 is `x` and no `PARENTHESIS` is there to match.
+
+`BRACKET` takes the custom opener as a string, including its bracket
+and symbol run. The pattern matches only that delimiter and decodes its
+contents using the same rules as other brackets. Write the contents
+in square brackets, as in the example above.
 
 ### `ANYFIX CALL`
 

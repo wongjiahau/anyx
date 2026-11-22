@@ -105,6 +105,7 @@ fn the_config_format_decodes() {
   host: \"localhost\",
   port: 8080,
   allowed origins: [\"a\", \"b\"],
+  pinned ports: [|> 8080, 8081 <|],
   verbose logging,
   tls { certificate: \"cert.pem\" },
 }";
@@ -127,6 +128,7 @@ fn the_config_format_decodes() {
                     Value::Text(_) => "text",
                     Value::Number(_) => "number",
                     Value::List(_) => "list",
+                    Value::CustomList(_) => "custom list",
                     Value::Section(_) => "section",
                 },
             ),
@@ -138,9 +140,23 @@ fn the_config_format_decodes() {
             ("host _", "text"),
             ("port _", "number"),
             ("allowed origins _", "list"),
+            ("pinned ports _", "custom list"),
             ("verbose logging", "flag"),
             ("tls _", "section")
         ]
+    );
+}
+
+#[test]
+fn a_custom_bracket_pattern_matches_only_its_named_opener() {
+    let nodes = parse("[| 1 |]");
+    let error = config::decode_value(&nodes[0]).unwrap_err();
+    assert_eq!(error.found, "`[| ... |]`");
+    assert!(
+        error
+            .expected
+            .iter()
+            .any(|expected| expected == "`[|> ... <|]`")
     );
 }
 
@@ -568,7 +584,7 @@ fn conditions_are_checked_where_the_value_is() {
             "WORDS [IF, name, +, x, sans serif, ->, |, |, end]",
             "WORDS [if, name, +, x, y, ->, end]",
             "WORDS [IF, Name, +, x, y, ->, end]",
-            "WORDS [IF, name, +, x, y, ->]",
+            "WORDS [IF, name, +, x, y, -> ]",
             "WORDS [IF, name, +, x, print 1, ->, end]",
             "KEEP [1, x], KEEP 3, KEEP",
             "HOLD x",

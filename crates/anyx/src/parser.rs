@@ -43,6 +43,7 @@ fn opener(kind: &TokenKind) -> Option<GroupKind> {
         TokenKind::OpenParen => Some(GroupKind::Parens),
         TokenKind::OpenBracket => Some(GroupKind::Brackets),
         TokenKind::OpenBrace => Some(GroupKind::Braces),
+        TokenKind::OpenCustom(bracket) => Some(GroupKind::Custom(bracket.clone())),
         _ => None,
     }
 }
@@ -52,6 +53,7 @@ fn closer(kind: &TokenKind) -> Option<GroupKind> {
         TokenKind::CloseParen => Some(GroupKind::Parens),
         TokenKind::CloseBracket => Some(GroupKind::Brackets),
         TokenKind::CloseBrace => Some(GroupKind::Braces),
+        TokenKind::CloseCustom(bracket) => Some(GroupKind::Custom(bracket.clone())),
         _ => None,
     }
 }
@@ -269,17 +271,17 @@ impl Parser<'_> {
     fn group(&mut self) -> Group {
         let open = self.next();
         let kind = opener(&open.kind).expect("called on an opener");
-        self.open.push(kind);
+        self.open.push(kind.clone());
         let sequence = self.sequence();
         self.open.pop();
-        let (open_char, close_char) = (kind.open(), kind.close());
+        let (open_text, close_text) = (kind.open(), kind.close());
         let opened_at = self.at(open.span);
         let close = match closer(&self.peek().kind) {
             Some(found) if found == kind => Some(self.next()),
             Some(found) if self.open.contains(&found) => {
-                let found_char = found.close();
+                let found_text = found.close();
                 let message = format!(
-                    "found `{open_char}` at {opened_at} with no matching `{close_char}` before the `{found_char}` that closes an outer `{}`; expected `{close_char}`; add `{close_char}` where the group ends",
+                    "found `{open_text}` at {opened_at} with no matching `{close_text}` before the `{found_text}` that closes an outer `{}`; expected `{close_text}`; add `{close_text}` where the group ends",
                     found.open()
                 );
                 self.error(ErrorCode::UnclosedBracket, open.span, message);
@@ -287,9 +289,9 @@ impl Parser<'_> {
             }
             Some(found) => {
                 let token = self.next();
-                let found_char = found.close();
+                let found_text = found.close();
                 let message = format!(
-                    "found `{found_char}` at {} closing `{open_char}` from {opened_at}; expected `{close_char}`; change one of them so the pair matches",
+                    "found `{found_text}` at {} closing `{open_text}` from {opened_at}; expected `{close_text}`; change one of them so the pair matches",
                     self.at(token.span)
                 );
                 self.error(ErrorCode::MismatchedBracket, token.span, message);
@@ -297,7 +299,7 @@ impl Parser<'_> {
             }
             None => {
                 let message = format!(
-                    "found `{open_char}` at {opened_at} with no matching `{close_char}` before the end of input; expected `{close_char}`; add `{close_char}` where the group ends"
+                    "found `{open_text}` at {opened_at} with no matching `{close_text}` before the end of input; expected `{close_text}`; add `{close_text}` where the group ends"
                 );
                 self.error(ErrorCode::UnclosedBracket, open.span, message);
                 None

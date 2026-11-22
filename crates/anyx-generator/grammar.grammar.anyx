@@ -79,6 +79,7 @@ container: ONE OF [
   curly brace: ANYFIX CALL [WORD "CURLY", WORD "BRACE", contents],
   square bracket: ANYFIX CALL [WORD "SQUARE", WORD "BRACKET", contents],
   parenthesis: ANYFIX CALL [WORD "PARENTHESIS", contents],
+  custom bracket: ANYFIX CALL [WORD "BRACKET", arguments: ANYFIX CALL [opener: STRING, contents]],
 ],
 
 ## Words in the list name the call; every other element fills a slot.

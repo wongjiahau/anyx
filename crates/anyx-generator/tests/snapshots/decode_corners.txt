@@ -56,10 +56,10 @@ input:1:12: found the word `Name`; expected a name that matches the regex `^[a-z
   WORDS [IF, Name, +, x, y, ->, end]
              ^^^^
 
-## WORDS [IF, name, +, x, y, ->]
-input:1:29: found the closing `]`; expected the word `end`
-  WORDS [IF, name, +, x, y, ->]
-                              ^
+## WORDS [IF, name, +, x, y, -> ]
+input:1:30: found the closing `]`; expected the word `end`
+  WORDS [IF, name, +, x, y, -> ]
+                               ^
 
 ## WORDS [IF, name, +, x, print 1, ->, end]
 input:1:24: found the call `print _`; expected a call with no arguments

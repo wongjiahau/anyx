@@ -34,6 +34,6 @@ pub use parser::{MAX_DEPTH, Parsed, parse};
 pub use span::{LineColumn, Span, line_column};
 pub use string::{StringKind, StringLiteral, StringPiece};
 pub use syntax::{
-    BinaryExpression, Element, Expression, Group, GroupKind, Item, Run, Sequence, SyntaxTree,
-    Token, TokenKind, Trivia, TriviaKind,
+    BinaryExpression, CustomBracket, Element, Expression, Group, GroupKind, Item, Run, Sequence,
+    SyntaxTree, Token, TokenKind, Trivia, TriviaKind,
 };

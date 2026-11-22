@@ -6,6 +6,8 @@
 mod analyze;
 pub mod diagnostic;
 mod generate;
+// The generated grammar AST holds its patterns inline, with boxes on recursive edges.
+#[allow(clippy::large_enum_variant)]
 pub mod grammar;
 mod lower;
 pub mod model;

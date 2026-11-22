@@ -62,6 +62,9 @@ pub fn show(node: &Node) -> String {
         NodeKind::Parens(nodes) => format!("Parens[{}]", list(nodes)),
         NodeKind::Brackets(nodes) => format!("Brackets[{}]", list(nodes)),
         NodeKind::Braces(nodes) => format!("Braces[{}]", list(nodes)),
+        NodeKind::CustomBracket(bracket, nodes) => {
+            format!("{} {} {}", bracket.open(), list(nodes), bracket.close())
+        }
         NodeKind::Call(call) => show_call(call),
         NodeKind::Underscore => "_".into(),
         NodeKind::Missing => "Missing".into(),
