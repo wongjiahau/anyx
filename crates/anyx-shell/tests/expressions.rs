@@ -29,7 +29,6 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
             METHOD handle (value: Text) RETURNS (handled: Text) ERRORS [| |],
             METHOD handle (value: Integer) RETURNS (handled: Text) ERRORS [| |],
             METHOD handle (value: LIST Text) RETURNS (handled: Text) ERRORS [| |],
-            METHOD handle (value: LIST Integer) RETURNS (handled: Text) ERRORS [| |],
             METHOD envelope (value: Envelope) RETURNS (value: Envelope) ERRORS [| |],
             METHOD mapping (value: MAP Text) RETURNS (value: MAP Text) ERRORS [| |],
             METHOD message (value: Message) RETURNS (value: Message) ERRORS [| |],
