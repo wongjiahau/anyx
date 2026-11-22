@@ -66,11 +66,9 @@ the account, such as by sending or sharing it.
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `` { "hymn": `done } ``.
 - A record is its fields in braces, each written in its declared shape with
-  a value in each slot, in any order. When declaring fields, prefer
-  parentheses around slots and use words that make the value read as a
-  phrase. For example, `quiet from (start: Integer) to (end: Integer)` is
-  one field, written `{ quiet from 22 to 7 }`. The `name: Type` shorthand
-  is discouraged for field declarations. Other record values include
+  a value in each slot, in any order. Declare every slot as
+  `(name: Type)`. For example, `quiet from (start: Integer) to (end: Integer)`
+  is one field, written `{ quiet from 22 to 7 }`. Other record values include
   `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field declared as a backtick and a slot is written
@@ -126,8 +124,8 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
 TYPE ALIAS Schema File: {
-    path: Text,
-    source: Text,
+    path (path: Text),
+    source (source: Text),
 },
 ```
 
@@ -181,7 +179,7 @@ USE "./files/export.protocol.anyx",
 
 USE "./common.protocol.anyx",
 
-TYPE ALIAS File: { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File: { path (path: Text), revision (revision: Integer), content (content: Text) },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
@@ -211,7 +209,7 @@ METHOD empty trash RETURNS NOTHING ERRORS [| |],
 ### `common.protocol.anyx`
 
 # One problem in a note.
-PUBLIC TYPE ALIAS Diagnostic: { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Diagnostic: { line (line: Integer), message (message: Text) },
 
 PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
@@ -224,7 +222,7 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE ALIAS Page: { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page: { html (html: Text), problem (problem: Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 

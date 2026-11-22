@@ -3,13 +3,13 @@ PROTOCOL types VERSION 1,
 
 # When to remind the owner.
 TYPE ALIAS Reminder: {
-    note: Text,
-    at: Instant,
-    every (Duration?) DEFAULT every (`null),
+    note (note: Text),
+    at (at: Instant),
+    every (every: Duration?) DEFAULT every (`null),
     # How many times to remind before giving up.
-    times (Integer) DEFAULT times 3,
+    times (times: Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
-    seen (MAP: Instant) DEFAULT seen {},
+    seen (seen: MAP Instant) DEFAULT seen {},
     # The hours of the day it stays quiet, from and to.
     quiet from (start: Integer) to (end: Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
@@ -34,8 +34,8 @@ METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minu
         `overdue since (since: Instant),
     |],
 
-TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
+TYPE ALIAS page of (Item: TYPE): { rows (rows: LIST { value (value: Item) }) },
 
-METHOD inspect (filter: { query: Text })
+METHOD inspect (filter: { query (query: Text) })
     RETURNS (result: [| page of (Text), `null |])
-    ERRORS [| `invalid (detail: { path: Text }) |],
+    ERRORS [| `invalid (detail: { path (path: Text) }) |],

@@ -21,7 +21,7 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
             Example {
                 schema: Schema::parse(
                     "PROTOCOL example VERSION 1,
-            TYPE ALIAS Envelope: { items: LIST Text },
+            TYPE ALIAS Envelope: { items (items: LIST Text) },
             TYPE ALIAS Message [| `message (text: Text) |],
             METHOD text RETURNS (value: Text) ERRORS [| |],
             METHOD integer RETURNS (value: Integer) ERRORS [| |],
@@ -242,7 +242,7 @@ fn named_result_types_keep_their_identity_across_protocols() {
         "PROTOCOL source VERSION 1, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     interpreter.register("target", Identity(Schema::parse(
-        "PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { count: Integer }, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { count (count: Integer) }, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("target / identity (source / identity (Identifier \"example\"))")
@@ -284,7 +284,7 @@ fn nested_diagnostics_point_to_the_original_document() {
 fn generic_records_and_defaults_can_contain_computed_fields() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("generic", Identity(Schema::parse(
-        "PROTOCOL generic VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value: Item, count (Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text)) ERRORS [| |]"
+        "PROTOCOL generic VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value (value: Item), count (count: Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text)) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("generic / identity ({ value: (example / text) } AS: Box of (Text))")
@@ -360,7 +360,7 @@ fn argument_failure_keeps_effects_of_preceding_arguments() {
 fn refined_values_cross_protocols_checked_by_each() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("source",Identity(Schema::parse("PROTOCOL source VERSION 1, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
-    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { value: Text }, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
+    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { value (value: Text) }, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
     let result = interpreter
         .execute("target / identity (source / identity 1)")
         .unwrap();
@@ -469,8 +469,8 @@ fn a_scoped_call_reads_inline_record_arguments_in_context() {
     register_example(
         &mut interpreter,
         "inline",
-        "METHOD search (filter: { limit (Integer) DEFAULT limit 3 })
-            RETURNS (result: { limit: Integer }) ERRORS [| |],",
+        "METHOD search (filter: { limit (limit: Integer) DEFAULT limit 3 })
+            RETURNS (result: { limit (limit: Integer) }) ERRORS [| |],",
     );
     let execution = interpreter.execute("inline / search {}").unwrap();
     assert!(execution.error.is_none());

@@ -11,10 +11,10 @@ schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in ty
                                      ^^^^^^^
 
 == an old all-caps name inside a list
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags: LIST: TEXT },
-schema:1:57: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags: LIST: TEXT },
-                                                          ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags (tags: LIST: TEXT) },
+schema:1:63: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags (tags: LIST: TEXT) },
+                                                                ^^^^
 
 == INTRINSIC in a schema
 PROTOCOL a VERSION 1, INTRINSIC TYPE Money,
@@ -23,9 +23,9 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == INTRINSIC on a record in a schema
-PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a: Text },
+PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a: Text) },
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a: Text },
+  PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a: Text) },
                         ^^^^^^^^^
 
 == INTRINSIC on a method
@@ -35,9 +35,9 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == a type named like a built-in one
-PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a: Text },
+PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a (a: Text) },
 schema:1:34: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a: Text },
+  PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a (a: Text) },
                                    ^^^^^^^
 
 == a type alias without a type
@@ -59,16 +59,16 @@ schema:1:64: found the number `3`; expected the call `… _`, `[...]` or the end
                                                                  ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text }, TYPE ALIAS Example [| `b |],
-schema:1:67: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text }, TYPE ALIAS Example [| `b |],
-                                                                    ^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text) }, TYPE ALIAS Example [| `b |],
+schema:1:71: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text) }, TYPE ALIAS Example [| `b |],
+                                                                        ^^^^^^^
 
 == a field twice
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text, a: Integer },
-schema:1:54: found a second field named `a`; expected each field once; rename or remove one of them
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text, a: Integer },
-                                                       ^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text), a (a: Integer) },
+schema:1:58: found a second field named `a`; expected each field once; rename or remove one of them
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text), a (a: Integer) },
+                                                           ^
 
 == a variant twice
 PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b: Text) |],
@@ -104,40 +104,37 @@ schema:1:93: found overlapping methods `scale (by: Float)` and `scale (by: Float
                                                                                               ^^^^^
 
 == a type holding itself
-PROTOCOL a VERSION 1, TYPE ALIAS Node: { next: Node }, TYPE ALIAS Tree: { children: LIST: Tree },
+PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node) }, TYPE ALIAS Tree: { children (children: LIST: Tree) },
 schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next: Node }, TYPE ALIAS Tree: { children: LIST: Tree },
+  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node) }, TYPE ALIAS Tree: { children (children: LIST: Tree) },
                                    ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children: MAP: Tree },
+PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children (children: MAP: Tree) },
 schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children: MAP: Tree },
+  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children (children: MAP: Tree) },
                                    ^^^^
 
 == a map default that is not a map
 PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
-schema:1:72: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+schema:1:48: found the call `MAP _`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
   PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
-                                                                         ^^
+                                                 ^^^^^^^^^^^^
 
 == a cycle through a union of variants
-PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
 schema:1:34: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
                                    ^^^^^
-schema:1:65: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
-                                                                  ^^^^
+schema:1:69: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+                                                                      ^^^^
 
 == names that are not lowercase ASCII
 PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
-schema:1:45: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+schema:1:51: found the word `Text`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
   PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
-                                              ^^^^
-schema:1:57: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
-                                                          ^^^^
+                                                    ^^^^
 
 == a parameter named kind
 PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind: Text) |],
@@ -147,9 +144,9 @@ schema:1:49: found a parameter named `kind`; expected another name, since a vari
 
 == a keyword in a name
 PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
-schema:1:45: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+schema:1:55: found the word `Text`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
   PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
-                                              ^^^^^^^^
+                                                        ^^^^
 
 == a method without errors
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),

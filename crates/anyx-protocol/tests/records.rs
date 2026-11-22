@@ -10,13 +10,13 @@ TYPE ALIAS Order [| `newest first, `by name, `largest first |],
 TYPE ALIAS Auth [| `bearer (token: Text), `no auth |],
 TYPE ALIAS Search: {
     # The pattern to look for.
-    pattern: Text,
-    (Case) case DEFAULT (`smart) case,
+    pattern (pattern: Text),
+    (mode: Case) case DEFAULT (`smart) case,
     # Searches hidden files too.
     `(hidden: [| `hidden, `null |]) DEFAULT `null,
     `(pinned: [| `pinned, `null |]) DEFAULT `null,
-    max depth (Integer?) DEFAULT max depth (`null),
-    at least (Integer?) bytes DEFAULT at least (`null) bytes,
+    max depth (depth: Integer?) DEFAULT max depth (`null),
+    at least (size: Integer?) bytes DEFAULT at least (`null) bytes,
     `(order: Order) DEFAULT `newest first,
     `(auth: Auth) DEFAULT `no auth,
 },
@@ -169,16 +169,17 @@ fn a_field_written_as_its_variant_holds_only_variants() {
 #[test]
 fn mistakes_in_fields_are_diagnosed() {
     for (fields, message) in [
+        ("tags (LIST Text)", "found the call `LIST _`"),
         (
             "quiet from (Integer) to (end: Integer)",
-            "found an unnamed slot; write `(name: Type)`",
+            "found the word `Integer`",
         ),
         (
             "(edge: Integer) by (edge: Integer)",
             "found a second slot named `edge`",
         ),
         (
-            "quiet from (start: Integer) to (end: Integer), quiet: Integer",
+            "quiet from (start: Integer) to (end: Integer), quiet (quiet (quiet: Integer))",
             "found a second field named `quiet`",
         ),
         (
@@ -186,11 +187,11 @@ fn mistakes_in_fields_are_diagnosed() {
             "found the call `between _`; expected an entry of the field, as a value writes it: `between … and …`",
         ),
         (
-            "age (Integer) DEFAULT years 0",
+            "age (age: Integer) DEFAULT years 0",
             "found the call `years _`; expected an entry of the field, as a value writes it: `age …`",
         ),
         (
-            "age: Integer DEFAULT age 0",
+            "age (age: Integer DEFAULT age 0)",
             "found a `DEFAULT` in a field's slot; expected it after the whole field",
         ),
         (
@@ -198,7 +199,7 @@ fn mistakes_in_fields_are_diagnosed() {
             "write `` `(hidden: [| `hidden, `null |]) DEFAULT `null ``",
         ),
         (
-            "age (Integer) DEFAULT age 0, age (Integer)",
+            "age (age: Integer) DEFAULT age 0, age (age: Integer)",
             "found a second field named `age`",
         ),
     ] {
@@ -326,12 +327,12 @@ fn a_flag_type_requires_an_explicit_union() {
 fn inline_records_work_in_aliases_lists_and_unions() {
     let schema = schema(
         "PROTOCOL inline VERSION 1,
-        TYPE ALIAS Page of (Item: TYPE): { rows: LIST { value: Item } },
-        TYPE ALIAS Tree: { children: LIST { child: Tree } },
-        METHOD search (filter: { limit (Integer) DEFAULT limit 3 }) RETURNS NOTHING ERRORS [| |],
+        TYPE ALIAS Page of (Item: TYPE): { rows (rows: LIST { value (value: Item) }) },
+        TYPE ALIAS Tree: { children (children: LIST { child (child: Tree) }) },
+        METHOD search (filter: { limit (limit: Integer) DEFAULT limit 3 }) RETURNS NOTHING ERRORS [| |],
         METHOD submit (page: Page of (Text)) RETURNS NOTHING ERRORS [| `invalid |],
         METHOD save (tree: Tree) RETURNS NOTHING ERRORS [| |],
-        METHOD choose (item: [| { count: Integer }, `none |]) RETURNS NOTHING ERRORS [| |],",
+        METHOD choose (item: [| { count (count: Integer) }, `none |]) RETURNS NOTHING ERRORS [| |],",
     );
     let source = "search {}, submit ({ rows [{ value \"one\" }] } AS: Page of (Text)),
                   save { children [{ child { children [] } }] },
@@ -350,19 +351,19 @@ fn inline_records_work_in_aliases_lists_and_unions() {
 fn an_inline_record_has_the_same_union_form_as_a_named_record() {
     let error = diagnostics(
         "PROTOCOL inline VERSION 1,
-        TYPE ALIAS Named: { path: Text },
-        TYPE ALIAS Conflict [| Named, { count: Integer } |],",
+        TYPE ALIAS Named: { path (path: Text) },
+        TYPE ALIAS Conflict [| Named, { count (count: Integer) } |],",
     );
     assert!(error.contains("braces"), "{error}");
 }
 
 #[test]
 fn records_use_type_aliases_or_named_constructor_slots() {
-    assert!(anyx_protocol::Schema::parse("TYPE Quiet Hours { start: Integer }").is_err());
+    assert!(anyx_protocol::Schema::parse("TYPE Quiet Hours { start (start: Integer) }").is_err());
     let schema = anyx_protocol::Schema::parse(
         "PROTOCOL schedule VERSION 1,
-         TYPE ALIAS Hours: { start: Integer },
-         NAMED TYPE Quiet Hours (schedule: { start: Integer }),
+         TYPE ALIAS Hours: { start (start: Integer) },
+         NAMED TYPE Quiet Hours (schedule: { start (start: Integer) }),
          METHOD set (hours: Quiet Hours) RETURNS NOTHING ERRORS [| |],",
     )
     .unwrap();

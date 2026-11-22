@@ -59,8 +59,8 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
 TYPE ALIAS Schema File: {
-    path: Text,
-    source: Text,
+    path (path: Text),
+    source (source: Text),
 },
 
 ## Functions are evaluated by the codec in refinements and method conditions.

@@ -519,7 +519,7 @@ fn entry_value(schema: &Schema, field: &Field, entry: &Syntax) -> Result<Value, 
 }
 
 /// Reads `entry` as an entry of `field`, as a field's `DEFAULT`
-/// is: `age 0` for `age (Integer) DEFAULT age 0`.
+/// is: `age 0` for `age (age: Integer) DEFAULT age 0`.
 pub(crate) fn decode_field_entry(
     schema: &Schema,
     field: &Field,

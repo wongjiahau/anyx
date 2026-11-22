@@ -11,13 +11,13 @@ schema:1:157: found a string as a value of both `Text` and `Bytes` in `[| Text, 
                                                                                                                                                               ^^^^^^^^^^^^^^^^^
 
 == two members written alike only in JSON
-PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
 schema:1:40: found a number in JSON as a value of both `Integer` and `Duration` in `[| Integer, Duration |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
                                          ^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:138: found braces `{…}` as a value of both `Row` and `MAP Text` in `[| Row, MAP Text |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
-                                                                                                                                           ^^^^^^^^^^^^^^^^
+schema:1:142: found braces `{…}` as a value of both `Row` and `MAP Text` in `[| Row, MAP Text |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+                                                                                                                                               ^^^^^^^^^^^^^^^^
 
 == a nullable nullable, and a nullable choice with null
 PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],
@@ -29,10 +29,10 @@ schema:1:113: found `` `null `` as a value of both `Gap` and `` `null `` in `Gap
                                                                                                                   ^^^^
 
 == a repeat made by a generic type's argument
-PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
-schema:1:86: found `` `null `` as a value of both `Text?` and `` `null `` in `Text??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
-                                                                                       ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value (value: Item?) }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
+schema:1:94: found `` `null `` as a value of both `Text?` and `` `null `` in `Text??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value (value: Item?) }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
+                                                                                               ^^^^^^^^^^^^^^
 
 == a list or a map as a member
 PROTOCOL a VERSION 1, TYPE ALIAS Paths [| LIST Text, `none |],

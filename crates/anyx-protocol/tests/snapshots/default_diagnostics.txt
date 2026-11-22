@@ -1,23 +1,23 @@
 == a default of another type
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (Integer) DEFAULT limit "50" },
-schema:1:75: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (Integer) DEFAULT limit "50" },
-                                                                            ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (limit: Integer) DEFAULT limit "50" },
+schema:1:82: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (limit: Integer) DEFAULT limit "50" },
+                                                                                   ^^^^
 
 == a default that is no variant
-PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE ALIAS Example: { shade (Shade) DEFAULT shade (`dim) },
-schema:1:104: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
-  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE ALIAS Example: { shade (Shade) DEFAULT shade (`dim) },
-                                                                                                         ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE ALIAS Example: { shade (shade: Shade) DEFAULT shade (`dim) },
+schema:1:111: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE ALIAS Example: { shade (shade: Shade) DEFAULT shade (`dim) },
+                                                                                                                ^^^^
 
 == the removed OPTIONAL keyword
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit: OPTIONAL Integer },
-schema:1:52: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit: OPTIONAL Integer },
-                                                     ^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (limit: OPTIONAL Integer) },
+schema:1:59: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { limit (limit: OPTIONAL Integer) },
+                                                            ^^^^^^^^
 
 == a default on a parameter
 PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [| |],
-schema:1:40: found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
+schema:1:40: found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (limit: Integer) DEFAULT limit 50`, since a parameter is always written
   PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [| |],
                                          ^^^^^^^^^^^^^^^^^^

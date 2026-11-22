@@ -13,9 +13,9 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path (Text),
-    revision (Integer),
-    note (Text ? ) DEFAULT note (`null),
+    path (path: Text),
+    revision (revision: Integer),
+    note (note: Text ? ) DEFAULT note (`null),
 },
 
 TYPE ALIAS Shade [| `dark, `light |],
@@ -108,7 +108,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   each field in its declared shape, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
   written as a value writes it, what it holds when absent:
-  `limit (Integer) DEFAULT limit 50`, or `tags (LIST Text) DEFAULT tags []`.
+  `limit (limit: Integer) DEFAULT limit 50`, or `tags (tags: LIST Text) DEFAULT tags []`.
   Without a default the field must be supplied. A default is checked as an
   entry of its field. A record can also appear directly in a type slot:
 
@@ -135,7 +135,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 - **Nullability** is the prelude's `T?`, the alias `` [| Item, `null |] ``:
   `` `null ``, or a value of the item written as it is, `note "hi"`.
   `note: Text?` is required but admits `` `null ``;
-  `` note (Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
+  `` note (note: Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
 - **`` TYPE ALIAS Name [| `variant, `… |] ``**, a union of variants
   alone: one of its variants. A variant is a *shape*: words, with
@@ -158,8 +158,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
   TYPE ALIAS Page of (Item: TYPE): {
-      items (LIST Item),
-      next (Text?) DEFAULT next (`null),
+      items (items: LIST Item),
+      next (next: Text?) DEFAULT next (`null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
@@ -195,13 +195,13 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `Page of (Item: TYPE)` are two types, and both may be declared; two
   declarations of the same shape are an error. A `TYPE ALIAS` can declare
   type parameters, and
-  `PUBLIC TYPE ALIAS Page of (Item: TYPE): { items (LIST Item) }` shares one. A parameter is a
+  `PUBLIC TYPE ALIAS Page of (Item: TYPE): { items (items: LIST Item) }` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
   or a directly imported `PUBLIC` type. A parameter has no slots, and a field
   whose type holds one can have a `DEFAULT` only if it can be checked
-  without knowing the argument, as in `` content (Item?) DEFAULT content (`null) ``. A use fills every slot, in order; a use whose
+  without knowing the argument, as in `` content (content: Item?) DEFAULT content (`null) ``. A use fills every slot, in order; a use whose
   words or slots match no declaration is an error that names the types
   with those words. Within its own declaration, a generic type uses itself
   with its own parameters as they are, `LIST Tree of (Item)`, and only
@@ -266,7 +266,7 @@ TYPE ALIAS Revision: Integer . WHERE [1 <= _],
 TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
 TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
-TYPE ALIAS Settings: { limit (Limit) DEFAULT limit 10 },
+TYPE ALIAS Settings: { limit (limit: Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30])
     ERRORS [| |],
@@ -499,23 +499,22 @@ Its value is `{ quiet from 22 to 7 }`.
 
 | Declared | Written | Named |
 | --- | --- | --- |
-| `path (Text)` | `path "a"` | `path` |
-| `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
-| `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
+| `path (path: Text)` | `path "a"` | `path` |
+| `` (mode: Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
+| `` at least (size: Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (start: Integer) and (end: Integer)` | `between 1 and 3` | `between` |
 | `` `(hidden: [| `hidden, `null |]) DEFAULT `null `` | `` `hidden `` | `hidden` |
 | `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
-- **Prefer parentheses around field slots.** Write `path (Text)` or
-  `(Case) case`. The shorthand `name: Type` is discouraged because it
-  suggests a key–value pair. Put words around slots where they help the
-  value read as a phrase.
+- **Name every field slot.** Write `path (path: Text)` or
+  `(mode: Case) case`. Every slot uses `(name: Type)`, even when a field has only one.
+  Put words around slots where they help the value read as a phrase.
 - **A multi-slot field names each slot.** Its first word names the field.
   The field's value is a named struct in Rust and an object in TypeScript
   and JSON. For example, `between 1 and 3` contributes
   `"between": { "start": 1, "end": 3 }` to its JSON record.
 - **A `DEFAULT` takes the whole field**, and is the entry the field holds
-  when left out, written as a value writes it: `age (Integer) DEFAULT age 0`,
+  when left out, written as a value writes it: `age (age: Integer) DEFAULT age 0`,
   `between (start: Integer) and (end: Integer) DEFAULT between 1 and 9`,
   `` `(order: Order) DEFAULT `newest first ``. With a `:`, the field goes in
   parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
@@ -563,7 +562,7 @@ written:
    Every variant carries the word, so that none reads bare, as `` `exact ``
    would.
 5. **A choice several fields or methods share → its shared word in the
-   shape.** `(Case) case` over `` TYPE ALIAS Case [| `smart, `any, `exact |] ``,
+   shape.** `(mode: Case) case` over `` TYPE ALIAS Case [| `smart, `any, `exact |] ``,
    written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no

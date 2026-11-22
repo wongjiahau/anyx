@@ -56,7 +56,7 @@ TYPE ALIAS Search: {
     # Match the pattern against the whole path, not just the name.
     `(full path: [| `full path, `null |]) DEFAULT `null,
     # Each file must match these patterns too, in the same syntax and case.
-    also matching (LIST Text) DEFAULT also matching [],
+    also matching (patterns: LIST Text) DEFAULT also matching [],
     # Find hidden files and directories too.
     `(hidden: [| `hidden, `null |]) DEFAULT `null,
     # Don't skip what ignore files ignore.
@@ -69,42 +69,42 @@ TYPE ALIAS Search: {
     # Read `.gitignore` outside a git repository too.
     `(no require git: [| `no require git, `null |]) DEFAULT `null,
     # Skip what these files ignore, each written as `.gitignore` is.
-    ignore files (LIST Text) DEFAULT ignore files [],
+    ignore files (files: LIST Text) DEFAULT ignore files [],
     # Skip paths these globs match, as `--exclude` does.
-    excluding (LIST Text) DEFAULT excluding [],
+    excluding (patterns: LIST Text) DEFAULT excluding [],
     # Follow symbolic links into the directories they point to.
     `(follow links: [| `follow links, `null |]) DEFAULT `null,
     # Don't go into another file system.
     `(one file system: [| `one file system, `null |]) DEFAULT `null,
     # Don't go into a directory that matched.
     `(prune: [| `prune, `null |]) DEFAULT `null,
-    max depth (Depth?) DEFAULT max depth (`null),
-    min depth (Depth?) DEFAULT min depth (`null),
+    max depth (depth: Depth?) DEFAULT max depth (`null),
+    min depth (depth: Depth?) DEFAULT min depth (`null),
     # Find only these kinds of file, or every kind when empty.
-    only (LIST Kind) DEFAULT only [],
+    only (only: LIST Kind) DEFAULT only [],
     # Find only files with one of these extensions, such as `"rs"`, or
     # with any when empty.
-    extensions (LIST Text) DEFAULT extensions [],
-    at least (Size?) bytes DEFAULT at least (`null) bytes,
-    at most (Size?) bytes DEFAULT at most (`null) bytes,
-    changed within (Duration?) DEFAULT changed within (`null),
-    changed since (Instant?) DEFAULT changed since (`null),
-    changed before (Instant?) DEFAULT changed before (`null),
-    changed more than (Duration?) ago DEFAULT changed more than (`null) ago,
+    extensions (extensions: LIST Text) DEFAULT extensions [],
+    at least (size: Size?) bytes DEFAULT at least (`null) bytes,
+    at most (size: Size?) bytes DEFAULT at most (`null) bytes,
+    changed within (duration: Duration?) DEFAULT changed within (`null),
+    changed since (instant: Instant?) DEFAULT changed since (`null),
+    changed before (instant: Instant?) DEFAULT changed before (`null),
+    changed more than (duration: Duration?) ago DEFAULT changed more than (`null) ago,
     # Owned by the user with this id.
-    owned by user (Integer?) DEFAULT owned by user (`null),
+    owned by user (id: Integer?) DEFAULT owned by user (`null),
     # Owned by the group with this id.
-    owned by group (Integer?) DEFAULT owned by group (`null),
+    owned by group (id: Integer?) DEFAULT owned by group (`null),
     # Stop after this many paths.
-    at most (Count?) results DEFAULT at most (`null) results,
+    at most (count: Count?) results DEFAULT at most (`null) results,
 },
 
 # What a found file is, as `fd --list-details` shows it.
 TYPE ALIAS Details: {
-    path (Text),
-    kind (Kind),
-    size (Size) bytes,
-    modified at (Instant),
+    path (path: Text),
+    kind (kind: Kind),
+    size (size: Size) bytes,
+    modified at (instant: Instant),
 },
 
 TYPE ALIAS Fd Errors [|

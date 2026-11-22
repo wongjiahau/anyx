@@ -8,13 +8,13 @@ schema:1:62: found the type alias `Alpha` standing for a type that leads back to
                                                                ^^^^^
 
 == an alias with the name of another type
-PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
-schema:1:63: duplicate declaration `Row` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
-                                                                ^^^
-schema:1:109: duplicate declaration `Paths` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
-                                                                                                              ^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
+schema:1:67: duplicate declaration `Row` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
+                                                                    ^^^
+schema:1:113: duplicate declaration `Paths` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,
+                                                                                                                  ^^^^^
 
 == an alias without its type, or with a type in another slot
 PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) Pair, TYPE ALIAS Pair of (Text): LIST Text,
@@ -32,19 +32,19 @@ schema:1:46: found `Path`, which is not a type of this schema; expected a built-
                                                ^^^^
 
 == a parameter unused, twice, lowercase, or named like a type
-PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
-schema:1:64: found the type parameter `Item` of the type alias `(Item) Pair`, which the type it stands for doesn't use; expected each parameter in that type, such as `LIST Item`; use it or remove it
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
-                                                                 ^^^^
-schema:1:123: found a second type parameter named `Item`; expected each type parameter once; rename one of them
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
-                                                                                                                            ^^^^
-schema:1:159: found `item` as the name of a type parameter; expected words in Title Case, such as `Item`, since a type parameter stands for a type; rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
-                                                                                                                                                                ^^^^
-schema:1:199: found the type parameter `Row` of the type alias `(Row) Rows`, which has the name of the type `Row`; expected a name that no type visible here has, since `Row` there would then mean either; rename the parameter
-  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a: Text }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
-                                                                                                                                                                                                        ^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
+schema:1:68: found the type parameter `Item` of the type alias `(Item) Pair`, which the type it stands for doesn't use; expected each parameter in that type, such as `LIST Item`; use it or remove it
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
+                                                                     ^^^^
+schema:1:127: found a second type parameter named `Item`; expected each type parameter once; rename one of them
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
+                                                                                                                                ^^^^
+schema:1:163: found `item` as the name of a type parameter; expected words in Title Case, such as `Item`, since a type parameter stands for a type; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
+                                                                                                                                                                    ^^^^
+schema:1:203: found the type parameter `Row` of the type alias `(Row) Rows`, which has the name of the type `Row`; expected a name that no type visible here has, since `Row` there would then mean either; rename the parameter
+  PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,
+                                                                                                                                                                                                            ^^^
 
 == a name not in Title Case
 PROTOCOL a VERSION 1, TYPE ALIAS paths: LIST Text,

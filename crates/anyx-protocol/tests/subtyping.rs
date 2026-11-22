@@ -18,12 +18,12 @@ TYPE ALIAS Colour [| `dark, `light, `custom hue (hue: Float) |],
 TYPE ALIAS Key [| Integer, Text |],
 NAMED TYPE File Id (value: Text),
 NAMED TYPE Share Id (value: Text),
-TYPE ALIAS Page of (Item: TYPE): { items: LIST Item },
-TYPE ALIAS Point: { x: Integer, y: Integer },
-TYPE ALIAS Point With Label: { x: Integer, y: Integer, label (Text) DEFAULT label \"\" },
-TYPE ALIAS Point In Space: { x: Integer, y: Integer, z: Integer },
-TYPE ALIAS Node: { value: Integer, children: LIST Node },
-TYPE ALIAS Link: { value: Integer, children: LIST Link },
+TYPE ALIAS Page of (Item: TYPE): { items (items: LIST Item) },
+TYPE ALIAS Point: { x (x: Integer), y (y: Integer) },
+TYPE ALIAS Point With Label: { x (x: Integer), y (y: Integer), label (label: Text) DEFAULT label \"\" },
+TYPE ALIAS Point In Space: { x (x: Integer), y (y: Integer), z (z: Integer) },
+TYPE ALIAS Node: { value (value: Integer), children (children: LIST Node) },
+TYPE ALIAS Link: { value (value: Integer), children (children: LIST Link) },
 METHOD use (depth: Depth) (size: Size) (small: Small) (shade: Shade) (colour: Colour) (key: Key)
     (file: File Id) (share: Share Id)
     (depths: Page of (Depth)) (integers: Page of (Integer))

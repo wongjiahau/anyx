@@ -35,8 +35,8 @@ type marker: ONE OF [WORD "TYPE"],
 ## A field is a shape, written in a value as it is declared, in any order
 ## among the others. Its words name it, and each slot holds a type:
 ##
-## - `path: Text`, the shape `path _`, written `path "a"`;
-## - `(Case) case`, written `(any) case`;
+## - `path (path: Text)`, the shape `path _`, written `path "a"`;
+## - `(mode: Case) case`, written `(any) case`;
 ## - `between (start: Integer) and (end: Integer)`, written `between 1 and 3`, holds a
 ##   value for each slot;
 ## - `` `(order: Order) ``, a backtick and a slot, so a parameter names it.
@@ -45,10 +45,10 @@ type marker: ONE OF [WORD "TYPE"],
 ##   entry fills by the variant's shape.
 ##
 ## A field that may be left out says what it is then, as an entry written
-## as a value writes it: `age (Integer) DEFAULT age 0`,
-## `(path: Text) DEFAULT path "a"`, `` `(order: Order) DEFAULT `newest first ``.
+## as a value writes it: `age (age: Integer) DEFAULT age 0`,
+## `` `(order: Order) DEFAULT `newest first ``.
 ## The `DEFAULT` takes the whole field, so `path: Text DEFAULT path "a"`
-## puts it in the slot, where no type has one.
+## puts it in the slot, where a slot declaration is required.
 field: ONE OF [
   defaulted: ANYFIX CALL [field: declared field, WORD "DEFAULT", default: ANY NODE],
   declared: declared field,
@@ -64,7 +64,7 @@ declared field: ONE OF [
   ],
 ],
 
-field slot: ONE OF [doc: LINE STRING, parameter: field parameter, type],
+field slot: ONE OF [doc: LINE STRING, parameter: field parameter],
 
 field parameter: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$"], ARGUMENTS: type],
 

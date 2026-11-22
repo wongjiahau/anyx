@@ -2,8 +2,8 @@
 PROTOCOL environment VERSION 1,
 
 TYPE ALIAS Variable: {
-    name: Text,
-    value: Text,
+    name (name: Text),
+    value (value: Text),
 },
 
 TYPE ALIAS Name Errors [|

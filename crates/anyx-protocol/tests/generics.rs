@@ -16,9 +16,9 @@ const SHOP: &str = "PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
 TYPE ALIAS page of (Item: TYPE): {
-    items: LIST: Item,
-    next (Text) DEFAULT next \"\",
-    size (Integer) DEFAULT size 20,
+    items (items: LIST: Item),
+    next (next: Text) DEFAULT next \"\",
+    size (size: Integer) DEFAULT size 20,
 },
 
 # What came of an attempt.
@@ -27,7 +27,7 @@ TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [|
     `failed (problem: Problem),
 |],
 
-TYPE ALIAS Order: { number: Integer, total: Integer },
+TYPE ALIAS Order: { number (number: Integer), total (total: Integer) },
 
 TYPE ALIAS Decline [| `insufficient funds, `card expired |],
 
@@ -168,7 +168,7 @@ fn a_value_of_a_generic_type_is_written_like_the_type_with_its_arguments() {
 fn a_value_of_a_generic_type_is_checked_against_its_arguments() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) },
 METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer) ERRORS [| |],
 ",
     );
@@ -231,7 +231,7 @@ fn a_value_of_a_generic_type_is_the_type_with_its_arguments_in_json() {
 fn super_schema() -> anyx_protocol::Schema {
     schema(
         "PROTOCOL shop VERSION 1,
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) },
 METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer) ERRORS [| |],
 ",
     )
@@ -241,10 +241,10 @@ METHOD sum (numbers: page of (Integer)) RETURNS (sum: Integer) ERRORS [| |],
 fn defaults_and_examples_are_checked_against_each_use() {
     let schema = schema(
         "PROTOCOL shop VERSION 1,
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item, size (Integer) DEFAULT size 20 },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item), size (size: Integer) DEFAULT size 20 },
 TYPE ALIAS Search: {
-    first (page of (Text)) DEFAULT first { items [\"a\"] },
-    pages (LIST page of (Integer)) DEFAULT pages [],
+    first (first: page of (Text)) DEFAULT first { items [\"a\"] },
+    pages (pages: LIST page of (Integer)) DEFAULT pages [],
 },
 METHOD find (search: Search) RETURNS (found: page of (Text)) ERRORS [| |]
     EXAMPLES [find ({} AS: Search) RETURNS { items [\"a\"], size 3 }],
@@ -271,19 +271,19 @@ METHOD find (search: Search) RETURNS (found: page of (Text)) ERRORS [| |]
     assert_eq!(
         diagnostics(
             "PROTOCOL shop VERSION 1,
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item },
-TYPE ALIAS Search: { first (page of (Text)) DEFAULT first { items [3] } },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) },
+TYPE ALIAS Search: { first (first: page of (Text)) DEFAULT first { items [3] } },
 METHOD find RETURNS (found: page of (Integer)) ERRORS [| |] EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
-        "schema:3:68: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
-  TYPE ALIAS Search: { first (page of (Text)) DEFAULT first { items [3] } },
-                                                                     ^"
+        "schema:3:75: in the `DEFAULT` of `first`: in `items`: found the number `3`; expected a string, as in `\"text\"`
+  TYPE ALIAS Search: { first (first: page of (Text)) DEFAULT first { items [3] } },
+                                                                            ^"
     );
     assert_eq!(
         diagnostics(
             "PROTOCOL shop VERSION 1,
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) },
 METHOD find RETURNS (found: page of (Integer)) ERRORS [| |] EXAMPLES [find RETURNS { items [\"a\"] }],
 "
         ),
@@ -302,11 +302,11 @@ fn a_public_generic_type_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC TYPE ALIAS page of (Item: TYPE): { items: LIST: Item }, TYPE ALIAS secret of (Item: TYPE): { items: LIST: Item },",
+            "PUBLIC TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) }, TYPE ALIAS secret of (Item: TYPE): { items (items: LIST: Item) },",
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", TYPE ALIAS File: { path: Text }, METHOD list RETURNS (files: page of (File)) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", TYPE ALIAS File: { path (path: Text) }, METHOD list RETURNS (files: page of (File)) ERRORS [| |],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -320,7 +320,7 @@ fn a_public_generic_type_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", TYPE ALIAS (Page: TYPE) boxed: { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", TYPE ALIAS (Page: TYPE) boxed: { value (value: Page) }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -334,23 +334,23 @@ fn a_public_generic_type_is_shared_by_a_direct_import() {
 /// between two words, or around them, and a use fills each in place.
 const PLACES: &str = "PROTOCOL places VERSION 1,
 
-TYPE ALIAS Person: { name: Text },
-TYPE ALIAS Document: { title: Text },
+TYPE ALIAS Person: { name (name: Text) },
+TYPE ALIAS Document: { title (title: Text) },
 
 ## The words, then a slot.
-TYPE ALIAS page of (Item: TYPE): { items: LIST: Item },
+TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) },
 ## A slot, then the words.
-TYPE ALIAS (Item: TYPE) history: { versions: LIST: Item },
+TYPE ALIAS (Item: TYPE) history: { versions (versions: LIST: Item) },
 ## A slot, a word, a slot.
 TYPE ALIAS (Left: TYPE) or (Right: TYPE) [| `first (value: Left), `second (value: Right) |],
 ## Slots between words.
-TYPE ALIAS table from (Key: TYPE) to (Value: TYPE): { keys: LIST: Key, rows: LIST: Value },
+TYPE ALIAS table from (Key: TYPE) to (Value: TYPE): { keys (keys: LIST: Key), rows (rows: LIST: Value) },
 ## A slot first, then words, then a slot.
-TYPE ALIAS (Value: TYPE) signed by (Signer: TYPE): { value: Value, signer: Signer },
+TYPE ALIAS (Value: TYPE) signed by (Signer: TYPE): { value (value: Value), signer (signer: Signer) },
 ## A slot between words, with words after it.
-TYPE ALIAS box of (Item: TYPE) sealed: { item: Item },
+TYPE ALIAS box of (Item: TYPE) sealed: { item (item: Item) },
 ## The same words as a type that isn't generic.
-TYPE ALIAS Page: { number: Integer },
+TYPE ALIAS Page: { number (number: Integer) },
 
 METHOD list RETURNS (people: page of (Person)) ERRORS [| |],
 METHOD history RETURNS (history: (Document) history) ERRORS [| |],
@@ -606,7 +606,7 @@ fn the_guide_explains_generic_types() {
 fn a_generic_declaration_is_formatted_with_its_slots_in_place() {
     let formatted = anyx_protocol::format_schema(SHOP).unwrap();
     assert!(
-        formatted.contains("TYPE ALIAS page of (Item: TYPE) {\n    items: LIST Item,\n"),
+        formatted.contains("TYPE ALIAS page of (Item: TYPE) {\n    items (items: LIST Item),\n"),
         "{formatted}"
     );
     assert!(
@@ -638,31 +638,31 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a slot of a declaration holds a type parameter, not a type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: Text): { items: LIST: Item },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: Text): { items (items: LIST: Item) },",
         ),
         (
             "the braces come last, once, and the name has words",
-            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value: Text } of (Item: TYPE): { value: Item }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left: Left, right: Right },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value (value: Text) } of (Item: TYPE): { value (value: Item) }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left (left: Left), right (right: Right) },",
         ),
         (
             "a shape twice, while the same words without the slot are another type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Page: { number: Integer }, TYPE ALIAS Page of (Item: TYPE): { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Page: { number (number: Integer) }, TYPE ALIAS Page of (Item: TYPE): { items (items: LIST: Item) }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],",
         ),
         (
             "a parameter twice and an unused parameter",
-            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) paired with (Item: TYPE): { items: LIST: Item }, TYPE ALIAS other of (Diagnostic: TYPE) and (Unused: TYPE): { items: LIST: Diagnostic },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) paired with (Item: TYPE): { items (items: LIST: Item) }, TYPE ALIAS other of (Diagnostic: TYPE) and (Unused: TYPE): { items (items: LIST: Diagnostic) },",
         ),
         (
             "a default on a field whose type holds a parameter",
-            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (Item) DEFAULT value 3, size (Integer) DEFAULT size 3 },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (value: Item) DEFAULT value 3, size (size: Integer) DEFAULT size 3 },",
         ),
         (
             "a parameter with a type in a slot",
-            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item, other: Item of (Text) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (value: Item), other (other: Item of (Text)) },",
         ),
         (
             "a generic type without its arguments, and an argument for a type that isn't generic",
-            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Row: { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (value: Item) }, TYPE ALIAS Row: { a (a: Integer) }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],",
         ),
         (
             "the wrong number of arguments, or the slots in the wrong places",
@@ -670,19 +670,19 @@ fn mistakes_in_generic_types_are_diagnosed() {
         ),
         (
             "a type argument that names no type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE): { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],",
         ),
         (
             "a generic type holding itself through an argument",
-            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Tree: { child: box of (Tree) }, TYPE ALIAS (Item: TYPE) chain: { value: Item, next (((Item) chain)?) DEFAULT next (`null) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (value: Item) }, TYPE ALIAS Tree: { child (child: box of (Tree)) }, TYPE ALIAS (Item: TYPE) chain: { value (value: Item), next (next: ((Item) chain)?) DEFAULT next (`null) },",
         ),
         (
             "a generic type using itself with other arguments, directly or through another",
-            "PROTOCOL a VERSION 1, TYPE ALIAS nest of (Item: TYPE): { value: Item, next: LIST: nest of (LIST: Item) }, TYPE ALIAS (A: TYPE) first: { x: LIST: second (LIST: A) }, TYPE ALIAS second (B: TYPE): { y: LIST: (B) first },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS nest of (Item: TYPE): { value (value: Item), next (next: LIST: nest of (LIST: Item)) }, TYPE ALIAS (A: TYPE) first: { x (x: LIST: second (LIST: A)) }, TYPE ALIAS second (B: TYPE): { y (y: LIST: (B) first) },",
         ),
         (
             "a named type over a use of a generic type that holds it",
-            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Boxed: box of (Boxed),",
+            "PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (value: Item) }, TYPE ALIAS Boxed: box of (Boxed),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -699,8 +699,8 @@ fn mistakes_in_generic_types_are_diagnosed() {
 fn a_generic_type_may_hold_itself_through_a_list_with_its_own_parameters() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-TYPE ALIAS tree of (Item: TYPE): { value: Item, children: LIST: tree of (Item) },
-TYPE ALIAS (Item: TYPE) chain: { value: Item, rest: MAP: (Item) chain },
+TYPE ALIAS tree of (Item: TYPE): { value (value: Item), children (children: LIST: tree of (Item)) },
+TYPE ALIAS (Item: TYPE) chain: { value (value: Item), rest (rest: MAP: (Item) chain) },
 METHOD tree RETURNS (tree: tree of (Text)) ERRORS [| |],
 METHOD chain RETURNS (chain: (Integer) chain) ERRORS [| |],
 ",
@@ -735,11 +735,11 @@ fn the_generic_example_in_protocol_md_reads() {
         .unwrap();
     let schema = schema(&format!(
         "PROTOCOL shop VERSION 1,
-TYPE ALIAS Order: {{ number: Integer, total: Integer }},
+TYPE ALIAS Order: {{ number (number: Integer), total (total: Integer) }},
 NAMED TYPE Order Id (value: Integer),
-TYPE ALIAS Receipt: {{ number: Integer }},
-TYPE ALIAS Document: {{ title: Text }},
-TYPE ALIAS Person: {{ name: Text }},
+TYPE ALIAS Receipt: {{ number (number: Integer) }},
+TYPE ALIAS Document: {{ title (title: Text) }},
+TYPE ALIAS Person: {{ name (name: Text) }},
 TYPE ALIAS Decline [| `insufficient funds, `card expired |],
 {example}"
     ));

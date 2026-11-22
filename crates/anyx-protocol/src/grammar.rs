@@ -97,7 +97,6 @@ pub enum DeclaredField {
 pub enum FieldSlot {
     Doc(Spanned<StringLiteral>),
     Parameter(FieldParameter),
-    Type(Type),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -434,7 +433,6 @@ impl FieldSlot {
         match self {
             FieldSlot::Doc(value) => value.span,
             FieldSlot::Parameter(value) => value.span,
-            FieldSlot::Type(value) => value.span(),
         }
     }
 }
@@ -626,7 +624,6 @@ impl support::Errors for FieldSlot {
         match self {
             FieldSlot::Doc(value) => support::Errors::errors(value, found),
             FieldSlot::Parameter(value) => support::Errors::errors(value, found),
-            FieldSlot::Type(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -1086,7 +1083,6 @@ pub fn decode_field_slot(node: &Node) -> Result<FieldSlot, DecodeError> {
     support::line_string(node, |_| true, "a `#` line string")
         .map(FieldSlot::Doc)
         .or_else(|error| error.or(decode_field_parameter(node).map(FieldSlot::Parameter)))
-        .or_else(|error| error.or(decode_type(node).map(FieldSlot::Type)))
 }
 
 pub fn decode_field_parameter(node: &Node) -> Result<FieldParameter, DecodeError> {

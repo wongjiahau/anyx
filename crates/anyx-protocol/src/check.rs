@@ -2013,17 +2013,9 @@ impl<'a> Checker<'a> {
 
     fn field_slot_type(&mut self, slot: &ast::FieldSlot) -> Type {
         match slot {
-            ast::FieldSlot::Type(ty) => self.r#type(ty),
-            ast::FieldSlot::Parameter(call) => {
-                // The one-slot shorthand uses this call shape as a generic type.
-                let path = Path {
-                    name: call.name.text.clone(),
-                };
-                let argument = self.r#type(&call.arguments);
-                self.resolve_type_use(call.span, path, vec![argument])
-            }
+            ast::FieldSlot::Parameter(call) => self.r#type(&call.arguments),
             ast::FieldSlot::Doc(doc) => {
-                self.error(doc.span, "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it");
+                self.error(doc.span, "found a string in a field's slot; expected the field's type, as in `at least (size: Size) bytes`; a field's `#` doc goes on the lines before it");
                 Type::Text
             }
         }

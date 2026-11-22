@@ -1921,13 +1921,13 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (limit: Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
             )];
         }
         if let Some(default) = default_in_slot(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (Integer) DEFAULT age 0` or `(age: Integer) DEFAULT age 0`".to_string(),
+                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (age: Integer) DEFAULT age 0`".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
