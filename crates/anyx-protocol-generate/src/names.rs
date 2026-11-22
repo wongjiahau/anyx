@@ -13,7 +13,7 @@ const RUST_KEYWORDS: [&str; 51] = [
 
 fn words(name: &str) -> impl Iterator<Item = Cow<'_, str>> {
     name.split(' ').filter(|word| *word != "_").map(|word| {
-        if word.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        if !anyx::is_symbol_word(word) {
             return Cow::Borrowed(word);
         }
         // Symbol words have no identifier spelling. Encode their UTF-8 bytes

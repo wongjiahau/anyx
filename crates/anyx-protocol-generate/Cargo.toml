@@ -15,6 +15,7 @@ name = "anyx-protocol-generate"
 path = "src/bin/anyx-protocol-generate.rs"
 
 [dependencies]
+anyx = { path = "../anyx", version = "0.1.0" }
 anyx-generator = { path = "../anyx-generator", version = "0.1.0" }
 anyx-protocol = { path = "../anyx-protocol", version = "0.1.0" }
 serde_json = "1"
