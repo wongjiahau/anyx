@@ -12,7 +12,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-TYPE Reminder {
+TYPE ALIAS Reminder: {
     note: Text,
     at: Instant,
     every (Duration?) DEFAULT every (`null),
@@ -44,7 +44,7 @@ METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minu
         `overdue since (since: Instant),
     |],
 
-TYPE ALIAS page of (Item: TYPE) { rows: LIST { value: Item } },
+TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
 
 METHOD inspect (filter: { query: Text })
     RETURNS (result: [| page of (Text), `null |])
@@ -282,6 +282,29 @@ impl FromValue for Schedule {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct PageOf<Item> {
+    pub rows: Vec<InlineRecord1<Item>>,
+}
+
+impl<Item: IntoValue> IntoValue for PageOf<Item> {
+    fn into_value(self) -> Value {
+        Value::Record(FieldsBuilder::new().field("rows", self.rows).build())
+    }
+}
+
+impl<Item: FromValue> FromValue for PageOf<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            rows: fields.field("rows")?,
+        })
+    }
+}
+
 /// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
@@ -352,39 +375,16 @@ impl FromValue for SchemaFile {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InlineRecord1<Item> {
-    pub rows: Vec<InlineRecord2<Item>>,
-}
-
-impl<Item: IntoValue> IntoValue for InlineRecord1<Item> {
-    fn into_value(self) -> Value {
-        Value::Record(FieldsBuilder::new().field("rows", self.rows).build())
-    }
-}
-
-impl<Item: FromValue> FromValue for InlineRecord1<Item> {
-    fn from_value(value: Value) -> Option<Self> {
-        let Value::Record(fields) = value else {
-            return None;
-        };
-        let mut fields = FieldsReader::new(fields);
-        Some(Self {
-            rows: fields.field("rows")?,
-        })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct InlineRecord2<Item> {
     pub value: Item,
 }
 
-impl<Item: IntoValue> IntoValue for InlineRecord2<Item> {
+impl<Item: IntoValue> IntoValue for InlineRecord1<Item> {
     fn into_value(self) -> Value {
         Value::Record(FieldsBuilder::new().field("value", self.value).build())
     }
 }
 
-impl<Item: FromValue> FromValue for InlineRecord2<Item> {
+impl<Item: FromValue> FromValue for InlineRecord1<Item> {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Record(fields) = value else {
             return None;
@@ -397,17 +397,17 @@ impl<Item: FromValue> FromValue for InlineRecord2<Item> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct InlineRecord3 {
+pub struct InlineRecord2 {
     pub query: String,
 }
 
-impl IntoValue for InlineRecord3 {
+impl IntoValue for InlineRecord2 {
     fn into_value(self) -> Value {
         Value::Record(FieldsBuilder::new().field("query", self.query).build())
     }
 }
 
-impl FromValue for InlineRecord3 {
+impl FromValue for InlineRecord2 {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Record(fields) = value else {
             return None;
@@ -420,17 +420,17 @@ impl FromValue for InlineRecord3 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct InlineRecord4 {
+pub struct InlineRecord3 {
     pub path: String,
 }
 
-impl IntoValue for InlineRecord4 {
+impl IntoValue for InlineRecord3 {
     fn into_value(self) -> Value {
         Value::Record(FieldsBuilder::new().field("path", self.path).build())
     }
 }
 
-impl FromValue for InlineRecord4 {
+impl FromValue for InlineRecord3 {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Record(fields) = value else {
             return None;
@@ -478,7 +478,7 @@ impl FromValue for SnoozeForError {
 /// The errors of `inspect _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InspectError {
-    Invalid { detail: InlineRecord4 },
+    Invalid { detail: InlineRecord3 },
 }
 
 impl IntoValue for InspectError {
@@ -542,8 +542,8 @@ pub trait Server {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     async fn inspect(
         &self,
-        filter: InlineRecord3,
-    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error>;
+        filter: InlineRecord2,
+    ) -> Result<Result<Option<PageOf<String>>, InspectError>, Self::Error>;
 }
 
 /// Runs `request` against `implementation` and writes the response. Every
@@ -685,8 +685,8 @@ impl<T: Transport> Client<T> {
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     pub async fn inspect(
         &self,
-        filter: InlineRecord3,
-    ) -> Result<Option<InlineRecord1<String>>, CallError<InspectError, T::Error>> {
+        filter: InlineRecord2,
+    ) -> Result<Option<PageOf<String>>, CallError<InspectError, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 3, vec![filter.into_value()]).await
     }
 

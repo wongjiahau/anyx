@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyx_protocol::client::{CallError, Transport};
 use types::{
-    Client, InlineRecord1, InlineRecord2, InlineRecord3, InlineRecord4, InspectError, Reminder,
+    Client, InlineRecord1, InlineRecord2, InlineRecord3, InspectError, PageOf, Reminder,
     ReminderQuietSlots, Schedule, Server, SnoozeForError, Tone,
 };
 
@@ -65,17 +65,17 @@ impl Server for Reminders {
     }
     async fn inspect(
         &self,
-        filter: InlineRecord3,
-    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error> {
+        filter: InlineRecord2,
+    ) -> Result<Result<Option<PageOf<String>>, InspectError>, Self::Error> {
         if filter.query.is_empty() {
             return Ok(Err(InspectError::Invalid {
-                detail: InlineRecord4 {
+                detail: InlineRecord3 {
                     path: "query".into(),
                 },
             }));
         }
-        Ok(Ok(Some(InlineRecord1 {
-            rows: vec![InlineRecord2 {
+        Ok(Ok(Some(PageOf {
+            rows: vec![InlineRecord1 {
                 value: filter.query,
             }],
         })))
@@ -224,17 +224,17 @@ fn maps_reach_the_server_and_come_back() {
 fn inline_records_round_trip_through_generated_client_and_server() {
     let client = Client::new(InProcess);
     assert_eq!(
-        run(client.inspect(InlineRecord3 {
+        run(client.inspect(InlineRecord2 {
             query: "tea".into()
         })),
-        Ok(Some(InlineRecord1 {
-            rows: vec![InlineRecord2 {
+        Ok(Some(PageOf {
+            rows: vec![InlineRecord1 {
                 value: "tea".into()
             }],
         })),
     );
     assert!(matches!(
-        run(client.inspect(InlineRecord3 { query: String::new() })),
+        run(client.inspect(InlineRecord2 { query: String::new() })),
         Err(CallError::Method(InspectError::Invalid { detail })) if detail.path == "query"
     ));
 }

@@ -11,7 +11,7 @@ document of their results. Both are checked against the schema.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-TYPE File Summary {
+TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
@@ -62,7 +62,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
   Braces and union brackets group the type body in a declaration, so the
-  formatted spelling is `TYPE Name { … }` or `TYPE ALIAS Name [| … |]`.
+  formatted spelling is `TYPE ALIAS Name { … }` or `TYPE ALIAS Name [| … |]`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
   (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
@@ -87,9 +87,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `{ "FileId": "a" }`, `{ "RangeFromTo": { "start": 1, "end": 3 } }`, and
   `{ "Unit": [] }`. Rust generates a newtype for one slot and a struct with
   named fields for several. TypeScript generates a branded type. A slot's type may hold the named type only
-  through a `LIST` or a `MAP`. A bare `TYPE Name: T` is an error that names
-  both choices, since readers would otherwise have to guess which one it
-  means.
+  through a `LIST` or a `MAP`. A named type can wrap a record in a slot.
+  `NAMED TYPE Quiet Hours (schedule: { start: Integer, end: Integer })`
+  is written `Quiet Hours { start 22, end 7 }`.
 - **`TYPE ALIAS Name: T`** names a type without making a new one:
   `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
   wire, in JSON, in the guide and in generated code, so an alias and its
@@ -97,14 +97,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   of its name, as a generic record does, and its type uses them:
   `TYPE ALIAS (Item: TYPE) Pair: LIST Item`, used as `(Text) Pair`. The
   type it stands for comes last and can't lead back to the alias, since an
-  alias is only another name; a type that holds itself is a record declared with `TYPE` or a
-  `NAMED TYPE`. `PUBLIC` shares an alias with direct importers, as it does a
+  alias is only another name. Record aliases and named types can hold
+  themselves through a `LIST` or a `MAP`. `PUBLIC` shares an alias with direct importers, as it does a
   type. Use `NAMED TYPE` when values should not mix with others that hold
   the same thing, and `TYPE ALIAS` when a long type only needs a short name.
   An alias of a union of variants alone keeps its name in generated code,
   as an enum, and in the guide and messages: see below.
-- **`TYPE Name { field: T, … }`**: fields, each a shape that a value
-  writes as it is declared, in any order. See [Records](#records).
+  A record alias such as `TYPE ALIAS Name: { field: T, … }` keeps its name
+  as a generated struct or object type and fits structurally. A value writes
+  each field in its declared shape, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
   written as a value writes it, what it holds when absent:
   `limit (Integer) DEFAULT limit 50`, or `tags (LIST Text) DEFAULT tags []`.
@@ -117,7 +118,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   Anonymous records in generated Rust and TypeScript receive sequential names
-  such as `InlineRecord1`. Use a `TYPE` declaration for a record whose generated
+  such as `InlineRecord1`. Use a record alias when its generated
   name is part of the API. In requests, a method argument with an inline
   record type is checked against the method\x27s schema without an `AS` annotation.
 - **`[| A, B, … |]`** is a value of one of its members, written as that
@@ -142,7 +143,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   or `(base: Shade) dimmed`. Variants differ by their words. Such an alias
   keeps its name: generated code has an enum `Name`, and the guide and
   messages say `Name`. Its values are its variants, written the same, and
-  it can't lead back to itself, as no alias can. `` CHOICE Name { `variant
+  it can't lead back to itself. `` CHOICE Name { `variant
   } ``, which it replaced, is an error that says how to write it.
 - **A generic record or type alias** has type parameters in its name. Its
   name is a shape, like a variant's: words, with a `(Parameter: TYPE)` slot
@@ -156,7 +157,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  TYPE Page of (Item: TYPE) {
+  TYPE ALIAS Page of (Item: TYPE): {
       items: LIST: Item,
       next (Text?) DEFAULT next (`null),
   },
@@ -168,7 +169,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   |],
 
   # A value and who vouches for it. (A slot between words.)
-  TYPE (Value: TYPE) signed by (Signer: TYPE) {
+  TYPE ALIAS (Value: TYPE) signed by (Signer: TYPE): {
       value: Value,
       signer: Signer,
   },
@@ -187,15 +188,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `TYPE Box of (Item: TYPE) sealed { item: Item }`, used as `Box of (Letter) sealed`, and
+  `TYPE ALIAS Box of (Item: TYPE) sealed: { item: Item }`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `TYPE Table from (Key: TYPE) to (Value: TYPE) { keys: LIST Key, values: LIST Value }`.
+  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys: LIST Key, values: LIST Value }`.
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
-  declarations of the same shape are an error. Only a record declared with `TYPE` or a
-  `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
-  `PUBLIC TYPE Page of (Item: TYPE) { items: LIST Item }` shares one. A parameter is a
+  declarations of the same shape are an error. A `TYPE ALIAS` can declare
+  type parameters, and
+  `PUBLIC TYPE ALIAS Page of (Item: TYPE): { items: LIST Item }` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
@@ -210,8 +211,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `TYPE Trashed File { file: File Summary, trashed at: Instant }`,
-  not `TYPE (Item: TYPE) in trash since (When: TYPE) { item: Item, when: When }` used only as
+  name reads better: `TYPE ALIAS Trashed File: { file: File Summary, trashed at: Instant }`,
+  not `TYPE ALIAS (Item: TYPE) in trash since (When: TYPE): { item: Item, when: When }` used only as
   `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: Type) ERRORS [| errors |]`**: the method's
   shape, what it returns, and the errors it may return. The returned value
@@ -266,7 +267,7 @@ TYPE ALIAS Revision: Integer . WHERE [1 <= _],
 TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
 TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
-TYPE Settings { limit (Limit) DEFAULT limit 10 },
+TYPE ALIAS Settings: { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30])
     ERRORS [| |],
@@ -682,7 +683,7 @@ USE "./files.protocol.anyx",
 USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
-PUBLIC TYPE Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Diagnostic: { line: Integer, message: Text },
 PUBLIC TYPE ALIAS Common Errors [| `missing |],
 
 ## notes/files.protocol.anyx
@@ -735,7 +736,7 @@ The built-in types are declared in the prelude,
 [`prelude.protocol.anyx`](prelude.protocol.anyx), written in the schema language with a `#`
 doc on each. It is read and checked before every schema, and its names are
 visible in every file, so a schema can't declare a type of the same name:
-`TYPE Integer { … }` is an error.
+`TYPE ALIAS Integer: { … }` is an error.
 
 ```anyx
 # A whole number of 64 bits, written without a point: `3`, `-1`.
@@ -810,7 +811,7 @@ SCHEMA,
 `SCHEMA FILES` is the other built-in call. It returns the schema itself, as
 a `LIST Schema File`: the entry file first, then each file it imports, each
 with its `path` (as the `USE` lines reach it) and its `source`. The prelude
-declares `TYPE Schema File { path: Text, source: Text }`. A client that
+declares `TYPE ALIAS Schema File: { path: Text, source: Text }`. A client that
 checks calls itself, such as the anyx shell, loads the schema from these
 files. Both built-ins are `READ ONLY`, and neither is in a scope.
 

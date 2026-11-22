@@ -8,7 +8,7 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SOURCE: &str = r#"PROTOCOL p VERSION 1,
-TYPE Search { `(hidden: [| `hidden, `null |]) DEFAULT `null },
+TYPE ALIAS Search: { `(hidden: [| `hidden, `null |]) DEFAULT `null },
 TYPE ALIAS Order [| `newest [first (count: Integer) DEFAULT first 10], `oldest |],
 READ ONLY METHOD find (pattern: Text)
     [in (paths: LIST Text) DEFAULT in ["."]]

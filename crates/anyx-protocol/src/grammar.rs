@@ -41,7 +41,6 @@ pub struct Protocol {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Definition {
-    Record(Record),
     Choice(Choice),
     IntrinsicType(IntrinsicType),
     NamedType(NamedType),
@@ -55,21 +54,6 @@ pub enum Definition {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Import {
     pub path: Spanned<StringLiteral>,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Record {
-    pub doc: Option<Spanned<StringLiteral>>,
-    pub public: Option<Span>,
-    pub body: RecordBody,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct RecordBody {
-    pub name: CallName,
-    pub arguments: Vec<AliasPart>,
     pub span: Span,
 }
 
@@ -408,7 +392,6 @@ pub struct TypeName {
 impl Definition {
     pub fn span(&self) -> Span {
         match self {
-            Definition::Record(value) => value.span,
             Definition::Choice(value) => value.span,
             Definition::IntrinsicType(value) => value.span,
             Definition::NamedType(value) => value.span,
@@ -576,7 +559,6 @@ impl support::Errors for Protocol {
 impl support::Errors for Definition {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            Definition::Record(value) => support::Errors::errors(value, found),
             Definition::Choice(value) => support::Errors::errors(value, found),
             Definition::IntrinsicType(value) => support::Errors::errors(value, found),
             Definition::NamedType(value) => support::Errors::errors(value, found),
@@ -592,21 +574,6 @@ impl support::Errors for Definition {
 impl support::Errors for Import {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.path, found);
-    }
-}
-
-impl support::Errors for Record {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.doc, found);
-        support::Errors::errors(&self.public, found);
-        support::Errors::errors(&self.body, found);
-    }
-}
-
-impl support::Errors for RecordBody {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.arguments, found);
     }
 }
 
@@ -1026,9 +993,8 @@ pub fn decode_protocol(node: &Node) -> Result<Protocol, DecodeError> {
 }
 
 pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
-    decode_record(node)
-        .map(Definition::Record)
-        .or_else(|error| error.or(decode_choice(node).map(Definition::Choice)))
+    decode_choice(node)
+        .map(Definition::Choice)
         .or_else(|error| error.or(decode_intrinsic_type(node).map(Definition::IntrinsicType)))
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
         .or_else(|error| error.or(decode_type_alias(node).map(Definition::TypeAlias)))
@@ -1048,43 +1014,6 @@ pub fn decode_import(node: &Node) -> Result<Import, DecodeError> {
         span: node.span,
     };
     parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? TYPE _`")?;
-    let decoded = Record {
-        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        public: if parts
-            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
-            .is_some()
-        {
-            Some(parts.word_span("PUBLIC")?)
-        } else {
-            None
-        },
-        body: parts
-            .word("TYPE")?
-            .one(decode_record_body, "a record body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_record_body(node: &Node) -> Result<RecordBody, DecodeError> {
-    let (name, arguments) = support::any_call(
-        node,
-        |name| !name.split(' ').any(anyx::is_keyword),
-        "a call whose name has no keyword",
-    )?;
-    let mut arguments = support::arguments(node, arguments);
-    let decoded = RecordBody {
-        name,
-        arguments: arguments.one_or_more(decode_alias_part, "an alias part")?,
-        span: node.span,
-    };
-    arguments.finish()?;
     Ok(decoded)
 }
 

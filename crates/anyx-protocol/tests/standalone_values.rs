@@ -2,7 +2,7 @@ use anyx_protocol::{FieldsBuilder, Schema, Value, encode_value, schema::Type};
 
 #[test]
 fn values_are_written_without_a_response_envelope() {
-    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE Entry { name: Text }, METHOD entries RETURNS (entries: LIST Entry) ERRORS [| |]").unwrap();
+    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE ALIAS Entry: { name: Text }, METHOD entries RETURNS (entries: LIST Entry) ERRORS [| |]").unwrap();
     let value = Value::List(vec![Value::Record(
         FieldsBuilder::new()
             .field("name", "hello\n世界".to_string())
@@ -20,7 +20,7 @@ fn values_are_written_without_a_response_envelope() {
 
 #[test]
 fn rejects_values_that_do_not_fit_the_type() {
-    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE Entry { name: Text }, METHOD entry RETURNS (entry: Entry) ERRORS [| |]").unwrap();
+    let schema = Schema::parse("PROTOCOL example VERSION 1, TYPE ALIAS Entry: { name: Text }, METHOD entry RETURNS (entry: Entry) ERRORS [| |]").unwrap();
     let expected = &schema.methods[0].returns.as_ref().unwrap().r#type;
     assert!(encode_value(&schema, &Type::Integer, &Value::Text("wrong".into())).is_err());
     assert!(encode_value(&schema, expected, &Value::Record(Default::default())).is_err());

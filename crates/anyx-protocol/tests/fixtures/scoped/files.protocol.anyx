@@ -1,6 +1,6 @@
 USE "./common.protocol.anyx",
 
-TYPE File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File: { path: Text, revision: Integer, content: Text },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.

@@ -279,8 +279,8 @@ fn wrap(text: &str, indent: &str) -> String {
     lines.join("\n")
 }
 
-/// The rule for generic types, shown with the schema's first one: "`TYPE
-/// page of (Item: TYPE) { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
+/// The rule for generic types, shown with the schema's first one: "`TYPE ALIAS
+/// page of (Item: TYPE): { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
 /// TYPE) [| … |]`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
@@ -292,7 +292,8 @@ fn generic_types(schema: &Schema) -> String {
     };
     let (keyword, body) = match definition.kind {
         TypeKind::Variants(_) => ("TYPE ALIAS", " [| … |]"),
-        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("TYPE", " { … }"),
+        TypeKind::Record(_) => ("TYPE ALIAS", ": { … }"),
+        TypeKind::Distinct { .. } => return String::new(),
     };
     let declared: Vec<String> = definition
         .parameters

@@ -1,7 +1,7 @@
 # The interpreter session's environment. Changes do not alter the parent process.
 PROTOCOL environment VERSION 1,
 
-TYPE Variable {
+TYPE ALIAS Variable: {
     name: Text,
     value: Text,
 },

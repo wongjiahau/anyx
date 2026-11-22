@@ -1,68 +1,65 @@
 == a named type can't be generic
 PROTOCOL a VERSION 1, TYPE list of (Value: TYPE): LIST: Value,
-schema:1:51: expected a type parameter such as `(Item: TYPE)` in the record name
+schema:1:28: found the call `list of _ _`; expected the word `ALIAS`
   PROTOCOL a VERSION 1, TYPE list of (Value: TYPE): LIST: Value,
-                                                    ^^^^^^^^^^^
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 == a slot of a declaration holds a type parameter, not a type
-PROTOCOL a VERSION 1, TYPE page of (Item: Text): { items: LIST: Item },
-schema:1:28: found `page of` as the name of a type; expected words in Title Case, such as `File Summary`; rename it
-  PROTOCOL a VERSION 1, TYPE page of (Item: Text): { items: LIST: Item },
-                             ^^^^^^^
-schema:1:37: expected a type parameter such as `(Item: TYPE)` in the record name
-  PROTOCOL a VERSION 1, TYPE page of (Item: Text): { items: LIST: Item },
-                                      ^^^^^^^^^^
-schema:1:65: found `Item`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Item`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, TYPE page of (Item: Text): { items: LIST: Item },
-                                                                  ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: Text): { items: LIST: Item },
+schema:1:43: found a type in the name of a `TYPE ALIAS`, before its end; expected only type parameters such as `(Item: TYPE)` there, and the type it stands for last
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: Text): { items: LIST: Item },
+                                            ^^^^^^^^^^
+schema:1:71: found `Item`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Item`, or fix the name; import the declaration directly with `USE` if it is in another file
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: Text): { items: LIST: Item },
+                                                                        ^^^^
 
 == the braces come last, once, and the name has words
-PROTOCOL a VERSION 1, TYPE page of (Item: TYPE), TYPE box { value: Text } of (Item: TYPE): { value: Item }, TYPE (Left: TYPE) (Right: TYPE) { left: Left, right: Right },
-schema:1:28: found the `TYPE` `page of (Item)` without its fields in braces; expected them last, after its name, as in `TYPE page of (Item: TYPE) { … }`
-  PROTOCOL a VERSION 1, TYPE page of (Item: TYPE), TYPE box { value: Text } of (Item: TYPE): { value: Item }, TYPE (Left: TYPE) (Right: TYPE) { left: Left, right: Right },
-                             ^^^^^^^
-schema:1:59: found braces in the name of a `TYPE`, before its end; expected its fields in one pair of braces, last, and only type parameters such as `(Item: TYPE)` in the name's other slots
-  PROTOCOL a VERSION 1, TYPE page of (Item: TYPE), TYPE box { value: Text } of (Item: TYPE): { value: Item }, TYPE (Left: TYPE) (Right: TYPE) { left: Left, right: Right },
-                                                            ^^^^^^^^^^^^^^^
-schema:1:114: found a `TYPE` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `TYPE Page of (Item: TYPE)`
-  PROTOCOL a VERSION 1, TYPE page of (Item: TYPE), TYPE box { value: Text } of (Item: TYPE): { value: Item }, TYPE (Left: TYPE) (Right: TYPE) { left: Left, right: Right },
-                                                                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value: Text } of (Item: TYPE): { value: Item }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left: Left, right: Right },
+schema:1:34: found the `TYPE ALIAS` `page of _` without the type it stands for; expected it last, after a colon, as in `TYPE ALIAS page of _: LIST Text`
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value: Text } of (Item: TYPE): { value: Item }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left: Left, right: Right },
+                                   ^^^^^^^^^^^^^^^^^^^^
+schema:1:71: found a type in the name of a `TYPE ALIAS`, before its end; expected only type parameters such as `(Item: TYPE)` there, and the type it stands for last
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value: Text } of (Item: TYPE): { value: Item }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left: Left, right: Right },
+                                                                        ^^^^^^^^^^^^^^^
+schema:1:132: found a `TYPE ALIAS` whose name has no words; expected at least one word to name it, as in `TYPE ALIAS Paths: LIST Text`
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE), TYPE ALIAS box { value: Text } of (Item: TYPE): { value: Item }, TYPE ALIAS (Left: TYPE) (Right: TYPE): { left: Left, right: Right },
+                                                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 == a shape twice, while the same words without the slot are another type
-PROTOCOL a VERSION 1, TYPE Page { number: Integer }, TYPE Page of (Item: TYPE) { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],
-schema:1:114: duplicate declaration `Page of _` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE Page { number: Integer }, TYPE Page of (Item: TYPE) { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],
-                                                                                                                   ^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Page: { number: Integer }, TYPE ALIAS Page of (Item: TYPE): { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],
+schema:1:128: duplicate declaration `Page of _` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE ALIAS Page: { number: Integer }, TYPE ALIAS Page of (Item: TYPE): { items: LIST: Item }, TYPE ALIAS Page of (Other: TYPE) [| `one (value: Other) |],
+                                                                                                                                 ^^^^^^^
 
 == a parameter twice and an unused parameter
-PROTOCOL a VERSION 1, TYPE (Item: TYPE) paired with (Item: TYPE) { items: LIST: Item }, TYPE other of (Diagnostic: TYPE) and (Unused: TYPE) { items: LIST: Diagnostic },
-schema:1:54: found a second type parameter named `Item`; expected each type parameter once; rename one of them
-  PROTOCOL a VERSION 1, TYPE (Item: TYPE) paired with (Item: TYPE) { items: LIST: Item }, TYPE other of (Diagnostic: TYPE) and (Unused: TYPE) { items: LIST: Diagnostic },
-                                                       ^^^^
-schema:1:127: found the type parameter `Unused` of `other of (Diagnostic) and (Unused)`, which none of its types uses; expected each parameter in the type of a field or a variant's slot, such as `LIST: Unused`; use it or remove it
-  PROTOCOL a VERSION 1, TYPE (Item: TYPE) paired with (Item: TYPE) { items: LIST: Item }, TYPE other of (Diagnostic: TYPE) and (Unused: TYPE) { items: LIST: Diagnostic },
-                                                                                                                                ^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) paired with (Item: TYPE): { items: LIST: Item }, TYPE ALIAS other of (Diagnostic: TYPE) and (Unused: TYPE): { items: LIST: Diagnostic },
+schema:1:60: found a second type parameter named `Item`; expected each type parameter once; rename one of them
+  PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) paired with (Item: TYPE): { items: LIST: Item }, TYPE ALIAS other of (Diagnostic: TYPE) and (Unused: TYPE): { items: LIST: Diagnostic },
+                                                             ^^^^
+schema:1:140: found the type parameter `Unused` of `other of (Diagnostic) and (Unused)`, which none of its types uses; expected each parameter in the type of a field or a variant's slot, such as `LIST: Unused`; use it or remove it
+  PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) paired with (Item: TYPE): { items: LIST: Item }, TYPE ALIAS other of (Diagnostic: TYPE) and (Unused: TYPE): { items: LIST: Diagnostic },
+                                                                                                                                             ^^^^^^
 
 == a default on a field whose type holds a parameter
-PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value (Item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
-schema:1:77: in the `DEFAULT` of `value`: found the number `3`; expected a value of a type in place of the type parameter `Item`
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value (Item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
-                                                                              ^
+PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (Item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
+schema:1:84: in the `DEFAULT` of `value`: found the number `3`; expected a value of a type in place of the type parameter `Item`
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value (Item) DEFAULT value 3, size (Integer) DEFAULT size 3 },
+                                                                                     ^
 
 == a parameter with a type in a slot
-PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item, other: Item of (Text) },
-schema:1:70: found `Item of (Text)`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Item of (Text)`, or fix the name; import the declaration directly with `USE` if it is in another file; `Item` is a type parameter, which stands for a whole type and has no slots
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item, other: Item of (Text) },
-                                                                       ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item, other: Item of (Text) },
+schema:1:77: found `Item of (Text)`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Item of (Text)`, or fix the name; import the declaration directly with `USE` if it is in another file; `Item` is a type parameter, which stands for a whole type and has no slots
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item, other: Item of (Text) },
+                                                                              ^^^^^^^^^^^^^^
 
 == a generic type without its arguments, and an argument for a type that isn't generic
-PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
-schema:1:111: found `box`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `box`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `box` are `box of (Item)`
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
-                                                                                                                ^^^
-schema:1:151: found `Row (Text)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `Row`; expected one of them, with a type in parentheses in each slot it has
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Row { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
-                                                                                                                                                        ^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Row: { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
+schema:1:125: found `box`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `box`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `box` are `box of (Item)`
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Row: { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
+                                                                                                                              ^^^
+schema:1:165: found `Row (Text)`, with a type in 1 slot, but this schema has no type of that shape; the types with its words are `Row`; expected one of them, with a type in parentheses in each slot it has
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Row: { a: Integer }, METHOD a RETURNS (x: box) ERRORS [| |], METHOD b RETURNS (x: Row (Text)) ERRORS [| |],
+                                                                                                                                                                      ^^^^^^^^^^
 
 == the wrong number of arguments, or the slots in the wrong places
 PROTOCOL a VERSION 1, TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [| `done (value: Value), `failed (problem: Problem) |], METHOD a RETURNS (x: (Text) or (Text) (Integer)) ERRORS [| |], METHOD b RETURNS (x: or (Text) (Integer)) ERRORS [| |], METHOD c RETURNS (x: (Text) or) ERRORS [| |],
@@ -77,28 +74,28 @@ schema:1:263: found `(Text) or`, with a type in 1 slot, but this schema has no t
                                                                                                                                                                                                                                                                         ^^^^^^^^^
 
 == a type argument that names no type
-PROTOCOL a VERSION 1, TYPE page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],
-schema:1:102: found `prson`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `prson`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, TYPE page of (Item: TYPE) { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],
-                                                                                                       ^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE): { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],
+schema:1:109: found `prson`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `prson`, or fix the name; import the declaration directly with `USE` if it is in another file
+  PROTOCOL a VERSION 1, TYPE ALIAS page of (Item: TYPE): { items: LIST: Item }, METHOD a RETURNS (x: page of (prson)) ERRORS [| |],
+                                                                                                              ^^^^^
 
 == a generic type holding itself through an argument
-PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Tree { child: box of (Tree) }, TYPE (Item: TYPE) chain { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
-schema:1:70: found the type `Tree` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Tree { child: box of (Tree) }, TYPE (Item: TYPE) chain { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
-                                                                       ^^^^
-schema:1:119: found the type `(Item) chain` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE Tree { child: box of (Tree) }, TYPE (Item: TYPE) chain { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
-                                                                                                                        ^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Tree: { child: box of (Tree) }, TYPE ALIAS (Item: TYPE) chain: { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
+schema:1:83: found the type `Tree` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Tree: { child: box of (Tree) }, TYPE ALIAS (Item: TYPE) chain: { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
+                                                                                    ^^^^
+schema:1:139: found the type `(Item) chain` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Tree: { child: box of (Tree) }, TYPE ALIAS (Item: TYPE) chain: { value: Item, next (((Item) chain)?) DEFAULT next (`null) },
+                                                                                                                                            ^^^^^
 
 == a generic type using itself with other arguments, directly or through another
-PROTOCOL a VERSION 1, TYPE nest of (Item: TYPE) { value: Item, next: LIST: nest of (LIST: Item) }, TYPE (A: TYPE) first { x: LIST: second (LIST: A) }, TYPE second (B: TYPE) { y: LIST: (B) first },
-schema:1:106: found the word `A`; expected the word `LIST` or `MAP`
-  PROTOCOL a VERSION 1, TYPE nest of (Item: TYPE) { value: Item, next: LIST: nest of (LIST: Item) }, TYPE (A: TYPE) first { x: LIST: second (LIST: A) }, TYPE second (B: TYPE) { y: LIST: (B) first },
-                                                                                                           ^
+PROTOCOL a VERSION 1, TYPE ALIAS nest of (Item: TYPE): { value: Item, next: LIST: nest of (LIST: Item) }, TYPE ALIAS (A: TYPE) first: { x: LIST: second (LIST: A) }, TYPE ALIAS second (B: TYPE): { y: LIST: (B) first },
+schema:1:119: found the word `A`; expected the word `LIST` or `MAP`
+  PROTOCOL a VERSION 1, TYPE ALIAS nest of (Item: TYPE): { value: Item, next: LIST: nest of (LIST: Item) }, TYPE ALIAS (A: TYPE) first: { x: LIST: second (LIST: A) }, TYPE ALIAS second (B: TYPE): { y: LIST: (B) first },
+                                                                                                                        ^
 
 == a named type over a use of a generic type that holds it
-PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE ALIAS Boxed: box of (Boxed),
-schema:1:76: found the type alias `Boxed` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record declared with `TYPE` or a `NAMED TYPE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, TYPE box of (Item: TYPE) { value: Item }, TYPE ALIAS Boxed: box of (Boxed),
-                                                                             ^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Boxed: box of (Boxed),
+schema:1:83: found the type alias `Boxed` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record alias or a `NAMED TYPE` that holds them through a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS box of (Item: TYPE): { value: Item }, TYPE ALIAS Boxed: box of (Boxed),
+                                                                                    ^^^^^

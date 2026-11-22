@@ -20,23 +20,9 @@ protocol: ANYFIX CALL [
   WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [record, choice, intrinsic type, named type, type alias, errors, method, function, import],
+definition: ONE OF [choice, intrinsic type, named type, type alias, errors, method, function, import],
 
 import: ANYFIX CALL [WORD "USE", path: STRING],
-
-record: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "TYPE", body: record body,
-],
-
-## A record's name is a shape, then its fields in braces fill the last slot:
-## `File Summary { path: Text }`. A generic record has a type parameter in
-## each other slot, anywhere among the words: `Page of (Item: TYPE) { … }`,
-## `(Item: TYPE) history { … }`. The schema checker reads the shape from the
-## call's name, requires Title Case for a name with no type parameters,
-## and checks that the braces come last.
-record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ONE OR MORE: alias part],
 
 ## A type parameter of a generic record or alias, in a
 ## slot of its name: `(Item: TYPE)`. Its name is Title Case, as a type's
@@ -128,7 +114,8 @@ named slot: ONE OF [parameter, unnamed: ANY NODE],
 ## each other slot of its name, anywhere among the words:
 ## `TYPE ALIAS (Item: TYPE) Pair: LIST Item`. The type it stands for fills
 ## the last slot; the checker reads the parameters from the others.
-## An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
+## A record alias such as `TYPE ALIAS Page of (Item: TYPE): { items: LIST Item }`
+## keeps its name for generated structs. An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
 ## `any |] ``, keeps its name, so generated code has an enum `Case` and
 ## messages say `Case`.
 type alias: ANYFIX CALL [

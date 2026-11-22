@@ -16,16 +16,16 @@ const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol::Sch
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-TYPE File Summary {
+TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
 },
 
-TYPE File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File { path: Text, revision: Integer, content: Text },
 
 # One problem in a score.
-TYPE Diagnostic {
+TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
     line: Integer,
     # Counted from 1, in characters.

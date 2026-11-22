@@ -141,12 +141,12 @@ fn error(source: &str) -> String {
 fn names_that_become_the_same_name_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, TYPE Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [| `gone |]"
+            "PROTOCOL p VERSION 1, TYPE ALIAS Read Error: { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [| `gone |]"
         ),
         "found the errors of `read _`, which becomes the type `ReadError`, like the type `Read Error`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, TYPE Client { a: Text }"),
+        error("PROTOCOL p VERSION 1, TYPE ALIAS Client: { a: Text }"),
         "found the type `Client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
@@ -165,12 +165,14 @@ fn names_that_become_the_same_name_are_rejected() {
 fn generic_types_whose_words_are_the_same_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, TYPE page of (Item: TYPE) { items: LIST: Item }, TYPE page (Item: TYPE) of { item: Item }"
+            "PROTOCOL p VERSION 1, TYPE ALIAS page of (Item: TYPE): { items: LIST: Item }, TYPE ALIAS page (Item: TYPE) of: { item: Item }"
         ),
         "found the type `page (Item) of`, which becomes the type `PageOf`, like the type `page of (Item)`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, TYPE Page { a: Text }, TYPE page (Item: TYPE) { item: Item }"),
+        error(
+            "PROTOCOL p VERSION 1, TYPE ALIAS Page: { a: Text }, TYPE ALIAS page (Item: TYPE): { item: Item }"
+        ),
         "found the type `page (Item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
     );
 }
@@ -178,7 +180,8 @@ fn generic_types_whose_words_are_the_same_are_rejected() {
 #[test]
 fn a_keyword_becomes_a_raw_identifier() {
     let schema =
-        Schema::parse("PROTOCOL p VERSION 1, TYPE Box { type: Text, loop: Integer }").unwrap();
+        Schema::parse("PROTOCOL p VERSION 1, TYPE ALIAS Box: { type: Text, loop: Integer }")
+            .unwrap();
     let code = anyx_protocol_generate::rust(&schema).unwrap();
     assert!(code.contains("pub r#type: String"), "{code}");
     assert!(code.contains("pub r#loop: i64"), "{code}");

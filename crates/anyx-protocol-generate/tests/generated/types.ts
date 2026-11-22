@@ -26,6 +26,10 @@ export type Schedule =
   | { kind: "onceAt"; at: Date }
   | { kind: "every"; period: bigint };
 
+export interface PageOf<Item> {
+  rows: InlineRecord1<Item>[];
+}
+
 /** `` `true `` or `` `false ``. */
 export type Boolean =
   | { kind: "false" }
@@ -41,18 +45,14 @@ export interface SchemaFile {
 }
 
 export interface InlineRecord1<Item> {
-  rows: InlineRecord2<Item>[];
-}
-
-export interface InlineRecord2<Item> {
   value: Item;
 }
 
-export interface InlineRecord3 {
+export interface InlineRecord2 {
   query: string;
 }
 
-export interface InlineRecord4 {
+export interface InlineRecord3 {
   path: string;
 }
 
@@ -63,7 +63,7 @@ export type SnoozeForError =
 
 /** The errors of `inspect _`. */
 export type InspectError =
-  | { kind: "invalid"; detail: InlineRecord4 };
+  | { kind: "invalid"; detail: InlineRecord3 };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
 // A `union`'s `args` are its members, each told by its form; a `variant` is
@@ -563,18 +563,18 @@ function refinementInteger(op: string, a: bigint | null, b: bigint | null): bigi
 const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"note _", form:"shape", name:"note", type:{k:'text'}, slots:[{k:'text'}]},{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"every _", form:"shape", name:"every", type:{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'duration'},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], defaultValue:()=>({kind:"null"})},{wire:"times _", form:"shape", name:"times", type:{k:'integer'}, slots:[{k:'integer'}], defaultValue:()=>(3n)},{wire:"seen _", form:"shape", name:"seen", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}], defaultValue:()=>(Object.fromEntries([]))},{wire:"quiet from _ to _", form:"shape", name:"quiet", type:{k:'tuple', args:[{k:'integer'},{k:'integer'}]}, slots:[{k:'integer'},{k:'integer'}], slotNames:["start","end"], defaultValue:()=>({ "start":22n,"end":7n })},{wire:"` _", form:"unnamed", name:"tone", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], forms:["variant:chime","variant:silent"], defaultValue:()=>({kind:"chime"})},{wire:"` _", form:"unnamed", name:"hidden", type:{k:'union', args:[{k:'variant', shape:{text:"hidden", kind:"hidden", params:[]}},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'variant', shape:{text:"hidden", kind:"hidden", params:[]}},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], forms:["variant:hidden","variant:null"], defaultValue:()=>({kind:"null"})},{wire:"` _", form:"unnamed", name:"pinned", type:{k:'union', args:[{k:'variant', shape:{text:"pinned", kind:"pinned", params:[]}},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, slots:[{k:'union', args:[{k:'variant', shape:{text:"pinned", kind:"pinned", params:[]}},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}], forms:["variant:pinned","variant:null"], defaultValue:()=>({kind:"null"})}]},
 {parameters:[],kind:'choice', variants:[{text:"chime", kind:"chime", params:[]},{text:"silent", kind:"silent", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"never", kind:"never", params:[]},{text:"once at _", kind:"onceAt", params:[{name:"at", type:{k:'instant'}, annotation:"Instant"}]},{text:"every _", kind:"every", params:[{name:"period", type:{k:'duration'}, annotation:"Duration"}]}]},
+{parameters:["Item"],kind:'record', fields:[{wire:"rows _", form:"shape", name:"rows", type:{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}, slots:[{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]},
-{parameters:["Item"],kind:'record', fields:[{wire:"rows _", form:"shape", name:"rows", type:{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}, slots:[{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}]}]},
 {parameters:["Item"],kind:'record', fields:[{wire:"value _", form:"shape", name:"value", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]}]},
 {parameters:[],kind:'record', fields:[{wire:"query _", form:"shape", name:"query", type:{k:'text'}, slots:[{k:'text'}]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:2, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"reminders", type:{k:'map', item:{k:'named', index:0, args:[]}}, annotation:"MAP Reminder"}]}, returns:{k:'map', item:{k:'integer'}}, errors:[]},
 ["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]},
-["inspect _"]:{shape:{text:"inspect _", kind:"inspect", params:[{name:"filter", type:{k:'named', index:7, args:[]}, annotation:""}]}, returns:{k:'union', args:[{k:'named', index:5, args:[{k:'text'}]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, errors:[{text:"invalid _", kind:"invalid", params:[{name:"detail", type:{k:'named', index:8, args:[]}, annotation:""}]}]},
+["inspect _"]:{shape:{text:"inspect _", kind:"inspect", params:[{name:"filter", type:{k:'named', index:7, args:[]}, annotation:""}]}, returns:{k:'union', args:[{k:'named', index:3, args:[{k:'text'}]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, errors:[{text:"invalid _", kind:"invalid", params:[{name:"detail", type:{k:'named', index:8, args:[]}, annotation:""}]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:5, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -666,7 +666,7 @@ export class Client {
   }
 
   /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
-  inspect(filter: InlineRecord3): Promise<Outcome<(InlineRecord1<string> | { kind: "null" }), InspectError>> {
+  inspect(filter: InlineRecord2): Promise<Outcome<(PageOf<string> | { kind: "null" }), InspectError>> {
     return this.call("inspect _", [filter]);
   }
 

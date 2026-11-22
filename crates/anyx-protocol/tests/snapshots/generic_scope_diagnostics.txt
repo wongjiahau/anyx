@@ -1,6 +1,6 @@
-files.protocol.anyx:1:100: `secret of _` is declared in `common.protocol.anyx` but is not visible in `files.protocol.anyx`; mark it `PUBLIC` and add a direct `USE` of that file
-  USE "./common.protocol.anyx", TYPE (Page: TYPE) boxed { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],
-                                                                                                     ^^^^^^^^^^^^^^^^
-files.protocol.anyx:1:159: found `page (Text)`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `page (Text)`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `page` are `page of (Item)`
-  USE "./common.protocol.anyx", TYPE (Page: TYPE) boxed { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],
-                                                                                                                                                                ^^^^^^^^^^^
+files.protocol.anyx:1:107: `secret of _` is declared in `common.protocol.anyx` but is not visible in `files.protocol.anyx`; mark it `PUBLIC` and add a direct `USE` of that file
+  USE "./common.protocol.anyx", TYPE ALIAS (Page: TYPE) boxed: { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],
+                                                                                                            ^^^^^^^^^^^^^^^^
+files.protocol.anyx:1:166: found `page (Text)`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `page (Text)`, or fix the name; import the declaration directly with `USE` if it is in another file; the types of this schema that start with `page` are `page of (Item)`
+  USE "./common.protocol.anyx", TYPE ALIAS (Page: TYPE) boxed: { value: Page }, METHOD list RETURNS (files: secret of (Text)) ERRORS [| |], METHOD all RETURNS (files: page (Text)) ERRORS [| |],
+                                                                                                                                                                       ^^^^^^^^^^^

@@ -58,7 +58,7 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `TYPE Page of (Item: TYPE) { … }`. A type is known by its words and
+    /// `TYPE ALIAS Page of (Item: TYPE): { … }`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
