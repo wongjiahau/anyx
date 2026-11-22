@@ -11,6 +11,8 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
 (async () => {
   const result = await client.count({tea: reminder});
   assert.equal(unwrapOutcome(result).tea, 9007199254740993n);
+  assert.deepEqual(unwrapOutcome(await client.inspect({query: 'tea'})), {rows: [{value: 'tea'}]});
+  assert.deepEqual((await client.inspect({query: ''})).error, {kind: 'invalid', detail: {path: 'query'}});
   const largestDuration = 18446744073709551615n;
   assert.equal((await client.snoozeFor(reminder, largestDuration)).kind, 'error');
   const duration = await new Client(async () => 'RETURNS `every (18446744073709551615 milliseconds)').remind(reminder);

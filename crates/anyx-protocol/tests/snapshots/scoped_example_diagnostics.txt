@@ -1,3 +1,3 @@
-files.protocol.anyx:1:70: in an example of `read _`: found a call of `_ / _`; expected a call of `read _`, the method the example is under, written by its full name as a request writes it
-  METHOD read (path: Text) RETURNS (content: Text) ERRORS [] EXAMPLES [files/read "a" RETURNS "x"],
-                                                                       ^^^^^^^^^^^^^^
+files.protocol.anyx:1:73: in an example of `read _`: found a call of `_ / _`; expected a call of `read _`, the method the example is under, written by its full name as a request writes it
+  METHOD read (path: Text) RETURNS (content: Text) ERRORS [| |] EXAMPLES [files/read "a" RETURNS "x"],
+                                                                          ^^^^^^^^^^^^^^

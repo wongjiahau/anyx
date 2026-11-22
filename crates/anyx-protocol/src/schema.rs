@@ -51,12 +51,14 @@ pub struct SourceFile {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeDefinition {
+    /// An inline record with an internal name for generated code.
+    pub anonymous: bool,
     /// `PUBLIC`: direct importers may use it.
     pub public: bool,
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `RECORD Page of (Item: TYPE)`. A type is known by its words and
+    /// `TYPE Page of (Item: TYPE) { … }`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
@@ -94,8 +96,8 @@ pub fn fill_slots(text: &str, arguments: &[String]) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
     Record(Vec<Field>),
-    /// An alias of a union of variants, `` TYPE ALIAS Case: UNION [`smart,
-    /// `any] ``: its variants, each written in its own shape. Unlike other
+    /// An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
+    /// `any |] ``: its variants, each written in its own shape. Unlike other
     /// aliases it keeps its name, for generated code and messages, while
     /// its values are its variants, written the same.
     Variants(Vec<Shaped>),
@@ -624,7 +626,7 @@ pub struct Method {
     pub ensures: Option<crate::refinement::Predicate<usize>>,
     /// Its errors, variants each written in its shape alone: those in its
     /// `ERRORS` in the order written, with each alias's variants in its
-    /// place. Empty for `ERRORS []`.
+    /// place. Empty for `ERRORS [| |]`.
     pub errors: Vec<Shaped>,
     /// The aliases of unions of variants its `ERRORS` names, such as `File
     /// Errors`, whose variants are among [`Method::errors`]. Generated code
@@ -756,7 +758,7 @@ pub enum Type {
     /// so a value is never of this type.
     Parameter(String),
     /// Values of any of its members, each written as that member writes
-    /// it: `` UNION [Integer, `null] `` holds `3` and `null`. Its members are as
+    /// it: `` [| Integer, `null |] `` holds `3` and `null`. Its members are as
     /// written; [`Schema::members`] reads through nested unions. A value's
     /// form tells its member, so the checker rejects two members written
     /// alike.
@@ -768,7 +770,7 @@ pub enum Type {
 
 impl Type {
     /// The members of a union, reading through the unions among them, in
-    /// order: `` UNION [Text, UNION [`null, `none]] `` has `Text`, `null` and
+    /// order: `` [| Text, [| `null, `none |] |] `` has `Text`, `null` and
     /// `none`. Any other type is its own one member.
     pub fn members(&self) -> Vec<&Type> {
         match self {
@@ -1085,9 +1087,12 @@ impl Schema {
             }
             Type::List(item) => keyword_before("LIST", self.type_name(item)),
             Type::Map(value) => keyword_before("MAP", self.type_name(value)),
-            Type::Named(index) => {
-                let definition = &self.types[*index];
-                definition.name.clone()
+            Type::Named(index) if self.types[*index].anonymous => {
+                self.anonymous_record_name(r#type)
+            }
+            Type::Named(index) => self.types[*index].name.clone(),
+            Type::Generic(index, _) if self.types[*index].anonymous => {
+                self.anonymous_record_name(r#type)
             }
             Type::Generic(index, arguments) => {
                 let definition = &self.types[*index];
@@ -1105,8 +1110,9 @@ impl Schema {
                 .join(" "),
             Type::Union(members) => match self.nullable_item(r#type) {
                 Some(item) => format!("{}?", self.type_name_grouped(item)),
+                None if members.is_empty() => "[| |]".to_string(),
                 None => format!(
-                    "UNION [{}]",
+                    "[| {} |]",
                     members
                         .iter()
                         .map(|member| self.type_name(member))
@@ -1116,6 +1122,60 @@ impl Schema {
             },
             Type::Variant(shape) => format!("`{}", self.shape_name(shape)),
         }
+    }
+
+    /// Whether a method argument uses an inline record that has no spelling
+    /// in a request's type annotation and is supplied by the method's schema.
+    pub fn has_anonymous_record(&self, r#type: &Type) -> bool {
+        match r#type {
+            Type::Named(index) => self.types[*index].anonymous,
+            Type::Generic(index, arguments) => {
+                self.types[*index].anonymous
+                    || arguments
+                        .iter()
+                        .any(|argument| self.has_anonymous_record(argument))
+            }
+            Type::Refined(base, _) | Type::List(base) | Type::Map(base) => {
+                self.has_anonymous_record(base)
+            }
+            Type::Union(members) | Type::Tuple(members) => members
+                .iter()
+                .any(|member| self.has_anonymous_record(member)),
+            Type::Variant(shape) => shape
+                .parameters
+                .iter()
+                .any(|parameter| self.has_anonymous_record(&parameter.r#type)),
+            _ => false,
+        }
+    }
+
+    fn anonymous_record_name(&self, r#type: &Type) -> String {
+        let Some((_, kind)) = self.instance(r#type) else {
+            unreachable!("an anonymous record has a type definition");
+        };
+        let TypeKind::Record(fields) = kind.as_ref() else {
+            unreachable!("an anonymous definition is a record");
+        };
+        if fields.is_empty() {
+            return "{}".to_string();
+        }
+        let fields = fields
+            .iter()
+            .map(|field| match &field.form {
+                FieldForm::Unnamed => {
+                    format!("`({}: {})", field.name, self.type_name(&field.r#type))
+                }
+                FieldForm::Shape(shape) => {
+                    let slots = match &field.r#type {
+                        Type::Tuple(slots) => slots.as_slice(),
+                        slot => std::slice::from_ref(slot),
+                    };
+                    let slots: Vec<_> = slots.iter().map(|slot| self.type_name(slot)).collect();
+                    fill_slots(shape, &slots)
+                }
+            })
+            .collect::<Vec<_>>();
+        format!("{{ {} }}", fields.join(", "))
     }
 
     /// The name of `type`, in parentheses when it is more than one word, so
@@ -1366,7 +1426,7 @@ impl Schema {
     }
 
     /// The variants of an alias of a union of variants, as types: `Shade`,
-    /// `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is `` `dark `` and
+    /// `` TYPE ALIAS Shade [| `dark, `light |] ``, is `` `dark `` and
     /// `` `light ``. `None` for any other type.
     fn variants_of(&self, r#type: &Type) -> Option<Vec<Type>> {
         if !matches!(r#type, Type::Named(_) | Type::Generic(..)) {
@@ -1423,7 +1483,7 @@ impl Schema {
         underlying
     }
 
-    /// `item` for the nullable `item?`, `` UNION [item, `null] ``.
+    /// `item` for the nullable `item?`, `` [| item, `null |] ``.
     pub fn nullable_item<'t>(&'t self, r#type: &'t Type) -> Option<&'t Type> {
         match self.underlying(r#type) {
             Type::Union(members) => match members.as_slice() {
@@ -1781,7 +1841,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
             )];
         }
         if let Some(default) = default_in_slot(&nodes, error.span) {
@@ -1792,7 +1852,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
             (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [`missing] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors: UNION [`trashed, `missing] ``".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]
@@ -1889,8 +1949,6 @@ fn unnamed_return(nodes: &[Node], span: Span) -> bool {
     })
 }
 
-/// Where the call with a `DEFAULT` that `span` is in is, when it is not in
-/// a `RECORD`, as in a parameter `(limit: Integer DEFAULT 50)`.
 /// Where the optional part that `span` is in is, when it holds a
 /// `DEFAULT` but no word before it: `[(factor: Integer) DEFAULT 1]`.
 fn optional_part_without_words(nodes: &[Node], span: Span) -> Option<Span> {
@@ -1942,8 +2000,8 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
             NodeKind::Call(call) => &call.arguments,
             NodeKind::Parens(nodes)
             | NodeKind::Brackets(nodes)
-            | NodeKind::Braces(nodes)
             | NodeKind::CustomBracket(_, nodes) => nodes,
+            NodeKind::Braces(_) => return None,
             _ => &[],
         };
         children
@@ -1951,14 +2009,11 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
             .find_map(|child| within(child, span))
             .or_else(|| has_word(node, "DEFAULT").then_some(node.span))
     }
-    nodes
-        .iter()
-        .filter(|node| !has_word(node, "RECORD"))
-        .find_map(|node| within(node, span))
+    nodes.iter().find_map(|node| within(node, span))
 }
 
 /// Where the call with a `DEFAULT` that `span` is in is, when it fills a
-/// slot of a `RECORD`'s field, as in `age: Integer DEFAULT age 0`, which is
+/// slot of a record field, as in `age: Integer DEFAULT age 0`, which is
 /// `age (Integer DEFAULT age 0)`.
 fn default_in_slot(nodes: &[Node], span: Span) -> Option<Span> {
     fn has_default(node: &Node) -> bool {
@@ -1972,7 +2027,9 @@ fn default_in_slot(nodes: &[Node], span: Span) -> Option<Span> {
         let (children, call): (&[Node], bool) = match &node.kind {
             NodeKind::Call(call) => (&call.arguments, true),
             NodeKind::Parens(nodes) => (nodes, in_call),
-            NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => (nodes, false),
+            NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => (nodes, false),
             _ => (&[], false),
         };
         children

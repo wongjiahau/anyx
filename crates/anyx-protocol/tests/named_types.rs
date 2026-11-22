@@ -15,9 +15,9 @@ NAMED TYPE File Id (Text),
 
 TYPE ALIAS Tags: LIST Text,
 
-RECORD File Link { file id: File Id, tags: Tags },
+TYPE File Link { file id: File Id, tags: Tags },
 
-METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [`missing (id: File Id)],
+METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [| `missing (id: File Id) |],
 ";
 
 fn file_id(id: &str) -> Value {
@@ -89,8 +89,8 @@ fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
         "PROTOCOL shapes VERSION 1,
 NAMED TYPE Range from (Integer) to (Integer),
 NAMED TYPE Unit,
-NAMED TYPE (UNION [`red, `blue]) Color,
-METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING ERRORS [],
+NAMED TYPE ([| `red, `blue |]) Color,
+METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let call = Call {
@@ -127,7 +127,7 @@ fn a_union_of_named_types_picks_its_member_by_name() {
         "PROTOCOL sharing VERSION 1,
 NAMED TYPE File Id (Text),
 NAMED TYPE Share Id (Text),
-METHOD open (id: UNION [File Id, Share Id]) RETURNS NOTHING ERRORS [],
+METHOD open (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let share = Value::Variant {
@@ -189,7 +189,7 @@ NAMED TYPE Range from (Integer) to (Integer),
 NAMED TYPE Unit,
 NAMED TYPE File Id (Text),
 NAMED TYPE Share Id (Text),
-METHOD mark (range: Range from to) and (unit: Unit) for (id: UNION [File Id, Share Id]) RETURNS NOTHING ERRORS [],
+METHOD mark (range: Range from to) and (unit: Unit) for (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
     assert_eq!(
@@ -234,7 +234,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text) ERRORS [],",
+            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text) ERRORS [| |],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -248,7 +248,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [],",
+            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [| |],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -273,11 +273,11 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, RECORD Row { x: Alpha }, NAMED TYPE Alpha (Row),",
+            "PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), RECORD Alpha { b: Text },",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha { b: Text },",
         ),
         (
             "a named type over an unknown type",
@@ -299,7 +299,7 @@ fn a_named_type_may_hold_itself_through_a_list() {
     let schema = schema(
         "PROTOCOL trees VERSION 1,
 NAMED TYPE Tree (LIST Tree),
-METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [],
+METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let leaf = Value::Variant {

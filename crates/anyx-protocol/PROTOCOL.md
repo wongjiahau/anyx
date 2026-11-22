@@ -11,35 +11,35 @@ document of their results. Both are checked against the schema.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-RECORD File Summary {
+TYPE File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
     note (Text ? ) DEFAULT note (`null),
 },
 
-TYPE ALIAS Shade: UNION [`dark, `light],
+TYPE ALIAS Shade [| `dark, `light |],
 
-TYPE ALIAS Colour: UNION [`dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed],
+TYPE ALIAS Colour [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
 
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
-TYPE ALIAS File Errors: UNION [
+TYPE ALIAS File Errors [|
     # The owner moved this file to the trash.
     `trashed,
     `missing,
     `(path: Text) would be both file and folder,
-],
+|],
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
     RETURNS (new revision: Integer)
-    ERRORS [
+    ERRORS [|
         # Someone saved first. Apply your change to `content`, then write at `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
         File Errors,
-    ]
+    |]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title" RETURNS 4,
@@ -61,24 +61,25 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `Page of (Item: TYPE)`. Keywords side by side join into one name, so write
   `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
+  Braces and union brackets group the type body in a declaration, so the
+  formatted spelling is `TYPE Name { … }` or `TYPE ALIAS Name [| … |]`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
   (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
   `Duration` (a length of time), declared in the [prelude](#the-prelude);
-  `LIST: T`, `MAP: T` (text keys, each to a `T`), the name of a
-  `RECORD`, `NAMED TYPE` or `TYPE ALIAS`, `UNION [A, B]`, and a
-  use of a generic type,
-  `Page of (Order)`. A type may hold itself only through a
+  `LIST: T`, `MAP: T` (text keys, each to a `T`), `{ field: T }`, `[| A, B |]`,
+  the name of a record, named type or alias, or a use of a generic type such
+  as `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
 - **`NAMED TYPE File Id (Text)`** makes a type of its own, which no other
   type fits, so that values that hold the same thing but mean different
   things can't be mixed up. Its name is a shape whose slots hold types, and
   a value is written with that shape and a value in each slot: `File Id
   "a"`. A slot may be anywhere among the words, and there may be several or
-  none: `` NAMED TYPE (UNION [`red, `blue]) Color `` is written `` (`red) Color ``,
+  none: `` NAMED TYPE ([| `red, `blue |]) Color `` is written `` (`red) Color ``,
   `NAMED TYPE Range from (Integer) to (Integer)` is written `Range from 1 to
   3`, and `NAMED TYPE Unit` is written `Unit`. Since a value shows its type,
-  it needs no annotation, and a `UNION` of named types tells its members
+  it needs no annotation, and a union of named types tells its members
   apart by name. A use names it by its words, `Range from to`. In JSON a
   value is an object whose one key is the type's words in camel case,
   starting with a capital, holding its slot's value, or an array of its
@@ -92,38 +93,49 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
   wire, in JSON, in the guide and in generated code, so an alias and its
   type mix freely. A generic alias has a type parameter in each other slot
-  of its name, as a generic `RECORD` does, and its type uses them:
+  of its name, as a generic record does, and its type uses them:
   `TYPE ALIAS (Item: TYPE) Pair: LIST Item`, used as `(Text) Pair`. The
   type it stands for comes last and can't lead back to the alias, since an
-  alias is only another name; a type that holds itself is a `RECORD` or a
+  alias is only another name; a type that holds itself is a record declared with `TYPE` or a
   `NAMED TYPE`. `PUBLIC` shares an alias with direct importers, as it does a
   type. Use `NAMED TYPE` when values should not mix with others that hold
   the same thing, and `TYPE ALIAS` when a long type only needs a short name.
   An alias of a union of variants alone keeps its name in generated code,
   as an enum, and in the guide and messages: see below.
-- **`RECORD Name { field: T, … }`**: fields, each a shape that a value
+- **`TYPE Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
   written as a value writes it, what it holds when absent:
   `limit (Integer) DEFAULT limit 50`, or `tags (LIST Text) DEFAULT tags []`.
   Without a default the field must be supplied. A default is checked as an
-  entry of its field; parameters cannot have defaults.
-- **`UNION [A, B, …]`** is a value of one of its members, written as that
+  entry of its field. A record can also appear directly in a type slot:
+
+  ```anyx
+  TYPE ALIAS Lookup Result [| { count: Integer }, `null |],
+  METHOD search (filter: { query: Text }) RETURNS (result: Lookup Result) ERRORS [| |],
+  ```
+
+  Anonymous records in generated Rust and TypeScript receive sequential names
+  such as `InlineRecord1`. Use a `TYPE` declaration for a record whose generated
+  name is part of the API. In requests, a method argument with an inline
+  record type is checked against the method\x27s schema without an `AS` annotation.
+- **`[| A, B, … |]`** is a value of one of its members, written as that
   member writes it, on the wire and in JSON: a value of
-  `` UNION [Integer, `none] `` is `3` or `` `none ``. A member is a variant,
+  `` [| Integer, `none |] `` is `3` or `` `none ``. A member is a variant,
   written with a backtick, or a named type, an intrinsic, a refinement
-  or another union. A variant or a named type may have a `#` doc before it. A `LIST`, `MAP` or `RECORD` is named first, by `TYPE
-  ALIAS`. A value's form alone tells its member, so the checker flattens a
-  union and rejects one where two members share a form, in anyx or in JSON:
-  `UNION [Integer, Float]` shares the number, and `Depth??` repeats `` `null ``.
-  `UNION []` has no values. A union fits where another is expected when
+  or another union or an inline record. A variant or a named type may have a
+  `#` doc before it. A `LIST` or `MAP` member uses a `TYPE ALIAS`. A value's
+  form alone tells its member, so the checker flattens a union and rejects
+  two members that share a form in anyx or in JSON:
+  `[| Integer, Float |]` shares the number, and `Depth??` repeats `` `null ``.
+  `[| |]` has no values. A union fits where another is expected when
   each of its members does, so a `Depth` fits where a `Depth?` is expected.
-- **Nullability** is the prelude's `T?`, the alias `` UNION [Item, `null] ``:
+- **Nullability** is the prelude's `T?`, the alias `` [| Item, `null |] ``:
   `` `null ``, or a value of the item written as it is, `note "hi"`.
   `note: Text?` is required but admits `` `null ``;
   `` note (Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
-- **`` TYPE ALIAS Name: UNION [`variant, `…] ``**, a union of variants
+- **`` TYPE ALIAS Name [| `variant, `… |] ``**, a union of variants
   alone: one of its variants. A variant is a *shape*: words, with
   `(name: Type)` slots anywhere among them, as in `custom hue (hue: Float)`
   or `(base: Shade) dimmed`. Variants differ by their words. Such an alias
@@ -131,7 +143,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   messages say `Name`. Its values are its variants, written the same, and
   it can't lead back to itself, as no alias can. `` CHOICE Name { `variant
   } ``, which it replaced, is an error that says how to write it.
-- **A generic `RECORD` or `TYPE ALIAS`** has type parameters in its name. Its
+- **A generic record or type alias** has type parameters in its name. Its
   name is a shape, like a variant's: words, with a `(Parameter: TYPE)` slot
   anywhere among them, at the start, between words, or at the end. Its
   fields or variants use each parameter as a type. A use writes the same
@@ -143,46 +155,46 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  RECORD Page of (Item: TYPE) {
+  TYPE Page of (Item: TYPE) {
       items: LIST: Item,
       next (Text?) DEFAULT next (`null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
-  TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [
+  TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [|
       `done (value: Value),
       `failed (problem: Problem),
-  ],
+  |],
 
   # A value and who vouches for it. (A slot between words.)
-  RECORD (Value: TYPE) signed by (Signer: TYPE) {
+  TYPE (Value: TYPE) signed by (Signer: TYPE) {
       value: Value,
       signer: Signer,
   },
 
-  METHOD orders RETURNS (orders: Page of (Order)) ERRORS [],
+  METHOD orders RETURNS (orders: Page of (Order)) ERRORS [| |],
   METHOD pay (order: Order Id)
       RETURNS (outcome: (Receipt) or (Decline))
-      ERRORS [],
+      ERRORS [| |],
   METHOD pay all (orders: LIST Page of (Order Id))
       RETURNS (outcomes: Page of ((Receipt) or (Decline)))
-      ERRORS [],
+      ERRORS [| |],
   METHOD search (words: Text)
       RETURNS (results: Page of ((Document) signed by (Person)))
-      ERRORS [],
+      ERRORS [| |],
   TYPE ALIAS Orders: Page of (Order),
   ```
 
   A slot may also sit between words in the middle of a name,
-  `RECORD Box of (Item: TYPE) sealed`, used as `Box of (Letter) sealed`, and
+  `TYPE Box of (Item: TYPE) sealed { item: Item }`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `RECORD Table from (Key: TYPE) to (Value: TYPE)`.
+  `TYPE Table from (Key: TYPE) to (Value: TYPE) { keys: LIST Key, values: LIST Value }`.
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
-  declarations of the same shape are an error. Only a `RECORD` or a
+  declarations of the same shape are an error. Only a record declared with `TYPE` or a
   `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
-  `PUBLIC RECORD Page of (Item: TYPE)` shares one. A parameter is a
+  `PUBLIC TYPE Page of (Item: TYPE) { items: LIST Item }` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
@@ -197,14 +209,14 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `RECORD Trashed File { file: File Summary, trashed at: Instant }`,
-  not `RECORD (Item: TYPE) in trash since (When: TYPE)` used only as
+  name reads better: `TYPE Trashed File { file: File Summary, trashed at: Instant }`,
+  not `TYPE (Item: TYPE) in trash since (When: TYPE) { item: Item, when: When }` used only as
   `(File Summary) in trash since (Instant)`.
-- **`METHOD shape RETURNS (name: Type) ERRORS [errors]`**: the method's
+- **`METHOD shape RETURNS (name: Type) ERRORS [| errors |]`**: the method's
   shape, what it returns, and the errors it may return. The returned value
   has a name, which says what it is. `ERRORS` is always written, so that a
   reader sees a method's errors were declared up front: a method that
-  can't fail says `ERRORS []`. A method with nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
+  can't fail says `ERRORS [| |]`. A method with nothing to return, such as `sign out`, says `RETURNS NOTHING`. `READ ONLY`
   or `IDEMPOTENT` may come before `METHOD`, and `UNDONE BY` after `ERRORS`:
   see [Effects](#effects).
 - **`EXAMPLES [example, …]`**, last in a method, shows how it is used. Each
@@ -218,12 +230,12 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   may have. The guide and generated code show them.
 - **Errors** are variants, written in a method's `ERRORS` brackets with
   their `#` docs before them, since an error says by its words what went
-  wrong: `` ERRORS [`conflict at revision (revision: Integer)] ``. Errors
+  wrong: `` ERRORS [| `conflict at revision (revision: Integer) |] ``. Errors
   that methods share are an alias of a union of variants, named among
-  them: `` TYPE ALIAS File Errors: UNION [`trashed, `missing] `` and
-  `` ERRORS [`conflict at revision (revision: Integer), File Errors] ``. Such
-  an alias may include another: `` TYPE ALIAS Export Errors: UNION
-  [`unreadable, File Errors] ``. Nothing else goes in `ERRORS`: a value
+  them: `` TYPE ALIAS File Errors [| `trashed, `missing |] `` and
+  `` ERRORS [| `conflict at revision (revision: Integer), File Errors |] ``. Such
+  an alias may include another: `` TYPE ALIAS Export Errors
+  [| `unreadable, File Errors |] ``. Nothing else goes in `ERRORS`: a value
   an error carries goes in a slot of its variant.
 - A method's errors are flattened: its own variants and those of each
   alias it names, in order, each once. The generated code has one error
@@ -251,10 +263,10 @@ TYPE ALIAS Revision: Integer . WHERE [1 <= _],
 TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
 TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
-RECORD Settings { limit (Limit) DEFAULT limit 10 },
+TYPE Settings { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30])
-    ERRORS [],
+    ERRORS [| |],
 ```
 
 The dot supplies the base type as the first argument; parentheses around the
@@ -331,8 +343,8 @@ one call's result is another call's argument, before anything runs.
   when `count` returns `Integer`. Declare `count` to return `Depth`. A
   literal is checked by its value instead, so `dig 3` works.
 - **A member fits its union,** and a union fits another that holds each of
-  its members: `` UNION [`dark, `light] `` fits `` UNION [`dark, `light,
-  `custom hue (hue: Float)] ``. An alias is the type it stands for.
+  its members: `` [| `dark, `light |] `` fits `` [| `dark, `light,
+  `custom hue (hue: Float) |] ``. An alias is the type it stands for.
 - **`LIST`, `MAP`, `?` and a generic record's slots are covariant:** `LIST
   Depth` fits `LIST Integer`, and `Page of (Depth)` fits `Page of
   (Integer)`.
@@ -355,7 +367,7 @@ METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer
     REQUIRES [1 <= revision < limit]
     RETURNS (new revision: Integer)
     ENSURES [new revision =: revision + 1]
-    ERRORS [],
+    ERRORS [| |],
 ```
 
 Conditions share the refinement predicate language. They refer to the
@@ -375,7 +387,7 @@ They let a method take a list of settings, rather than optional words,
 and still rule out settings that contradict each other:
 
 ```anyx
-TYPE ALIAS Setting: UNION [`any case, `smart case, `hidden, `(name: Text) encoding],
+TYPE ALIAS Setting [| `any case, `smart case, `hidden, `(name: Text) encoding |],
 
 READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
     REQUIRES [
@@ -383,7 +395,7 @@ READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
         settings . has at most one of [`any case, `smart case],
     ]
     RETURNS (paths: LIST Text)
-    ERRORS [],
+    ERRORS [| |],
 ```
 
 - `items . has no repeats` holds when no two items are equal.
@@ -436,7 +448,7 @@ READ ONLY METHOD find (pattern: Text)
     [in (paths: LIST Text) DEFAULT in ["."]]
     [with (search: Search) DEFAULT with {}]
     RETURNS (paths: LIST Text)
-    ERRORS [],
+    ERRORS [| |],
 ```
 
 - **The full form is the method.** `find _ in _ with _` is the one method
@@ -481,7 +493,7 @@ generated code too, and a value writes it as it is declared:
 | `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
 | `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
-| `` `(hidden: UNION [`hidden, `null]) DEFAULT `null `` | `` `hidden `` | `hidden` |
+| `` `(hidden: [| `hidden, `null |]) DEFAULT `null `` | `` `hidden `` | `hidden` |
 | `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
 - **The slot holds a type, not a parameter**: `(Case) case`, since the words
@@ -501,7 +513,7 @@ generated code too, and a value writes it as it is declared:
 - **No `Boolean?`.** Three states named `` `true ``, `` `false `` and `` `null ``
   leave the reader to guess what `` `null `` means. Use a nullable variant with a default when left out means
   off, or a union of variants that names each state:
-  `` TYPE ALIAS Color: UNION [`always, `never, `auto] ``, not
+  `` TYPE ALIAS Color [| `always, `never, `auto |] ``, not
   `color (Boolean?)`.
 - **A value before the words keeps its parentheses**, `` (`any) case ``:
   without them, `` `any case `` is the one variant `` `any case ``, not `_ case`.
@@ -534,12 +546,12 @@ written:
    `"src"` and `3` alone would leave the reader guessing, which is why a
    field without words holds only variants.
 4. **A choice only one field uses → its word in every variant, and the
-   variant alone.** `` TYPE ALIAS Case: UNION [`smart case, `any case, `exact case] ``
+   variant alone.** `` TYPE ALIAS Case [| `smart case, `any case, `exact case |] ``
    with `` `(case: Case) DEFAULT `smart case `` is written `` `any case ``.
    Every variant carries the word, so that none reads bare, as `` `exact ``
    would.
 5. **A choice several fields or methods share → its shared word in the
-   shape.** `(Case) case` over `` TYPE ALIAS Case: UNION [`smart, `any, `exact] ``,
+   shape.** `(Case) case` over `` TYPE ALIAS Case [| `smart, `any, `exact |] ``,
    written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no
@@ -566,14 +578,14 @@ at such steps, which makes it worse.
 ## Not this: the client works out what a transfer changes, and in what order.
 METHOD update account (id: Text) fields (fields: account fields)
     RETURNS (account: account)
-    ERRORS [],
+    ERRORS [| |],
 
 ## This: the server does the whole transfer, or none of it.
 METHOD transfer (amount: Integer) cents from (source: Text) to (target: Text)
     RETURNS (transfer: Text)
-    ERRORS [`short by (shortfall: Integer) cents],
+    ERRORS [| `short by (shortfall: Integer) cents |],
 METHOD close (account: Text) RETURNS NOTHING
-    ERRORS [`still holds (balance: Integer) cents],
+    ERRORS [| `still holds (balance: Integer) cents |],
 ```
 
 - **The shape names the intent.** `transfer (amount) cents from (source) to
@@ -594,23 +606,23 @@ lost, and whether to ask a person before sending it.
 
 ```anyx
 READ ONLY METHOD read (path: Text) RETURNS (document: Document)
-    ERRORS [`missing],
+    ERRORS [| `missing |],
 
 IDEMPOTENT METHOD archive (path: Text) RETURNS NOTHING
-    ERRORS [`missing]
+    ERRORS [| `missing |]
     UNDONE BY unarchive (path: Text),
 
-IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [`missing],
+IDEMPOTENT METHOD unarchive (path: Text) RETURNS NOTHING ERRORS [| `missing |],
 
 METHOD move (path: Text) to (new path: Text) RETURNS NOTHING
-    ERRORS [`missing, `taken]
+    ERRORS [| `missing, `taken |]
     UNDONE BY move (new path: Text) to (path: Text),
 
 ## No markers: may change anything, and is never retried on its own.
-METHOD append (text: Text) to (path: Text) RETURNS NOTHING ERRORS [`missing],
+METHOD append (text: Text) to (path: Text) RETURNS NOTHING ERRORS [| `missing |],
 
 ## Can't claim `UNDONE BY`: the recipient has read the document.
-METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [`missing],
+METHOD send (path: Text) to (email: Text) RETURNS NOTHING ERRORS [| `missing |],
 ```
 
 - **`READ ONLY`** before `METHOD`: the caller asks for no change, as HTTP's
@@ -667,19 +679,19 @@ USE "./files.protocol.anyx",
 USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
-PUBLIC RECORD Diagnostic { line: Integer, message: Text },
-PUBLIC TYPE ALIAS Common Errors: UNION [`missing],
+PUBLIC TYPE Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Common Errors [| `missing |],
 
 ## notes/files.protocol.anyx
 USE "./common.protocol.anyx",
-PUBLIC TYPE ALIAS File Errors: UNION [`trashed, Common Errors],
-METHOD read (path: Text) RETURNS (text: Text) ERRORS [File Errors],
+PUBLIC TYPE ALIAS File Errors [| `trashed, Common Errors |],
+METHOD read (path: Text) RETURNS (text: Text) ERRORS [| File Errors |],
 
 ## notes/files/export.protocol.anyx
 USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
-    ERRORS [`unreadable (diagnostics: LIST Diagnostic), File Errors],
+    ERRORS [| `unreadable (diagnostics: LIST Diagnostic), File Errors |],
 ```
 
 - `USE "relative path"` is the only import form. It includes that file in
@@ -720,7 +732,7 @@ The built-in types are declared in the prelude,
 [`prelude.protocol.anyx`](prelude.protocol.anyx), written in the schema language with a `#`
 doc on each. It is read and checked before every schema, and its names are
 visible in every file, so a schema can't declare a type of the same name:
-`RECORD Integer { … }` is an error.
+`TYPE Integer { … }` is an error.
 
 ```anyx
 # A whole number of 64 bits, written without a point: `3`, `-1`.
@@ -736,9 +748,9 @@ INTRINSIC FUNCTION
     [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
     RETURNS (duration: Duration),
 
-TYPE ALIAS Boolean: UNION [`false, `true],
+TYPE ALIAS Boolean [| `false, `true |],
 
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
+TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 ```
 
 - **`INTRINSIC`** marks a declaration whose meaning the implementation
@@ -795,7 +807,7 @@ SCHEMA,
 `SCHEMA FILES` is the other built-in call. It returns the schema itself, as
 a `LIST Schema File`: the entry file first, then each file it imports, each
 with its `path` (as the `USE` lines reach it) and its `source`. The prelude
-declares `RECORD Schema File { path: Text, source: Text }`. A client that
+declares `TYPE Schema File { path: Text, source: Text }`. A client that
 checks calls itself, such as the anyx shell, loads the schema from these
 files. Both built-ins are `READ ONLY`, and neither is in a scope.
 
@@ -817,10 +829,10 @@ and base64 are checked in Rust.
 | `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hours 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
-| a `RECORD` | `` { path "a", revision 3, `hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
+| a record | `` { path "a", revision 3, `hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
 | a union of variants | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
 | a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `` (`red) Color ``, `Unit` |
-| a use of a generic type | as the `RECORD` or union, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
+| a use of a generic type | as the record or union, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |
 
 A number's type is how it is written, as in Rust: `3` and `-1` are
 `Integer`s, and `3.0`, `1.5` and `1e3` are `Float`s. So every number states

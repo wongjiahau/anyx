@@ -235,7 +235,7 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
 
 /// The shape of `value`, a call not marked as a variant, when a member of
 /// the union `expected` is a variant of that shape: `null` for
-/// `` UNION [Text, `null] ``.
+/// `` [| Text, `null |] ``.
 fn unmarked_variant(schema: &Schema, expected: &Type, value: &Syntax) -> Option<String> {
     let Written::Call(parts) = written(value) else {
         return None;
@@ -593,7 +593,7 @@ mod tests {
         let schema = Schema::load("protocol.protocol.anyx", |path| -> Result<String, String> {
             match path {
                 "protocol.protocol.anyx" => Ok("PROTOCOL a VERSION 1, USE \"./files.protocol.anyx\"".into()),
-                "files.protocol.anyx" => Ok("PUBLIC TYPE ALIAS Count: UNION [`(count: Integer) minutes], METHOD count (count: Count) RETURNS NOTHING ERRORS []".into()),
+                "files.protocol.anyx" => Ok("PUBLIC TYPE ALIAS Count [| `(count: Integer) minutes |], METHOD count (count: Count) RETURNS NOTHING ERRORS [| |]".into()),
                 _ => Err(format!("missing {path}")),
             }
         }).unwrap();
@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn booleans_keep_their_variant_reading_when_annotated() {
-        let schema = Schema::parse("PROTOCOL a VERSION 1, TYPE ALIAS Truth: UNION [`true, `false], METHOD set (value: Truth) RETURNS NOTHING ERRORS []").unwrap();
+        let schema = Schema::parse("PROTOCOL a VERSION 1, TYPE ALIAS Truth [| `true, `false |], METHOD set (value: Truth) RETURNS NOTHING ERRORS [| |]").unwrap();
         let calls = decode_request(&schema, "set (`true AS: Truth)").unwrap();
         assert_eq!(
             calls[0].arguments,

@@ -18,7 +18,7 @@ pub fn rust(schema: &Schema) -> Result<String, Error> {
         let name = schema.type_name(r#type);
         let message = match r#type {
             Type::Variant(_) => format!(
-                "found the standalone variant `{name}` with slots; give it a name with a `TYPE ALIAS` of a one-member `UNION` to generate Rust"
+                "found the standalone variant `{name}` with slots; give it a name with a `TYPE ALIAS` of a one-member union `[| … |]` to generate Rust"
             ),
             _ => format!(
                 "found the union `{name}`; expected only nullable unions, `T?`, in generated Rust, which writes them as `Option<T>`; other unions wait for named types"

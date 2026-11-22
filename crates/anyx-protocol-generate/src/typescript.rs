@@ -560,7 +560,11 @@ fn native_shape(schema: &Schema, shape: &anyx_protocol::schema::Shape) -> String
                 "{{name:{:?}, type:{}, annotation:{:?}}}",
                 camel_case(&p.name),
                 native_type(&p.r#type),
-                schema.type_name(&p.r#type)
+                if schema.has_anonymous_record(&p.r#type) {
+                    String::new()
+                } else {
+                    schema.type_name(&p.r#type)
+                }
             ))
             .collect::<Vec<_>>()
             .join(",")

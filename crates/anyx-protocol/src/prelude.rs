@@ -194,7 +194,6 @@ pub(crate) fn declarations() -> ast::Document {
 fn is_intrinsic(definition: &ast::Definition) -> bool {
     match definition {
         ast::Definition::IntrinsicType(_) => true,
-        ast::Definition::Record(d) => d.intrinsic.is_some(),
         ast::Definition::Errors(_) => false,
         _ => false,
     }

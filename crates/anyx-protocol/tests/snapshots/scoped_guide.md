@@ -65,7 +65,7 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `` { "hymn": `done } ``.
-- A RECORD is its fields in braces, each written in its declared shape with
+- A record is its fields in braces, each written in its declared shape with
   a value in each slot, in any order: `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field declared as a backtick and a slot is written
@@ -74,12 +74,12 @@ the account, such as by sending or sharing it.
   share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.
-- A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is
+- A union of variants, `` TYPE ALIAS Shade [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
-- A `UNION` is a value of one of its members, written as that member
-  writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
+- A union is a value of one of its members, written as that member
+  writes it. So a nullable `T?`, `` [| T, `null |] ``, is `` `null `` or a
   value of `T`: `{ max depth 3 }`, `` { max depth: `null } ``.
 - In a slot, a value written as words or a variant goes in parentheses so
   that it doesn't join the words around it: `` set (`true) ``,
@@ -101,7 +101,7 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 
 ```anyx
 # `` `true `` or `` `false ``.
-TYPE ALIAS Boolean: UNION [`false, `true],
+TYPE ALIAS Boolean [| `false, `true |],
 
 # A `Duration` is written as a call of this function: each unit is an
 # optional part, so `1 hours 30 minutes` leaves out the days, seconds and
@@ -116,11 +116,11 @@ INTRINSIC FUNCTION
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
+TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-RECORD Schema File {
+TYPE Schema File {
     path: Text,
     source: Text,
 },
@@ -157,7 +157,7 @@ In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. Errors that methods
 share are an alias of a union of variants, such as `` TYPE ALIAS File
-Errors: UNION [`missing] ``, named in each method's `ERRORS`.
+Errors: [| `missing |] ``, named in each method's `ERRORS`.
 
 Files form one flat namespace. `USE "relative path"` includes a file and
 makes its `PUBLIC` types visible to the importing file.
@@ -176,42 +176,42 @@ USE "./files/export.protocol.anyx",
 
 USE "./common.protocol.anyx",
 
-RECORD File { path: Text, revision: Integer, content: Text },
+TYPE File { path: Text, revision: Integer, content: Text },
 
-PUBLIC TYPE ALIAS File Errors: UNION [
+PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
     `trashed,
     Common Errors,
-],
+|],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [],
+READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
 
 # Saves the note, if it is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
     RETURNS (warnings: LIST Diagnostic)
-    ERRORS [
+    ERRORS [|
         # The note has errors, so nothing was saved.
         `rejected (diagnostics: LIST Diagnostic),
         File Errors,
-    ],
+    |],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [File Errors],
+IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [| File Errors |],
 
 # Forgets every note in the trash.
-METHOD empty trash RETURNS NOTHING ERRORS [],
+METHOD empty trash RETURNS NOTHING ERRORS [| |],
 
 ### `common.protocol.anyx`
 
 # One problem in a note.
-PUBLIC RECORD Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE Diagnostic { line: Integer, message: Text },
 
-PUBLIC TYPE ALIAS Common Errors: UNION [
+PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
     `missing,
-],
+|],
 
 ### `files/export.protocol.anyx`
 
@@ -219,13 +219,13 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-RECORD Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [File Errors],
+METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 
 METHOD pdf (path: Text) RETURNS (pdf: Bytes)
-    ERRORS [
+    ERRORS [|
         # The note has errors, so it can't be exported.
         `unreadable (diagnostics: LIST Diagnostic),
         File Errors,
-    ],
+    |],

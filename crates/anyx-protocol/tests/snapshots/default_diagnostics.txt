@@ -1,23 +1,23 @@
 == a default of another type
-PROTOCOL a VERSION 1, RECORD Example { limit (Integer) DEFAULT limit "50" },
-schema:1:70: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
-  PROTOCOL a VERSION 1, RECORD Example { limit (Integer) DEFAULT limit "50" },
-                                                                       ^^^^
+PROTOCOL a VERSION 1, TYPE Example { limit (Integer) DEFAULT limit "50" },
+schema:1:68: in the `DEFAULT` of `limit`: found a string; expected a whole number, as in `3`
+  PROTOCOL a VERSION 1, TYPE Example { limit (Integer) DEFAULT limit "50" },
+                                                                     ^^^^
 
 == a default that is no variant
-PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark], RECORD Example { shade (Shade) DEFAULT shade (`dim) },
-schema:1:102: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
-  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark], RECORD Example { shade (Shade) DEFAULT shade (`dim) },
-                                                                                                       ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE Example { shade (Shade) DEFAULT shade (`dim) },
+schema:1:97: in the `DEFAULT` of `shade`: found the variant `` `dim ``; expected a variant of `Shade`: `` `dark ``
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE Example { shade (Shade) DEFAULT shade (`dim) },
+                                                                                                  ^^^^
 
 == the removed OPTIONAL keyword
-PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },
-schema:1:47: found the word `OPTIONAL`; expected the word `LIST`, `MAP` or `UNION`
-  PROTOCOL a VERSION 1, RECORD Example { limit: OPTIONAL Integer },
-                                                ^^^^^^^^
+PROTOCOL a VERSION 1, TYPE Example { limit: OPTIONAL Integer },
+schema:1:45: found the word `OPTIONAL`; expected the word `LIST` or `MAP`
+  PROTOCOL a VERSION 1, TYPE Example { limit: OPTIONAL Integer },
+                                              ^^^^^^^^
 
 == a default on a parameter
-PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [],
-schema:1:40: found a `DEFAULT` outside a `RECORD`; expected one only on a field of a `RECORD`, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
-  PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [],
+PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [| |],
+schema:1:40: found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (Integer) DEFAULT limit 50`, since a parameter is always written
+  PROTOCOL a VERSION 1, METHOD f (limit: Integer DEFAULT 50) RETURNS (y: Text) ERRORS [| |],
                                          ^^^^^^^^^^^^^^^^^^

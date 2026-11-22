@@ -1,41 +1,41 @@
 == two members written alike
-PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
-schema:1:82: found a number as a value of both `Integer` and `Integer` in `UNION [Integer, Integer]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
-                                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:119: found the variant `none` twice in `Shades`, counting the variants of the aliases it includes; expected each variant's words once; remove one, or rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
-                                                                                                                        ^^^^^^
-schema:1:167: found a string as a value of both `Text` and `Bytes` in `UNION [Text, Bytes]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],
-                                                                                                                                                                        ^^^^^^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark, `none |], TYPE ALIAS Counts [| Integer, Integer |], TYPE ALIAS Shades [| Shade, `none |], TYPE ALIAS Blobs [| Text, Bytes |],
+schema:1:78: found a number as a value of both `Integer` and `Integer` in `[| Integer, Integer |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark, `none |], TYPE ALIAS Counts [| Integer, Integer |], TYPE ALIAS Shades [| Shade, `none |], TYPE ALIAS Blobs [| Text, Bytes |],
+                                                                               ^^^^^^^^^^^^^^^^^^^^^^
+schema:1:113: found the variant `none` twice in `Shades`, counting the variants of the aliases it includes; expected each variant's words once; remove one, or rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark, `none |], TYPE ALIAS Counts [| Integer, Integer |], TYPE ALIAS Shades [| Shade, `none |], TYPE ALIAS Blobs [| Text, Bytes |],
+                                                                                                                  ^^^^^^
+schema:1:157: found a string as a value of both `Text` and `Bytes` in `[| Text, Bytes |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark, `none |], TYPE ALIAS Counts [| Integer, Integer |], TYPE ALIAS Shades [| Shade, `none |], TYPE ALIAS Blobs [| Text, Bytes |],
+                                                                                                                                                              ^^^^^^^^^^^^^^^^^
 
 == two members written alike only in JSON
-PROTOCOL a VERSION 1, TYPE ALIAS Waits: UNION [Integer, Duration], RECORD Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows: UNION [Row, Texts],
-schema:1:41: found a number in JSON as a value of both `Integer` and `Duration` in `UNION [Integer, Duration]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Waits: UNION [Integer, Duration], RECORD Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows: UNION [Row, Texts],
-                                          ^^^^^^^^^^^^^^^^^^^^^^^^^
-schema:1:137: found braces `{…}` as a value of both `Row` and `MAP Text` in `UNION [Row, MAP Text]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Waits: UNION [Integer, Duration], RECORD Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows: UNION [Row, Texts],
-                                                                                                                                          ^^^^^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+schema:1:40: found a number in JSON as a value of both `Integer` and `Duration` in `[| Integer, Duration |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+                                         ^^^^^^^^^^^^^^^^^^^^^^^
+schema:1:131: found braces `{…}` as a value of both `Row` and `MAP Text` in `[| Row, MAP Text |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],
+                                                                                                                                    ^^^^^^^^^^^^^^^^
 
 == a nullable nullable, and a nullable choice with null
-PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
-schema:1:102: found `` `null `` as a value of both `Integer?` and `` `null `` in `Integer??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
-                                                                                                       ^^^^^^
-schema:1:116: found `` `null `` as a value of both `Gap` and `` `null `` in `Gap?`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],
-                                                                                                                     ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],
+schema:1:99: found `` `null `` as a value of both `Integer?` and `` `null `` in `Integer??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],
+                                                                                                    ^^^^^^
+schema:1:113: found `` `null `` as a value of both `Gap` and `` `null `` in `Gap?`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],
+                                                                                                                  ^^^^
 
 == a repeat made by a generic type's argument
-PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],
-schema:1:81: found `` `null `` as a value of both `Text?` and `` `null `` in `Text??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],
-                                                                                  ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
+schema:1:79: found `` `null `` as a value of both `Text?` and `` `null `` in `Text??`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
+  PROTOCOL a VERSION 1, TYPE Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],
+                                                                                ^^^^^^^^^^^^^^
 
 == a list or a map as a member
-PROTOCOL a VERSION 1, TYPE ALIAS Paths: UNION [LIST Text, `none],
-schema:1:48: found the word `LIST`; expected the word `` ` `` or `UNION`
-  PROTOCOL a VERSION 1, TYPE ALIAS Paths: UNION [LIST Text, `none],
-                                                 ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Paths [| LIST Text, `none |],
+schema:1:43: found the word `LIST`; expected the word `` ` ``
+  PROTOCOL a VERSION 1, TYPE ALIAS Paths [| LIST Text, `none |],
+                                            ^^^^

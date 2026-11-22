@@ -109,7 +109,7 @@ fn reads_registered_schemas_without_invoking_tools() {
             "other",
             NeverInvoke(
                 Schema::parse(
-                    "PROTOCOL other VERSION 1, METHOD greet (name: Text) RETURNS (value: Text) ERRORS []",
+                    "PROTOCOL other VERSION 1, METHOD greet (name: Text) RETURNS (value: Text) ERRORS [| |]",
                 )
                 .unwrap(),
             ),
@@ -165,14 +165,14 @@ fn replacing_in_the_middle_of_a_command_preserves_existing_arguments() {
 fn details_include_typed_errors_and_expand_shared_error_groups() {
     let mut shell = Interpreter::new();
     shell.register("other", NeverInvoke(Schema::parse(
-        "PROTOCOL other VERSION 1, TYPE ALIAS Common Errors: UNION [`offline], METHOD greet (name: Text) RETURNS (value: Text) ERRORS [`rejected (reason: Text), Common Errors]"
+        "PROTOCOL other VERSION 1, TYPE ALIAS Common Errors [| `offline |], METHOD greet (name: Text) RETURNS (value: Text) ERRORS [| `rejected (reason: Text), Common Errors |]"
     ).unwrap())).unwrap();
     let result = shell.completions("other / g", 9);
     assert_eq!(
         result.items[0].detail,
-        "returns Text\nERRORS [\n  `rejected (reason: Text),\n  `offline,\n]"
+        "returns Text\nERRORS [|\n  `rejected (reason: Text),\n  `offline,\n|]"
     );
 
     let result = self::shell().completions("environment / li", 16);
-    assert!(result.items[0].detail.ends_with("ERRORS []"));
+    assert!(result.items[0].detail.ends_with("ERRORS [| |]"));
 }

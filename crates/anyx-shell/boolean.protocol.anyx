@@ -2,13 +2,13 @@
 PROTOCOL boolean VERSION 1,
 
 # True when the input is false.
-READ ONLY METHOD not (value: Boolean) RETURNS (result: Boolean) ERRORS [],
+READ ONLY METHOD not (value: Boolean) RETURNS (result: Boolean) ERRORS [| |],
 
 # True when both inputs are true.
-READ ONLY METHOD (left: Boolean) and (right: Boolean) RETURNS (result: Boolean) ERRORS [],
+READ ONLY METHOD (left: Boolean) and (right: Boolean) RETURNS (result: Boolean) ERRORS [| |],
 
 # True when at least one input is true.
-READ ONLY METHOD (left: Boolean) or (right: Boolean) RETURNS (result: Boolean) ERRORS [],
+READ ONLY METHOD (left: Boolean) or (right: Boolean) RETURNS (result: Boolean) ERRORS [| |],
 
 # True when exactly one input is true.
-READ ONLY METHOD (left: Boolean) xor (right: Boolean) RETURNS (result: Boolean) ERRORS [],
+READ ONLY METHOD (left: Boolean) xor (right: Boolean) RETURNS (result: Boolean) ERRORS [| |],

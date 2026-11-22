@@ -11,7 +11,10 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyx_protocol::client::{CallError, Transport};
-use types::{Client, Reminder, Schedule, Server, SnoozeForError, Tone};
+use types::{
+    Client, InlineRecord1, InlineRecord2, InlineRecord3, InlineRecord4, InspectError, Reminder,
+    Schedule, Server, SnoozeForError, Tone,
+};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -59,6 +62,23 @@ impl Server for Reminders {
             at: reminder.at + duration,
             ..reminder
         }]))
+    }
+    async fn inspect(
+        &self,
+        filter: InlineRecord3,
+    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error> {
+        if filter.query.is_empty() {
+            return Ok(Err(InspectError::Invalid {
+                detail: InlineRecord4 {
+                    path: "query".into(),
+                },
+            }));
+        }
+        Ok(Ok(Some(InlineRecord1 {
+            rows: vec![InlineRecord2 {
+                value: filter.query,
+            }],
+        })))
     }
 }
 
@@ -198,4 +218,23 @@ fn maps_reach_the_server_and_come_back() {
         ]))
     );
     assert_eq!(run(client.count(BTreeMap::new())), Ok(BTreeMap::new()));
+}
+
+#[test]
+fn inline_records_round_trip_through_generated_client_and_server() {
+    let client = Client::new(InProcess);
+    assert_eq!(
+        run(client.inspect(InlineRecord3 {
+            query: "tea".into()
+        })),
+        Ok(Some(InlineRecord1 {
+            rows: vec![InlineRecord2 {
+                value: "tea".into()
+            }],
+        })),
+    );
+    assert!(matches!(
+        run(client.inspect(InlineRecord3 { query: String::new() })),
+        Err(CallError::Method(InspectError::Invalid { detail })) if detail.path == "query"
+    ));
 }

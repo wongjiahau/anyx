@@ -80,17 +80,17 @@ fn relative_paths_diamonds_and_unused_files() {
     let files = [
         (
             "notes/Entry File.anyx",
-            "PROTOCOL notes VERSION 1, USE \"./a.anyx\", USE \"./sub/b.anyx\", METHOD root RETURNS (x: Text) ERRORS [],",
+            "PROTOCOL notes VERSION 1, USE \"./a.anyx\", USE \"./sub/b.anyx\", METHOD root RETURNS (x: Text) ERRORS [| |],",
         ),
         (
             "notes/a.anyx",
-            "USE \"../shared.anyx\", RECORD First { item: Shared },",
+            "USE \"../shared.anyx\", TYPE First { item: Shared },",
         ),
         (
             "notes/sub/b.anyx",
-            "USE \"../../shared.anyx\", RECORD Second { item: Shared },",
+            "USE \"../../shared.anyx\", TYPE Second { item: Shared },",
         ),
-        ("shared.anyx", "PUBLIC RECORD Shared { value: Text },"),
+        ("shared.anyx", "PUBLIC TYPE Shared { value: Text },"),
         ("notes/draft.anyx", "this is not a valid schema"),
     ];
     let mut reads = std::collections::BTreeMap::new();
@@ -122,7 +122,7 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
         ),
         (
             "shared.anyx",
-            "PUBLIC RECORD Session { user: Text }, METHOD current RETURNS (session: Session) ERRORS [],",
+            "PUBLIC TYPE Session { user: Text }, METHOD current RETURNS (session: Session) ERRORS [| |],",
         ),
     ];
     for entry in ["notes.anyx", "billing.anyx", "shared.anyx"] {
@@ -136,8 +136,8 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
 #[test]
 fn own_declarations_and_direct_public_imports_are_visible() {
     let schema = load("entry.protocol.anyx", &[
-        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", RECORD Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS [Failures],"),
-        ("lib.anyx", "PUBLIC RECORD Item { value: Text }, PUBLIC TYPE ALIAS Failures: UNION [`gone],"),
+        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", TYPE Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS [| Failures |],"),
+        ("lib.anyx", "PUBLIC TYPE Item { value: Text }, PUBLIC TYPE ALIAS Failures [| `gone |],"),
     ]).unwrap();
     // `Failures`, an alias of a union of variants, is a type of its own.
     assert_eq!(schema.types.len(), 5);
@@ -147,15 +147,15 @@ fn own_declarations_and_direct_public_imports_are_visible() {
 #[test]
 fn imports_do_not_reexport_and_private_names_stay_private() {
     for declaration in [
-        "PUBLIC RECORD Item { value: Text },",
-        "RECORD Item { value: Text },",
+        "PUBLIC TYPE Item { value: Text },",
+        "TYPE Item { value: Text },",
     ] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[
                 (
                     "entry.protocol.anyx",
-                    "PROTOCOL p VERSION 1, USE \"./middle.anyx\", RECORD Local { value: Item },",
+                    "PROTOCOL p VERSION 1, USE \"./middle.anyx\", TYPE Local { value: Item },",
                 ),
                 ("middle.anyx", "USE \"./lib.anyx\","),
                 ("lib.anyx", declaration),
@@ -173,9 +173,9 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
         &[
             (
                 "entry.protocol.anyx",
-                "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS [Failures],",
+                "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS [| Failures |],",
             ),
-            ("lib.anyx", "TYPE ALIAS Failures: UNION [`gone],"),
+            ("lib.anyx", "TYPE ALIAS Failures [| `gone |],"),
         ],
     )
     .unwrap_err();
@@ -188,15 +188,12 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
 
 #[test]
 fn duplicate_names_include_both_files_even_when_private() {
-    for second in [
-        "RECORD Item { value: Text },",
-        "TYPE ALIAS Item: UNION [`gone],",
-    ] {
+    for second in ["TYPE Item { value: Text },", "TYPE ALIAS Item [| `gone |],"] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[
                 ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
-                ("a.anyx", "RECORD Item { value: Text },"),
+                ("a.anyx", "TYPE Item { value: Text },"),
                 ("b.anyx", second),
             ],
         )
@@ -217,8 +214,8 @@ fn duplicate_methods_across_files_are_rejected() {
             "entry.protocol.anyx",
             &[
                 ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
-                ("a.anyx", "METHOD f RETURNS (x: Text) ERRORS [],"),
-                ("b.anyx", "METHOD f RETURNS (x: Text) ERRORS [],"),
+                ("a.anyx", "METHOD f RETURNS (x: Text) ERRORS [| |],"),
+                ("b.anyx", "METHOD f RETURNS (x: Text) ERRORS [| |],"),
             ]
         )
         .unwrap_err()
@@ -280,8 +277,7 @@ fn invalid_imports_are_reported_at_the_use() {
 
 #[test]
 fn recursive_types_remain_valid_inside_a_library() {
-    Schema::parse("RECORD Folder { entries: LIST Entry }, RECORD Entry { parent: Folder },")
-        .unwrap();
+    Schema::parse("TYPE Folder { entries: LIST Entry }, TYPE Entry { parent: Folder },").unwrap();
 }
 
 #[test]
@@ -295,11 +291,11 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
             ),
             (
                 "files.protocol.anyx",
-                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [],",
+                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],",
             ),
             (
                 "shares.anyx",
-                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text) ERRORS [],",
+                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text) ERRORS [| |],",
             ),
         ],
     )
@@ -330,7 +326,7 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
 
 #[test]
 fn moving_an_imported_file_does_not_change_wire_names() {
-    let declaration = "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [],";
+    let declaration = "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],";
     let before = load(
         "entry.protocol.anyx",
         &[
@@ -373,7 +369,7 @@ fn absolute_entry_at_filesystem_root_keeps_relative_imports_absolute() {
                 "/entry.protocol.anyx",
                 "USE \"./shared.anyx\", USE \"./sub/../shared.anyx\",",
             ),
-            ("/shared.anyx", "RECORD Shared { value: Text },"),
+            ("/shared.anyx", "TYPE Shared { value: Text },"),
         ],
     )
     .unwrap();

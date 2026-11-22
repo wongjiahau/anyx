@@ -13,23 +13,23 @@ const SOURCE: &str = "PROTOCOL p VERSION 1,
 TYPE ALIAS Depth: Integer WHERE [0 <= _],
 TYPE ALIAS Size: Integer WHERE [0 <= _],
 TYPE ALIAS Small: Integer WHERE [_ < 10],
-TYPE ALIAS Shade: UNION [`dark, `light],
-TYPE ALIAS Colour: UNION [`dark, `light, `custom hue (hue: Float)],
-TYPE ALIAS Key: UNION [Integer, Text],
+TYPE ALIAS Shade [| `dark, `light |],
+TYPE ALIAS Colour [| `dark, `light, `custom hue (hue: Float) |],
+TYPE ALIAS Key [| Integer, Text |],
 NAMED TYPE File Id (Text),
 NAMED TYPE Share Id (Text),
-RECORD Page of (Item: TYPE) { items: LIST Item },
-RECORD Point { x: Integer, y: Integer },
-RECORD Point With Label { x: Integer, y: Integer, label (Text) DEFAULT label \"\" },
-RECORD Point In Space { x: Integer, y: Integer, z: Integer },
-RECORD Node { value: Integer, children: LIST Node },
-RECORD Link { value: Integer, children: LIST Link },
+TYPE Page of (Item: TYPE) { items: LIST Item },
+TYPE Point { x: Integer, y: Integer },
+TYPE Point With Label { x: Integer, y: Integer, label (Text) DEFAULT label \"\" },
+TYPE Point In Space { x: Integer, y: Integer, z: Integer },
+TYPE Node { value: Integer, children: LIST Node },
+TYPE Link { value: Integer, children: LIST Link },
 METHOD use (depth: Depth) (size: Size) (small: Small) (shade: Shade) (colour: Colour) (key: Key)
     (file: File Id) (share: Share Id)
     (depths: Page of (Depth)) (integers: Page of (Integer))
     (point: Point) (labelled: Point With Label) (with z: Point In Space) (node: Node) (link: Link)
     RETURNS NOTHING
-    ERRORS [],";
+    ERRORS [| |],";
 
 /// The types of `use`'s parameters, by name.
 fn types() -> (Schema, impl Fn(&str) -> Type) {

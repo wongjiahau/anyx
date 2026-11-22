@@ -326,10 +326,10 @@ fn method_completion(
     );
     let errors = schema.errors_of(method);
     let errors = if errors.is_empty() {
-        "ERRORS []".into()
+        "ERRORS [| |]".into()
     } else {
         format!(
-            "ERRORS [\n{}\n]",
+            "ERRORS [|\n{}\n|]",
             errors
                 .iter()
                 .map(|error| format!("  `{},", schema.typed_shape(&error.shape)))

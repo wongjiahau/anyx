@@ -10,26 +10,26 @@ use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
 NAMED TYPE File Id (Text),
-TYPE ALIAS Shade: UNION [`dark, `light],
-TYPE ALIAS Colour: UNION [`dark, `red],
-TYPE ALIAS Mood: UNION [`calm, `wild],
-RECORD Point { x: Integer, y: Integer },
-RECORD Size { x: Integer, label (Text) DEFAULT label \"\" },
-RECORD Width { x: Integer },
-METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [],
-METHOD tag (ids: LIST Integer) RETURNS NOTHING ERRORS [],
-METHOD open (path: Text) RETURNS NOTHING ERRORS [],
-METHOD open (id: File Id) RETURNS NOTHING ERRORS [],
-METHOD scale (factor: Float) RETURNS NOTHING ERRORS [],
-METHOD scale (times: Integer) RETURNS NOTHING ERRORS [],
-METHOD paint (shade: Shade) RETURNS NOTHING ERRORS [],
-METHOD paint (colour: Colour) RETURNS NOTHING ERRORS [],
-METHOD feel (mood: Mood) RETURNS NOTHING ERRORS [],
-METHOD move to (point: Point) RETURNS NOTHING ERRORS [],
-METHOD fit (size: Size) RETURNS NOTHING ERRORS [],
-METHOD show (shown: Boolean) RETURNS NOTHING ERRORS [],
-METHOD wait (length: Duration) RETURNS NOTHING ERRORS [],
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [],";
+TYPE ALIAS Shade [| `dark, `light |],
+TYPE ALIAS Colour [| `dark, `red |],
+TYPE ALIAS Mood [| `calm, `wild |],
+TYPE Point { x: Integer, y: Integer },
+TYPE Size { x: Integer, label (Text) DEFAULT label \"\" },
+TYPE Width { x: Integer },
+METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |],
+METHOD tag (ids: LIST Integer) RETURNS NOTHING ERRORS [| |],
+METHOD open (path: Text) RETURNS NOTHING ERRORS [| |],
+METHOD open (id: File Id) RETURNS NOTHING ERRORS [| |],
+METHOD scale (factor: Float) RETURNS NOTHING ERRORS [| |],
+METHOD scale (times: Integer) RETURNS NOTHING ERRORS [| |],
+METHOD paint (shade: Shade) RETURNS NOTHING ERRORS [| |],
+METHOD paint (colour: Colour) RETURNS NOTHING ERRORS [| |],
+METHOD feel (mood: Mood) RETURNS NOTHING ERRORS [| |],
+METHOD move to (point: Point) RETURNS NOTHING ERRORS [| |],
+METHOD fit (size: Size) RETURNS NOTHING ERRORS [| |],
+METHOD show (shown: Boolean) RETURNS NOTHING ERRORS [| |],
+METHOD wait (length: Duration) RETURNS NOTHING ERRORS [| |],
+METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |],";
 
 fn text(value: &str) -> Value {
     Value::Text(value.to_string())
@@ -228,10 +228,10 @@ fn undone_by_names_one_overload() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
 NAMED TYPE File Id (Text),
-METHOD hide (path: Text) RETURNS NOTHING ERRORS [] UNDONE BY show (path: Text),
-METHOD hide (id: File Id) RETURNS NOTHING ERRORS [] UNDONE BY show (id: File Id),
-METHOD show (path: Text) RETURNS NOTHING ERRORS [],
-METHOD show (id: File Id) RETURNS NOTHING ERRORS [],",
+METHOD hide (path: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path: Text),
+METHOD hide (id: File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: File Id),
+METHOD show (path: Text) RETURNS NOTHING ERRORS [| |],
+METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],",
     );
     assert_eq!(
         schema.methods[0].undone_by.as_ref().map(|undo| undo.method),
@@ -251,12 +251,12 @@ METHOD show (id: File Id) RETURNS NOTHING ERRORS [],",
 fn an_example_annotates_as_a_request_does() {
     let parsed = anyx_protocol::Schema::parse(
         "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [] EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
+METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
     );
     assert!(parsed.is_ok(), "{parsed:?}");
     let unannotated = common::diagnostics(
         "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [] EXAMPLES [read \"a\" RETURNS NOTHING],",
+METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read \"a\" RETURNS NOTHING],",
     );
     assert!(
         unannotated.contains(

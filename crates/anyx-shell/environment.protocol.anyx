@@ -1,31 +1,31 @@
 # The interpreter session's environment. Changes do not alter the parent process.
 PROTOCOL environment VERSION 1,
 
-RECORD Variable {
+TYPE Variable {
     name: Text,
     value: Text,
 },
 
-TYPE ALIAS Name Errors: UNION [
+TYPE ALIAS Name Errors [|
     # Names must be nonempty and contain neither an equals sign nor a null character.
     `invalid variable name,
-],
+|],
 
 # Includes empty values. Results are sorted by name, with case-sensitive names.
 READ ONLY METHOD list variables
     RETURNS (variables: LIST Variable)
-    ERRORS [],
+    ERRORS [| |],
 
 READ ONLY METHOD read variable (name: Text)
     RETURNS (value: Text)
-    ERRORS [`variable does not exist, Name Errors],
+    ERRORS [| `variable does not exist, Name Errors |],
 
 # Values may be empty but must not contain a null character.
 IDEMPOTENT METHOD set variable (name: Text) to (value: Text)
     RETURNS (variable: Variable)
-    ERRORS [`invalid variable value, Name Errors],
+    ERRORS [| `invalid variable value, Name Errors |],
 
 # Returns false if the variable was already absent.
 IDEMPOTENT METHOD remove variable (name: Text)
     RETURNS (removed: Boolean)
-    ERRORS [Name Errors],
+    ERRORS [| Name Errors |],

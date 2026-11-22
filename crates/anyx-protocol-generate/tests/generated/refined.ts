@@ -277,7 +277,8 @@ function encodeCall(method: MethodDescriptor, args: unknown[]): string {
   return method.shape.text.split(" ").map(word => {
     if (word !== "_") return word;
     const p = method.shape.params[i];
-    return `(${encodeValue(p.type, args[i++])} AS: ${p.annotation})`;
+    const value = encodeValue(p.type, args[i++]);
+    return p.annotation ? `(${value} AS: ${p.annotation})` : `(${value})`;
   }).join(" ");
 }
 

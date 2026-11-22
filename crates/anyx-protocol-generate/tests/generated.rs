@@ -141,20 +141,22 @@ fn error(source: &str) -> String {
 fn names_that_become_the_same_name_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [`gone]"
+            "PROTOCOL p VERSION 1, TYPE Read Error { a: Text }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [| `gone |]"
         ),
         "found the errors of `read _`, which becomes the type `ReadError`, like the type `Read Error`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, RECORD Client { a: Text }"),
+        error("PROTOCOL p VERSION 1, TYPE Client { a: Text }"),
         "found the type `Client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, TYPE ALIAS Record: UNION [`a]"),
+        error("PROTOCOL p VERSION 1, TYPE ALIAS Record [| `a |]"),
         "found the type `Record`, which becomes the type `Record`, like the generated `Record`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean) ERRORS []"),
+        error(
+            "PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean) ERRORS [| |]"
+        ),
         "found `send _`, which becomes the method `send`, like the client's `send`; expected names that stay distinct in the generated code, so rename one"
     );
 }
@@ -163,14 +165,12 @@ fn names_that_become_the_same_name_are_rejected() {
 fn generic_types_whose_words_are_the_same_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, RECORD page of (Item: TYPE) { items: LIST: Item }, RECORD page (Item: TYPE) of { item: Item }"
+            "PROTOCOL p VERSION 1, TYPE page of (Item: TYPE) { items: LIST: Item }, TYPE page (Item: TYPE) of { item: Item }"
         ),
         "found the type `page (Item) of`, which becomes the type `PageOf`, like the type `page of (Item)`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error(
-            "PROTOCOL p VERSION 1, RECORD Page { a: Text }, RECORD page (Item: TYPE) { item: Item }"
-        ),
+        error("PROTOCOL p VERSION 1, TYPE Page { a: Text }, TYPE page (Item: TYPE) { item: Item }"),
         "found the type `page (Item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
     );
 }
@@ -178,7 +178,7 @@ fn generic_types_whose_words_are_the_same_are_rejected() {
 #[test]
 fn a_keyword_becomes_a_raw_identifier() {
     let schema =
-        Schema::parse("PROTOCOL p VERSION 1, RECORD Box { type: Text, loop: Integer }").unwrap();
+        Schema::parse("PROTOCOL p VERSION 1, TYPE Box { type: Text, loop: Integer }").unwrap();
     let code = anyx_protocol_generate::rust(&schema).unwrap();
     assert!(code.contains("pub r#type: String"), "{code}");
     assert!(code.contains("pub r#loop: i64"), "{code}");
@@ -223,7 +223,7 @@ fn the_typescript_client_of_overloads_is_up_to_date() {
 fn an_overload_whose_name_another_method_has_is_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, METHOD tag (a: Text) RETURNS NOTHING ERRORS [], METHOD tag (a: Integer) RETURNS NOTHING ERRORS [], METHOD tag with text RETURNS NOTHING ERRORS [],"
+            "PROTOCOL p VERSION 1, METHOD tag (a: Text) RETURNS NOTHING ERRORS [| |], METHOD tag (a: Integer) RETURNS NOTHING ERRORS [| |], METHOD tag with text RETURNS NOTHING ERRORS [| |],"
         ),
         "found `tag with text`, which becomes the method `tag_with_text`, like `tag (Text)`; expected names that stay distinct in the generated code, so rename one"
     );

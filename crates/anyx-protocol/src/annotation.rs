@@ -64,7 +64,7 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
                 let TypeKind::Record(fields) = &definition.kind else {
                     return false;
                 };
-                if !definition.parameters.is_empty() {
+                if definition.anonymous || !definition.parameters.is_empty() {
                     return false;
                 }
                 let Some(filled) = entries
@@ -217,8 +217,8 @@ fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
         ast::Type::List(list) => Type::List(Box::new(resolve(schema, &list.item)?)),
         ast::Type::Map(map) => Type::Map(Box::new(resolve(schema, &map.value)?)),
         // A request's annotation is written in the request grammar, which
-        // has no `UNION`.
-        ast::Type::Union(_) => return None,
+        // has no inline record or union type.
+        ast::Type::Record(_) | ast::Type::Union(_) => return None,
         ast::Type::Named(reference) => {
             if let Some(built_in) = crate::prelude::reference(reference) {
                 return Some(built_in);
