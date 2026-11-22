@@ -248,7 +248,7 @@ fn refined_types_are_generated_with_checked_constructors() {
 fn generic_symbol_words_generate_identifiers() {
     let schema = Schema::parse(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) ++: { item: Item },
+        TYPE ALIAS (Item: TYPE) ++: { item (item: Item) },
         METHOD f (wrapped: Text++) RETURNS NOTHING ERRORS [| |],",
     )
     .unwrap();
