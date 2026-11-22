@@ -111,7 +111,7 @@ fn poentaros_schema_reads_with_its_docs_shapes_and_errors() {
 fn a_choice_names_the_union_that_replaced_it() {
     let message = diagnostics("PROTOCOL a VERSION 1, CHOICE Case { `smart, `any },");
     assert!(
-        message.contains("expected `TYPE ALIAS Case: [|"),
+        message.contains("expected `TYPE ALIAS Case [|"),
         "{message}"
     );
 }
@@ -121,7 +121,7 @@ fn a_union_member_may_have_a_doc_before_it() {
     schema(
         "PROTOCOL a VERSION 1,
         NAMED TYPE File Id (Text),
-        TYPE ALIAS Target: [|
+        TYPE ALIAS Target [|
             # A file by its id.
             File Id,
             # Nothing at all.
@@ -129,7 +129,7 @@ fn a_union_member_may_have_a_doc_before_it() {
         |],",
     );
     let message = diagnostics(
-        "PROTOCOL a VERSION 1, TYPE ALIAS Target: [| Integer # A count.
+        "PROTOCOL a VERSION 1, TYPE ALIAS Target [| Integer # A count.
         |],",
     );
     assert!(
@@ -143,8 +143,8 @@ fn a_union_member_may_have_a_doc_before_it() {
 #[test]
 fn a_union_of_variants_cannot_lead_back_to_itself() {
     for source in [
-        "PROTOCOL a VERSION 1, TYPE ALIAS Tree: [| `leaf, `node (children: LIST Tree) |],",
-        "PROTOCOL a VERSION 1, TYPE ALIAS Alpha: [| `beta (b: Beta) |], TYPE ALIAS Beta: [| `alpha (a: MAP Alpha), `none |],",
+        "PROTOCOL a VERSION 1, TYPE ALIAS Tree [| `leaf, `node (children: LIST Tree) |],",
+        "PROTOCOL a VERSION 1, TYPE ALIAS Alpha [| `beta (b: Beta) |], TYPE ALIAS Beta [| `alpha (a: MAP Alpha), `none |],",
     ] {
         let message = diagnostics(source);
         assert!(
@@ -158,7 +158,7 @@ fn a_union_of_variants_cannot_lead_back_to_itself() {
 fn variants_are_shapes_with_docs() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Mode: [|
+        TYPE ALIAS Mode [|
             `dark,
             # A colour of the wheel.
             `custom hue (hue: Float) lightness (lightness: Float),
@@ -189,7 +189,7 @@ fn variants_are_shapes_with_docs() {
 fn optional_fields_and_record_inputs_read() {
     let schema = schema(
         "PROTOCOL shop VERSION 2,
-        TYPE Filter: { name (Text) DEFAULT name \"\", limit (Integer) DEFAULT limit 0 },
+        TYPE Filter { name (Text) DEFAULT name \"\", limit (Integer) DEFAULT limit 0 },
         METHOD find (filter: Filter) RETURNS (names: LIST Text) ERRORS [| |],",
     );
     let TypeKind::Record(fields) = &schema.types[0].kind else {
@@ -212,7 +212,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an old all-caps name inside a list",
-            "PROTOCOL a VERSION 1, TYPE Example: { tags: LIST: TEXT },",
+            "PROTOCOL a VERSION 1, TYPE Example { tags: LIST: TEXT },",
         ),
         (
             "INTRINSIC in a schema",
@@ -220,7 +220,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "INTRINSIC on a record in a schema",
-            "PROTOCOL a VERSION 1, INTRINSIC TYPE Example: { a: Text },",
+            "PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a: Text },",
         ),
         (
             "INTRINSIC on a method",
@@ -228,7 +228,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type named like a built-in one",
-            "PROTOCOL a VERSION 1, TYPE Integer: { a: Text },",
+            "PROTOCOL a VERSION 1, TYPE Integer { a: Text },",
         ),
         (
             "a type alias without a type",
@@ -244,15 +244,15 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type defined twice",
-            "PROTOCOL a VERSION 1, TYPE Example: { a: Text }, TYPE ALIAS Example: [| `b |],",
+            "PROTOCOL a VERSION 1, TYPE Example { a: Text }, TYPE ALIAS Example [| `b |],",
         ),
         (
             "a field twice",
-            "PROTOCOL a VERSION 1, TYPE Example: { a: Text, a: Integer },",
+            "PROTOCOL a VERSION 1, TYPE Example { a: Text, a: Integer },",
         ),
         (
             "a variant twice",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Example: [| `a, `a (b: Text) |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b: Text) |],",
         ),
         (
             "a parameter twice",
@@ -272,31 +272,31 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a type holding itself",
-            "PROTOCOL a VERSION 1, TYPE Node: { next: Node }, TYPE Tree: { children: LIST: Tree },",
+            "PROTOCOL a VERSION 1, TYPE Node { next: Node }, TYPE Tree { children: LIST: Tree },",
         ),
         (
             "a type holding itself through an optional field",
-            "PROTOCOL a VERSION 1, TYPE Node: { next (Node?) DEFAULT next (`null) }, TYPE Tree: { children: MAP: Tree },",
+            "PROTOCOL a VERSION 1, TYPE Node { next (Node?) DEFAULT next (`null) }, TYPE Tree { children: MAP: Tree },",
         ),
         (
             "a map default that is not a map",
-            "PROTOCOL a VERSION 1, TYPE Example: { a (MAP: Integer) DEFAULT a [] },",
+            "PROTOCOL a VERSION 1, TYPE Example { a (MAP: Integer) DEFAULT a [] },",
         ),
         (
             "a cycle through a union of variants",
-            "PROTOCOL a VERSION 1, TYPE Alpha: { b: Beta }, TYPE ALIAS Beta: [| `has (a: Alpha), `none |],",
+            "PROTOCOL a VERSION 1, TYPE Alpha { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],",
         ),
         (
             "names that are not lowercase ASCII",
-            "PROTOCOL a VERSION 1, TYPE Example: { Path: Text, café: Text },",
+            "PROTOCOL a VERSION 1, TYPE Example { Path: Text, café: Text },",
         ),
         (
             "a parameter named kind",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Example: [| `y (kind: Text) |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind: Text) |],",
         ),
         (
             "a keyword in a name",
-            "PROTOCOL a VERSION 1, TYPE Example: { a Text b: Text },",
+            "PROTOCOL a VERSION 1, TYPE Example { a Text b: Text },",
         ),
         (
             "a method without errors",
@@ -312,19 +312,19 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an alias of other types among errors",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Maybe: [| Text, `none |], METHOD f RETURNS (y: Text) ERRORS [| Maybe |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Maybe [| Text, `none |], METHOD f RETURNS (y: Text) ERRORS [| Maybe |],",
         ),
         (
             "aliases including each other",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Read Errors: [| `a, Write Errors |], TYPE ALIAS Write Errors: [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],",
         ),
         (
             "an error listed twice through an alias",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: [| `gone |], METHOD f RETURNS (y: Text) ERRORS [| Shared, Shared |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `gone |], METHOD f RETURNS (y: Text) ERRORS [| Shared, Shared |],",
         ),
         (
             "an alias including an unknown alias",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],",
         ),
         (
             "a group of errors",
@@ -340,7 +340,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "an operator after a method's errors",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shared: [| `a |], METHOD f RETURNS (y: Text) ERRORS [| `b |] + Shared,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a |], METHOD f RETURNS (y: Text) ERRORS [| `b |] + Shared,",
         ),
         (
             "an error defined on its own",
@@ -352,7 +352,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "a string inside a variant",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Example: [| `y (a: Text) # doc\n|],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (a: Text) # doc\n|],",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -379,19 +379,19 @@ fn a_doc_is_a_line_string() {
         ),
         (
             "a quoted doc on a record",
-            "PROTOCOL a VERSION 1, \"A file.\" TYPE File: { path: Text },",
+            "PROTOCOL a VERSION 1, \"A file.\" TYPE File { path: Text },",
         ),
         (
             "a quoted doc on a field",
-            "PROTOCOL a VERSION 1, TYPE File: { \"Where it is.\" path: Text },",
+            "PROTOCOL a VERSION 1, TYPE File { \"Where it is.\" path: Text },",
         ),
         (
             "a quoted doc on a choice",
-            "PROTOCOL a VERSION 1, \"A shade.\" TYPE ALIAS Shade: [| `dark, `light |],",
+            "PROTOCOL a VERSION 1, \"A shade.\" TYPE ALIAS Shade [| `dark, `light |],",
         ),
         (
             "a quoted doc on a variant",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: [| `\"Dim.\" dark, light |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `\"Dim.\" dark, light |],",
         ),
         (
             "a quoted doc on a type",
@@ -427,9 +427,7 @@ fn the_example_in_protocol_md_reads() {
             .len(),
         4
     );
-    let formatted = anyx_protocol::format_schema(example).unwrap();
-    assert_eq!(anyx_protocol::format_schema(&formatted).unwrap(), formatted);
-    common::schema(&formatted);
+    assert_eq!(anyx_protocol::format_schema(example).unwrap(), example);
 }
 
 #[test]
@@ -451,9 +449,9 @@ fn a_method_may_return_nothing() {
 fn an_optional_field_may_have_a_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Shade: [| `dark, `light |],
-        TYPE Page: { size (Integer) DEFAULT size 50, after (Text) DEFAULT after \"\" },
-        TYPE Search: {
+        TYPE ALIAS Shade [| `dark, `light |],
+        TYPE Page { size (Integer) DEFAULT size 50, after (Text) DEFAULT after \"\" },
+        TYPE Search {
             query: Text,
             limit (Integer) DEFAULT limit 50,
             include trash (Boolean) DEFAULT include trash (`false),
@@ -536,15 +534,15 @@ fn mistakes_in_a_default_are_diagnosed() {
     let cases = [
         (
             "a default of another type",
-            "PROTOCOL a VERSION 1, TYPE Example: { limit (Integer) DEFAULT limit \"50\" },",
+            "PROTOCOL a VERSION 1, TYPE Example { limit (Integer) DEFAULT limit \"50\" },",
         ),
         (
             "a default that is no variant",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: [| `dark |], TYPE Example: { shade (Shade) DEFAULT shade (`dim) },",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade [| `dark |], TYPE Example { shade (Shade) DEFAULT shade (`dim) },",
         ),
         (
             "the removed OPTIONAL keyword",
-            "PROTOCOL a VERSION 1, TYPE Example: { limit: OPTIONAL Integer },",
+            "PROTOCOL a VERSION 1, TYPE Example { limit: OPTIONAL Integer },",
         ),
         (
             "a default on a parameter",
@@ -574,8 +572,8 @@ TYPE Search { limit (Integer) DEFAULT limit 50, tags (LIST Text) DEFAULT tags []
 fn a_map_holds_values_by_text_and_may_hold_its_own_type() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Shade: [| `dark, `light |],
-        TYPE Folder: {
+        TYPE ALIAS Shade [| `dark, `light |],
+        TYPE Folder {
             files: MAP Integer,
             folders: MAP: Folder,
             shades (MAP: Shade) DEFAULT shades { \"a\": `dark },
@@ -638,12 +636,12 @@ fn the_request_decoder_is_what_its_grammar_generates() {
 #[test]
 fn simple_type_names_use_title_case() {
     schema(
-        "PROTOCOL a VERSION 1, TYPE File Summary: { path: Text }, TYPE ALIAS File Format: [| `pdf |], TYPE ALIAS Some Format: File Format,",
+        "PROTOCOL a VERSION 1, TYPE File Summary { path: Text }, TYPE ALIAS File Format [| `pdf |], TYPE ALIAS Some Format: File Format,",
     );
     for name in ["file summary", "FileSummary", "File summary"] {
         for declaration in [
-            format!("TYPE {name}: {{ path: Text }}"),
-            format!("TYPE ALIAS {name}: [| `pdf |]"),
+            format!("TYPE {name} {{ path: Text }}"),
+            format!("TYPE ALIAS {name} [| `pdf |]"),
             format!("TYPE {name}: Text"),
         ] {
             let message = diagnostics(&format!("PROTOCOL a VERSION 1, {declaration},"));

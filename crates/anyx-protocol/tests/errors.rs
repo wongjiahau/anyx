@@ -38,8 +38,8 @@ fn a_method_without_errors_is_reported() {
 fn an_alias_is_flattened_in_order() {
     let found = errors(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Common Errors: [| `offline, `busy |],
-        TYPE ALIAS File Errors: [| `trashed, Common Errors |],
+        TYPE ALIAS Common Errors [| `offline, `busy |],
+        TYPE ALIAS File Errors [| `trashed, Common Errors |],
         METHOD read (path: Text) RETURNS NOTHING ERRORS [| `locked at (path: Text), File Errors, `too large |],",
         "read _",
     );
@@ -53,8 +53,8 @@ fn an_alias_is_flattened_in_order() {
 fn an_alias_may_include_one_declared_after_it() {
     let found = errors(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS File Errors: [| `trashed, Common Errors |],
-        TYPE ALIAS Common Errors: [| `offline |],
+        TYPE ALIAS File Errors [| `trashed, Common Errors |],
+        TYPE ALIAS Common Errors [| `offline |],
         METHOD read RETURNS NOTHING ERRORS [| File Errors |],",
         "read",
     );
@@ -65,7 +65,7 @@ fn an_alias_may_include_one_declared_after_it() {
 fn a_generic_alias_is_flattened_with_its_arguments() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) Conflicts: [| `conflict with (current: Item) |],
+        TYPE ALIAS (Item: TYPE) Conflicts [| `conflict with (current: Item) |],
         METHOD save RETURNS NOTHING ERRORS [| (Integer) Conflicts |],",
     );
     let method = schema.method("save").unwrap();
@@ -80,8 +80,8 @@ fn a_generic_alias_is_flattened_with_its_arguments() {
 fn an_alias_may_include_a_generic_alias() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) Conflicts: [| `conflict with (current: Item) |],
-        TYPE ALIAS Save Errors: [| `busy, (Integer) Conflicts |],
+        TYPE ALIAS (Item: TYPE) Conflicts [| `conflict with (current: Item) |],
+        TYPE ALIAS Save Errors [| `busy, (Integer) Conflicts |],
         METHOD save RETURNS NOTHING ERRORS [| Save Errors |],",
     );
     let method = schema.method("save").unwrap();
@@ -101,7 +101,7 @@ fn an_alias_may_include_a_generic_alias() {
 fn an_error_named_twice_is_reported() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS File Errors: [| `trashed, `missing |],
+        TYPE ALIAS File Errors [| `trashed, `missing |],
         METHOD read RETURNS NOTHING ERRORS [| `missing, File Errors |],",
     );
     assert!(
@@ -114,8 +114,8 @@ fn an_error_named_twice_is_reported() {
 fn an_alias_including_a_variant_twice_is_reported() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Common Errors: [| `offline |],
-        TYPE ALIAS File Errors: [| `offline, Common Errors |],
+        TYPE ALIAS Common Errors [| `offline |],
+        TYPE ALIAS File Errors [| `offline, Common Errors |],
         METHOD read RETURNS NOTHING ERRORS [| File Errors |],",
     );
     assert!(
@@ -128,7 +128,7 @@ fn an_alias_including_a_variant_twice_is_reported() {
 fn an_alias_that_includes_itself_is_not_a_union_of_variants() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Loop Errors: [| `stuck, Loop Errors |],
+        TYPE ALIAS Loop Errors [| `stuck, Loop Errors |],
         METHOD spin RETURNS NOTHING ERRORS [| Loop Errors |],",
     );
     assert!(found.contains("among a method's errors"), "{found}");
@@ -139,7 +139,7 @@ fn an_error_that_is_not_a_variant_is_reported() {
     for member in ["Integer", "[| `a, `b |]", "Maybe Text"] {
         let found = diagnostics(&format!(
             "PROTOCOL p VERSION 1,
-            TYPE ALIAS Maybe Text: [| Text, `none |],
+            TYPE ALIAS Maybe Text [| Text, `none |],
             METHOD f RETURNS NOTHING ERRORS [| {member} |],"
         ));
         assert!(

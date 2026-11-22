@@ -12,7 +12,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-TYPE Reminder: {
+TYPE Reminder {
     note: Text,
     at: Instant,
     every (Duration?) DEFAULT every (`null),
@@ -28,9 +28,9 @@ TYPE Reminder: {
     `(pinned: [| `pinned, `null |]) DEFAULT `null,
 },
 
-TYPE ALIAS Tone: [| `chime, `silent |],
+TYPE ALIAS Tone [| `chime, `silent |],
 
-TYPE ALIAS Schedule: [| `never, `once at (at: Instant), `every (period: Duration) |],
+TYPE ALIAS Schedule [| `never, `once at (at: Instant), `every (period: Duration) |],
 
 METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [| |],
 
@@ -44,7 +44,7 @@ METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minu
         `overdue since (since: Instant),
     |],
 
-TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
+TYPE ALIAS page of (Item: TYPE) { rows: LIST { value: Item } },
 
 METHOD inspect (filter: { query: Text })
     RETURNS (result: [| page of (Text), `null |])

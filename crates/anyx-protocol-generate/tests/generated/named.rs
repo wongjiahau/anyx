@@ -18,12 +18,12 @@ NAMED TYPE Share Id (Text),
 
 TYPE ALIAS Tags: LIST Text,
 
-TYPE File Link: { share id: Share Id, file id: File Id, tags: Tags },
+TYPE File Link { share id: Share Id, file id: File Id, tags: Tags },
 
 # A link someone may open.
 TYPE ALIAS Link: File Link,
 
-TYPE ALIAS Access: [| `read, `write |],
+TYPE ALIAS Access [| `read, `write |],
 
 TYPE ALIAS Level: Access,
 
@@ -53,7 +53,7 @@ TYPE ALIAS Opened At: Instant,
 
 TYPE ALIAS Openings: MAP: Opened At,
 
-TYPE Visit: { at: Opened At, by person: Openings, label (Share Id) DEFAULT label (Share Id "none") },
+TYPE Visit { at: Opened At, by person: Openings, label (Share Id) DEFAULT label (Share Id "none") },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit) ERRORS [| |],
 "#,

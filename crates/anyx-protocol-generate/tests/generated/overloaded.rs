@@ -14,7 +14,7 @@ PROTOCOL tagging VERSION 1,
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
-TYPE ALIAS Shade: [| `dark, `light |],
+TYPE ALIAS Shade [| `dark, `light |],
 
 # Tags files by their paths.
 METHOD tag (paths: LIST Text)

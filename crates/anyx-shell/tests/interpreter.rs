@@ -233,7 +233,7 @@ impl Tool for ExampleTool {
 fn tool_bodies_keep_protocol_records_lists_and_nothing_returns() {
     let mut interpreter = interpreter();
     interpreter.register("example", ExampleTool(Schema::parse(
-        "PROTOCOL example VERSION 1, TYPE Entry: { names: LIST Text }, METHOD echo (entry: Entry) RETURNS (entry: Entry) ERRORS [| |], METHOD finish RETURNS NOTHING ERRORS [| |]"
+        "PROTOCOL example VERSION 1, TYPE Entry { names: LIST Text }, METHOD echo (entry: Entry) RETURNS (entry: Entry) ERRORS [| |], METHOD finish RETURNS NOTHING ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter.execute(
         "## a shell comment\nexample / echo { names: [\"a/b\", \"c,d\"] },\nexample / finish,\nenvironment / list variables,"
@@ -269,7 +269,7 @@ fn preconditions_are_checked_before_a_call_runs() {
             SettingsTool(
                 Schema::parse(
                     r#"PROTOCOL example VERSION 1,
-                    TYPE ALIAS Setting: [| `any case, `exact case, `hidden |],
+                    TYPE ALIAS Setting [| `any case, `exact case, `hidden |],
                     METHOD echo (settings: LIST Setting)
                         REQUIRES [settings . has at most one of [`any case, `exact case]]
                         RETURNS (settings: LIST Setting)

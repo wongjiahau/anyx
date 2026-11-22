@@ -1,7 +1,7 @@
 # One problem in a note.
-PUBLIC TYPE Diagnostic: { line: Integer, message: Text },
+PUBLIC TYPE Diagnostic { line: Integer, message: Text },
 
-PUBLIC TYPE ALIAS Common Errors: [|
+PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
     `missing,
 |],

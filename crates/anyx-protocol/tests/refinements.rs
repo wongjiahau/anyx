@@ -10,7 +10,7 @@ TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
 TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
 TYPE ALIAS Short Text: Text . WHERE [1 <= (_ length) <= 3],
-TYPE Summary: { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
+TYPE Summary { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
 METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision) ERRORS [| |],
 METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]) ERRORS [| |],
 METHOD summary (value: Summary) RETURNS (value: Summary) ERRORS [| |],
@@ -89,8 +89,8 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
     };
     assert_eq!(fields["limit"], Value::Integer(10));
     for source in [
-        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE Row: { xs: LIST Positive }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
-        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE Row: { xs: MAP Positive }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
+        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE Row { xs: LIST Positive }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
+        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE Row { xs: MAP Positive }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
     ] {
         let s = Schema::parse(source).unwrap();
         let wire = if source.contains("LIST") {
@@ -101,7 +101,7 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
         assert!(decode_request(&s, wire).is_err());
     }
     let invalid = Schema::parse(
-        "TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30], TYPE Row: { limit (Limit) DEFAULT limit 30 }",
+        "TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30], TYPE Row { limit (Limit) DEFAULT limit 30 }",
     )
     .unwrap_err();
     assert!(
@@ -156,7 +156,7 @@ fn predicates_are_typed_linear_and_do_not_guess_operator_precedence() {
         "Integer . WHERE [(_ length) < 4]",
     ] {
         assert!(
-            Schema::parse(&format!("TYPE ALIAS Bad: {body}")).is_err(),
+            Schema::parse(&format!("TYPE ALIAS Bad {body}")).is_err(),
             "{body}"
         );
     }
@@ -280,7 +280,7 @@ fn json_preserves_primitives_and_reports_the_same_predicate_errors() {
 fn refined_named_types_cannot_hide_recursive_cycles() {
     for source in [
         "TYPE ALIAS Loop: Loop . WHERE [0 < _]",
-        "TYPE Loop: { next: Loop . WHERE [0 < _] }",
+        "TYPE Loop { next: Loop . WHERE [0 < _] }",
     ] {
         assert!(Schema::parse(source).is_err());
     }
@@ -319,7 +319,7 @@ fn imports_keep_predicate_diagnostic_locations_and_aliased_refinements() {
 
 #[test]
 fn inline_refinements_work_inside_generic_arguments_and_container_constraints() {
-    let schema_source = "TYPE Box of (Item: TYPE): { value: Item }, TYPE ALIAS Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING ERRORS [| |], METHOD batch (value: Batch) RETURNS NOTHING ERRORS [| |]";
+    let schema_source = "TYPE Box of (Item: TYPE) { value: Item }, TYPE ALIAS Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING ERRORS [| |], METHOD batch (value: Batch) RETURNS NOTHING ERRORS [| |]";
     let schema = Schema::parse(schema_source).unwrap();
     let call = Call {
         method: 0,

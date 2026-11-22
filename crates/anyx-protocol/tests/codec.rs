@@ -156,9 +156,9 @@ fn an_invalid_request_reads_back() {
 }
 
 const MODES: &str = "PROTOCOL a VERSION 1,
-TYPE ALIAS Shade: [| `dark, `light |],
-TYPE ALIAS Mode: [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
-TYPE Options: { mode: Mode, strict (Boolean) DEFAULT strict (`false) },
+TYPE ALIAS Shade [| `dark, `light |],
+TYPE ALIAS Mode [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
+TYPE Options { mode: Mode, strict (Boolean) DEFAULT strict (`false) },
 METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean) ERRORS [| |],
 METHOD apply (options: Options) RETURNS (modes: LIST: Mode) ERRORS [| |],";
 
@@ -450,7 +450,7 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-TYPE Timer: { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
+TYPE Timer { at: Instant, every: Duration, pause (Duration) DEFAULT pause (0 seconds) },
 METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant) ERRORS [| |],
 METHOD set (timer: Timer) RETURNS (left: Duration) ERRORS [| |],
 METHOD list RETURNS (durations: LIST Duration) ERRORS [| |],
@@ -569,7 +569,7 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE Search: { query: Text, limit (Integer) DEFAULT limit 50, note (Text) DEFAULT note \"\" },
+        TYPE Search { query: Text, limit (Integer) DEFAULT limit 50, note (Text) DEFAULT note \"\" },
         METHOD find (search: Search) RETURNS (search: Search) ERRORS [| |],",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
@@ -596,8 +596,8 @@ fn a_field_left_out_takes_its_default() {
 }
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
-TYPE ALIAS Mood: [| `calm, `wild |],
-TYPE Tally: { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
+TYPE ALIAS Mood [| `calm, `wild |],
+TYPE Tally { counts: MAP Integer, moods (MAP: Mood) DEFAULT moods {} },
 METHOD count (tally: Tally) RETURNS (counts: MAP Integer) ERRORS [| |],
 METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood) ERRORS [| |],";
 

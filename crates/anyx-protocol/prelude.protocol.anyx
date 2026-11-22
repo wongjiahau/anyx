@@ -29,7 +29,7 @@ INTRINSIC TYPE Integer,
 INTRINSIC TYPE Float,
 
 # `` `true `` or `` `false ``.
-TYPE ALIAS Boolean: [| `false, `true |],
+TYPE ALIAS Boolean [| `false, `true |],
 
 # A point in time, in UTC to the millisecond, as a string:
 # `"2026-11-14T06:00:08.000Z"`.
@@ -58,7 +58,7 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-TYPE Schema File: {
+TYPE Schema File {
     path: Text,
     source: Text,
 },

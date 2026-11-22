@@ -73,7 +73,7 @@ the account, such as by sending or sharing it.
   share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` {{ status: `done }} ``, `{{ timeout: 5 minutes }}`.
-- A union of variants, `` TYPE ALIAS Shade: [| `dark, `light |] ``, is
+- A union of variants, `` TYPE ALIAS Shade [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
@@ -280,8 +280,8 @@ fn wrap(text: &str, indent: &str) -> String {
 }
 
 /// The rule for generic types, shown with the schema's first one: "`TYPE
-/// page of (Item: TYPE): { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
-/// TYPE): [| … |]`", then a use of it. Empty for a schema without any.
+/// page of (Item: TYPE) { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
+/// TYPE) [| … |]`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
@@ -291,8 +291,8 @@ fn generic_types(schema: &Schema) -> String {
         return String::new();
     };
     let (keyword, body) = match definition.kind {
-        TypeKind::Variants(_) => ("TYPE ALIAS", ": [| … |]"),
-        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("TYPE", ": { … }"),
+        TypeKind::Variants(_) => ("TYPE ALIAS", " [| … |]"),
+        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("TYPE", " { … }"),
     };
     let declared: Vec<String> = definition
         .parameters

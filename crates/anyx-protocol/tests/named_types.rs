@@ -15,7 +15,7 @@ NAMED TYPE File Id (Text),
 
 TYPE ALIAS Tags: LIST Text,
 
-TYPE File Link: { file id: File Id, tags: Tags },
+TYPE File Link { file id: File Id, tags: Tags },
 
 METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [| `missing (id: File Id) |],
 ";
@@ -273,11 +273,11 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, TYPE Row: { x: Alpha }, NAMED TYPE Alpha (Row),",
+            "PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha: { b: Text },",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha { b: Text },",
         ),
         (
             "a named type over an unknown type",

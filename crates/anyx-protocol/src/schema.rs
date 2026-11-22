@@ -58,7 +58,7 @@ pub struct TypeDefinition {
     pub doc: Option<String>,
     /// Its shape: lowercase words, such as `file summary`, with `_` for
     /// each slot of a generic record or choice, such as `page of _` for
-    /// `TYPE Page of (Item: TYPE): { … }`. A type is known by its words and
+    /// `TYPE Page of (Item: TYPE) { … }`. A type is known by its words and
     /// where its slots sit, so `page` and `page of _` are two types.
     pub name: String,
     /// The type parameters of a generic record or choice, one per slot of
@@ -96,7 +96,7 @@ pub fn fill_slots(text: &str, arguments: &[String]) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
     Record(Vec<Field>),
-    /// An alias of a union of variants, `` TYPE ALIAS Case: [| `smart,
+    /// An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
     /// `any |] ``: its variants, each written in its own shape. Unlike other
     /// aliases it keeps its name, for generated code and messages, while
     /// its values are its variants, written the same.
@@ -1426,7 +1426,7 @@ impl Schema {
     }
 
     /// The variants of an alias of a union of variants, as types: `Shade`,
-    /// `` TYPE ALIAS Shade: [| `dark, `light |] ``, is `` `dark `` and
+    /// `` TYPE ALIAS Shade [| `dark, `light |] ``, is `` `dark `` and
     /// `` `light ``. `None` for any other type.
     fn variants_of(&self, r#type: &Type) -> Option<Vec<Type>> {
         if !matches!(r#type, Type::Named(_) | Type::Generic(..)) {
@@ -1852,7 +1852,7 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
             (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors: [| `trashed, `missing |] ``".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]

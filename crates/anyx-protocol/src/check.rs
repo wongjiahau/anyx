@@ -558,7 +558,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             found.body.name.span,
                             format!(
-                                "found `CHOICE {shown} {{ … }}`; expected `TYPE ALIAS {shown}: [| … |]`, since a choice is now a union of its variants; write the variants in the brackets, as in `` TYPE ALIAS Case: [| `smart, `any |] ``"
+                                "found `CHOICE {shown} {{ … }}`; expected `TYPE ALIAS {shown} [| … |]`, since a choice is now a union of its variants; write the variants in the brackets, as in `` TYPE ALIAS Case [| `smart, `any |] ``"
                             ),
                         );
                         // Read as the alias it should be, so that its uses
@@ -586,7 +586,7 @@ impl<'a> Checker<'a> {
                     },
                     ast::Definition::Errors(found) => self.error(
                         found.span,
-                        "found an `ERRORS` group; expected `` TYPE ALIAS File Errors: [| `missing, Other Errors |] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [| `conflict, File Errors |] ``; write its errors in the brackets, and each group it joined with `+` as a member",
+                        "found an `ERRORS` group; expected `` TYPE ALIAS File Errors [| `missing, Other Errors |] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [| `conflict, File Errors |] ``; write its errors in the brackets, and each group it joined with `+` as a member",
                     ),
                     ast::Definition::Function(function)
                         if function.intrinsic.is_some() && self.file == self.prelude_file => {}
@@ -1355,10 +1355,9 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found the `{keyword}` `{}` without its {what} in braces; expected them last, after its name, as in `{keyword} {}{separator} {{ … }}`",
+                    "found the `{keyword}` `{}` without its {what} in braces; expected them last, after its name, as in `{keyword} {} {{ … }}`",
                     fill_slots(&shape.name.value, &parameters),
                     fill_slots(&shape.name.value, &declared),
-                    separator = if keyword == "TYPE" { ":" } else { "" },
                 ),
             );
         }
@@ -1498,7 +1497,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Declares an alias of a union of variants as a type, so that it
-    /// keeps its name: `` TYPE ALIAS Case: [| `smart, `any |] ``.
+    /// keeps its name: `` TYPE ALIAS Case [| `smart, `any |] ``.
     fn declare_variants_alias(&mut self, alias: &ast::TypeAlias) {
         let shape = alias_shape(&alias.body);
         self.check_alias_shape(alias, &shape);

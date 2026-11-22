@@ -31,9 +31,9 @@ record: ANYFIX CALL [
 ],
 
 ## A record's name is a shape, then its fields in braces fill the last slot:
-## `File Summary: { path: Text }`. A generic record has a type parameter in
-## each other slot, anywhere among the words: `Page of (Item: TYPE): { … }`,
-## `(Item: TYPE) history: { … }`. The schema checker reads the shape from the
+## `File Summary { path: Text }`. A generic record has a type parameter in
+## each other slot, anywhere among the words: `Page of (Item: TYPE) { … }`,
+## `(Item: TYPE) history { … }`. The schema checker reads the shape from the
 ## call's name, requires Title Case for a name with no type parameters,
 ## and checks that the braces come last.
 record body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ONE OR MORE: alias part],
@@ -82,7 +82,7 @@ field slot: ONE OF [doc: LINE STRING, type],
 
 ## `` CHOICE Case { `smart, `any } ``, which a union of variants replaced:
 ## read only so that the checker can name what replaces it,
-## `` TYPE ALIAS Case: [| `smart, `any |] ``.
+## `` TYPE ALIAS Case [| `smart, `any |] ``.
 choice: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   public: OPTIONAL: WORD "PUBLIC",
@@ -124,7 +124,7 @@ named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
 ## each other slot of its name, anywhere among the words:
 ## `TYPE ALIAS (Item: TYPE) Pair: LIST Item`. The type it stands for fills
 ## the last slot; the checker reads the parameters from the others.
-## An alias of a union of variants, `` TYPE ALIAS Case: [| `smart,
+## An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
 ## `any |] ``, keeps its name, so generated code has an enum `Case` and
 ## messages say `Case`.
 type alias: ANYFIX CALL [
@@ -147,7 +147,7 @@ variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: shape par
 
 ## A group of errors, `` ERRORS file errors [`missing] + other errors ``,
 ## which an alias of a union of variants replaced: `` TYPE ALIAS File
-## Errors: [| `missing, Other Errors |] ``. It is read only so that the
+## Errors [| `missing, Other Errors |] ``. It is read only so that the
 ## checker can say how to write it now.
 errors: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,

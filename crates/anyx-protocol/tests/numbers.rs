@@ -59,7 +59,7 @@ fn a_float_is_written_with_a_point() {
 
 #[test]
 fn a_default_and_an_example_type_their_numbers_too() {
-    let default = diagnostics("PROTOCOL a VERSION 1, TYPE Row: { ratio (Float) DEFAULT ratio 1 },");
+    let default = diagnostics("PROTOCOL a VERSION 1, TYPE Row { ratio (Float) DEFAULT ratio 1 },");
     assert!(
         default.contains("found the Integer `1`; expected a Float, such as `1.0`"),
         "{default}"

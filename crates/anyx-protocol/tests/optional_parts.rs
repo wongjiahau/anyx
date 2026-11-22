@@ -8,8 +8,8 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SOURCE: &str = r#"PROTOCOL p VERSION 1,
-TYPE Search: { `(hidden: [| `hidden, `null |]) DEFAULT `null },
-TYPE ALIAS Order: [| `newest [first (count: Integer) DEFAULT first 10], `oldest |],
+TYPE Search { `(hidden: [| `hidden, `null |]) DEFAULT `null },
+TYPE ALIAS Order [| `newest [first (count: Integer) DEFAULT first 10], `oldest |],
 READ ONLY METHOD find (pattern: Text)
     [in (paths: LIST Text) DEFAULT in ["."]]
     [with (search: Search) DEFAULT with {}]
@@ -155,7 +155,7 @@ METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in ["."]] RETURNS NOT
 fn no_two_variants_of_a_union_may_be_written_alike() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-TYPE ALIAS Order: [| `newest [first (count: Integer) DEFAULT first 10], `newest |],",
+TYPE ALIAS Order [| `newest [first (count: Integer) DEFAULT first 10], `newest |],",
     );
     assert!(found.contains("may both be written as `newest`"), "{found}");
 }

@@ -74,7 +74,7 @@ the account, such as by sending or sharing it.
   share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.
-- A union of variants, `` TYPE ALIAS Shade: [| `dark, `light |] ``, is
+- A union of variants, `` TYPE ALIAS Shade [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
@@ -101,7 +101,7 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 
 ```anyx
 # `` `true `` or `` `false ``.
-TYPE ALIAS Boolean: [| `false, `true |],
+TYPE ALIAS Boolean [| `false, `true |],
 
 # A `Duration` is written as a call of this function: each unit is an
 # optional part, so `1 hours 30 minutes` leaves out the days, seconds and
@@ -120,7 +120,7 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-TYPE Schema File: {
+TYPE Schema File {
     path: Text,
     source: Text,
 },
@@ -176,9 +176,9 @@ USE "./files/export.protocol.anyx",
 
 USE "./common.protocol.anyx",
 
-TYPE File: { path: Text, revision: Integer, content: Text },
+TYPE File { path: Text, revision: Integer, content: Text },
 
-PUBLIC TYPE ALIAS File Errors: [|
+PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
     `trashed,
     Common Errors,
@@ -206,9 +206,9 @@ METHOD empty trash RETURNS NOTHING ERRORS [| |],
 ### `common.protocol.anyx`
 
 # One problem in a note.
-PUBLIC TYPE Diagnostic: { line: Integer, message: Text },
+PUBLIC TYPE Diagnostic { line: Integer, message: Text },
 
-PUBLIC TYPE ALIAS Common Errors: [|
+PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
     `missing,
 |],
@@ -219,7 +219,7 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE Page: { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 

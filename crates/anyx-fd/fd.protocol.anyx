@@ -16,7 +16,7 @@ TYPE ALIAS Size: Integer . WHERE [0 <= _],
 TYPE ALIAS Count: Integer . WHERE [1 <= _],
 
 # What a file is, for `only _`.
-TYPE ALIAS Kind: [|
+TYPE ALIAS Kind [|
     `file,
     `directory,
     `symlink,
@@ -31,7 +31,7 @@ TYPE ALIAS Kind: [|
 |],
 
 # The case a pattern is matched in.
-TYPE ALIAS Case: [|
+TYPE ALIAS Case [|
     # Any case, unless the pattern has an uppercase letter.
     `smart case,
     `any case,
@@ -39,7 +39,7 @@ TYPE ALIAS Case: [|
 |],
 
 # How a pattern is read.
-TYPE ALIAS Syntax: [|
+TYPE ALIAS Syntax [|
     `regex pattern,
     # A glob, such as `*.rs`.
     `glob pattern,
@@ -50,7 +50,7 @@ TYPE ALIAS Syntax: [|
 # How `find` searches, as in `` { `glob pattern, `hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
-TYPE Search: {
+TYPE Search {
     `(case: Case) DEFAULT `smart case,
     `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
@@ -100,14 +100,14 @@ TYPE Search: {
 },
 
 # What a found file is, as `fd --list-details` shows it.
-TYPE Details: {
+TYPE Details {
     path: Text,
     kind: Kind,
     size: Size,
     modified: Instant,
 },
 
-TYPE ALIAS Fd Errors: [|
+TYPE ALIAS Fd Errors [|
     `(path: Text) does not exist,
     `invalid pattern (message: Text),
     `invalid glob (message: Text),

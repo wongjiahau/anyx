@@ -1,12 +1,12 @@
 # The interpreter session's environment. Changes do not alter the parent process.
 PROTOCOL environment VERSION 1,
 
-TYPE Variable: {
+TYPE Variable {
     name: Text,
     value: Text,
 },
 
-TYPE ALIAS Name Errors: [|
+TYPE ALIAS Name Errors [|
     # Names must be nonempty and contain neither an equals sign nor a null character.
     `invalid variable name,
 |],

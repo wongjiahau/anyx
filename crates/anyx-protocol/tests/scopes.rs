@@ -84,13 +84,13 @@ fn relative_paths_diamonds_and_unused_files() {
         ),
         (
             "notes/a.anyx",
-            "USE \"../shared.anyx\", TYPE First: { item: Shared },",
+            "USE \"../shared.anyx\", TYPE First { item: Shared },",
         ),
         (
             "notes/sub/b.anyx",
-            "USE \"../../shared.anyx\", TYPE Second: { item: Shared },",
+            "USE \"../../shared.anyx\", TYPE Second { item: Shared },",
         ),
-        ("shared.anyx", "PUBLIC TYPE Shared: { value: Text },"),
+        ("shared.anyx", "PUBLIC TYPE Shared { value: Text },"),
         ("notes/draft.anyx", "this is not a valid schema"),
     ];
     let mut reads = std::collections::BTreeMap::new();
@@ -122,7 +122,7 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
         ),
         (
             "shared.anyx",
-            "PUBLIC TYPE Session: { user: Text }, METHOD current RETURNS (session: Session) ERRORS [| |],",
+            "PUBLIC TYPE Session { user: Text }, METHOD current RETURNS (session: Session) ERRORS [| |],",
         ),
     ];
     for entry in ["notes.anyx", "billing.anyx", "shared.anyx"] {
@@ -136,8 +136,8 @@ fn shared_library_can_be_checked_or_used_by_several_protocols() {
 #[test]
 fn own_declarations_and_direct_public_imports_are_visible() {
     let schema = load("entry.protocol.anyx", &[
-        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", TYPE Local: { value: Item }, METHOD f RETURNS (x: Local) ERRORS [| Failures |],"),
-        ("lib.anyx", "PUBLIC TYPE Item: { value: Text }, PUBLIC TYPE ALIAS Failures: [| `gone |],"),
+        ("entry.protocol.anyx", "PROTOCOL p VERSION 1, USE \"./lib.anyx\", TYPE Local { value: Item }, METHOD f RETURNS (x: Local) ERRORS [| Failures |],"),
+        ("lib.anyx", "PUBLIC TYPE Item { value: Text }, PUBLIC TYPE ALIAS Failures [| `gone |],"),
     ]).unwrap();
     // `Failures`, an alias of a union of variants, is a type of its own.
     assert_eq!(schema.types.len(), 5);
@@ -147,15 +147,15 @@ fn own_declarations_and_direct_public_imports_are_visible() {
 #[test]
 fn imports_do_not_reexport_and_private_names_stay_private() {
     for declaration in [
-        "PUBLIC TYPE Item: { value: Text },",
-        "TYPE Item: { value: Text },",
+        "PUBLIC TYPE Item { value: Text },",
+        "TYPE Item { value: Text },",
     ] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[
                 (
                     "entry.protocol.anyx",
-                    "PROTOCOL p VERSION 1, USE \"./middle.anyx\", TYPE Local: { value: Item },",
+                    "PROTOCOL p VERSION 1, USE \"./middle.anyx\", TYPE Local { value: Item },",
                 ),
                 ("middle.anyx", "USE \"./lib.anyx\","),
                 ("lib.anyx", declaration),
@@ -175,7 +175,7 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
                 "entry.protocol.anyx",
                 "USE \"./lib.anyx\", METHOD f RETURNS (x: Text) ERRORS [| Failures |],",
             ),
-            ("lib.anyx", "TYPE ALIAS Failures: [| `gone |],"),
+            ("lib.anyx", "TYPE ALIAS Failures [| `gone |],"),
         ],
     )
     .unwrap_err();
@@ -188,15 +188,12 @@ fn imports_do_not_reexport_and_private_names_stay_private() {
 
 #[test]
 fn duplicate_names_include_both_files_even_when_private() {
-    for second in [
-        "TYPE Item: { value: Text },",
-        "TYPE ALIAS Item: [| `gone |],",
-    ] {
+    for second in ["TYPE Item { value: Text },", "TYPE ALIAS Item [| `gone |],"] {
         let diagnostics = load(
             "entry.protocol.anyx",
             &[
                 ("entry.protocol.anyx", "USE \"./a.anyx\", USE \"./b.anyx\","),
-                ("a.anyx", "TYPE Item: { value: Text },"),
+                ("a.anyx", "TYPE Item { value: Text },"),
                 ("b.anyx", second),
             ],
         )
@@ -280,7 +277,7 @@ fn invalid_imports_are_reported_at_the_use() {
 
 #[test]
 fn recursive_types_remain_valid_inside_a_library() {
-    Schema::parse("TYPE Folder: { entries: LIST Entry }, TYPE Entry: { parent: Folder },").unwrap();
+    Schema::parse("TYPE Folder { entries: LIST Entry }, TYPE Entry { parent: Folder },").unwrap();
 }
 
 #[test]
@@ -372,7 +369,7 @@ fn absolute_entry_at_filesystem_root_keeps_relative_imports_absolute() {
                 "/entry.protocol.anyx",
                 "USE \"./shared.anyx\", USE \"./sub/../shared.anyx\",",
             ),
-            ("/shared.anyx", "TYPE Shared: { value: Text },"),
+            ("/shared.anyx", "TYPE Shared { value: Text },"),
         ],
     )
     .unwrap();

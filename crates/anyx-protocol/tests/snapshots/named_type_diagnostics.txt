@@ -11,18 +11,18 @@ schema:1:34: found the type `Alpha` holding itself; expected a type that holds i
                                    ^^^^^
 
 == a named type holding a record that holds it
-PROTOCOL a VERSION 1, TYPE Row: { x: Alpha }, NAMED TYPE Alpha (Row),
+PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),
 schema:1:28: found the type `Row` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Row: { x: Alpha }, NAMED TYPE Alpha (Row),
+  PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),
                              ^^^
-schema:1:58: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Row: { x: Alpha }, NAMED TYPE Alpha (Row),
-                                                           ^^^^^
+schema:1:57: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),
+                                                          ^^^^^
 
 == a named type defined twice
-PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha: { b: Text },
+PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha { b: Text },
 schema:1:53: duplicate declaration `Alpha` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha: { b: Text },
+  PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha { b: Text },
                                                       ^^^^^
 
 == a named type over an unknown type

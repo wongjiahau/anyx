@@ -11,21 +11,21 @@ document of their results. Both are checked against the schema.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-TYPE File Summary: {
+TYPE File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
     note (Text ? ) DEFAULT note (`null),
 },
 
-TYPE ALIAS Shade: [| `dark, `light |],
+TYPE ALIAS Shade [| `dark, `light |],
 
-TYPE ALIAS Colour: [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
+TYPE ALIAS Colour [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
 
 # Which file, among every account's.
 NAMED TYPE File Id (Text),
 
-TYPE ALIAS File Errors: [|
+TYPE ALIAS File Errors [|
     # The owner moved this file to the trash.
     `trashed,
     `missing,
@@ -61,6 +61,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `Page of (Item: TYPE)`. Keywords side by side join into one name, so write
   `LIST: LIST Text` with the `:`; a
   formatted schema drops a `:` that nothing would join, as in `LIST Text`.
+  Braces and union brackets group the type body in a declaration, so the
+  formatted spelling is `TYPE Name { … }` or `TYPE ALIAS Name [| … |]`.
 - **Types:** the built-in types `Text`, `Bytes` (such as a file), `Integer`
   (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
@@ -100,7 +102,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   the same thing, and `TYPE ALIAS` when a long type only needs a short name.
   An alias of a union of variants alone keeps its name in generated code,
   as an enum, and in the guide and messages: see below.
-- **`TYPE Name: { field: T, … }`**: fields, each a shape that a value
+- **`TYPE Name { field: T, … }`**: fields, each a shape that a value
   writes as it is declared, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
   written as a value writes it, what it holds when absent:
@@ -109,7 +111,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   entry of its field. A record can also appear directly in a type slot:
 
   ```anyx
-  TYPE ALIAS Lookup Result: [| { count: Integer }, `null |],
+  TYPE ALIAS Lookup Result [| { count: Integer }, `null |],
   METHOD search (filter: { query: Text }) RETURNS (result: Lookup Result) ERRORS [| |],
   ```
 
@@ -133,7 +135,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `note: Text?` is required but admits `` `null ``;
   `` note (Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
-- **`` TYPE ALIAS Name: [| `variant, `… |] ``**, a union of variants
+- **`` TYPE ALIAS Name [| `variant, `… |] ``**, a union of variants
   alone: one of its variants. A variant is a *shape*: words, with
   `(name: Type)` slots anywhere among them, as in `custom hue (hue: Float)`
   or `(base: Shade) dimmed`. Variants differ by their words. Such an alias
@@ -153,19 +155,19 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
-  TYPE Page of (Item: TYPE): {
+  TYPE Page of (Item: TYPE) {
       items: LIST: Item,
       next (Text?) DEFAULT next (`null),
   },
 
   # What came of a payment, or of any attempt. (Slots at the start and the end.)
-  TYPE ALIAS (Value: TYPE) or (Problem: TYPE): [|
+  TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [|
       `done (value: Value),
       `failed (problem: Problem),
   |],
 
   # A value and who vouches for it. (A slot between words.)
-  TYPE (Value: TYPE) signed by (Signer: TYPE): {
+  TYPE (Value: TYPE) signed by (Signer: TYPE) {
       value: Value,
       signer: Signer,
   },
@@ -184,15 +186,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `TYPE Box of (Item: TYPE) sealed: { item: Item }`, used as `Box of (Letter) sealed`, and
+  `TYPE Box of (Item: TYPE) sealed { item: Item }`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `TYPE Table from (Key: TYPE) to (Value: TYPE): { keys: LIST Key, values: LIST Value }`.
+  `TYPE Table from (Key: TYPE) to (Value: TYPE) { keys: LIST Key, values: LIST Value }`.
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
   declarations of the same shape are an error. Only a record declared with `TYPE` or a
   `TYPE ALIAS` is generic, a `NAMED TYPE` is not, and
-  `PUBLIC TYPE Page of (Item: TYPE): { items: LIST Item }` shares one. A parameter is a
+  `PUBLIC TYPE Page of (Item: TYPE) { items: LIST Item }` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
@@ -207,8 +209,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `TYPE Trashed File: { file: File Summary, trashed at: Instant }`,
-  not `TYPE (Item: TYPE) in trash since (When: TYPE): { item: Item, when: When }` used only as
+  name reads better: `TYPE Trashed File { file: File Summary, trashed at: Instant }`,
+  not `TYPE (Item: TYPE) in trash since (When: TYPE) { item: Item, when: When }` used only as
   `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: Type) ERRORS [| errors |]`**: the method's
   shape, what it returns, and the errors it may return. The returned value
@@ -230,9 +232,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   their `#` docs before them, since an error says by its words what went
   wrong: `` ERRORS [| `conflict at revision (revision: Integer) |] ``. Errors
   that methods share are an alias of a union of variants, named among
-  them: `` TYPE ALIAS File Errors: [| `trashed, `missing |] `` and
+  them: `` TYPE ALIAS File Errors [| `trashed, `missing |] `` and
   `` ERRORS [| `conflict at revision (revision: Integer), File Errors |] ``. Such
-  an alias may include another: `` TYPE ALIAS Export Errors:
+  an alias may include another: `` TYPE ALIAS Export Errors
   [| `unreadable, File Errors |] ``. Nothing else goes in `ERRORS`: a value
   an error carries goes in a slot of its variant.
 - A method's errors are flattened: its own variants and those of each
@@ -261,7 +263,7 @@ TYPE ALIAS Revision: Integer . WHERE [1 <= _],
 TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
 TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
 TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
-TYPE Settings: { limit (Limit) DEFAULT limit 10 },
+TYPE Settings { limit (Limit) DEFAULT limit 10 },
 METHOD limit (value: Integer . WHERE [10 <= _ < 30])
     RETURNS (value: Integer . WHERE [10 <= _ < 30])
     ERRORS [| |],
@@ -385,7 +387,7 @@ They let a method take a list of settings, rather than optional words,
 and still rule out settings that contradict each other:
 
 ```anyx
-TYPE ALIAS Setting: [| `any case, `smart case, `hidden, `(name: Text) encoding |],
+TYPE ALIAS Setting [| `any case, `smart case, `hidden, `(name: Text) encoding |],
 
 READ ONLY METHOD find (pattern: Text) with (settings: LIST Setting)
     REQUIRES [
@@ -511,7 +513,7 @@ generated code too, and a value writes it as it is declared:
 - **No `Boolean?`.** Three states named `` `true ``, `` `false `` and `` `null ``
   leave the reader to guess what `` `null `` means. Use a nullable variant with a default when left out means
   off, or a union of variants that names each state:
-  `` TYPE ALIAS Color: [| `always, `never, `auto |] ``, not
+  `` TYPE ALIAS Color [| `always, `never, `auto |] ``, not
   `color (Boolean?)`.
 - **A value before the words keeps its parentheses**, `` (`any) case ``:
   without them, `` `any case `` is the one variant `` `any case ``, not `_ case`.
@@ -544,12 +546,12 @@ written:
    `"src"` and `3` alone would leave the reader guessing, which is why a
    field without words holds only variants.
 4. **A choice only one field uses → its word in every variant, and the
-   variant alone.** `` TYPE ALIAS Case: [| `smart case, `any case, `exact case |] ``
+   variant alone.** `` TYPE ALIAS Case [| `smart case, `any case, `exact case |] ``
    with `` `(case: Case) DEFAULT `smart case `` is written `` `any case ``.
    Every variant carries the word, so that none reads bare, as `` `exact ``
    would.
 5. **A choice several fields or methods share → its shared word in the
-   shape.** `(Case) case` over `` TYPE ALIAS Case: [| `smart, `any, `exact |] ``,
+   shape.** `(Case) case` over `` TYPE ALIAS Case [| `smart, `any, `exact |] ``,
    written `` (`any) case ``, keeps the word out of the type, where it would follow the
    type everywhere it is used.
 6. **A choice whose variants are phrases that say what they are, share no
@@ -677,12 +679,12 @@ USE "./files.protocol.anyx",
 USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
-PUBLIC TYPE Diagnostic: { line: Integer, message: Text },
-PUBLIC TYPE ALIAS Common Errors: [| `missing |],
+PUBLIC TYPE Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Common Errors [| `missing |],
 
 ## notes/files.protocol.anyx
 USE "./common.protocol.anyx",
-PUBLIC TYPE ALIAS File Errors: [| `trashed, Common Errors |],
+PUBLIC TYPE ALIAS File Errors [| `trashed, Common Errors |],
 METHOD read (path: Text) RETURNS (text: Text) ERRORS [| File Errors |],
 
 ## notes/files/export.protocol.anyx
@@ -730,7 +732,7 @@ The built-in types are declared in the prelude,
 [`prelude.protocol.anyx`](prelude.protocol.anyx), written in the schema language with a `#`
 doc on each. It is read and checked before every schema, and its names are
 visible in every file, so a schema can't declare a type of the same name:
-`TYPE Integer: { … }` is an error.
+`TYPE Integer { … }` is an error.
 
 ```anyx
 # A whole number of 64 bits, written without a point: `3`, `-1`.
@@ -746,7 +748,7 @@ INTRINSIC FUNCTION
     [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
     RETURNS (duration: Duration),
 
-TYPE ALIAS Boolean: [| `false, `true |],
+TYPE ALIAS Boolean [| `false, `true |],
 
 TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 ```
@@ -805,7 +807,7 @@ SCHEMA,
 `SCHEMA FILES` is the other built-in call. It returns the schema itself, as
 a `LIST Schema File`: the entry file first, then each file it imports, each
 with its `path` (as the `USE` lines reach it) and its `source`. The prelude
-declares `TYPE Schema File: { path: Text, source: Text }`. A client that
+declares `TYPE Schema File { path: Text, source: Text }`. A client that
 checks calls itself, such as the anyx shell, loads the schema from these
 files. Both built-ins are `READ ONLY`, and neither is in a scope.
 
