@@ -240,10 +240,10 @@ impl Tool for Identity {
 fn named_result_types_keep_their_identity_across_protocols() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("source", Identity(Schema::parse(
-        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     interpreter.register("target", Identity(Schema::parse(
-        "PROTOCOL target VERSION 1, TYPE Earlier { count: Integer }, NAMED TYPE Identifier (Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL target VERSION 1, TYPE Earlier { count: Integer }, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("target / identity (source / identity (Identifier \"example\"))")
@@ -262,7 +262,7 @@ fn named_result_types_keep_their_identity_across_protocols() {
             .is_err()
     );
     interpreter.register("different", Identity(Schema::parse(
-        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (Integer), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (value: Integer), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     assert!(
         interpreter

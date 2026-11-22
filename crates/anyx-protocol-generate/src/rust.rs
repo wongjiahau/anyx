@@ -175,7 +175,7 @@ pub fn rust_type(schema: &Schema, r#type: &Type) -> String {
             // `rust` reports any other union before it writes a type.
             None => "()".to_string(),
         },
-        Type::Tuple(slots) => format!(
+        Type::Tuple(slots, _) => format!(
             "({})",
             slots
                 .iter()
@@ -227,6 +227,53 @@ impl Generics {
     }
 }
 
+fn slot_ident(name: &str) -> String {
+    match name {
+        "self" | "super" | "crate" => format!("{name}_"),
+        _ => snake_case(name),
+    }
+}
+
+pub(crate) fn field_slots_name(record: &str, field: &Field) -> String {
+    format!("{record}{}Slots", pascal_case(&field.name))
+}
+
+fn field_slots(
+    out: &mut String,
+    schema: &Schema,
+    name: &str,
+    types: &[Type],
+    names: &[String],
+    generics: &Generics,
+) -> String {
+    let declared: String = names
+        .iter()
+        .zip(types)
+        .map(|(slot, ty)| format!("    pub {}: {},\n", slot_ident(slot), rust_type(schema, ty)))
+        .collect();
+    let built = names
+        .iter()
+        .map(|slot| format!("self.{}.into_value()", slot_ident(slot)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let read: String = names
+        .iter()
+        .map(|slot| {
+            format!(
+                "{}: FromValue::from_value(slots.next()?)?, ",
+                slot_ident(slot)
+            )
+        })
+        .collect();
+    let into = generics.implementation("IntoValue");
+    let from = generics.implementation("FromValue");
+    let name = generics.of(name);
+    writeln!(out, "#[derive(Clone, Debug, PartialEq)]\npub struct {name} {{\n{declared}}}\n\n\
+        {into} IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        Value::Tuple(vec![{built}])\n    }}\n}}\n\n\
+        {from} FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        let Value::Tuple(slots) = value else {{ return None }};\n        if slots.len() != {} {{ return None }}\n        let mut slots = slots.into_iter();\n        Some(Self {{ {read} }})\n    }}\n}}\n", names.len()).unwrap();
+    name
+}
+
 fn record(
     out: &mut String,
     schema: &Schema,
@@ -238,24 +285,44 @@ fn record(
     let declared: String = fields
         .iter()
         .map(|field| {
+            let ty = match &field.r#type {
+                Type::Tuple(types, names) => {
+                    let parameters = field
+                        .r#type
+                        .parameters()
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>();
+                    let generics = Generics::new(schema, &parameters);
+                    field_slots(
+                        out,
+                        schema,
+                        &field_slots_name(name, field),
+                        types,
+                        names,
+                        &generics,
+                    )
+                }
+                ty => rust_type(schema, ty),
+            };
             format!(
                 "{}    pub {}: {},\n",
                 doc_comment(&field.doc, "    ///"),
-                snake_case(&field.name),
-                rust_type(schema, &field.r#type)
+                slot_ident(&field.name),
+                ty
             )
         })
         .collect();
     let built: String = fields
         .iter()
-        .map(|field| format!(".field({:?}, self.{})", field.name, snake_case(&field.name)))
+        .map(|field| format!(".field({:?}, self.{})", field.name, slot_ident(&field.name)))
         .collect();
     let read: String = fields
         .iter()
         .map(|field| {
             format!(
                 "{}: fields.field({:?})?, ",
-                snake_case(&field.name),
+                slot_ident(&field.name),
                 field.name
             )
         })
@@ -292,21 +359,36 @@ fn newtype(
     let shape = ShapePart::text(constructor);
     let refined = anyx_protocol::refinement::has_refinements(schema, underlying);
     let visibility = if refined { "" } else { "pub " };
-    let fields = slots
-        .iter()
-        .map(|slot| format!("{visibility}{slot}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let declared = match slots.is_empty() {
-        true => format!("pub struct {name};"),
-        false => format!("pub struct {name}({fields});"),
-    };
     let bound: Vec<String> = (0..slots.len())
-        .map(|slot| format!("slot_{slot}"))
+        .map(|index| format!("slot_{index}"))
         .collect();
-    let pattern = match slots.is_empty() {
-        true => name.to_string(),
-        false => format!("{name}({})", bound.join(", ")),
+    let (declared, pattern) = match slots.as_slice() {
+        [] => (format!("pub struct {name};"), name.to_string()),
+        [slot] => (
+            format!("pub struct {name}({visibility}{slot});"),
+            format!("{name}(slot_0)"),
+        ),
+        _ => {
+            let Type::Tuple(_, names) = underlying else {
+                unreachable!()
+            };
+            let fields: Vec<_> = names.iter().map(|slot| slot_ident(slot)).collect();
+            let declarations: String = slots
+                .iter()
+                .zip(&fields)
+                .map(|(ty, field)| format!("    {visibility}{field}: {ty},\n"))
+                .collect();
+            let bindings = fields
+                .iter()
+                .zip(&bound)
+                .map(|(field, binding)| format!("{field}: {binding}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                format!("pub struct {name} {{\n{declarations}}}"),
+                format!("{name} {{ {bindings} }}"),
+            )
+        }
     };
     let into = bound
         .iter()

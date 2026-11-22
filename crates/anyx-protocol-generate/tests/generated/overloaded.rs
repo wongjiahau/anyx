@@ -12,7 +12,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 
 TYPE ALIAS Shade [| `dark, `light |],
 

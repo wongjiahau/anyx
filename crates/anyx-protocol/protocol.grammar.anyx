@@ -51,7 +51,7 @@ type marker: ONE OF [WORD "TYPE"],
 ##
 ## - `path: Text`, the shape `path _`, written `path "a"`;
 ## - `(Case) case`, written `(any) case`;
-## - `between (Integer) and (Integer)`, written `between 1 and 3`, holds a
+## - `between (start: Integer) and (end: Integer)`, written `between 1 and 3`, holds a
 ##   value for each slot;
 ## - `` `(order: Order) ``, a backtick and a slot, so a parameter names it.
 ##   It is written as its variant alone: `` `newest first ``. Its type's
@@ -78,7 +78,9 @@ declared field: ONE OF [
   ],
 ],
 
-field slot: ONE OF [doc: LINE STRING, type],
+field slot: ONE OF [doc: LINE STRING, parameter: field parameter, type],
+
+field parameter: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$"], ARGUMENTS: type],
 
 ## `` CHOICE Case { `smart, `any } ``, which a union of variants replaced:
 ## read only so that the checker can name what replaces it,
@@ -106,9 +108,9 @@ intrinsic type: ANYFIX CALL [
 ## A named type is a type of its own, which no other type fits, written
 ## with its constructor so that a value shows which type it is. Its name is
 ## a shape whose slots hold types, and its constructor is the same shape
-## with a value in each slot: `NAMED TYPE File Id (Text)` is written
-## `File Id "a"`, `` NAMED TYPE ([| `red, `blue |]) Color `` is written
-## `` (`red) Color ``, and `NAMED TYPE Range from (Integer) to (Integer)` is
+## with a value in each slot: `NAMED TYPE File Id (value: Text)` is written
+## `File Id "a"`, `` NAMED TYPE (value: [| `red, `blue |]) Color `` is written
+## `` (`red) Color ``, and `NAMED TYPE Range from (start: Integer) to (end: Integer)` is
 ## written `Range from 1 to 3`. One with no slots has one value, its name.
 named type: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
@@ -116,7 +118,9 @@ named type: ANYFIX CALL [
   WORD "NAMED", WORD "TYPE", body: named type body,
 ],
 
-named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: type],
+named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: named slot],
+
+named slot: ONE OF [parameter, unnamed: ANY NODE],
 
 ## A type alias names a type without making a new one: the alias and the
 ## type it stands for are the same type, in the wire and in generated code.

@@ -9,7 +9,7 @@ use anyx_protocol::{Call, Value, decode_request, encode_request};
 use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 TYPE ALIAS Shade [| `dark, `light |],
 TYPE ALIAS Colour [| `dark, `red |],
 TYPE ALIAS Mood [| `calm, `wild |],
@@ -227,7 +227,7 @@ feel (`calm),
 fn undone_by_names_one_overload() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 METHOD hide (path: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path: Text),
 METHOD hide (id: File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: File Id),
 METHOD show (path: Text) RETURNS NOTHING ERRORS [| |],
@@ -250,12 +250,12 @@ METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],",
 #[test]
 fn an_example_annotates_as_a_request_does() {
     let parsed = anyx_protocol::Schema::parse(
-        "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text),
 METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
     );
     assert!(parsed.is_ok(), "{parsed:?}");
     let unannotated = common::diagnostics(
-        "PROTOCOL a VERSION 1, NAMED TYPE File Id (Text),
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text),
 METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read \"a\" RETURNS NOTHING],",
     );
     assert!(

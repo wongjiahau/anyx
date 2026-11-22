@@ -25,8 +25,8 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
   // A field with several slots is an array of their values.
   let sent;
   const quiet = await new Client(async request => { sent = String(request); return 'RETURNS [{ note "tea", at "2026-11-14T06:00:08.000Z", quiet from 23 to 6 }, { note "tea", at "2026-11-14T06:00:08.000Z" }]'; })
-    .snoozeFor({...reminder, quietFromTo: [1n, 5n]}, 1000n);
-  assert.deepEqual(quiet.value.map(r => r.quietFromTo), [[23n, 6n], [22n, 7n]]);
+    .snoozeFor({...reminder, quiet: {start: 1n, end: 5n}}, 1000n);
+  assert.deepEqual(quiet.value.map(r => r.quiet), [{start: 23n, end: 6n}, {start: 22n, end: 7n}]);
   assert.match(sent, /quiet from \(1\) to \(5\)/);
   // A field written as its variant alone: the default is left out.
   assert.deepEqual(quiet.value.map(r => r.tone.kind), ['chime', 'chime']);

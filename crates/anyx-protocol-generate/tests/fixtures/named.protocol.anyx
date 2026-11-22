@@ -2,9 +2,9 @@
 PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 
-NAMED TYPE Share Id (Text),
+NAMED TYPE Share Id (value: Text),
 
 TYPE ALIAS Tags: LIST Text,
 
@@ -31,7 +31,7 @@ READ ONLY METHOD links RETURNS (ids: LIST: Share Id) ERRORS [| |],
 METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level) ERRORS [| |],
 
 # Lines of a file, counted from 1.
-NAMED TYPE Span from (Integer) to (Integer),
+NAMED TYPE Span from (start: Integer) to (end: Integer),
 
 # Everyone with the link.
 NAMED TYPE Everyone,

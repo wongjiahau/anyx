@@ -28,13 +28,14 @@ the file.
   `Record<string, T>` in TypeScript.
 - A field with a `DEFAULT` may be omitted on input. The reader fills in
   its default, so generated records always contain the field.
-- A tuple struct per `NAMED TYPE`, with a field for each slot:
-  `NAMED TYPE File Id (Text)` is `pub struct FileId(pub String)`, so a
-  `FileId` can't be passed where a `ShareId` goes, and
-  `NAMED TYPE Span from (Integer) to (Integer)` is
-  `pub struct SpanFromTo(pub i64, pub i64)`. One with a single slot has
-  `From` both ways. In TypeScript it is a branded type, a tuple for several
-  slots or none, with a function of its name that makes one.
+- A single-slot `NAMED TYPE File Id (value: Text)` generates
+  `pub struct FileId(pub String)` with `From` conversions both ways.
+  A multi-slot `NAMED TYPE Span from (start: Integer) to (end: Integer)`
+  generates `pub struct SpanFromTo { pub start: i64, pub end: i64 }`.
+  TypeScript generates a branded type and a constructor function, such as
+  `SpanFromTo({ start: 1n, end: 3n })`.
+- Multi-slot record fields use a struct in Rust and an object in TypeScript.
+  `quiet from (start: Integer) to (end: Integer)` is accessed as `quiet.start`.
 - A `NAMED TYPE` whose slot has a `WHERE` refinement has private fields, a
   checked `new` constructor, and `get` / `into_inner` accessors and
   `TryFrom` for a single slot. Its `FromValue` conversion checks the

@@ -21,7 +21,12 @@ fn the_schema_decoder_is_what_its_grammar_generates() {
         .iter()
         .map(|warning| warning.render(&grammar, "protocol.grammar.anyx"))
         .collect();
-    assert_eq!(warnings, Vec::<String>::new());
+    // A named slot and a bare type can both be written as a lowercase call.
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("choices `parameter` and `type`"),
+        "{warnings:?}"
+    );
     let code = anyx_generator::format(&output.code).expect("rustfmt is installed");
     assert_snapshot("src/grammar.rs", &code);
 }
@@ -120,7 +125,7 @@ fn a_choice_names_the_union_that_replaced_it() {
 fn a_union_member_may_have_a_doc_before_it() {
     schema(
         "PROTOCOL a VERSION 1,
-        NAMED TYPE File Id (Text),
+        NAMED TYPE File Id (value: Text),
         TYPE ALIAS Target [|
             # A file by its id.
             File Id,
@@ -264,7 +269,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
         ),
         (
             "overloads with the same parameter types",
-            "PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],",
+            "PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "overloads that differ only in what they return",

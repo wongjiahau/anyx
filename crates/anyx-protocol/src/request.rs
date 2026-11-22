@@ -33,7 +33,7 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
         message: format!("found {}; expected {expected}", describe(value)),
     };
     match (expected, value) {
-        (Type::Tuple(_), _) => Err(mismatch("a field's slots, written in its shape".into())),
+        (Type::Tuple(_, _), _) => Err(mismatch("a field's slots, written in its shape".into())),
         (Type::Text, Syntax::Text(text)) => Ok(Value::Text(text.value.value.clone())),
         (Type::Text, _) => Err(mismatch("a string, as in `\"text\"`".into())),
         (Type::Bytes, Syntax::Text(text)) => crate::bytes::decode(&text.value.value)
@@ -508,7 +508,7 @@ fn entry_value(schema: &Schema, field: &Field, entry: &Syntax) -> Result<Value, 
         _ => unreachable!("a field is found by its entry's call or variant"),
     };
     match &field.r#type {
-        Type::Tuple(slots) => slots
+        Type::Tuple(slots, _) => slots
             .iter()
             .zip(&call.arguments)
             .map(|(slot, argument)| decode(schema, slot, argument))

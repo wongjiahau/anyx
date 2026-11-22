@@ -12,9 +12,9 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 
-NAMED TYPE Share Id (Text),
+NAMED TYPE Share Id (value: Text),
 
 TYPE ALIAS Tags: LIST Text,
 
@@ -41,7 +41,7 @@ READ ONLY METHOD links RETURNS (ids: LIST: Share Id) ERRORS [| |],
 METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level) ERRORS [| |],
 
 # Lines of a file, counted from 1.
-NAMED TYPE Span from (Integer) to (Integer),
+NAMED TYPE Span from (start: Integer) to (end: Integer),
 
 # Everyone with the link.
 NAMED TYPE Everyone,
@@ -224,11 +224,17 @@ impl FromValue for Access {
 
 /// Lines of a file, counted from 1.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SpanFromTo(pub i64, pub i64);
+pub struct SpanFromTo {
+    pub start: i64,
+    pub end: i64,
+}
 
 impl IntoValue for SpanFromTo {
     fn into_value(self) -> Value {
-        let SpanFromTo(slot_0, slot_1) = self;
+        let SpanFromTo {
+            start: slot_0,
+            end: slot_1,
+        } = self;
         Value::Variant {
             shape: "Span from _ to _".to_string(),
             arguments: vec![slot_0.into_value(), slot_1.into_value()],
@@ -245,7 +251,10 @@ impl FromValue for SpanFromTo {
                 let mut arguments = arguments.into_iter();
                 let slot_0 = FromValue::from_value(arguments.next()?)?;
                 let slot_1 = FromValue::from_value(arguments.next()?)?;
-                Some(SpanFromTo(slot_0, slot_1))
+                Some(SpanFromTo {
+                    start: slot_0,
+                    end: slot_1,
+                })
             }
             _ => None,
         }

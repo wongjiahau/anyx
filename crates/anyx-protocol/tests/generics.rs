@@ -736,7 +736,7 @@ fn the_generic_example_in_protocol_md_reads() {
     let schema = schema(&format!(
         "PROTOCOL shop VERSION 1,
 TYPE Order {{ number: Integer, total: Integer }},
-NAMED TYPE Order Id (Integer),
+NAMED TYPE Order Id (value: Integer),
 TYPE Receipt {{ number: Integer }},
 TYPE Document {{ title: Text }},
 TYPE Person {{ name: Text }},

@@ -170,7 +170,19 @@ fn a_field_written_as_its_variant_holds_only_variants() {
 fn mistakes_in_fields_are_diagnosed() {
     for (fields, message) in [
         (
-            "between (Integer) and (Integer) DEFAULT between 1",
+            "quiet from (Integer) to (end: Integer)",
+            "found an unnamed slot; write `(name: Type)`",
+        ),
+        (
+            "(edge: Integer) by (edge: Integer)",
+            "found a second slot named `edge`",
+        ),
+        (
+            "quiet from (start: Integer) to (end: Integer), quiet: Integer",
+            "found a second field named `quiet`",
+        ),
+        (
+            "between (start: Integer) and (end: Integer) DEFAULT between 1",
             "found the call `between _`; expected an entry of the field, as a value writes it: `between … and …`",
         ),
         (
@@ -210,8 +222,8 @@ fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
 const RANGE: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Depth: Integer . WHERE [0 <= _],
 TYPE Search {
-    depth from (Depth) to (Depth?),
-    between (Integer) and (Integer) bytes DEFAULT between 1 and 9 bytes,
+    depth from (start: Depth) to (end: Depth?),
+    between (start: Integer) and (end: Integer) bytes DEFAULT between 1 and 9 bytes,
 },
 METHOD find (search: Search) RETURNS (count: Integer) ERRORS [| |],";
 
@@ -221,11 +233,11 @@ fn a_field_with_several_slots_holds_a_value_for_each() {
     let calls = decode_request(&schema, "find { depth from 1 to 3 }").unwrap();
     let search = &calls[0].arguments[0];
     assert_eq!(
-        field(search, "depth from to"),
+        field(search, "depth"),
         &Value::Tuple(vec![Value::Integer(1), Value::Integer(3)])
     );
     assert_eq!(
-        field(search, "between and bytes"),
+        field(search, "between"),
         &Value::Tuple(vec![Value::Integer(1), Value::Integer(9)])
     );
     let encoded = encode_request(&schema, &calls).unwrap();
@@ -241,23 +253,23 @@ fn each_slot_is_checked_against_its_own_type() {
     let schema = schema(RANGE);
     let error = decode_request(&schema, "find { depth from -1 to 3 }").unwrap_err();
     assert!(
-        format!("{error:?}")
-            .contains("in `depth from to`: value `-1` is not a `(Integer) WHERE [0 <= _]`"),
+        format!("{error:?}").contains("in `depth`: value `-1` is not a `(Integer) WHERE [0 <= _]`"),
         "{error:?}"
     );
 }
 
 #[cfg(feature = "json")]
 #[test]
-fn a_field_with_several_slots_is_an_array_in_json() {
+fn a_field_with_several_slots_uses_named_json_properties() {
     use anyx_protocol::json::{decode_request_json, encode_request_json};
     let schema = schema(RANGE);
     let json = decode_request_json(&schema, "find { depth from 1 to (`null) }").unwrap();
     assert!(
-        json.contains(r#""depthFromTo":[1,{"kind":"null"}]"#),
+        json.contains(r#""depth":{"end":{"kind":"null"},"start":1}"#),
         "{json}"
     );
-    let arguments = r#"[{"depthFromTo": [1, {"kind": "null"}], "betweenAndBytes": [1, 9]}]"#;
+    let arguments =
+        r#"[{"depth": {"end": {"kind": "null"}, "start": 1}, "between": {"start": 1, "end": 9}}]"#;
     assert_eq!(
         encode_request_json(&schema, "find _", arguments).unwrap(),
         "find { depth from 1 to (`null), between 1 and 9 bytes }\n"

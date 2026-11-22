@@ -291,11 +291,11 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
             ),
             (
                 "files.protocol.anyx",
-                "NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],",
+                "NAMED TYPE File Id (value: Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],",
             ),
             (
                 "shares.anyx",
-                "NAMED TYPE Share Id (Text), METHOD open (id: Share Id) RETURNS (text: Text) ERRORS [| |],",
+                "NAMED TYPE Share Id (value: Text), METHOD open (id: Share Id) RETURNS (text: Text) ERRORS [| |],",
             ),
         ],
     )
@@ -326,7 +326,7 @@ fn overloads_across_files_use_plain_annotations_and_json_names() {
 
 #[test]
 fn moving_an_imported_file_does_not_change_wire_names() {
-    let declaration = "PUBLIC NAMED TYPE File Id (Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],";
+    let declaration = "PUBLIC NAMED TYPE File Id (value: Text), METHOD open (id: File Id) RETURNS (text: Text) ERRORS [| |],";
     let before = load(
         "entry.protocol.anyx",
         &[

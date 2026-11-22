@@ -425,7 +425,7 @@ fn always_annotated(r#type: &Type) -> bool {
         Type::Bytes | Type::Instant | Type::Generic(..) => true,
         Type::Refined(base, _) => always_annotated(base),
         Type::List(item) | Type::Map(item) => always_annotated(item),
-        Type::Tuple(slots) | Type::Union(slots) => slots.iter().any(always_annotated),
+        Type::Tuple(slots, _) | Type::Union(slots) => slots.iter().any(always_annotated),
         _ => false,
     }
 }
@@ -448,7 +448,7 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
         Type::Refined(base, _) => sample(schema, base),
         Type::List(_) => "[…]".to_string(),
         Type::Map(_) => "{ … }".to_string(),
-        Type::Tuple(slots) => slots
+        Type::Tuple(slots, _) => slots
             .iter()
             .map(|slot| sample(schema, slot))
             .collect::<Vec<_>>()
@@ -502,7 +502,7 @@ fn refinements(schema: &Schema) -> String {
                     describe(schema, arg, label, rows);
                 }
             }
-            Type::Tuple(slots) => {
+            Type::Tuple(slots, _) => {
                 for (index, slot) in slots.iter().enumerate() {
                     describe(schema, slot, &format!("{label} slot {}", index + 1), rows);
                 }

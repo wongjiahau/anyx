@@ -944,10 +944,10 @@ fn write_fields(
         let mut entry = String::new();
         // Each slot's type and value.
         let slots: Vec<(&Type, &Value)> = match (&field.r#type, value) {
-            (Type::Tuple(types), Value::Tuple(values)) if types.len() == values.len() => {
+            (Type::Tuple(types, _), Value::Tuple(values)) if types.len() == values.len() => {
                 types.iter().zip(values).collect()
             }
-            (Type::Tuple(_), _) => {
+            (Type::Tuple(_, _), _) => {
                 return Err(EncodeError {
                     message: format!(
                         "found {value:?} for the field `{}`; expected a value for each of its slots",

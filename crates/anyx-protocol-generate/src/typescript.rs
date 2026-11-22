@@ -38,6 +38,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 &name,
                 &definition.name,
                 &slot_types(constructor, underlying),
+                slot_names(underlying),
             ),
         }
     }
@@ -276,13 +277,11 @@ fn ts_type(schema: &Schema, r#type: &Type) -> String {
                 ))
                 .collect::<String>()
         ),
-        Type::Tuple(slots) => format!(
-            "[{}]",
-            slots
-                .iter()
-                .map(|slot| ts_type(schema, slot))
-                .collect::<Vec<_>>()
-                .join(", ")
+        Type::Tuple(slots, names) => slot_object(
+            names,
+            slots.iter().map(|slot| ts_type(schema, slot)),
+            ": ",
+            "; ",
         ),
     }
 }
@@ -396,10 +395,37 @@ fn record(out: &mut String, schema: &Schema, name: &str, fields: &[Field]) {
     out.push_str("}\n\n");
 }
 
-/// A named type: its one slot's type, or a tuple of its slots' types,
-/// branded with its name so that no other type fits it. Its function makes
-/// one, checking any refinement.
-fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, slots: &[&Type]) {
+fn slot_names(r#type: &Type) -> &[String] {
+    match r#type {
+        Type::Tuple(_, names) => names,
+        _ => &[],
+    }
+}
+
+fn slot_object(
+    names: &[String],
+    values: impl IntoIterator<Item = String>,
+    separator: &str,
+    join: &str,
+) -> String {
+    let fields = names
+        .iter()
+        .zip(values)
+        .map(|(name, value)| format!("{:?}{separator}{value}", camel_case(name)))
+        .collect::<Vec<_>>()
+        .join(join);
+    format!("{{ {fields} }}")
+}
+
+/// A named type is branded with its name. Its constructor checks refinements.
+fn branded(
+    out: &mut String,
+    schema: &Schema,
+    name: &str,
+    full_name: &str,
+    slots: &[&Type],
+    names: &[String],
+) {
     let refined = slots
         .iter()
         .any(|slot| anyx_protocol::refinement::has_refinements(schema, slot));
@@ -417,13 +443,15 @@ fn branded(out: &mut String, schema: &Schema, name: &str, full_name: &str, slots
     let types: Vec<String> = slots.iter().map(|slot| ts_type(schema, slot)).collect();
     let (held, parameters, value) = match types.as_slice() {
         [one] => (one.clone(), format!("value: {one}"), "value"),
+        [] => (
+            "readonly []".to_string(),
+            "...value: []".to_string(),
+            "value",
+        ),
         many => {
-            let tuple = format!("readonly [{}]", many.join(", "));
-            (
-                tuple.clone(),
-                format!("...value: [{}]", many.join(", ")),
-                "value",
-            )
+            let held = slot_object(names, many.iter().cloned(), ": ", "; ");
+            let parameters = format!("value: {held}");
+            (held, parameters, "value")
         }
     };
     writeln!(
@@ -469,18 +497,32 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 // Compact, schema-specific descriptors consumed by the native runtime.
 /// A field's slots for the native codec: a type for each, and a nullable
 /// one's item, which it is written as.
+fn native_slot_names(ty: &Type) -> String {
+    let names = slot_names(ty);
+    if names.is_empty() {
+        return String::new();
+    }
+    let names = names
+        .iter()
+        .map(|name| format!("{:?}", camel_case(name)))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(", slotNames:[{names}]")
+}
+
 fn native_slots(field: &anyx_protocol::schema::Field) -> String {
     let slots: Vec<&Type> = match (&field.form, &field.r#type) {
-        (_, Type::Tuple(slots)) => slots.iter().collect(),
+        (_, Type::Tuple(slots, _)) => slots.iter().collect(),
         (_, r#type) => vec![r#type],
     };
     format!(
-        ", slots:[{}]",
+        ", slots:[{}]{}",
         slots
             .iter()
             .map(|slot| native_type(slot))
             .collect::<Vec<_>>()
-            .join(",")
+            .join(","),
+        native_slot_names(&field.r#type)
     )
 }
 
@@ -541,7 +583,7 @@ fn native_type(ty: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Tuple(slots) => format!(
+        Type::Tuple(slots, _) => format!(
             "{{k:'tuple', args:[{}]}}",
             slots.iter().map(native_type).collect::<Vec<_>>().join(",")
         ),
@@ -598,8 +640,9 @@ fn native_schema(schema: &Schema) -> String {
                         false => String::new(),
                     };
                     format!(
-                        "kind:'distinct'{name}, shape:{:?}, slots:[{slots}]",
-                        ShapePart::text(constructor)
+                        "kind:'distinct'{name}, shape:{:?}, slots:[{slots}]{}",
+                        ShapePart::text(constructor),
+                        native_slot_names(underlying)
                     )
                 }
                 TypeKind::Record(fields) => format!(
@@ -715,17 +758,17 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
             )
         }
         Value::Tuple(values) => {
-            let Type::Tuple(slots) = schema.underlying(ty) else {
+            let Type::Tuple(slots, names) = schema.underlying(ty) else {
                 unreachable!()
             };
-            format!(
-                "[{}]",
+            slot_object(
+                names,
                 slots
                     .iter()
                     .zip(values)
-                    .map(|(slot, v)| native_default(schema, slot, v))
-                    .collect::<Vec<_>>()
-                    .join(",")
+                    .map(|(slot, value)| native_default(schema, slot, value)),
+                ":",
+                ",",
             )
         }
         Value::Map(values) => {
@@ -784,8 +827,6 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
         }
         Value::Variant { shape, arguments } => {
             let (_, kind) = schema.instance(underlying).expect("choice");
-            // A named type's value is its one slot's, or an array of its
-            // slots' values.
             if let TypeKind::Distinct {
                 constructor,
                 underlying: held,
@@ -799,7 +840,8 @@ fn native_default(schema: &Schema, ty: &Type, value: &anyx_protocol::value::Valu
                     .collect();
                 return match values.as_slice() {
                     [one] if slots.len() == 1 => one.clone(),
-                    many => format!("[{}]", many.join(",")),
+                    [] => "[]".to_string(),
+                    many => slot_object(slot_names(held), many.iter().cloned(), ":", ","),
                 };
             }
             let TypeKind::Variants(variants) = kind.as_ref() else {

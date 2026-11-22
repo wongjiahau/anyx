@@ -9,14 +9,18 @@ static REGEX_1: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
     regex::Regex::new("^(_ )*[^_`]").expect("the generator checked it")
 });
 
-static REGEX_2: std::sync::LazyLock<regex::Regex> =
+static REGEX_2: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$").expect("the generator checked it")
+});
+
+static REGEX_3: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new("^[^`]").expect("the generator checked it"));
 
-static REGEX_3: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+static REGEX_4: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new("^(_ )*[^`_]").expect("the generator checked it")
 });
 
-static REGEX_4: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+static REGEX_5: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new("^(_ )*[^_`]|^_( _)*$").expect("the generator checked it")
 });
 
@@ -108,7 +112,15 @@ pub enum DeclaredField {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldSlot {
     Doc(Spanned<StringLiteral>),
+    Parameter(FieldParameter),
     Type(Type),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldParameter {
+    pub name: CallName,
+    pub arguments: Type,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -151,8 +163,14 @@ pub struct NamedType {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NamedTypeBody {
     pub name: CallName,
-    pub arguments: Vec<Type>,
+    pub arguments: Vec<NamedSlot>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NamedSlot {
+    Parameter(Parameter),
+    Unnamed(Node),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -432,6 +450,7 @@ impl FieldSlot {
     pub fn span(&self) -> Span {
         match self {
             FieldSlot::Doc(value) => value.span,
+            FieldSlot::Parameter(value) => value.span,
             FieldSlot::Type(value) => value.span(),
         }
     }
@@ -442,6 +461,15 @@ impl ChoicePart {
         match self {
             ChoicePart::Variants(value) => value.span,
             ChoicePart::TypeParameter(value) => value.span,
+        }
+    }
+}
+
+impl NamedSlot {
+    pub fn span(&self) -> Span {
+        match self {
+            NamedSlot::Parameter(value) => value.span,
+            NamedSlot::Unnamed(value) => value.span,
         }
     }
 }
@@ -630,8 +658,16 @@ impl support::Errors for FieldSlot {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
             FieldSlot::Doc(value) => support::Errors::errors(value, found),
+            FieldSlot::Parameter(value) => support::Errors::errors(value, found),
             FieldSlot::Type(value) => support::Errors::errors(value, found),
         }
+    }
+}
+
+impl support::Errors for FieldParameter {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.arguments, found);
     }
 }
 
@@ -679,6 +715,15 @@ impl support::Errors for NamedTypeBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
+    }
+}
+
+impl support::Errors for NamedSlot {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            NamedSlot::Parameter(value) => support::Errors::errors(value, found),
+            NamedSlot::Unnamed(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -1111,7 +1156,24 @@ fn decode_declared_field_words(node: &Node) -> Result<DeclaredField, DecodeError
 pub fn decode_field_slot(node: &Node) -> Result<FieldSlot, DecodeError> {
     support::line_string(node, |_| true, "a `#` line string")
         .map(FieldSlot::Doc)
+        .or_else(|error| error.or(decode_field_parameter(node).map(FieldSlot::Parameter)))
         .or_else(|error| error.or(decode_type(node).map(FieldSlot::Type)))
+}
+
+pub fn decode_field_parameter(node: &Node) -> Result<FieldParameter, DecodeError> {
+    let (name, arguments) = support::any_call(
+        node,
+        |name| REGEX_2.is_match(name),
+        "a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$`",
+    )?;
+    let mut arguments = support::arguments(node, arguments);
+    let decoded = FieldParameter {
+        name,
+        arguments: arguments.one(decode_type, "a type")?,
+        span: node.span,
+    };
+    arguments.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_choice(node: &Node) -> Result<Choice, DecodeError> {
@@ -1210,11 +1272,17 @@ pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError>
     let mut arguments = support::arguments(node, arguments);
     let decoded = NamedTypeBody {
         name,
-        arguments: arguments.zero_or_more(decode_type),
+        arguments: arguments.zero_or_more(decode_named_slot),
         span: node.span,
     };
     arguments.finish()?;
     Ok(decoded)
+}
+
+pub fn decode_named_slot(node: &Node) -> Result<NamedSlot, DecodeError> {
+    decode_parameter(node)
+        .map(NamedSlot::Parameter)
+        .or_else(|error| error.or(support::any_node(node).map(NamedSlot::Unnamed)))
 }
 
 pub fn decode_type_alias(node: &Node) -> Result<TypeAlias, DecodeError> {
@@ -1648,7 +1716,7 @@ fn decode_term_variants(node: &Node) -> Result<Spanned<Vec<TermVariant>>, Decode
 fn decode_term_call(node: &Node) -> Result<Term, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_2.is_match(name),
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_3.is_match(name),
         "a call whose name has no keyword and matches the regex `` ^[^`] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
@@ -1745,7 +1813,7 @@ pub fn decode_union_member(node: &Node) -> Result<UnionMember, DecodeError> {
 fn decode_union_member_named(node: &Node) -> Result<UnionMember, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_3.is_match(name),
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_4.is_match(name),
         "a call whose name has no keyword and matches the regex `` ^(_ )*[^`_] ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
@@ -1767,7 +1835,7 @@ pub fn decode_member_slot(node: &Node) -> Result<MemberSlot, DecodeError> {
 pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_4.is_match(name),
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_5.is_match(name),
         "a call whose name has no keyword and matches the regex `` ^(_ )*[^_`]|^_( _)*$ ``",
     )?;
     let mut arguments = support::arguments(node, arguments);

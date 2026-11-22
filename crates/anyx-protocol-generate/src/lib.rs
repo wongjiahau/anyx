@@ -258,7 +258,7 @@ pub(crate) fn rust_variants(schema: &Schema) -> Result<Vec<&anyx_protocol::schem
             Type::Refined(item, _) | Type::List(item) | Type::Map(item) => {
                 walk(schema, item, variants)?
             }
-            Type::Generic(_, arguments) | Type::Tuple(arguments) => {
+            Type::Generic(_, arguments) | Type::Tuple(arguments, _) => {
                 for argument in arguments {
                     walk(schema, argument, variants)?;
                 }
@@ -338,12 +338,31 @@ pub fn type_parameter_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
     parameter
 }
 
+fn rust_slot_structs(schema: &Schema) -> impl Iterator<Item = (String, String)> + '_ {
+    schema.types.iter().flat_map(|definition| {
+        let fields = match &definition.kind {
+            TypeKind::Record(fields) => fields.as_slice(),
+            _ => &[],
+        };
+        fields
+            .iter()
+            .filter(|field| matches!(field.r#type, Type::Tuple(_, _)))
+            .map(|field| {
+                (
+                    rust::field_slots_name(&pascal_case(&definition.name), field),
+                    format!("the slots of `{}` in `{}`", field.name, definition.shape()),
+                )
+            })
+    })
+}
+
 /// Whether `name` is a type a type parameter would shadow:
 /// the protocol's types, the errors of its methods, and the
 /// names the generated code uses.
 pub fn rust_type_taken(schema: &Schema, name: &str) -> bool {
     RESERVED_TYPE_NAMES.contains(&name)
         || name == "Self"
+        || rust_slot_structs(schema).any(|(slots, _)| slots == name)
         || schema
             .types
             .iter()
@@ -410,7 +429,13 @@ fn check_names(schema: &Schema) -> Result<(), Error> {
                 format!("the errors of `{}`", method.full_name()),
             )
         });
-    distinct("type", reserved_types().chain(types).chain(errors))?;
+    distinct(
+        "type",
+        reserved_types()
+            .chain(types)
+            .chain(errors)
+            .chain(rust_slot_structs(schema)),
+    )?;
     let methods = schema.methods.iter().map(|method| {
         (
             snake_case(&method_words(schema, method)),

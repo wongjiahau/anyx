@@ -21,7 +21,7 @@ TYPE Reminder {
     # When each person last saw it, by their name.
     seen (MAP: Instant) DEFAULT seen {},
     # The hours of the day it stays quiet, from and to.
-    quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
+    quiet from (start: Integer) to (end: Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
     `(tone: Tone) DEFAULT `chime,
     `(hidden: [| `hidden, `null |]) DEFAULT `null,
@@ -118,6 +118,34 @@ pub mod variants {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReminderQuietSlots {
+    pub start: i64,
+    pub end: i64,
+}
+
+impl IntoValue for ReminderQuietSlots {
+    fn into_value(self) -> Value {
+        Value::Tuple(vec![self.start.into_value(), self.end.into_value()])
+    }
+}
+
+impl FromValue for ReminderQuietSlots {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Tuple(slots) = value else {
+            return None;
+        };
+        if slots.len() != 2 {
+            return None;
+        }
+        let mut slots = slots.into_iter();
+        Some(Self {
+            start: FromValue::from_value(slots.next()?)?,
+            end: FromValue::from_value(slots.next()?)?,
+        })
+    }
+}
+
 /// When to remind the owner.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reminder {
@@ -129,7 +157,7 @@ pub struct Reminder {
     /// When each person last saw it, by their name.
     pub seen: ::std::collections::BTreeMap<String, ::std::time::SystemTime>,
     /// The hours of the day it stays quiet, from and to.
-    pub quiet_from_to: (i64, i64),
+    pub quiet: ReminderQuietSlots,
     /// How it sounds, written as the variant alone.
     pub tone: Tone,
     pub hidden: Option<variants::Hidden>,
@@ -145,7 +173,7 @@ impl IntoValue for Reminder {
                 .field("every", self.every)
                 .field("times", self.times)
                 .field("seen", self.seen)
-                .field("quiet from to", self.quiet_from_to)
+                .field("quiet", self.quiet)
                 .field("tone", self.tone)
                 .field("hidden", self.hidden)
                 .field("pinned", self.pinned)
@@ -166,7 +194,7 @@ impl FromValue for Reminder {
             every: fields.field("every")?,
             times: fields.field("times")?,
             seen: fields.field("seen")?,
-            quiet_from_to: fields.field("quiet from to")?,
+            quiet: fields.field("quiet")?,
             tone: fields.field("tone")?,
             hidden: fields.field("hidden")?,
             pinned: fields.field("pinned")?,
