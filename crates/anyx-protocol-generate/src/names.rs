@@ -1,4 +1,7 @@
-//! Schema names, which are lowercase words, as Rust and TypeScript names.
+//! Schema names as Rust and TypeScript names.
+
+use std::borrow::Cow;
+use std::fmt::Write;
 
 const RUST_KEYWORDS: [&str; 51] = [
     "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
@@ -8,10 +11,19 @@ const RUST_KEYWORDS: [&str; 51] = [
     "override", "priv", "try", "typeof", "unsized", "virtual",
 ];
 
-fn words(name: &str) -> impl Iterator<Item = &str> {
-    name.split(' ')
-        .filter(|word| *word != "_")
-        .map(|word| if word == "?" { "nullable" } else { word })
+fn words(name: &str) -> impl Iterator<Item = Cow<'_, str>> {
+    name.split(' ').filter(|word| *word != "_").map(|word| {
+        if !anyx::is_symbol_word(word) {
+            return Cow::Borrowed(word);
+        }
+        // Symbol words have no identifier spelling. Encode their UTF-8 bytes
+        // in hex so different operators produce different names.
+        let mut encoded = String::from("symbol");
+        for byte in word.bytes() {
+            write!(encoded, "{byte:02x}").unwrap();
+        }
+        Cow::Owned(encoded)
+    })
 }
 
 fn capitalized(word: &str) -> String {
@@ -24,7 +36,7 @@ fn capitalized(word: &str) -> String {
 
 /// `file summary` as `FileSummary`.
 pub fn pascal_case(name: &str) -> String {
-    words(name).map(capitalized).collect()
+    words(name).map(|word| capitalized(&word)).collect()
 }
 
 /// `new revision` as `new_revision`, escaped when it is a keyword.
@@ -41,8 +53,8 @@ pub fn camel_case(name: &str) -> String {
     words(name)
         .enumerate()
         .map(|(index, word)| match index {
-            0 => word.to_string(),
-            _ => capitalized(word),
+            0 => word.into_owned(),
+            _ => capitalized(&word),
         })
         .collect()
 }
