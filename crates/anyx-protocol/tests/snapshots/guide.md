@@ -68,10 +68,10 @@ the account, such as by sending or sharing it.
 - A RECORD is its fields in braces, each written in its declared shape with
   a value in each slot, in any order: `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
-  keeps its parentheses. A field of words alone is a checkbox, true when
-  written: `{ hidden }`. A field declared as a backtick and a slot is its
-  variant alone: `` { `by name } ``. A field with a `DEFAULT` may be left out and
-  then holds the entry after `DEFAULT`. When a value is words
+  keeps its parentheses. A field declared as a backtick and a slot is written
+  as its variant alone: `` { `by name, `hidden } ``. A field with a `DEFAULT` may
+  be left out and then holds the entry after `DEFAULT`. When several fields
+  share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.
 - A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is

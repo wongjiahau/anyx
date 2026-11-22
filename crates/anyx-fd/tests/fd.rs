@@ -51,7 +51,7 @@ fn a_search_changes_how_fd_searches() {
     let directory = tree();
     for (request, expected) in [
         (
-            r#"find "\\.rs$" with { hidden, no ignore }"#,
+            r#"find "\\.rs$" with { `hidden, `no ignore }"#,
             r#"[".hidden.rs", "src/deep/inner.rs", "src/lib.rs", "src/main.rs", "target/build.rs"]"#,
         ),
         (
@@ -90,12 +90,12 @@ fn a_search_changes_how_fd_searches() {
             r#"["src/main.rs"]"#,
         ),
         (
-            r#"find "src/d" with { full path }"#,
+            r#"find "src/d" with { `full path }"#,
             r#"["src/deep", "src/deep/inner.rs"]"#,
         ),
         (r#"find "" with { at least 14 bytes }"#, r#"["src/lib.rs"]"#),
         (r#"find "" with { at most 1 results }"#, r#"["README.md"]"#),
-        (r#"find "^s" with { prune }"#, r#"["src"]"#),
+        (r#"find "^s" with { `prune }"#, r#"["src"]"#),
         (
             r#"find "" with { changed within (1 hours), only [`file], at most 1 results }"#,
             r#"["README.md"]"#,
@@ -161,7 +161,7 @@ fn mistakes_are_errors_or_invalid_requests() {
             r#"find "x" with { `glob pattern, `fixed text pattern }"#,
             "pattern",
         ),
-        (r#"find "x" with { hidden, hidden }"#, "hidden"),
+        (r#"find "x" with { `hidden, `hidden }"#, "hidden"),
         (r#"find "x" with { glob }"#, "expected a field"),
         (r#"find "x" with { at most 0 results }"#, "at most"),
     ] {
@@ -247,7 +247,7 @@ fn the_shell_brings_in_the_program_and_calls_it() {
     );
     // A call the schema rules out never reaches the program.
     let problem = shell
-        .execute("find \"x\" with { hidden, hidden }")
+        .execute("find \"x\" with { `hidden, `hidden }")
         .unwrap_err();
     assert!(
         problem.message.contains("duplicate field `hidden`"),

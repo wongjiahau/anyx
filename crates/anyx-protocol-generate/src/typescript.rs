@@ -471,7 +471,6 @@ fn union(out: &mut String, schema: &Schema, name: &str, variants: &[Shaped]) {
 /// one's item, which it is written as.
 fn native_slots(field: &anyx_protocol::schema::Field) -> String {
     let slots: Vec<&Type> = match (&field.form, &field.r#type) {
-        (FieldForm::Checkbox, _) => Vec::new(),
         (_, Type::Tuple(slots)) => slots.iter().collect(),
         (_, r#type) => vec![r#type],
     };
@@ -607,12 +606,10 @@ fn native_schema(schema: &Schema) -> String {
                             "{{wire:{:?}, form:{:?}, name:{:?}, type:{}{}{}{}}}",
                             match &f.form {
                                 FieldForm::Shape(shape) => shape.as_str(),
-                                FieldForm::Checkbox => f.name.as_str(),
                                 FieldForm::Unnamed => "` _",
                             },
                             match &f.form {
                                 FieldForm::Shape(_) => "shape",
-                                FieldForm::Checkbox => "checkbox",
                                 FieldForm::Unnamed => "unnamed",
                             },
                             camel_case(&f.name),

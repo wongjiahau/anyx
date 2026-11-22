@@ -444,13 +444,13 @@ READ ONLY METHOD find (pattern: Text)
   for `find "x" in ["."] with {}`: the request decoder fills in each
   left-out part's default, so a server and the codec only see full calls.
 - **A call may leave out any of the parts**, and the rest keep their
-  order: `find "x"`, `find "x" in ["src"]`, `find "x" with { hidden }` and
-  `find "x" in ["src"] with { hidden }`. `find "x" with {} in ["src"]` is
+  order: `find "x"`, `find "x" in ["src"]`, `` find "x" with { `hidden } `` and
+  `` find "x" in ["src"] with { `hidden } ``. `find "x" with {} in ["src"]` is
   an error.
 - **A part has a word and a slot.** Slots side by side can't be told apart,
   so `[(factor: Integer) DEFAULT 1]` is an error; and a part with no slot
   carries nothing a call doesn't, so `[descending DEFAULT descending]` is
-  an error too. A flag is a checkbox field in a record.
+  an error too. Use an unnamed field with a default for a flag in a record.
 - **No two ways to write a call may clash.** Each way to write a method,
   with parts left out, must differ from every other method's in its words
   or a parameter's type, and each way to write a variant from every other
@@ -481,11 +481,9 @@ generated code too, and a value writes it as it is declared:
 | `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
 | `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
-| `hidden` | `hidden` | `hidden` |
+| `` `(hidden: UNION [`hidden, `null]) DEFAULT `null `` | `` `hidden `` | `hidden` |
 | `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
-- **Words alone are a checkbox**: a `Boolean`, `` `true `` when written and
-  `` `false `` when left out. It takes no `DEFAULT`.
 - **The slot holds a type, not a parameter**: `(Case) case`, since the words
   already name the field.
 - **A field with several slots holds a value for each**, as a tuple:
@@ -501,7 +499,7 @@ generated code too, and a value writes it as it is declared:
 - **A value is written as its type writes it**, a nullable one as its item
   or `` `null ``: `at least 14 bytes`, `` at least (`null) bytes `` for a `Size?`.
 - **No `Boolean?`.** Three states named `` `true ``, `` `false `` and `` `null ``
-  leave the reader to guess what `` `null `` means. Use a checkbox when left out means
+  leave the reader to guess what `` `null `` means. Use a nullable variant with a default when left out means
   off, or a union of variants that names each state:
   `` TYPE ALIAS Color: UNION [`always, `never, `auto] ``, not
   `color (Boolean?)`.
@@ -515,16 +513,18 @@ generated code too, and a value writes it as it is declared:
 and a slot with no words, so a parameter names the field. A value writes
 the field's variant alone, `` `by name ``: an entry that starts with a
 backtick can't be a field's shape, so it is the value of the field whose
-type has that variant. The field's type is a union of variants, or one
-made nullable, so that every value is a variant;
-a `Text`, a number, a list, a `Duration` or a type parameter is an error.
-No two such fields of a record may share a variant, so finding the field
-never tries one and backs out; two nullable ones share `` `null ``.
+type has that variant. An unnamed field takes a union whose members are
+all variants.
+Such fields may share a slotless variant only when it is the `DEFAULT` of
+every field that shares it. For example, two nullable fields can share
+`` `null `` when both default to it. Leave the fields out to use a shared
+default. Writing it explicitly is ambiguous.
 
 Readability decides between them, since a record is read far more than it is
 written:
 
-1. **On or off → a checkbox.** `hidden`, `follow links`.
+1. **On or off → a nullable variant with a default.** Write `` `hidden ``
+   or `` `follow links `` to turn on that option.
 2. **Options that combine → separate fields, not a choice.** `no ignore`
    and `no ignore vcs`; `changed within` and `changed since`. A choice is
    for options that truly exclude each other.
@@ -817,7 +817,7 @@ and base64 are checked in Rust.
 | `Duration` | whole numbers each followed by its unit, the largest unit first: `90 seconds`, `1 hours 30 minutes` |
 | `LIST: T` | `[a, b]` |
 | `MAP: T` | `{ "hymn" 3, "ode" 1 }`, each key a string, once, in any order; `"key": value` when the value is a word. Written in the order of the keys' code points |
-| a `RECORD` | `` { path "a", revision 3, hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
+| a `RECORD` | `` { path "a", revision 3, `hidden, (`any) case, `by name } ``, each field in its shape, in any order; `name: value` when the value is a word |
 | a union of variants | a backtick and the variant's shape filled in: `` `dark ``, `` `custom hue 0.5 `` |
 | a `NAMED TYPE` | its name's shape filled in: `File Id "a"`, `Range from 1 to 3`, `` (`red) Color ``, `Unit` |
 | a use of a generic type | as the `RECORD` or union, with its arguments in place of the parameters: `{ items [{ number 7, total 250 }] }` for `Page of (Order)` |

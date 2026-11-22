@@ -87,6 +87,8 @@ fn instants_and_durations_reach_the_server_and_come_back() {
         seen: BTreeMap::new(),
         quiet_from_to: (23, 6),
         tone: Tone::Chime,
+        hidden: Some(types::variants::Hidden),
+        pinned: None,
     };
     assert_eq!(
         run(client.remind(reminder.clone())),
@@ -142,6 +144,8 @@ fn a_shorter_form_calls_the_full_one_with_the_default() {
         seen: BTreeMap::new(),
         quiet_from_to: (22, 7),
         tone: Tone::Chime,
+        hidden: Some(types::variants::Hidden),
+        pinned: None,
     };
     assert_eq!(
         run(client.snooze(reminder.clone())),
@@ -172,6 +176,8 @@ fn maps_reach_the_server_and_come_back() {
         seen: BTreeMap::from([("ana".to_string(), at(0)), ("bo \"b\"".to_string(), at(1))]),
         quiet_from_to: (22, 7),
         tone: Tone::Silent,
+        hidden: Some(types::variants::Hidden),
+        pinned: None,
     };
     let reminders = BTreeMap::from([
         ("tea".to_string(), reminder.clone()),

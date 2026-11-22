@@ -69,7 +69,11 @@ pub(crate) fn own_syntax_type(schema: &Schema, value: &Syntax) -> Option<Type> {
                 }
                 let Some(filled) = entries
                     .iter()
-                    .map(|entry| crate::request::entry_field(schema, fields, entry))
+                    .map(|entry| {
+                        crate::request::entry_field(schema, fields, entry)
+                            .ok()
+                            .flatten()
+                    })
                     .collect::<Option<Vec<_>>>()
                 else {
                     return false;

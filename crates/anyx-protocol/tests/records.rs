@@ -1,6 +1,4 @@
-//! Records whose fields are shapes: a slot anywhere among the words, words
-//! alone for a checkbox, and a backtick for a field written as its variant
-//! alone.
+//! Record field shapes, defaults, and variant-based entries.
 mod common;
 
 use anyx_protocol::{Value, decode_request, encode_request};
@@ -15,7 +13,8 @@ RECORD Search {
     pattern: Text,
     (Case) case DEFAULT (`smart) case,
     # Searches hidden files too.
-    hidden,
+    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
+    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
     max depth (Integer?) DEFAULT max depth (`null),
     at least (Integer?) bytes DEFAULT at least (`null) bytes,
     `(order: Order) DEFAULT `newest first,
@@ -46,11 +45,11 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 #[test]
 fn each_entry_finds_its_field_by_its_shape() {
     let search = find(
-        "find { (`any) case, `by name, pattern \"ode\", at least 14 bytes, hidden, `bearer \"t\", max depth 3 }",
+        "find { (`any) case, `by name, pattern \"ode\", at least 14 bytes, `hidden, `bearer \"t\", max depth 3 }",
     );
     assert_eq!(field(&search, "pattern"), &Value::Text("ode".into()));
     assert_eq!(field(&search, "case"), &variant("any", vec![]));
-    assert_eq!(field(&search, "hidden"), &variant("true", vec![]));
+    assert_eq!(field(&search, "hidden"), &variant("hidden", vec![]));
     assert_eq!(field(&search, "max depth"), &Value::Integer(3));
     assert_eq!(field(&search, "at least bytes"), &Value::Integer(14));
     assert_eq!(field(&search, "order"), &variant("by name", vec![]));
@@ -64,7 +63,7 @@ fn each_entry_finds_its_field_by_its_shape() {
 fn fields_left_out_take_their_defaults() {
     let search = find("find { pattern \"ode\" }");
     assert_eq!(field(&search, "case"), &variant("smart", vec![]));
-    assert_eq!(field(&search, "hidden"), &variant("false", vec![]));
+    assert_eq!(field(&search, "hidden"), &variant("null", vec![]));
     assert_eq!(field(&search, "max depth"), &variant("null", vec![]));
     assert_eq!(field(&search, "order"), &variant("newest first", vec![]));
     assert_eq!(field(&search, "auth"), &variant("no auth", vec![]));
@@ -79,8 +78,8 @@ fn a_record_is_written_back_as_a_reader_writes_it() {
             "find { pattern \"ode\", (`smart) case }\n",
         ),
         (
-            "find { pattern \"ode\", (`any) case, hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }",
-            "find { pattern \"ode\", (`any) case, hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }\n",
+            "find { pattern \"ode\", (`any) case, `hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }",
+            "find { pattern \"ode\", (`any) case, `hidden, max depth 3, at least 14 bytes, `by name, `bearer \"t\" }\n",
         ),
     ] {
         let calls = decode_request(&schema, source).unwrap();
@@ -100,7 +99,8 @@ fn an_entry_no_field_takes_is_reported_with_the_fields() {
     ] {
         let error = decode_request(&schema, source).unwrap_err();
         assert!(
-            format!("{error:?}").contains("expected a field: `pattern …`, `… case`, `hidden`"),
+            format!("{error:?}")
+                .contains("expected a field: `pattern …`, `… case`, a variant for `hidden`"),
             "{source}: {error:?}"
         );
     }
@@ -143,7 +143,7 @@ fn a_field_written_as_its_variant_holds_only_variants() {
         let found = diagnostics(&source);
         assert!(
             found.contains(&format!(
-                "of {type}; expected a union of variants, since the field is written as its variant alone"
+                "of {type}; expected a variant or a union of variants, since the field is written as its variant alone"
             )),
             "{field}: {found}"
         );
@@ -183,7 +183,7 @@ fn mistakes_in_fields_are_diagnosed() {
         ),
         (
             "hidden DEFAULT hidden",
-            "found a `DEFAULT` on the checkbox `hidden`; expected none",
+            "write `` `(hidden: UNION [`hidden, `null]) DEFAULT `null ``",
         ),
         (
             "age (Integer) DEFAULT age 0, age (Integer)",
@@ -200,7 +200,9 @@ fn mistakes_in_fields_are_diagnosed() {
 fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
     let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { `(value: Item) },");
     assert!(
-        found.contains("found the field `value` of `Item`; expected a union of variants"),
+        found.contains(
+            "found the field `value` of `Item`; expected a variant or a union of variants"
+        ),
         "{found}"
     );
 }
@@ -260,4 +262,49 @@ fn a_field_with_several_slots_is_an_array_in_json() {
         encode_request_json(&schema, "find _", arguments).unwrap(),
         "find { depth from 1 to (`null), between 1 and 9 bytes }\n"
     );
+}
+
+#[test]
+fn a_shared_default_variant_must_be_left_out() {
+    let schema = schema(SEARCH);
+    let error = decode_request(&schema, "find { pattern \"ode\", `null }").unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("could fill more than one unnamed field (`hidden`, `pinned`): leave it out"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn all_fields_that_share_a_variant_must_default_to_it() {
+    let found = diagnostics(
+        "PROTOCOL a VERSION 1,
+        RECORD Rec {
+            `(hidden: UNION [`hidden, `null]) DEFAULT `null,
+            `(pinned: UNION [`pinned, `null]) DEFAULT `pinned,
+        },",
+    );
+    assert!(found.contains("be the `DEFAULT` of both fields"), "{found}");
+}
+
+#[test]
+fn a_variant_with_slots_cannot_be_shared_even_with_matching_defaults() {
+    let found = diagnostics(
+        "PROTOCOL a VERSION 1,
+        RECORD Rec {
+            `(first: UNION [`at (index: Integer)]) DEFAULT `at 0,
+            `(second: UNION [`at (index: Integer)]) DEFAULT `at 0,
+        },",
+    );
+    assert!(
+        found.contains("expected a shared variant to have no slots"),
+        "{found}"
+    );
+}
+
+#[test]
+fn a_flag_type_requires_an_explicit_union() {
+    let source = "PROTOCOL a VERSION 1, RECORD Rec { `(hidden: (`hidden)?) DEFAULT `null },";
+    assert!(!diagnostics(source).is_empty());
 }

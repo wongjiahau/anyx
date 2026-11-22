@@ -8,7 +8,7 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SOURCE: &str = r#"PROTOCOL p VERSION 1,
-RECORD Search { hidden },
+RECORD Search { `(hidden: UNION [`hidden, `null]) DEFAULT `null },
 TYPE ALIAS Order: UNION [`newest [first (count: Integer) DEFAULT first 10], `oldest],
 READ ONLY METHOD find (pattern: Text)
     [in (paths: LIST Text) DEFAULT in ["."]]
@@ -61,7 +61,7 @@ fn a_left_out_part_holds_its_default() {
             [(
                 "hidden".to_string(),
                 Value::Variant {
-                    shape: if on { "true" } else { "false" }.to_string(),
+                    shape: if on { "hidden" } else { "null" }.to_string(),
                     arguments: vec![],
                 },
             )]
@@ -78,11 +78,11 @@ fn a_left_out_part_holds_its_default() {
         [x.clone(), texts(&["src"]), hidden(false)]
     );
     assert_eq!(
-        arguments(r#"find "x" with { hidden }"#),
+        arguments(r#"find "x" with { `hidden }"#),
         [x.clone(), texts(&["."]), hidden(true)]
     );
     assert_eq!(
-        arguments(r#"find "x" in ["src"] with { hidden }"#),
+        arguments(r#"find "x" in ["src"] with { `hidden }"#),
         [x, texts(&["src"]), hidden(true)]
     );
 }

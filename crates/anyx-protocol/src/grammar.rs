@@ -16,6 +16,10 @@ static REGEX_3: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
     regex::Regex::new("^(_ )*[^`_]").expect("the generator checked it")
 });
 
+static REGEX_4: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^(_ )*[^_`]|^_( _)*$").expect("the generator checked it")
+});
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub header: Option<Protocol>,
@@ -1886,8 +1890,8 @@ pub fn decode_member_slot(node: &Node) -> Result<MemberSlot, DecodeError> {
 pub fn decode_reference(node: &Node) -> Result<Reference, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword),
-        "a call whose name has no keyword",
+        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_4.is_match(name),
+        "a call whose name has no keyword and matches the regex `` ^(_ )*[^_`]|^_( _)*$ ``",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Reference {

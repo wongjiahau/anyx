@@ -28,7 +28,7 @@ variant: ANYFIX CALL [WORD "`", body: value call],
 value call: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS: ZERO OR MORE: value],
 ## In braces, a map's entry is a key and a value. A record's entry is a
 ## value, and the checker reads from the record's fields which one it
-## fills: `path "a"` is the call `path _`, `hidden` a checkbox,
+## fills: `path "a"` is the call `path _`,
 ## `changed more than (1 hours) ago` a field's shape, and a variant,
 ## `` `by name ``, the value of the field without a name whose type has it.
 entry: ONE OF [

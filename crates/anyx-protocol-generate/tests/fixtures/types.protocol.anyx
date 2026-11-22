@@ -14,6 +14,8 @@ RECORD Reminder {
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
     `(tone: Tone) DEFAULT `chime,
+    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
+    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
 },
 
 TYPE ALIAS Tone: UNION [`chime, `silent],

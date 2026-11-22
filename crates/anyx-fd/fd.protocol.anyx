@@ -47,37 +47,37 @@ TYPE ALIAS Syntax: UNION [
     `fixed text pattern,
 ],
 
-# How `find` searches, as in `` { `glob pattern, hidden, max depth 2 } ``.
+# How `find` searches, as in `` { `glob pattern, `hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
 RECORD Search {
     `(case: Case) DEFAULT `smart case,
     `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
-    full path,
+    `(full path: UNION [`full path, `null]) DEFAULT `null,
     # Each file must match these patterns too, in the same syntax and case.
     also matching (LIST Text) DEFAULT also matching [],
     # Find hidden files and directories too.
-    hidden,
+    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
     # Don't skip what ignore files ignore.
-    no ignore,
+    `(no ignore: UNION [`no ignore, `null]) DEFAULT `null,
     # Don't skip what `.gitignore` ignores, but still what `.ignore` and
     # `.fdignore` ignore.
-    no ignore vcs,
+    `(no ignore vcs: UNION [`no ignore vcs, `null]) DEFAULT `null,
     # Don't read ignore files in directories above the search path.
-    no ignore parent,
+    `(no ignore parent: UNION [`no ignore parent, `null]) DEFAULT `null,
     # Read `.gitignore` outside a git repository too.
-    no require git,
+    `(no require git: UNION [`no require git, `null]) DEFAULT `null,
     # Skip what these files ignore, each written as `.gitignore` is.
     ignore files (LIST Text) DEFAULT ignore files [],
     # Skip paths these globs match, as `--exclude` does.
     excluding (LIST Text) DEFAULT excluding [],
     # Follow symbolic links into the directories they point to.
-    follow links,
+    `(follow links: UNION [`follow links, `null]) DEFAULT `null,
     # Don't go into another file system.
-    one file system,
+    `(one file system: UNION [`one file system, `null]) DEFAULT `null,
     # Don't go into a directory that matched.
-    prune,
+    `(prune: UNION [`prune, `null]) DEFAULT `null,
     max depth (Depth?) DEFAULT max depth (`null),
     min depth (Depth?) DEFAULT min depth (`null),
     # Find only these kinds of file, or every kind when empty.
@@ -125,7 +125,7 @@ READ ONLY METHOD find (pattern: Text)
     ERRORS [Fd Errors]
     EXAMPLES [
         find "\\.rs$" in ["src"] with { only [`file] } RETURNS ["src/lib.rs", "src/main.rs"],
-        find "(" in ["src"] with { hidden } ERROR `invalid pattern "unclosed group",
+        find "(" in ["src"] with { `hidden } ERROR `invalid pattern "unclosed group",
         find "^README" RETURNS ["README.md"],
     ],
 
