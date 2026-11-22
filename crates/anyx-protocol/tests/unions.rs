@@ -188,3 +188,30 @@ fn mistakes_in_unions_are_diagnosed() {
         &rendered.join("\n"),
     );
 }
+
+#[test]
+fn a_union_can_fill_a_symbol_alias_slot() {
+    let schema = schema(
+        "PROTOCOL p VERSION 1,
+        TYPE ALIAS (Item: TYPE) ++: [| Item, `extra |],
+        METHOD f (optional: [| `x |]?) (explicit: [| `x, `null |]) (extended: [| `x |]++) RETURNS NOTHING ERRORS [| |],",
+    );
+    let parameters = &schema.method("f _ _ _").unwrap().shape.parameters;
+    let optional = &parameters[0].r#type;
+    let explicit = &parameters[1].r#type;
+    let extended = &parameters[2].r#type;
+
+    assert!(schema.fits(optional, explicit));
+    assert!(schema.fits(explicit, optional));
+    for written in ["`x", "`null"] {
+        assert_eq!(
+            decode_value(&schema, optional, written).unwrap(),
+            decode_value(&schema, explicit, written).unwrap()
+        );
+    }
+    assert!(decode_value(&schema, optional, "`extra").is_err());
+    assert_eq!(
+        decode_value(&schema, extended, "`extra").unwrap(),
+        variant("extra", vec![])
+    );
+}

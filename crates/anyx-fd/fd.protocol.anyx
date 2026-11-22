@@ -54,30 +54,30 @@ TYPE ALIAS Search: {
     `(case: Case) DEFAULT `smart case,
     `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
-    `(full path: [| `full path, `null |]) DEFAULT `null,
+    `(full path: [| `full path |]?) DEFAULT `null,
     # Each file must match these patterns too, in the same syntax and case.
     also matching (LIST Text) DEFAULT also matching [],
     # Find hidden files and directories too.
-    `(hidden: [| `hidden, `null |]) DEFAULT `null,
+    `(hidden: [| `hidden |]?) DEFAULT `null,
     # Don't skip what ignore files ignore.
-    `(no ignore: [| `no ignore, `null |]) DEFAULT `null,
+    `(no ignore: [| `no ignore |]?) DEFAULT `null,
     # Don't skip what `.gitignore` ignores, but still what `.ignore` and
     # `.fdignore` ignore.
-    `(no ignore vcs: [| `no ignore vcs, `null |]) DEFAULT `null,
+    `(no ignore vcs: [| `no ignore vcs |]?) DEFAULT `null,
     # Don't read ignore files in directories above the search path.
-    `(no ignore parent: [| `no ignore parent, `null |]) DEFAULT `null,
+    `(no ignore parent: [| `no ignore parent |]?) DEFAULT `null,
     # Read `.gitignore` outside a git repository too.
-    `(no require git: [| `no require git, `null |]) DEFAULT `null,
+    `(no require git: [| `no require git |]?) DEFAULT `null,
     # Skip what these files ignore, each written as `.gitignore` is.
     ignore files (LIST Text) DEFAULT ignore files [],
     # Skip paths these globs match, as `--exclude` does.
     excluding (LIST Text) DEFAULT excluding [],
     # Follow symbolic links into the directories they point to.
-    `(follow links: [| `follow links, `null |]) DEFAULT `null,
+    `(follow links: [| `follow links |]?) DEFAULT `null,
     # Don't go into another file system.
-    `(one file system: [| `one file system, `null |]) DEFAULT `null,
+    `(one file system: [| `one file system |]?) DEFAULT `null,
     # Don't go into a directory that matched.
-    `(prune: [| `prune, `null |]) DEFAULT `null,
+    `(prune: [| `prune |]?) DEFAULT `null,
     max depth (Depth?) DEFAULT max depth (`null),
     min depth (Depth?) DEFAULT min depth (`null),
     # Find only these kinds of file, or every kind when empty.
