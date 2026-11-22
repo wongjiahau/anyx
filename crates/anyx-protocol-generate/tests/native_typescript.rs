@@ -9,8 +9,8 @@ use std::process::{Command, Stdio};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use types::{
-    InlineRecord1, InlineRecord2, InlineRecord3, InlineRecord4, InspectError, Reminder, Schedule,
-    Server, SnoozeForError,
+    InlineRecord1, InlineRecord2, InlineRecord3, InspectError, PageOf, Reminder, Schedule, Server,
+    SnoozeForError,
 };
 
 struct Handler;
@@ -37,17 +37,17 @@ impl Server for Handler {
     }
     async fn inspect(
         &self,
-        filter: InlineRecord3,
-    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error> {
+        filter: InlineRecord2,
+    ) -> Result<Result<Option<PageOf<String>>, InspectError>, Self::Error> {
         if filter.query.is_empty() {
             return Ok(Err(InspectError::Invalid {
-                detail: InlineRecord4 {
+                detail: InlineRecord3 {
                     path: "query".into(),
                 },
             }));
         }
-        Ok(Ok(Some(InlineRecord1 {
-            rows: vec![InlineRecord2 {
+        Ok(Ok(Some(PageOf {
+            rows: vec![InlineRecord1 {
                 value: filter.query,
             }],
         })))

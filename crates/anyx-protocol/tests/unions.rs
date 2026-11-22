@@ -86,7 +86,7 @@ fn json_writes_a_member_as_that_member_does() {
 fn a_nullable_value_is_null_or_a_value_of_its_item() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE Limits { max depth (Integer?) DEFAULT max depth (`null) },
+        TYPE ALIAS Limits: { max depth (Integer?) DEFAULT max depth (`null) },
         METHOD f (limits: Limits) RETURNS NOTHING ERRORS [| |],",
     );
     let limits = Type::Named(limits_index(&schema));
@@ -164,7 +164,7 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "two members written alike only in JSON",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],",
         ),
         (
             "a nullable nullable, and a nullable choice with null",
@@ -172,7 +172,7 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "a repeat made by a generic type's argument",
-            "PROTOCOL a VERSION 1, TYPE Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "a list or a map as a member",

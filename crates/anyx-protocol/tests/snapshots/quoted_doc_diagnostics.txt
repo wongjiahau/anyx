@@ -1,13 +1,13 @@
 == a quoted doc on the protocol
 "A protocol." PROTOCOL a VERSION 1,
-schema:1:1: found the quoted string "A protocol."; expected the word `PROTOCOL`, `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+schema:1:1: found the quoted string "A protocol."; expected the word `PROTOCOL`, `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
   "A protocol." PROTOCOL a VERSION 1,
   ^^^^^^^^^^^^^
 
 == a quoted doc on a method
 PROTOCOL a VERSION 1,
 "Moves a file." METHOD move (path: Text) to (new path: Text) RETURNS NOTHING ERRORS [| |],
-schema:2:1: found the quoted string "Moves a file."; expected the word `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+schema:2:1: found the quoted string "Moves a file."; expected the word `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
   "Moves a file." METHOD move (path: Text) to (new path: Text) RETURNS NOTHING ERRORS [| |],
   ^^^^^^^^^^^^^^^
 
@@ -16,25 +16,25 @@ PROTOCOL a VERSION 1,
 """
 Moves a file.
 """ METHOD move (path: Text) RETURNS NOTHING ERRORS [| |],
-schema:2:1: found the raw string "Moves a file."; expected the word `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+schema:2:1: found the raw string "Moves a file."; expected the word `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
   """
   ^^^
 
 == a quoted doc on a record
-PROTOCOL a VERSION 1, "A file." TYPE File { path: Text },
-schema:1:23: found the quoted string "A file."; expected the word `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
-  PROTOCOL a VERSION 1, "A file." TYPE File { path: Text },
+PROTOCOL a VERSION 1, "A file." TYPE ALIAS File: { path: Text },
+schema:1:23: found the quoted string "A file."; expected the word `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+  PROTOCOL a VERSION 1, "A file." TYPE ALIAS File: { path: Text },
                         ^^^^^^^^^
 
 == a quoted doc on a field
-PROTOCOL a VERSION 1, TYPE File { "Where it is." path: Text },
-schema:1:35: found the string "Where it is."; expected the word `` ` ``, the call `` _? ` _ ``, `_ WHERE _`, `LIST _`, `MAP _`, a call whose name has no keyword and matches the regex `` ^(_ )*[^_`] ``, a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$`, `{...}`, `[| ... |]`, a call whose name has no keyword and matches the regex `` ^(_ )*[^_`]|^_( _)*$ `` or the end of the call
-  PROTOCOL a VERSION 1, TYPE File { "Where it is." path: Text },
-                                    ^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS File: { "Where it is." path: Text },
+schema:1:42: found the string "Where it is."; expected the word `` ` ``, the call `` _? ` _ ``, `_ WHERE _`, `LIST _`, `MAP _`, a call whose name has no keyword and matches the regex `` ^(_ )*[^_`] ``, a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$`, `{...}`, `[| ... |]`, a call whose name has no keyword and matches the regex `` ^(_ )*[^_`]|^_( _)*$ `` or the end of the call
+  PROTOCOL a VERSION 1, TYPE ALIAS File: { "Where it is." path: Text },
+                                           ^^^^^^^^^^^^^^
 
 == a quoted doc on a choice
 PROTOCOL a VERSION 1, "A shade." TYPE ALIAS Shade [| `dark, `light |],
-schema:1:23: found the quoted string "A shade."; expected the word `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+schema:1:23: found the quoted string "A shade."; expected the word `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
   PROTOCOL a VERSION 1, "A shade." TYPE ALIAS Shade [| `dark, `light |],
                         ^^^^^^^^^^
 
@@ -46,7 +46,7 @@ schema:1:44: found the string "Dim."; expected the call `… _`, `[...]` or the 
 
 == a quoted doc on a type
 PROTOCOL a VERSION 1, "A path." TYPE ALIAS Path: Text,
-schema:1:23: found the quoted string "A path."; expected the word `PUBLIC`, `TYPE`, `CHOICE`, `INTRINSIC`, `NAMED`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
+schema:1:23: found the quoted string "A path."; expected the word `PUBLIC`, `CHOICE`, `INTRINSIC`, `NAMED`, `TYPE`, `ERRORS`, `READ ONLY`, `IDEMPOTENT`, `METHOD`, `FUNCTION` or a `#` line string
   PROTOCOL a VERSION 1, "A path." TYPE ALIAS Path: Text,
                         ^^^^^^^^^
 

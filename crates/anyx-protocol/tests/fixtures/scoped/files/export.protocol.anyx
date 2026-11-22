@@ -2,7 +2,7 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page: { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 

@@ -120,7 +120,7 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-TYPE Schema File {
+TYPE ALIAS Schema File: {
     path: Text,
     source: Text,
 },
@@ -174,16 +174,16 @@ A response writes the result alone.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-TYPE File Summary {
+TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
 },
 
-TYPE File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File { path: Text, revision: Integer, content: Text },
 
 # One problem in a score.
-TYPE Diagnostic {
+TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
     line: Integer,
     # Counted from 1, in characters.

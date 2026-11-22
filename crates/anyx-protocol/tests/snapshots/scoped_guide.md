@@ -120,7 +120,7 @@ TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-TYPE Schema File {
+TYPE ALIAS Schema File: {
     path: Text,
     source: Text,
 },
@@ -176,7 +176,7 @@ USE "./files/export.protocol.anyx",
 
 USE "./common.protocol.anyx",
 
-TYPE File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File: { path: Text, revision: Integer, content: Text },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
@@ -206,7 +206,7 @@ METHOD empty trash RETURNS NOTHING ERRORS [| |],
 ### `common.protocol.anyx`
 
 # One problem in a note.
-PUBLIC TYPE Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Diagnostic: { line: Integer, message: Text },
 
 PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
@@ -219,7 +219,7 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page: { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 

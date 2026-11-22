@@ -161,7 +161,7 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
 fn a_field_left_out_of_json_takes_its_default() {
     let schema = common::schema(
         "PROTOCOL a VERSION 1,
-        TYPE Search { query: Text, limit (Integer) DEFAULT limit 50 },
+        TYPE ALIAS Search: { query: Text, limit (Integer) DEFAULT limit 50 },
         METHOD find (search: Search) RETURNS (count: Integer) ERRORS [| |],",
     );
     let request = encode_request_json(&schema, "find _", r#"[{"query": "ode"}]"#).unwrap();

@@ -1,6 +1,6 @@
 == an unknown type
 PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [| |],
-schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [| |],
                                      ^^^^^
 
@@ -11,10 +11,10 @@ schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in ty
                                      ^^^^^^^
 
 == an old all-caps name inside a list
-PROTOCOL a VERSION 1, TYPE Example { tags: LIST: TEXT },
-schema:1:50: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, TYPE Example { tags: LIST: TEXT },
-                                                   ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags: LIST: TEXT },
+schema:1:57: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags: LIST: TEXT },
+                                                          ^^^^
 
 == INTRINSIC in a schema
 PROTOCOL a VERSION 1, INTRINSIC TYPE Money,
@@ -35,10 +35,10 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == a type named like a built-in one
-PROTOCOL a VERSION 1, TYPE Integer { a: Text },
-schema:1:28: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it
-  PROTOCOL a VERSION 1, TYPE Integer { a: Text },
-                             ^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a: Text },
+schema:1:34: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a: Text },
+                                   ^^^^^^^
 
 == a type alias without a type
 PROTOCOL a VERSION 1, TYPE ALIAS Money,
@@ -59,16 +59,16 @@ schema:1:64: found the number `3`; expected the call `… _`, `[...]` or the end
                                                                  ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, TYPE Example { a: Text }, TYPE ALIAS Example [| `b |],
-schema:1:60: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE Example { a: Text }, TYPE ALIAS Example [| `b |],
-                                                             ^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text }, TYPE ALIAS Example [| `b |],
+schema:1:67: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text }, TYPE ALIAS Example [| `b |],
+                                                                    ^^^^^^^
 
 == a field twice
-PROTOCOL a VERSION 1, TYPE Example { a: Text, a: Integer },
-schema:1:47: found a second field named `a`; expected each field once; rename or remove one of them
-  PROTOCOL a VERSION 1, TYPE Example { a: Text, a: Integer },
-                                                ^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text, a: Integer },
+schema:1:54: found a second field named `a`; expected each field once; rename or remove one of them
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a: Text, a: Integer },
+                                                       ^
 
 == a variant twice
 PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b: Text) |],
@@ -104,40 +104,40 @@ schema:1:93: found overlapping methods `scale (by: Float)` and `scale (by: Float
                                                                                               ^^^^^
 
 == a type holding itself
-PROTOCOL a VERSION 1, TYPE Node { next: Node }, TYPE Tree { children: LIST: Tree },
-schema:1:28: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Node { next: Node }, TYPE Tree { children: LIST: Tree },
-                             ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Node: { next: Node }, TYPE ALIAS Tree: { children: LIST: Tree },
+schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next: Node }, TYPE ALIAS Tree: { children: LIST: Tree },
+                                   ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, TYPE Node { next (Node?) DEFAULT next (`null) }, TYPE Tree { children: MAP: Tree },
-schema:1:28: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Node { next (Node?) DEFAULT next (`null) }, TYPE Tree { children: MAP: Tree },
-                             ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children: MAP: Tree },
+schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children: MAP: Tree },
+                                   ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, TYPE Example { a (MAP: Integer) DEFAULT a [] },
-schema:1:65: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
-  PROTOCOL a VERSION 1, TYPE Example { a (MAP: Integer) DEFAULT a [] },
-                                                                  ^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
+schema:1:72: in the `DEFAULT` of `a`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
+                                                                         ^^
 
 == a cycle through a union of variants
-PROTOCOL a VERSION 1, TYPE Alpha { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
-schema:1:28: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Alpha { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
-                             ^^^^^
-schema:1:58: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE Alpha { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
-                                                           ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+schema:1:34: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+                                   ^^^^^
+schema:1:65: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b: Beta }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+                                                                  ^^^^
 
 == names that are not lowercase ASCII
-PROTOCOL a VERSION 1, TYPE Example { Path: Text, café: Text },
-schema:1:38: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, TYPE Example { Path: Text, café: Text },
-                                       ^^^^
-schema:1:50: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, TYPE Example { Path: Text, café: Text },
-                                                   ^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
+schema:1:45: found `Path` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
+                                              ^^^^
+schema:1:57: found `café` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
+                                                          ^^^^
 
 == a parameter named kind
 PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind: Text) |],
@@ -146,10 +146,10 @@ schema:1:49: found a parameter named `kind`; expected another name, since a vari
                                                   ^^^^
 
 == a keyword in a name
-PROTOCOL a VERSION 1, TYPE Example { a Text b: Text },
-schema:1:38: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
-  PROTOCOL a VERSION 1, TYPE Example { a Text b: Text },
-                                       ^^^^^^^^
+PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
+schema:1:45: found `a Text b` as the name of a field; expected words of lowercase ASCII letters and digits, each starting with a letter, since names become Rust and TypeScript identifiers; rename it
+  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
+                                              ^^^^^^^^
 
 == a method without errors
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),
@@ -159,7 +159,7 @@ schema:1:30: found a method without `ERRORS`; expected its errors after what it 
 
 == an unknown alias among errors
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Gone |],
-schema:1:60: found `Gone`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Gone`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:60: found `Gone`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Gone`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Gone |],
                                                              ^^^^
 
@@ -180,7 +180,7 @@ schema:1:96: found `Maybe` among a method's errors; expected a variant, such as 
 
 == aliases including each other
 PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],
-schema:1:34: found the type alias `Read Errors` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record declared with `TYPE` or a `NAMED TYPE` that holds them through a `LIST`
+schema:1:34: found the type alias `Read Errors` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record alias or a `NAMED TYPE` that holds them through a `LIST`
   PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],
                                    ^^^^^^^^^^^
 schema:1:154: found `Read Errors` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
@@ -195,7 +195,7 @@ schema:1:88: found `` `gone `` as a value of both `Shared` and `Shared` in `[| S
 
 == an alias including an unknown alias
 PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],
-schema:1:48: found `Lost`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `Lost`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:48: found `Lost`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Lost`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],
                                                  ^^^^
 schema:1:94: found `Shared` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong

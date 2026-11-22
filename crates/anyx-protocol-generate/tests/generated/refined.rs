@@ -21,8 +21,8 @@ NAMED TYPE Contains Zero (value: Text . WHERE [_ contains "\u00001"]),
 NAMED TYPE Outside Range (value: Integer . WHERE [not: 1 <= _ <= 3]),
 NAMED TYPE True Only (value: Boolean . WHERE [_ and (`true)]),
 NAMED TYPE Names (value: (LIST Text) WHERE [1 <= (_ length) <= 3]),
-TYPE Summary { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
-TYPE Box of (Item: TYPE) { value: Item },
+TYPE ALIAS Summary: { path: Score Path, revision: Revision, limit (Limit) DEFAULT limit 10 },
+TYPE ALIAS Box of (Item: TYPE): { value: Item },
 METHOD write (path: Score Path) at (revision: Revision)
     REQUIRES [revision < 10]
     RETURNS (saved revision: Revision)

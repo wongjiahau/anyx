@@ -34,7 +34,7 @@ fn imports_use_open_buffers_and_recheck_dependents_on_change_and_close() {
     let messages = open(
         &mut server,
         entry,
-        "PROTOCOL notes VERSION 1, USE \"../shared.anyx\", TYPE Result { value: Item },",
+        "PROTOCOL notes VERSION 1, USE \"../shared.anyx\", TYPE ALIAS Result: { value: Item },",
     );
     assert!(
         messages[0]["diagnostics"][0]["message"]
@@ -43,7 +43,11 @@ fn imports_use_open_buffers_and_recheck_dependents_on_change_and_close() {
             .contains("open the imported file")
     );
 
-    let messages = open(&mut server, library, "PUBLIC TYPE Item { value: Text },");
+    let messages = open(
+        &mut server,
+        library,
+        "PUBLIC TYPE ALIAS Item: { value: Text },",
+    );
     assert_eq!(messages.len(), 2);
     assert!(
         messages
@@ -54,7 +58,7 @@ fn imports_use_open_buffers_and_recheck_dependents_on_change_and_close() {
     let messages = notify(
         &mut server,
         "textDocument/didChange",
-        json!({"textDocument": {"uri": library, "version": 2}, "contentChanges": [{"text": "TYPE Item { value: Text },"}]}),
+        json!({"textDocument": {"uri": library, "version": 2}, "contentChanges": [{"text": "TYPE ALIAS Item: { value: Text },"}]}),
     );
     let entry_diagnostics = messages
         .iter()
@@ -100,7 +104,7 @@ fn diagnostics_in_imported_libraries_are_published_at_their_own_locations() {
     let messages = open(
         &mut server,
         "file:///shared.anyx",
-        "TYPE Item { value: missing },",
+        "TYPE ALIAS Item: { value: missing },",
     );
     let library = messages
         .iter()
@@ -118,10 +122,14 @@ fn diagnostics_in_imported_libraries_are_published_at_their_own_locations() {
 
 #[test]
 fn checking_a_library_needs_no_header() {
-    assert!(Protocol.check("TYPE Item { value: Text },").is_empty());
     assert!(
         Protocol
-            .format("USE \"./shared.anyx\", TYPE Item {value: Text}")
+            .check("TYPE ALIAS Item: { value: Text },")
+            .is_empty()
+    );
+    assert!(
+        Protocol
+            .format("USE \"./shared.anyx\", TYPE ALIAS Item: {value: Text}")
             .unwrap()
             .contains("USE")
     );
@@ -137,7 +145,11 @@ fn filenames_with_spaces_resolve_and_self_imports_are_read_once() {
         entry,
         "PROTOCOL notes VERSION 1, USE \"../shared types.protocol.anyx\",",
     );
-    let messages = open(&mut server, library, "PUBLIC TYPE Item { value: Text },");
+    let messages = open(
+        &mut server,
+        library,
+        "PUBLIC TYPE ALIAS Item: { value: Text },",
+    );
     assert!(
         messages
             .iter()

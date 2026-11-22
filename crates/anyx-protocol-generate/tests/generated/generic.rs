@@ -13,7 +13,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-TYPE Page of (Item: TYPE) {
+TYPE ALIAS Page of (Item: TYPE): {
     items: LIST: Item,
     next (Text?) DEFAULT next (`null),
     # How many there are in all.
@@ -25,15 +25,15 @@ TYPE Page of (Item: TYPE) {
 TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [| `done (value: Value), `failed (problem: Problem) |],
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-TYPE (Item: TYPE) dated { item: Item, at: Instant },
+TYPE ALIAS (Item: TYPE) dated: { item: Item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-TYPE Tree of (Item: TYPE) { value: Item, children: LIST Tree of (Item) },
+TYPE ALIAS Tree of (Item: TYPE): { value: Item, children: LIST Tree of (Item) },
 
 # Keys and their values, in the same order: a slot between words.
-TYPE Table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, values: LIST: Value },
+TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys: LIST: Key, values: LIST: Value },
 
-TYPE Payment { amount: Integer, at: Instant },
+TYPE ALIAS Payment: { amount: Integer, at: Instant },
 
 TYPE ALIAS Decline [| `insufficient funds, `card expired |],
 

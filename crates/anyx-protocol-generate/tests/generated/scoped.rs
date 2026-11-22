@@ -20,7 +20,7 @@ USE "./files/export.protocol.anyx",
         path: "files.protocol.anyx",
         source: r#"USE "./common.protocol.anyx",
 
-TYPE File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File: { path: Text, revision: Integer, content: Text },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
@@ -51,7 +51,7 @@ METHOD empty trash RETURNS NOTHING ERRORS [| |],
     anyx_protocol::SchemaFile {
         path: "common.protocol.anyx",
         source: r#"# One problem in a note.
-PUBLIC TYPE Diagnostic { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Diagnostic: { line: Integer, message: Text },
 
 PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
@@ -65,7 +65,7 @@ PUBLIC TYPE ALIAS Common Errors [|
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE Page { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page: { html: Text, problem (Diagnostic?) DEFAULT problem (`null) },
 
 METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
 

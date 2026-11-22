@@ -30,7 +30,7 @@ schema:1:95: found the type `Integer` for `id` in `UNDONE BY`; expected `Text`, 
 
 == a slot of an unknown type
 PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING ERRORS [| |],
-schema:1:95: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
+schema:1:95: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
   PROTOCOL a VERSION 1, METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: thing), METHOD show (id: Text) RETURNS NOTHING ERRORS [| |],
                                                                                                 ^^^^^
 

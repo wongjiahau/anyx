@@ -2,7 +2,7 @@
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-TYPE Reminder {
+TYPE ALIAS Reminder: {
     note: Text,
     at: Instant,
     every (Duration?) DEFAULT every (`null),
@@ -34,7 +34,7 @@ METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minu
         `overdue since (since: Instant),
     |],
 
-TYPE ALIAS page of (Item: TYPE) { rows: LIST { value: Item } },
+TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
 
 METHOD inspect (filter: { query: Text })
     RETURNS (result: [| page of (Text), `null |])

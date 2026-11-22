@@ -50,7 +50,7 @@ TYPE ALIAS Syntax [|
 # How `find` searches, as in `` { `glob pattern, `hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
-TYPE Search {
+TYPE ALIAS Search: {
     `(case: Case) DEFAULT `smart case,
     `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
@@ -100,7 +100,7 @@ TYPE Search {
 },
 
 # What a found file is, as `fd --list-details` shows it.
-TYPE Details {
+TYPE ALIAS Details: {
     path: Text,
     kind: Kind,
     size: Size,
