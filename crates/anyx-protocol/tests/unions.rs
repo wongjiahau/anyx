@@ -1,4 +1,4 @@
-//! Unions: `UNION [Integer, `none]` holds a value of any of its members,
+//! Unions: `[| Integer, `none |]` holds a value of any of its members,
 //! written as that member writes it, so a value's form tells its member.
 
 mod common;
@@ -18,10 +18,10 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 fn mixed() -> (anyx_protocol::Schema, Type) {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Shade: UNION [`dark, `light],
-        TYPE ALIAS Mixed: UNION [Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair],
+        TYPE ALIAS Shade: [| `dark, `light |],
+        TYPE ALIAS Mixed: [| Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair |],
         TYPE ALIAS (Item: TYPE) Pair: LIST Item,
-        METHOD f (x: Mixed) RETURNS NOTHING ERRORS [],",
+        METHOD f (x: Mixed) RETURNS NOTHING ERRORS [| |],",
     );
     let r#type = schema.method("f _").unwrap().shape.parameters[0]
         .r#type
@@ -86,8 +86,8 @@ fn json_writes_a_member_as_that_member_does() {
 fn a_nullable_value_is_null_or_a_value_of_its_item() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        RECORD Limits { max depth (Integer?) DEFAULT max depth (`null) },
-        METHOD f (limits: Limits) RETURNS NOTHING ERRORS [],",
+        TYPE Limits: { max depth (Integer?) DEFAULT max depth (`null) },
+        METHOD f (limits: Limits) RETURNS NOTHING ERRORS [| |],",
     );
     let limits = Type::Named(limits_index(&schema));
     let read = |source: &str| decode_value(&schema, &limits, source).unwrap();
@@ -118,15 +118,15 @@ fn limits_index(schema: &anyx_protocol::Schema) -> usize {
 fn an_empty_union_and_nested_unions_are_allowed() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Nothing: UNION [],
+        TYPE ALIAS Nothing: [| |],
         TYPE ALIAS Depth: Integer?,
-        METHOD f (x: UNION [Nothing, Depth, UNION [Text, `none]]) RETURNS NOTHING ERRORS [],",
+        METHOD f (x: [| Nothing, Depth, [| Text, `none |] |]) RETURNS NOTHING ERRORS [| |],",
     );
     let r#type = &schema.method("f _").unwrap().shape.parameters[0].r#type;
     assert_eq!(r#type.members().len(), 4);
     assert_eq!(
         schema.type_name(r#type),
-        "UNION [UNION [], Integer?, UNION [Text, `none]]"
+        "[| [| |], Integer?, [| Text, `none |] |]"
     );
     assert_eq!(
         decode_value(&schema, r#type, "`none").unwrap(),
@@ -141,7 +141,8 @@ fn an_empty_union_and_nested_unions_are_allowed() {
 #[test]
 fn a_member_fits_where_its_union_is_expected() {
     let depth = Type::Integer;
-    let schema = schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [],");
+    let schema =
+        schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [| |],");
     let null = match &schema.method("f _").unwrap().shape.parameters[0].r#type {
         Type::Union(members) => members[1].clone(),
         _ => panic!("`Integer?` is a union"),
@@ -159,23 +160,23 @@ fn mistakes_in_unions_are_diagnosed() {
     let cases = [
         (
             "two members written alike",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: UNION [`dark, `none], TYPE ALIAS Counts: UNION [Integer, Integer], TYPE ALIAS Shades: UNION [Shade, `none], TYPE ALIAS Blobs: UNION [Text, Bytes],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Shade: [| `dark, `none |], TYPE ALIAS Counts: [| Integer, Integer |], TYPE ALIAS Shades: [| Shade, `none |], TYPE ALIAS Blobs: [| Text, Bytes |],",
         ),
         (
             "two members written alike only in JSON",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Waits: UNION [Integer, Duration], RECORD Row { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows: UNION [Row, Texts],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Waits: [| Integer, Duration |], TYPE Row: { a: Text }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows: [| Row, Texts |],",
         ),
         (
             "a nullable nullable, and a nullable choice with null",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: UNION [`null, `some], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap: [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "a repeat made by a generic type's argument",
-            "PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [],",
+            "PROTOCOL a VERSION 1, TYPE Box of (Item: TYPE): { value: Item? }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "a list or a map as a member",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Paths: UNION [LIST Text, `none],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Paths: [| LIST Text, `none |],",
         ),
     ];
     let rendered: Vec<String> = cases

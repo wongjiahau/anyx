@@ -64,7 +64,7 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
   words, put `:` after its key: `` {{ \"hymn\": `done }} ``.
-- A RECORD is its fields in braces, each written in its declared shape with
+- A record is its fields in braces, each written in its declared shape with
   a value in each slot, in any order: `{{ path \"a\", revision 3 }}`,
   `` {{ (`any) case, between 1 and 3 }} ``. A value before a field's words
   keeps its parentheses. A field declared as a backtick and a slot is written
@@ -73,12 +73,12 @@ the account, such as by sending or sharing it.
   share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` {{ status: `done }} ``, `{{ timeout: 5 minutes }}`.
-- A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is
+- A union of variants, `` TYPE ALIAS Shade: [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
-- A `UNION` is a value of one of its members, written as that member
-  writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
+- A union is a value of one of its members, written as that member
+  writes it. So a nullable `T?`, `` [| T, `null |] ``, is `` `null `` or a
   value of `T`: `{{ max depth 3 }}`, `` {{ max depth: `null }} ``.
 {generic_types}{named_types}- In a slot, a value written as words or a variant goes in parentheses so
   that it doesn't join the words around it: `` set (`true) ``,
@@ -125,7 +125,7 @@ In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. Errors that methods
 share are an alias of a union of variants, such as `` TYPE ALIAS File
-Errors: UNION [`missing] ``, named in each method's `ERRORS`.{examples}{imports}
+Errors: [| `missing |] ``, named in each method's `ERRORS`.{examples}{imports}
 
 {source}
 ",
@@ -279,20 +279,20 @@ fn wrap(text: &str, indent: &str) -> String {
     lines.join("\n")
 }
 
-/// The rule for generic types, shown with the schema's first one: "`RECORD
-/// page of (Item: TYPE) { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
-/// TYPE): UNION [ … ]`", then a use of it. Empty for a schema without any.
+/// The rule for generic types, shown with the schema's first one: "`TYPE
+/// page of (Item: TYPE): { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
+/// TYPE): [| … |]`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
         .types
         .iter()
-        .find(|definition| !definition.parameters.is_empty())
+        .find(|definition| !definition.anonymous && !definition.parameters.is_empty())
     else {
         return String::new();
     };
     let (keyword, body) = match definition.kind {
-        TypeKind::Variants(_) => ("TYPE ALIAS", ": UNION [ … ]"),
-        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("RECORD", " { … }"),
+        TypeKind::Variants(_) => ("TYPE ALIAS", ": [| … |]"),
+        TypeKind::Record(_) | TypeKind::Distinct { .. } => ("TYPE", ": { … }"),
     };
     let declared: Vec<String> = definition
         .parameters
@@ -301,7 +301,7 @@ fn generic_types(schema: &Schema) -> String {
         .collect();
     let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(
-        "- A generic RECORD or TYPE ALIAS has a type parameter in each slot of\n  its name, which its fields or variants use as a type: `{keyword} {}{body}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
+        "- A generic record or type alias has a type parameter in each slot of\n  its name, which its fields or variants use as a type: `{keyword} {}{body}`.\n  A use puts a type in each slot, in parentheses, `{}`, and its value\n  is written with those types in place of the parameters.\n",
         fill_slots(&definition.name, &declared),
         fill_slots(&definition.name, &arguments),
     )

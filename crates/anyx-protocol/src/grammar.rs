@@ -41,7 +41,6 @@ pub enum Definition {
     Choice(Choice),
     IntrinsicType(IntrinsicType),
     NamedType(NamedType),
-    UntaggedType(UntaggedType),
     TypeAlias(TypeAlias),
     Errors(Errors),
     Method(Method),
@@ -58,7 +57,6 @@ pub struct Import {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub doc: Option<Spanned<StringLiteral>>,
-    pub intrinsic: Option<Span>,
     pub public: Option<Span>,
     pub body: RecordBody,
     pub span: Span,
@@ -67,14 +65,8 @@ pub struct Record {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordBody {
     pub name: CallName,
-    pub arguments: Vec<RecordPart>,
+    pub arguments: Vec<AliasPart>,
     pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum RecordPart {
-    Fields(Spanned<Vec<Field>>),
-    TypeParameter(TypeParameter),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -164,21 +156,6 @@ pub struct NamedTypeBody {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UntaggedType {
-    pub doc: Option<Spanned<StringLiteral>>,
-    pub public: Option<Span>,
-    pub body: UntaggedTypeBody,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct UntaggedTypeBody {
-    pub name: Spanned<String>,
-    pub r#type: Type,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct TypeAlias {
     pub doc: Option<Spanned<StringLiteral>>,
     pub public: Option<Span>,
@@ -230,7 +207,7 @@ pub struct Method {
     pub requires: Option<Condition>,
     pub returns: MethodReturns,
     pub ensures: Option<Condition>,
-    pub errors: Option<ErrorList>,
+    pub errors: Option<UnionType>,
     pub undone_by: Option<Undo>,
     pub examples: Option<Examples>,
     pub span: Span,
@@ -275,12 +252,6 @@ pub enum Example {
 pub type Returns = Parameter;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ErrorList {
-    pub union_member: Vec<UnionMember>,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
     pub name: CallName,
     pub arguments: Vec<ShapePart>,
@@ -319,6 +290,7 @@ pub enum Type {
     Refined(RefinedType),
     List(ListType),
     Map(MapType),
+    Record(RecordType),
     Union(UnionType),
     Named(Reference),
 }
@@ -371,8 +343,14 @@ pub struct MapType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct RecordType {
+    pub field: Vec<Field>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnionType {
-    pub members: Spanned<Vec<UnionMember>>,
+    pub union_member: Vec<UnionMember>,
     pub span: Span,
 }
 
@@ -380,6 +358,7 @@ pub struct UnionType {
 pub enum UnionMember {
     Variant(Variant),
     Refined(RefinedType),
+    Record(RecordType),
     Union(UnionType),
     Named {
         name: CallName,
@@ -415,21 +394,11 @@ impl Definition {
             Definition::Choice(value) => value.span,
             Definition::IntrinsicType(value) => value.span,
             Definition::NamedType(value) => value.span,
-            Definition::UntaggedType(value) => value.span,
             Definition::TypeAlias(value) => value.span,
             Definition::Errors(value) => value.span,
             Definition::Method(value) => value.span,
             Definition::Function(value) => value.span,
             Definition::Import(value) => value.span,
-        }
-    }
-}
-
-impl RecordPart {
-    pub fn span(&self) -> Span {
-        match self {
-            RecordPart::Fields(value) => value.span,
-            RecordPart::TypeParameter(value) => value.span,
         }
     }
 }
@@ -520,6 +489,7 @@ impl Type {
             Type::Refined(value) => value.span,
             Type::List(value) => value.span,
             Type::Map(value) => value.span,
+            Type::Record(value) => value.span,
             Type::Union(value) => value.span,
             Type::Named(value) => value.span,
         }
@@ -545,6 +515,7 @@ impl UnionMember {
             UnionMember::Named { span, .. } => *span,
             UnionMember::Variant(value) => value.span,
             UnionMember::Refined(value) => value.span,
+            UnionMember::Record(value) => value.span,
             UnionMember::Union(value) => value.span,
         }
     }
@@ -581,7 +552,6 @@ impl support::Errors for Definition {
             Definition::Choice(value) => support::Errors::errors(value, found),
             Definition::IntrinsicType(value) => support::Errors::errors(value, found),
             Definition::NamedType(value) => support::Errors::errors(value, found),
-            Definition::UntaggedType(value) => support::Errors::errors(value, found),
             Definition::TypeAlias(value) => support::Errors::errors(value, found),
             Definition::Errors(value) => support::Errors::errors(value, found),
             Definition::Method(value) => support::Errors::errors(value, found),
@@ -600,7 +570,6 @@ impl support::Errors for Import {
 impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.doc, found);
-        support::Errors::errors(&self.intrinsic, found);
         support::Errors::errors(&self.public, found);
         support::Errors::errors(&self.body, found);
     }
@@ -610,15 +579,6 @@ impl support::Errors for RecordBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
-    }
-}
-
-impl support::Errors for RecordPart {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        match self {
-            RecordPart::Fields(value) => support::Errors::errors(value, found),
-            RecordPart::TypeParameter(value) => support::Errors::errors(value, found),
-        }
     }
 }
 
@@ -719,21 +679,6 @@ impl support::Errors for NamedTypeBody {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
         support::Errors::errors(&self.arguments, found);
-    }
-}
-
-impl support::Errors for UntaggedType {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.doc, found);
-        support::Errors::errors(&self.public, found);
-        support::Errors::errors(&self.body, found);
-    }
-}
-
-impl support::Errors for UntaggedTypeBody {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
-        support::Errors::errors(&self.r#type, found);
     }
 }
 
@@ -846,12 +791,6 @@ impl support::Errors for Example {
     }
 }
 
-impl support::Errors for ErrorList {
-    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.union_member, found);
-    }
-}
-
 impl support::Errors for Shape {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.name, found);
@@ -895,6 +834,7 @@ impl support::Errors for Type {
             Type::Refined(value) => support::Errors::errors(value, found),
             Type::List(value) => support::Errors::errors(value, found),
             Type::Map(value) => support::Errors::errors(value, found),
+            Type::Record(value) => support::Errors::errors(value, found),
             Type::Union(value) => support::Errors::errors(value, found),
             Type::Named(value) => support::Errors::errors(value, found),
         }
@@ -952,9 +892,15 @@ impl support::Errors for MapType {
     }
 }
 
+impl support::Errors for RecordType {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.field, found);
+    }
+}
+
 impl support::Errors for UnionType {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.members, found);
+        support::Errors::errors(&self.union_member, found);
     }
 }
 
@@ -963,6 +909,7 @@ impl support::Errors for UnionMember {
         match self {
             UnionMember::Variant(value) => support::Errors::errors(value, found),
             UnionMember::Refined(value) => support::Errors::errors(value, found),
+            UnionMember::Record(value) => support::Errors::errors(value, found),
             UnionMember::Union(value) => support::Errors::errors(value, found),
             UnionMember::Named {
                 name, arguments, ..
@@ -1039,7 +986,6 @@ pub fn decode_definition(node: &Node) -> Result<Definition, DecodeError> {
         .or_else(|error| error.or(decode_choice(node).map(Definition::Choice)))
         .or_else(|error| error.or(decode_intrinsic_type(node).map(Definition::IntrinsicType)))
         .or_else(|error| error.or(decode_named_type(node).map(Definition::NamedType)))
-        .or_else(|error| error.or(decode_untagged_type(node).map(Definition::UntaggedType)))
         .or_else(|error| error.or(decode_type_alias(node).map(Definition::TypeAlias)))
         .or_else(|error| error.or(decode_errors(node).map(Definition::Errors)))
         .or_else(|error| error.or(decode_method(node).map(Definition::Method)))
@@ -1061,17 +1007,9 @@ pub fn decode_import(node: &Node) -> Result<Import, DecodeError> {
 }
 
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `_? RECORD _`")?;
+    let mut parts = support::call(node, "the call `_? TYPE _`")?;
     let decoded = Record {
         doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        intrinsic: if parts
-            .choose(&["INTRINSIC"], false, true, &["the word `INTRINSIC`"])?
-            .is_some()
-        {
-            Some(parts.word_span("INTRINSIC")?)
-        } else {
-            None
-        },
         public: if parts
             .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
             .is_some()
@@ -1081,7 +1019,7 @@ pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
             None
         },
         body: parts
-            .word("RECORD")?
+            .word("TYPE")?
             .one(decode_record_body, "a record body")?,
         span: node.span,
     };
@@ -1098,27 +1036,11 @@ pub fn decode_record_body(node: &Node) -> Result<RecordBody, DecodeError> {
     let mut arguments = support::arguments(node, arguments);
     let decoded = RecordBody {
         name,
-        arguments: arguments.zero_or_more(decode_record_part),
+        arguments: arguments.one_or_more(decode_alias_part, "an alias part")?,
         span: node.span,
     };
     arguments.finish()?;
     Ok(decoded)
-}
-
-pub fn decode_record_part(node: &Node) -> Result<RecordPart, DecodeError> {
-    decode_record_part_fields(node)
-        .map(RecordPart::Fields)
-        .or_else(|error| error.or(decode_type_parameter(node).map(RecordPart::TypeParameter)))
-}
-
-fn decode_record_part_fields(node: &Node) -> Result<Spanned<Vec<Field>>, DecodeError> {
-    let mut elements = support::curly_brace(node)?;
-    let value = elements.zero_or_more(decode_field);
-    elements.finish()?;
-    Ok(Spanned {
-        value,
-        span: node.span,
-    })
 }
 
 pub fn decode_type_parameter(node: &Node) -> Result<TypeParameter, DecodeError> {
@@ -1295,41 +1217,6 @@ pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError>
     Ok(decoded)
 }
 
-pub fn decode_untagged_type(node: &Node) -> Result<UntaggedType, DecodeError> {
-    let mut parts = support::call(node, "the call `_? TYPE _`")?;
-    let decoded = UntaggedType {
-        doc: parts.optional(|node| support::line_string(node, |_| true, "a `#` line string")),
-        public: if parts
-            .choose(&["PUBLIC"], false, true, &["the word `PUBLIC`"])?
-            .is_some()
-        {
-            Some(parts.word_span("PUBLIC")?)
-        } else {
-            None
-        },
-        body: parts
-            .word("TYPE")?
-            .one(decode_untagged_type_body, "an untagged type body")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
-pub fn decode_untagged_type_body(node: &Node) -> Result<UntaggedTypeBody, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
-    let decoded = UntaggedTypeBody {
-        name: parts.words(
-            |text| !text.split(' ').any(anyx::is_keyword),
-            "words whose text has no keyword",
-        )?,
-        r#type: parts.one(decode_type, "a type")?,
-        span: node.span,
-    };
-    parts.finish()?;
-    Ok(decoded)
-}
-
 pub fn decode_type_alias(node: &Node) -> Result<TypeAlias, DecodeError> {
     let mut parts = support::call(node, "the call `_? TYPE ALIAS _`")?;
     let decoded = TypeAlias {
@@ -1492,7 +1379,7 @@ pub fn decode_method(node: &Node) -> Result<Method, DecodeError> {
             Some(
                 parts
                     .word("ERRORS")?
-                    .one(decode_error_list, "an error list")?,
+                    .one(decode_union_type, "an union type")?,
             )
         } else {
             None
@@ -1611,16 +1498,6 @@ pub fn decode_returns(node: &Node) -> Result<Returns, DecodeError> {
     decode_parameter(node)
 }
 
-pub fn decode_error_list(node: &Node) -> Result<ErrorList, DecodeError> {
-    let mut elements = support::square_bracket(node)?;
-    let decoded = ErrorList {
-        union_member: elements.zero_or_more(decode_union_member),
-        span: node.span,
-    };
-    elements.finish()?;
-    Ok(decoded)
-}
-
 pub fn decode_shape(node: &Node) -> Result<Shape, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
@@ -1699,6 +1576,7 @@ pub fn decode_type(node: &Node) -> Result<Type, DecodeError> {
         .map(Type::Refined)
         .or_else(|error| error.or(decode_list_type(node).map(Type::List)))
         .or_else(|error| error.or(decode_map_type(node).map(Type::Map)))
+        .or_else(|error| error.or(decode_record_type(node).map(Type::Record)))
         .or_else(|error| error.or(decode_union_type(node).map(Type::Union)))
         .or_else(|error| error.or(decode_reference(node).map(Type::Named)))
 }
@@ -1835,32 +1713,31 @@ pub fn decode_map_type(node: &Node) -> Result<MapType, DecodeError> {
     Ok(decoded)
 }
 
-pub fn decode_union_type(node: &Node) -> Result<UnionType, DecodeError> {
-    let mut parts = support::call(node, "the call `UNION _`")?;
-    let decoded = UnionType {
-        members: parts
-            .word("UNION")?
-            .one(decode_union_type_members, "`[...]`")?,
+pub fn decode_record_type(node: &Node) -> Result<RecordType, DecodeError> {
+    let mut elements = support::curly_brace(node)?;
+    let decoded = RecordType {
+        field: elements.zero_or_more(decode_field),
         span: node.span,
     };
-    parts.finish()?;
+    elements.finish()?;
     Ok(decoded)
 }
 
-fn decode_union_type_members(node: &Node) -> Result<Spanned<Vec<UnionMember>>, DecodeError> {
-    let mut elements = support::square_bracket(node)?;
-    let value = elements.zero_or_more(decode_union_member);
-    elements.finish()?;
-    Ok(Spanned {
-        value,
+pub fn decode_union_type(node: &Node) -> Result<UnionType, DecodeError> {
+    let mut elements = support::custom_bracket(node, "[|", "the closing `|]`")?;
+    let decoded = UnionType {
+        union_member: elements.zero_or_more(decode_union_member),
         span: node.span,
-    })
+    };
+    elements.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_union_member(node: &Node) -> Result<UnionMember, DecodeError> {
     decode_variant(node)
         .map(UnionMember::Variant)
         .or_else(|error| error.or(decode_refined_type(node).map(UnionMember::Refined)))
+        .or_else(|error| error.or(decode_record_type(node).map(UnionMember::Record)))
         .or_else(|error| error.or(decode_union_type(node).map(UnionMember::Union)))
         .or_else(|error| error.or(decode_union_member_named(node)))
 }

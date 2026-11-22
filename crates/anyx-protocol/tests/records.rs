@@ -5,22 +5,22 @@ use anyx_protocol::{Value, decode_request, encode_request};
 use common::{diagnostics, schema};
 
 const SEARCH: &str = "PROTOCOL a VERSION 1,
-TYPE ALIAS Case: UNION [`smart, `any, `exact],
-TYPE ALIAS Order: UNION [`newest first, `by name, `largest first],
-TYPE ALIAS Auth: UNION [`bearer (token: Text), `no auth],
-RECORD Search {
+TYPE ALIAS Case: [| `smart, `any, `exact |],
+TYPE ALIAS Order: [| `newest first, `by name, `largest first |],
+TYPE ALIAS Auth: [| `bearer (token: Text), `no auth |],
+TYPE Search: {
     # The pattern to look for.
     pattern: Text,
     (Case) case DEFAULT (`smart) case,
     # Searches hidden files too.
-    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
-    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
+    `(hidden: [| `hidden, `null |]) DEFAULT `null,
+    `(pinned: [| `pinned, `null |]) DEFAULT `null,
     max depth (Integer?) DEFAULT max depth (`null),
     at least (Integer?) bytes DEFAULT at least (`null) bytes,
     `(order: Order) DEFAULT `newest first,
     `(auth: Auth) DEFAULT `no auth,
 },
-METHOD find (search: Search) RETURNS (count: Integer) ERRORS [],";
+METHOD find (search: Search) RETURNS (count: Integer) ERRORS [| |],";
 
 fn find(source: &str) -> Value {
     let schema = schema(SEARCH);
@@ -120,9 +120,9 @@ fn a_value_before_words_without_parentheses_gets_a_hint() {
 fn two_fields_written_as_their_variant_may_not_share_one() {
     let found = diagnostics(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Order: UNION [`by (key: Text), `newest first],
-        TYPE ALIAS Sort: UNION [`by (rank: Integer)],
-        RECORD Rec { `(order: Order), `(sort: Sort) },",
+        TYPE ALIAS Order: [| `by (key: Text), `newest first |],
+        TYPE ALIAS Sort: [| `by (rank: Integer) |],
+        TYPE Rec: { `(order: Order), `(sort: Sort) },",
     );
     assert!(
         found.contains("found `` `by _ `` as a value of both fields `order` and `sort`"),
@@ -139,7 +139,7 @@ fn a_field_written_as_its_variant_holds_only_variants() {
         ("`(paths: LIST Text)", "`LIST Text`"),
         ("`(count: Integer?)", "`Integer?`"),
     ] {
-        let source = format!("PROTOCOL a VERSION 1, RECORD Rec {{ {field} }},");
+        let source = format!("PROTOCOL a VERSION 1, TYPE Rec: {{ {field} }},");
         let found = diagnostics(&source);
         assert!(
             found.contains(&format!(
@@ -151,9 +151,9 @@ fn a_field_written_as_its_variant_holds_only_variants() {
     // A choice, a union of variants, and either made nullable.
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Order: UNION [`newest first, `by name],
-        RECORD Rec { `(order: Order?), `(mode: UNION [`fast, `slow]) },
-        METHOD find (rec: Rec) RETURNS (count: Integer) ERRORS [],",
+        TYPE ALIAS Order: [| `newest first, `by name |],
+        TYPE Rec: { `(order: Order?), `(mode: [| `fast, `slow |]) },
+        METHOD find (rec: Rec) RETURNS (count: Integer) ERRORS [| |],",
     );
     let calls = decode_request(&schema, "find { `slow, `null }").unwrap();
     assert_eq!(
@@ -183,14 +183,14 @@ fn mistakes_in_fields_are_diagnosed() {
         ),
         (
             "hidden DEFAULT hidden",
-            "write `` `(hidden: UNION [`hidden, `null]) DEFAULT `null ``",
+            "write `` `(hidden: [| `hidden, `null |]) DEFAULT `null ``",
         ),
         (
             "age (Integer) DEFAULT age 0, age (Integer)",
             "found a second field named `age`",
         ),
     ] {
-        let source = format!("PROTOCOL a VERSION 1, RECORD Rec {{ {fields} }},");
+        let source = format!("PROTOCOL a VERSION 1, TYPE Rec: {{ {fields} }},");
         let found = diagnostics(&source);
         assert!(found.contains(message), "{fields}: {found}");
     }
@@ -198,7 +198,7 @@ fn mistakes_in_fields_are_diagnosed() {
 
 #[test]
 fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
-    let found = diagnostics("PROTOCOL a VERSION 1, RECORD Box of (Item: TYPE) { `(value: Item) },");
+    let found = diagnostics("PROTOCOL a VERSION 1, TYPE Box of (Item: TYPE): { `(value: Item) },");
     assert!(
         found.contains(
             "found the field `value` of `Item`; expected a variant or a union of variants"
@@ -209,11 +209,11 @@ fn a_field_written_as_its_variant_of_a_type_parameter_is_diagnosed() {
 
 const RANGE: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Depth: Integer . WHERE [0 <= _],
-RECORD Search {
+TYPE Search: {
     depth from (Depth) to (Depth?),
     between (Integer) and (Integer) bytes DEFAULT between 1 and 9 bytes,
 },
-METHOD find (search: Search) RETURNS (count: Integer) ERRORS [],";
+METHOD find (search: Search) RETURNS (count: Integer) ERRORS [| |],";
 
 #[test]
 fn a_field_with_several_slots_holds_a_value_for_each() {
@@ -280,9 +280,9 @@ fn a_shared_default_variant_must_be_left_out() {
 fn all_fields_that_share_a_variant_must_default_to_it() {
     let found = diagnostics(
         "PROTOCOL a VERSION 1,
-        RECORD Rec {
-            `(hidden: UNION [`hidden, `null]) DEFAULT `null,
-            `(pinned: UNION [`pinned, `null]) DEFAULT `pinned,
+        TYPE Rec: {
+            `(hidden: [| `hidden, `null |]) DEFAULT `null,
+            `(pinned: [| `pinned, `null |]) DEFAULT `pinned,
         },",
     );
     assert!(found.contains("be the `DEFAULT` of both fields"), "{found}");
@@ -292,9 +292,9 @@ fn all_fields_that_share_a_variant_must_default_to_it() {
 fn a_variant_with_slots_cannot_be_shared_even_with_matching_defaults() {
     let found = diagnostics(
         "PROTOCOL a VERSION 1,
-        RECORD Rec {
-            `(first: UNION [`at (index: Integer)]) DEFAULT `at 0,
-            `(second: UNION [`at (index: Integer)]) DEFAULT `at 0,
+        TYPE Rec: {
+            `(first: [| `at (index: Integer) |]) DEFAULT `at 0,
+            `(second: [| `at (index: Integer) |]) DEFAULT `at 0,
         },",
     );
     assert!(
@@ -305,6 +305,40 @@ fn a_variant_with_slots_cannot_be_shared_even_with_matching_defaults() {
 
 #[test]
 fn a_flag_type_requires_an_explicit_union() {
-    let source = "PROTOCOL a VERSION 1, RECORD Rec { `(hidden: (`hidden)?) DEFAULT `null },";
+    let source = "PROTOCOL a VERSION 1, TYPE Rec: { `(hidden: (`hidden)?) DEFAULT `null },";
     assert!(!diagnostics(source).is_empty());
+}
+
+#[test]
+fn inline_records_work_in_aliases_lists_and_unions() {
+    let schema = schema(
+        "PROTOCOL inline VERSION 1,
+        TYPE ALIAS Page of (Item: TYPE): { rows: LIST { value: Item } },
+        TYPE Tree: { children: LIST { child: Tree } },
+        METHOD search (filter: { limit (Integer) DEFAULT limit 3 }) RETURNS NOTHING ERRORS [| |],
+        METHOD submit (page: Page of (Text)) RETURNS NOTHING ERRORS [| `invalid |],
+        METHOD save (tree: Tree) RETURNS NOTHING ERRORS [| |],
+        METHOD choose (item: [| { count: Integer }, `none |]) RETURNS NOTHING ERRORS [| |],",
+    );
+    let source = "search {}, submit { rows [{ value \"one\" }] },
+                  save { children [{ child { children [] } }] },
+                  choose { count 7 }, choose (`none)";
+    let calls = decode_request(&schema, source).unwrap();
+    assert_eq!(field(&calls[0].arguments[0], "limit"), &Value::Integer(3));
+    assert!(schema.methods[0].errors.is_empty());
+    assert_eq!(schema.methods[1].errors[0].shape.text, "invalid");
+    assert_eq!(
+        decode_request(&schema, &encode_request(&schema, &calls).unwrap()).unwrap(),
+        calls
+    );
+}
+
+#[test]
+fn an_inline_record_has_the_same_union_form_as_a_named_record() {
+    let error = diagnostics(
+        "PROTOCOL inline VERSION 1,
+        TYPE Named: { path: Text },
+        TYPE ALIAS Conflict: [| Named, { count: Integer } |],",
+    );
+    assert!(error.contains("braces"), "{error}");
 }

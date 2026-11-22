@@ -318,9 +318,10 @@ fn read_arguments(
             }
             let value = crate::request::decode(schema, &parameter.r#type, argument.value)
                 .map_err(in_parameter)?;
-            if !argument
-                .stated()
-                .is_some_and(|stated| schema.fits_literal(stated, &parameter.r#type))
+            if !schema.has_anonymous_record(&parameter.r#type)
+                && !argument
+                    .stated()
+                    .is_some_and(|stated| schema.fits_literal(stated, &parameter.r#type))
             {
                 let fix = fix(schema, source, method, call, index);
                 let written = code(&written(source, argument.value.span()));
@@ -392,13 +393,17 @@ fn choose(
             .enumerate()
             .all(|(index, (parameter, argument))| {
                 Some(index) == except
-                    || argument.stated().is_some_and(|stated| {
-                        if argument.annotated.is_some() {
-                            stated == &parameter.r#type
-                        } else {
-                            schema.fits_literal(stated, &parameter.r#type)
+                    || match &argument.annotated {
+                        Some(annotated) => annotated == &parameter.r#type,
+                        None if schema.has_anonymous_record(&parameter.r#type) => {
+                            crate::request::decode(schema, &parameter.r#type, argument.value)
+                                .is_ok()
                         }
-                    })
+                        None => argument
+                            .own
+                            .as_ref()
+                            .is_some_and(|own| schema.fits_literal(own, &parameter.r#type)),
+                    }
             })
     };
     let fitting: Vec<usize> = (0..methods.len())
@@ -675,8 +680,8 @@ pub(crate) fn layout(text: String) -> String {
 /// Writes a call of `method` in a request: its words, with `arguments` in
 /// its slots, each annotated with its parameter's type, `([] AS: LIST:
 /// Text)`, unless the type it has of its own as written fits the
-/// parameter, as a decoder reads it: `File Id "a"` for a `UNION [File Id,
-/// Share Id]`.
+/// parameter, as a decoder reads it: `File Id "a"` for a `[| File Id,
+/// Share Id |]`.
 fn write_call(
     schema: &Schema,
     method: &Method,
@@ -694,6 +699,10 @@ fn write_call(
             out.push_str(word);
             continue;
         };
+        if schema.has_anonymous_record(&parameter.r#type) {
+            write_slot(schema, &parameter.r#type, value, out)?;
+            continue;
+        }
         let mut written = String::new();
         write(schema, &parameter.r#type, value, &mut written)?;
         let own = match &parse(&written).as_deref() {

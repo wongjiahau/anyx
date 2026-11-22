@@ -1,7 +1,7 @@
 PROTOCOL native VERSION 1,
 NAMED TYPE Identifier (Integer),
-TYPE ALIAS Selection: UNION [`none, `selected (item: Text)],
-RECORD Packet {
+TYPE ALIAS Selection: [| `none, `selected (item: Text) |],
+TYPE Packet: {
   text: Text,
   bytes: Bytes,
   integer: Integer,
@@ -12,4 +12,4 @@ RECORD Packet {
   identifier: Identifier,
   selection: Selection,
 },
-METHOD echo (packet: Packet) RETURNS (packet: Packet) ERRORS [`bad (reason: Text)],
+METHOD echo (packet: Packet) RETURNS (packet: Packet) ERRORS [| `bad (reason: Text) |],

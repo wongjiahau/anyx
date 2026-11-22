@@ -300,10 +300,21 @@ impl Compiler<'_> {
                 format!("unknown method `{name}` in `{}`", scope.text),
             ));
         }
+        let parameters = match methods.as_slice() {
+            [(_, _, written)] => Some(written.parameters.as_slice()),
+            _ => None,
+        };
         let arguments = call
             .arguments
             .iter()
-            .map(|argument| self.argument(schema, argument, None))
+            .enumerate()
+            .map(|(index, argument)| {
+                let expected = parameters
+                    .and_then(|parameters| parameters.get(index))
+                    .map(|parameter| &parameter.r#type)
+                    .filter(|r#type| schema.has_anonymous_record(r#type));
+                self.argument(schema, argument, expected)
+            })
             .collect::<Result<Vec<_>, _>>();
         let arguments = match arguments {
             Ok(arguments) => arguments,

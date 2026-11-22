@@ -16,7 +16,7 @@ TYPE ALIAS Size: Integer . WHERE [0 <= _],
 TYPE ALIAS Count: Integer . WHERE [1 <= _],
 
 # What a file is, for `only _`.
-TYPE ALIAS Kind: UNION [
+TYPE ALIAS Kind: [|
     `file,
     `directory,
     `symlink,
@@ -28,56 +28,56 @@ TYPE ALIAS Kind: UNION [
     `pipe,
     `block device,
     `char device,
-],
+|],
 
 # The case a pattern is matched in.
-TYPE ALIAS Case: UNION [
+TYPE ALIAS Case: [|
     # Any case, unless the pattern has an uppercase letter.
     `smart case,
     `any case,
     `exact case,
-],
+|],
 
 # How a pattern is read.
-TYPE ALIAS Syntax: UNION [
+TYPE ALIAS Syntax: [|
     `regex pattern,
     # A glob, such as `*.rs`.
     `glob pattern,
     # Plain text.
     `fixed text pattern,
-],
+|],
 
 # How `find` searches, as in `` { `glob pattern, `hidden, max depth 2 } ``.
 # Each field left out keeps fd's default, and a file must pass every
 # filter given.
-RECORD Search {
+TYPE Search: {
     `(case: Case) DEFAULT `smart case,
     `(pattern: Syntax) DEFAULT `regex pattern,
     # Match the pattern against the whole path, not just the name.
-    `(full path: UNION [`full path, `null]) DEFAULT `null,
+    `(full path: [| `full path, `null |]) DEFAULT `null,
     # Each file must match these patterns too, in the same syntax and case.
     also matching (LIST Text) DEFAULT also matching [],
     # Find hidden files and directories too.
-    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
+    `(hidden: [| `hidden, `null |]) DEFAULT `null,
     # Don't skip what ignore files ignore.
-    `(no ignore: UNION [`no ignore, `null]) DEFAULT `null,
+    `(no ignore: [| `no ignore, `null |]) DEFAULT `null,
     # Don't skip what `.gitignore` ignores, but still what `.ignore` and
     # `.fdignore` ignore.
-    `(no ignore vcs: UNION [`no ignore vcs, `null]) DEFAULT `null,
+    `(no ignore vcs: [| `no ignore vcs, `null |]) DEFAULT `null,
     # Don't read ignore files in directories above the search path.
-    `(no ignore parent: UNION [`no ignore parent, `null]) DEFAULT `null,
+    `(no ignore parent: [| `no ignore parent, `null |]) DEFAULT `null,
     # Read `.gitignore` outside a git repository too.
-    `(no require git: UNION [`no require git, `null]) DEFAULT `null,
+    `(no require git: [| `no require git, `null |]) DEFAULT `null,
     # Skip what these files ignore, each written as `.gitignore` is.
     ignore files (LIST Text) DEFAULT ignore files [],
     # Skip paths these globs match, as `--exclude` does.
     excluding (LIST Text) DEFAULT excluding [],
     # Follow symbolic links into the directories they point to.
-    `(follow links: UNION [`follow links, `null]) DEFAULT `null,
+    `(follow links: [| `follow links, `null |]) DEFAULT `null,
     # Don't go into another file system.
-    `(one file system: UNION [`one file system, `null]) DEFAULT `null,
+    `(one file system: [| `one file system, `null |]) DEFAULT `null,
     # Don't go into a directory that matched.
-    `(prune: UNION [`prune, `null]) DEFAULT `null,
+    `(prune: [| `prune, `null |]) DEFAULT `null,
     max depth (Depth?) DEFAULT max depth (`null),
     min depth (Depth?) DEFAULT min depth (`null),
     # Find only these kinds of file, or every kind when empty.
@@ -100,20 +100,20 @@ RECORD Search {
 },
 
 # What a found file is, as `fd --list-details` shows it.
-RECORD Details {
+TYPE Details: {
     path: Text,
     kind: Kind,
     size: Size,
     modified: Instant,
 },
 
-TYPE ALIAS Fd Errors: UNION [
+TYPE ALIAS Fd Errors: [|
     `(path: Text) does not exist,
     `invalid pattern (message: Text),
     `invalid glob (message: Text),
     # A path fd found can't be written as Unicode text.
     `(path: Text) is not unicode,
-],
+|],
 
 # Searches the paths, or the working directory when there are none, and
 # as fd does by default when the search says nothing: `find "x"` is
@@ -122,7 +122,7 @@ READ ONLY METHOD find (pattern: Text)
     [in (paths: LIST Text) DEFAULT in []]
     [with (search: Search) DEFAULT with {}]
     RETURNS (paths: LIST Text)
-    ERRORS [Fd Errors]
+    ERRORS [| Fd Errors |]
     EXAMPLES [
         find "\\.rs$" in ["src"] with { only [`file] } RETURNS ["src/lib.rs", "src/main.rs"],
         find "(" in ["src"] with { `hidden } ERROR `invalid pattern "unclosed group",
@@ -134,11 +134,11 @@ READ ONLY METHOD details of (pattern: Text)
     [in (paths: LIST Text) DEFAULT in []]
     [with (search: Search) DEFAULT with {}]
     RETURNS (files: LIST Details)
-    ERRORS [Fd Errors],
+    ERRORS [| Fd Errors |],
 
 # Whether `find` finds anything. It stops at the first.
 READ ONLY METHOD any match of (pattern: Text)
     [in (paths: LIST Text) DEFAULT in []]
     [with (search: Search) DEFAULT with {}]
     RETURNS (found: Boolean)
-    ERRORS [Fd Errors],
+    ERRORS [| Fd Errors |],

@@ -13,7 +13,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-RECORD Page of (Item: TYPE) {
+TYPE Page of (Item: TYPE): {
     items: LIST: Item,
     next (Text?) DEFAULT next (`null),
     # How many there are in all.
@@ -22,38 +22,38 @@ RECORD Page of (Item: TYPE) {
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-TYPE ALIAS (Value: TYPE) or (Problem: TYPE): UNION [`done (value: Value), `failed (problem: Problem)],
+TYPE ALIAS (Value: TYPE) or (Problem: TYPE): [| `done (value: Value), `failed (problem: Problem) |],
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-RECORD (Item: TYPE) dated { item: Item, at: Instant },
+TYPE (Item: TYPE) dated: { item: Item, at: Instant },
 
 # Holds itself through a `LIST`, with its own parameter.
-RECORD Tree of (Item: TYPE) { value: Item, children: LIST Tree of (Item) },
+TYPE Tree of (Item: TYPE): { value: Item, children: LIST Tree of (Item) },
 
 # Keys and their values, in the same order: a slot between words.
-RECORD Table from (Key: TYPE) to (Value: TYPE) { keys: LIST: Key, values: LIST: Value },
+TYPE Table from (Key: TYPE) to (Value: TYPE): { keys: LIST: Key, values: LIST: Value },
 
-RECORD Payment { amount: Integer, at: Instant },
+TYPE Payment: { amount: Integer, at: Instant },
 
-TYPE ALIAS Decline: UNION [`insufficient funds, `card expired],
+TYPE ALIAS Decline: [| `insufficient funds, `card expired |],
 
 TYPE ALIAS Payments: Page of (Payment),
 
-METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)) ERRORS [],
+METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)) ERRORS [| |],
 
 METHOD pay all (amounts: LIST Integer)
     RETURNS (attempts: Page of ((Payment) or (Decline)))
-    ERRORS [],
+    ERRORS [| |],
 
-METHOD payments RETURNS (payments: Payments) ERRORS [],
+METHOD payments RETURNS (payments: Payments) ERRORS [| |],
 
-METHOD count (payments: Page of (Payment)) RETURNS (count: Integer) ERRORS [],
+METHOD count (payments: Page of (Payment)) RETURNS (count: Integer) ERRORS [| |],
 
-METHOD categories RETURNS (categories: Tree of (Text)) ERRORS [],
+METHOD categories RETURNS (categories: Tree of (Text)) ERRORS [| |],
 
-METHOD latest RETURNS (latest: (Text) dated) ERRORS [],
+METHOD latest RETURNS (latest: (Text) dated) ERRORS [| |],
 
-METHOD prices RETURNS (prices: Table from (Text) to (Integer)) ERRORS [],
+METHOD prices RETURNS (prices: Table from (Text) to (Integer)) ERRORS [| |],
 "#,
 }];
 

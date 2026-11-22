@@ -65,7 +65,7 @@ the account, such as by sending or sharing it.
 - `MAP: T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `` { "hymn": `done } ``.
-- A RECORD is its fields in braces, each written in its declared shape with
+- A record is its fields in braces, each written in its declared shape with
   a value in each slot, in any order: `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field declared as a backtick and a slot is written
@@ -74,12 +74,12 @@ the account, such as by sending or sharing it.
   share a default variant, leave those fields out to use it. When a value is words
   and the slot is last, put `:` after the field's words:
   `` { status: `done } ``, `{ timeout: 5 minutes }`.
-- A union of variants, `` TYPE ALIAS Shade: UNION [`dark, `light] ``, is
+- A union of variants, `` TYPE ALIAS Shade: [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
-- A `UNION` is a value of one of its members, written as that member
-  writes it. So a nullable `T?`, `` UNION [T, `null] ``, is `` `null `` or a
+- A union is a value of one of its members, written as that member
+  writes it. So a nullable `T?`, `` [| T, `null |] ``, is `` `null `` or a
   value of `T`: `{ max depth 3 }`, `` { max depth: `null } ``.
 - In a slot, a value written as words or a variant goes in parentheses so
   that it doesn't join the words around it: `` set (`true) ``,
@@ -101,7 +101,7 @@ These ordinary types are visible in every schema. `T?` is nullable; only
 
 ```anyx
 # `` `true `` or `` `false ``.
-TYPE ALIAS Boolean: UNION [`false, `true],
+TYPE ALIAS Boolean: [| `false, `true |],
 
 # A `Duration` is written as a call of this function: each unit is an
 # optional part, so `1 hours 30 minutes` leaves out the days, seconds and
@@ -116,11 +116,11 @@ INTRINSIC FUNCTION
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.
-TYPE ALIAS (Item: TYPE) ? : UNION [Item, `null],
+TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-RECORD Schema File {
+TYPE Schema File: {
     path: Text,
     source: Text,
 },
@@ -157,7 +157,7 @@ In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. Errors that methods
 share are an alias of a union of variants, such as `` TYPE ALIAS File
-Errors: UNION [`missing] ``, named in each method's `ERRORS`.
+Errors: [| `missing |] ``, named in each method's `ERRORS`.
 `EXAMPLES […]` after a method lists calls of it, each with its result side
 by side, as in `read "a" RETURNS …`, and a `#` line saying what it shows.
 A response writes the result alone.
@@ -174,16 +174,16 @@ A response writes the result alone.
 PROTOCOL poentaro VERSION 1,
 
 # A file in the account's tree.
-RECORD File Summary {
+TYPE File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
 },
 
-RECORD File { path: Text, revision: Integer, content: Text },
+TYPE File { path: Text, revision: Integer, content: Text },
 
 # One problem in a score.
-RECORD Diagnostic {
+TYPE Diagnostic {
     # Counted from 1, in the content you sent.
     line: Integer,
     # Counted from 1, in characters.
@@ -192,36 +192,36 @@ RECORD Diagnostic {
     message: Text,
 },
 
-TYPE ALIAS File Errors: UNION [
+TYPE ALIAS File Errors [|
     # The owner moved this file to the trash. Ask them to restore it.
     `trashed,
     # No file has this path. It may have been renamed: run `list files` to
     # see the exact paths.
     `missing,
-],
+|],
 
-TYPE ALIAS Score Errors: UNION [
+TYPE ALIAS Score Errors [|
     # The score doesn't parse. Nothing was saved.
     `rejected (diagnostics: LIST Diagnostic),
-],
+|],
 
 # Every file this account owns.
 READ ONLY METHOD list files
     RETURNS (files: LIST File Summary)
-    ERRORS [],
+    ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [File Errors],
+READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
 
 # Saves the score, if the file is still at `revision`.
 METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
     RETURNS (new revision: Integer)
-    ERRORS [
+    ERRORS [|
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
         `conflict at revision (revision: Integer) content (content: Text),
         Score Errors,
         File Errors,
-    ]
+    |]
     EXAMPLES [
         # Saving over the revision you read.
         write "Hymns/a.poentaro" at revision 3 content "title \"Ode\"" RETURNS 4,
@@ -232,15 +232,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 # Makes a new file, and its folders if they don't exist.
 METHOD create (path: Text) content (content: Text)
     RETURNS (revision: Integer)
-    ERRORS [
+    ERRORS [|
         # A file already has this path. Read it, or create under another path.
         `already exists at revision (revision: Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
         `invalid path (message: Text),
         Score Errors,
-    ],
+    |],
 
 # The score as a Standard MIDI File.
 READ ONLY METHOD export midi (path: Text)
     RETURNS (midi: Bytes)
-    ERRORS [File Errors],
+    ERRORS [| File Errors |],

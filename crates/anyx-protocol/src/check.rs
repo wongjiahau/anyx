@@ -41,7 +41,7 @@ struct PendingForms {
 }
 
 /// A union to check, once every type is known, for two members written
-/// alike. A union written with `UNION` is checked as it is; a use of a
+/// alike. A union written with union brackets is checked as it is; a use of a
 /// generic type or alias, for the unions it makes with its arguments.
 struct PendingUnion {
     r#type: Type,
@@ -49,7 +49,7 @@ struct PendingUnion {
     /// checked as it is.
     parameters: Vec<String>,
     arguments: Vec<Type>,
-    /// A union written with `UNION`, rather than a use.
+    /// A union written with union brackets, rather than a use.
     written: bool,
     /// Where the union, or the use, is written.
     span: Span,
@@ -105,24 +105,22 @@ struct Path {
     name: String,
 }
 
-/// What a `RECORD`, `CHOICE`, `TYPE` or `TYPE ALIAS` declares, public or
+/// What a record or legacy choice declares, public or
 /// not.
 struct Declaration<'b, T> {
     doc: &'b Option<ast::Spanned<StringLiteral>>,
-    /// Where `INTRINSIC` is written, which only the prelude may.
-    intrinsic: Option<Span>,
     public: bool,
     body: T,
 }
 
 fn record(record: &ast::Record) -> Declaration<'_, TypeShape<'_, Vec<ast::Field>>> {
     let parts = record.body.arguments.iter().map(|part| match part {
-        ast::RecordPart::Fields(fields) => Part::Body(fields),
-        ast::RecordPart::TypeParameter(parameter) => Part::Parameter(parameter),
+        ast::AliasPart::Type(ast::Type::Record(fields)) => Part::Body(&fields.field, fields.span),
+        ast::AliasPart::Type(other) => Part::Other(other.span()),
+        ast::AliasPart::TypeParameter(parameter) => Part::Parameter(parameter),
     });
     Declaration {
         doc: &record.doc,
-        intrinsic: record.intrinsic,
         public: record.public.is_some(),
         body: type_shape(&record.body.name, parts),
     }
@@ -130,12 +128,11 @@ fn record(record: &ast::Record) -> Declaration<'_, TypeShape<'_, Vec<ast::Field>
 
 fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Variant>>> {
     let parts = choice.body.arguments.iter().map(|part| match part {
-        ast::ChoicePart::Variants(variants) => Part::Body(variants),
+        ast::ChoicePart::Variants(variants) => Part::Body(&variants.value, variants.span),
         ast::ChoicePart::TypeParameter(parameter) => Part::Parameter(parameter),
     });
     Declaration {
         doc: &choice.doc,
-        intrinsic: None,
         public: choice.public.is_some(),
         body: type_shape(&choice.body.name, parts),
     }
@@ -235,9 +232,9 @@ enum VariantsMember<'b> {
 }
 
 /// The members of an alias of a union of variants, `` TYPE ALIAS Case:
-/// UNION [`smart, `any] ``, which keeps its name as a type: each member a
+/// [| `smart, `any |] ``, which keeps its name as a type: each member a
 /// variant, or one of the `known` aliases of unions of variants, by name.
-/// `None` for any other alias, such as `` UNION [Integer, `none] ``.
+/// `None` for any other alias, such as `` [| Integer, `none |] ``.
 fn variants_members<'b>(
     alias: &'b ast::TypeAlias,
     known: &[String],
@@ -246,8 +243,7 @@ fn variants_members<'b>(
         return None;
     };
     let members: Option<Vec<VariantsMember>> = union
-        .members
-        .value
+        .union_member
         .iter()
         .map(|member| match member {
             ast::UnionMember::Variant(variant) => Some(VariantsMember::Variant(variant)),
@@ -268,7 +264,7 @@ fn variants_members<'b>(
 
 /// The names of the aliases of unions of variants in `decoded`. An alias
 /// may include one declared after it, or in another file, so they are read
-/// until no more are found: `` UNION [`trashed, Common Errors] `` is one once
+/// until no more are found: `` [| `trashed, Common Errors |] `` is one once
 /// `Common Errors` is. An alias that leads back to itself never is.
 fn variants_aliases(decoded: &[DecodedFile]) -> Vec<String> {
     let aliases: Vec<&ast::TypeAlias> = decoded
@@ -304,14 +300,15 @@ fn member_name(name: &ast::CallName, slots: &[ast::MemberSlot]) -> String {
     ShapePart::text(&ShapePart::of(&parts))
 }
 
-/// A slot of a `RECORD`'s or `CHOICE`'s name, as written: the braces of its
+/// A slot of a record or choice name, as written: the braces of its
 /// fields or variants, or a type parameter.
 enum Part<'b, T> {
-    Body(&'b ast::Spanned<T>),
+    Body(&'b T, Span),
+    Other(Span),
     Parameter(&'b ast::TypeParameter),
 }
 
-/// The name of a `RECORD` or `CHOICE` read as a shape: `page of (Item: TYPE)
+/// The name of a record or choice read as a shape: `page of (Item: TYPE)
 /// { … }` is the shape `page of _` with the parameter `item`, and its fields.
 struct TypeShape<'b, T> {
     /// The shape without the slot of the braces, `page of _`, spanned from
@@ -321,7 +318,9 @@ struct TypeShape<'b, T> {
     words: ast::Spanned<String>,
     parameters: Vec<&'b ast::TypeParameter>,
     /// What the braces hold, when they come last; `None` when they don't.
-    body: Option<&'b ast::Spanned<T>>,
+    body: Option<&'b T>,
+    /// A type in a slot where fields in braces or a type parameter are expected.
+    other: Vec<Span>,
     /// Braces anywhere but last, which only a type parameter may fill.
     misplaced: Vec<Span>,
 }
@@ -333,7 +332,7 @@ fn type_shape<'b, T>(
     let mut parts: Vec<Part<'b, T>> = parts.collect();
     let mut name_parts = name.parts.clone();
     let body = match (parts.last(), name_parts.last()) {
-        (Some(Part::Body(body)), Some(NamePart::Slot)) => {
+        (Some(Part::Body(body, _)), Some(NamePart::Slot)) => {
             let body = *body;
             parts.pop();
             name_parts.pop();
@@ -343,9 +342,11 @@ fn type_shape<'b, T>(
     };
     let mut parameters = Vec::new();
     let mut misplaced = Vec::new();
+    let mut other = Vec::new();
     for part in parts {
         match part {
-            Part::Body(braces) => misplaced.push(braces.span),
+            Part::Other(span) => other.push(span),
+            Part::Body(_, span) => misplaced.push(span),
             Part::Parameter(parameter) => parameters.push(parameter),
         }
     }
@@ -365,6 +366,7 @@ fn type_shape<'b, T>(
         words: spanned_words(name),
         parameters,
         body,
+        other,
         misplaced,
     }
 }
@@ -375,7 +377,7 @@ struct MethodParts<'b> {
     shape: &'b ast::Shape,
     /// `None` for `RETURNS NOTHING`.
     returns: Option<&'b ast::Returns>,
-    errors: Option<&'b ast::ErrorList>,
+    errors: Option<&'b ast::UnionType>,
     undone_by: Option<&'b ast::Undo>,
     examples: Option<&'b ast::Examples>,
 }
@@ -479,6 +481,7 @@ pub(crate) struct Checker<'a> {
     aliases: Vec<Alias<'a>>,
     /// The names of the aliases of unions of variants, which are types.
     variants_aliases: Vec<String>,
+    inline_records: Vec<(Span, usize, TypeDefinition)>,
     defaults: Vec<PendingDefault>,
     /// Each optional part's `DEFAULT` entry, and the file it is in.
     part_defaults: Vec<(usize, Node)>,
@@ -527,7 +530,6 @@ impl<'a> Checker<'a> {
                 ast::Definition::Choice(d) => Some(choice(d).body.name.value),
                 ast::Definition::IntrinsicType(d) => Some(spanned_words(&d.name.name).value),
                 ast::Definition::NamedType(d) => Some(spanned_words(&d.body.name).value),
-                ast::Definition::UntaggedType(d) => Some(d.body.name.value.clone()),
                 ast::Definition::TypeAlias(d) => Some(alias_shape(&d.body).name.value),
                 _ => None,
             })
@@ -542,8 +544,7 @@ impl<'a> Checker<'a> {
                 match definition {
                     ast::Definition::Record(found) => {
                         let found = record(found);
-                        self.check_intrinsic(found.intrinsic);
-                        self.declare_shaped_type(&found.body, found.public, "RECORD", "fields");
+                        self.declare_shaped_type(&found.body, found.public, "TYPE", "fields");
                     }
                     ast::Definition::Choice(found) => {
                         let found = choice(found);
@@ -557,7 +558,7 @@ impl<'a> Checker<'a> {
                         self.error(
                             found.body.name.span,
                             format!(
-                                "found `CHOICE {shown} {{ … }}`; expected `TYPE ALIAS {shown}: UNION […]`, since a choice is now a union of its variants; write the variants in the brackets, as in `` TYPE ALIAS Case: UNION [`smart, `any] ``"
+                                "found `CHOICE {shown} {{ … }}`; expected `TYPE ALIAS {shown}: [| … |]`, since a choice is now a union of its variants; write the variants in the brackets, as in `` TYPE ALIAS Case: [| `smart, `any |] ``"
                             ),
                         );
                         // Read as the alias it should be, so that its uses
@@ -579,26 +580,13 @@ impl<'a> Checker<'a> {
                         self.declare_type(&name, found.public.is_some());
                         self.declare_type_parameters(&[]);
                     }
-                    ast::Definition::UntaggedType(found) => {
-                        let name = &found.body.name;
-                        self.error(
-                            name.span,
-                            format!(
-                                "found `TYPE {name}: …`; expected `TYPE ALIAS {name}: …`, the same type under another name, or `NAMED TYPE {name} (…)`, a type of its own whose values are written `{name} …`",
-                                name = name.value
-                            ),
-                        );
-                        self.check_type_words(name, false);
-                        self.declare_type(name, found.public.is_some());
-                        self.declare_type_parameters(&[]);
-                    }
                     ast::Definition::TypeAlias(found) => match self.union_of_variants(found) {
                         Some(_) => self.declare_variants_alias(found),
                         None => self.declare_alias(found),
                     },
                     ast::Definition::Errors(found) => self.error(
                         found.span,
-                        "found an `ERRORS` group; expected `` TYPE ALIAS File Errors: UNION [`missing, Other Errors] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [`conflict, File Errors] ``; write its errors in the brackets, and each group it joined with `+` as a member",
+                        "found an `ERRORS` group; expected `` TYPE ALIAS File Errors: [| `missing, Other Errors |] ``, since a group of errors is now an alias of a union of variants, and a method names it among its errors, `` ERRORS [| `conflict, File Errors |] ``; write its errors in the brackets, and each group it joined with `+` as a member",
                     ),
                     ast::Definition::Function(function)
                         if function.intrinsic.is_some() && self.file == self.prelude_file => {}
@@ -621,7 +609,7 @@ impl<'a> Checker<'a> {
                         let found = record(found);
                         let index = types.len();
                         let fields = self.generic(index, |checker| {
-                            let fields = found.body.body.map_or(&[][..], |body| &body.value);
+                            let fields = found.body.body.map_or(&[][..], Vec::as_slice);
                             checker.fields(index, fields)
                         });
                         let kind = TypeKind::Record(fields);
@@ -629,6 +617,7 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
+                            anonymous: false,
                             public: found.public || self.file == self.prelude_file,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
@@ -640,7 +629,7 @@ impl<'a> Checker<'a> {
                         let found = choice(found);
                         let index = types.len();
                         let variants = self.generic(index, |checker| {
-                            let variants = found.body.body.map_or(&[][..], |body| &body.value);
+                            let variants = found.body.body.map_or(&[][..], Vec::as_slice);
                             checker.variants(&variants.iter().collect::<Vec<_>>())
                         });
                         let kind = TypeKind::Variants(variants);
@@ -648,6 +637,7 @@ impl<'a> Checker<'a> {
                             self.check_parameters_used(index, &kind);
                         }
                         types.push(TypeDefinition {
+                            anonymous: false,
                             public: found.public || self.file == self.prelude_file,
                             doc: doc(found.doc),
                             name: found.body.name.value.clone(),
@@ -658,6 +648,7 @@ impl<'a> Checker<'a> {
                     // Reported when it was declared, and read as a named type
                     // so that its uses aren't reported too.
                     ast::Definition::IntrinsicType(found) => types.push(TypeDefinition {
+                        anonymous: false,
                         public: false,
                         doc: doc(&found.doc),
                         name: spanned_words(&found.name.name).value,
@@ -672,29 +663,12 @@ impl<'a> Checker<'a> {
                             .map(|r#type| self.r#type(r#type))
                             .collect();
                         types.push(TypeDefinition {
+                            anonymous: false,
                             public: found.public.is_some() || self.file == self.prelude_file,
                             doc: doc(&found.doc),
                             name: spanned_words(&found.body.name).value,
                             parameters: Vec::new(),
                             kind: constructor_kind(ShapePart::of(&found.body.name.parts), slots),
-                        });
-                    }
-                    ast::Definition::UntaggedType(found) => {
-                        let mut constructor: Vec<ShapePart> = found
-                            .body
-                            .name
-                            .value
-                            .split(' ')
-                            .map(|word| ShapePart::Word(word.to_string()))
-                            .collect();
-                        constructor.push(ShapePart::Slot);
-                        let slots = vec![self.r#type(&found.body.r#type)];
-                        types.push(TypeDefinition {
-                            public: found.public.is_some(),
-                            doc: doc(&found.doc),
-                            name: found.body.name.value.clone(),
-                            parameters: Vec::new(),
-                            kind: constructor_kind(constructor, slots),
                         });
                     }
                     ast::Definition::TypeAlias(found) => {
@@ -710,6 +684,7 @@ impl<'a> Checker<'a> {
                             entries,
                         });
                         types.push(TypeDefinition {
+                            anonymous: false,
                             public: found.public.is_some() || self.file == self.prelude_file,
                             doc: doc(&found.doc),
                             name: alias_shape(&found.body).name.value,
@@ -816,6 +791,25 @@ impl<'a> Checker<'a> {
                 name.value
             })
         });
+        for (span, file, definition) in std::mem::take(&mut self.inline_records) {
+            self.types.push(Declared {
+                name: definition.name.clone(),
+                span,
+                file,
+                public: false,
+            });
+            self.type_parameters.push(
+                definition
+                    .parameters
+                    .iter()
+                    .map(|name| ast::Spanned {
+                        value: name.clone(),
+                        span,
+                    })
+                    .collect(),
+            );
+            types.push(definition);
+        }
         let mut schema = Schema {
             files,
             doc: header.and_then(|header| doc(&header.doc)),
@@ -1310,7 +1304,7 @@ impl<'a> Checker<'a> {
         )
     }
 
-    /// Declares a `RECORD` or `CHOICE` by its shape, after checking that
+    /// Declares a record or choice by its shape, after checking that
     /// the shape has words and its braces come last.
     fn declare_shaped_type<T>(
         &mut self,
@@ -1334,7 +1328,26 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|parameter| parameter.name.value.clone())
             .collect();
-        if shape.body.is_none() && shape.misplaced.is_empty() {
+        match shape.other.as_slice() {
+            [_] if shape.body.is_none() && shape.misplaced.is_empty() && parameters.is_empty() => {
+                let name = &shape.words.value;
+                self.error(
+                    shape.words.span,
+                    format!(
+                        "found `TYPE {name}: …`; expected braces for a record, `TYPE ALIAS {name}: …` for an alias, or `NAMED TYPE {name} (…)` for a type whose values are written `{name} …`"
+                    ),
+                );
+            }
+            spans => {
+                for span in spans {
+                    self.error(
+                        *span,
+                        "expected a type parameter such as `(Item: TYPE)` in the record name",
+                    );
+                }
+            }
+        }
+        if shape.body.is_none() && shape.misplaced.is_empty() && shape.other.is_empty() {
             let declared: Vec<String> = parameters
                 .iter()
                 .map(|parameter| format!("{parameter}: TYPE"))
@@ -1342,9 +1355,10 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found the `{keyword}` `{}` without its {what} in braces; expected them last, after its name, as in `{keyword} {} {{ … }}`",
+                    "found the `{keyword}` `{}` without its {what} in braces; expected them last, after its name, as in `{keyword} {}{separator} {{ … }}`",
                     fill_slots(&shape.name.value, &parameters),
                     fill_slots(&shape.name.value, &declared),
+                    separator = if keyword == "TYPE" { ":" } else { "" },
                 ),
             );
         }
@@ -1356,7 +1370,12 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        self.declare_type(&shape.name, public);
+        let name = if shape.other.len() == 1 && shape.body.is_none() && parameters.is_empty() {
+            &shape.words
+        } else {
+            &shape.name
+        };
+        self.declare_type(name, public);
         self.declare_type_parameters(&shape.parameters);
     }
 
@@ -1479,7 +1498,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Declares an alias of a union of variants as a type, so that it
-    /// keeps its name: `` TYPE ALIAS Case: UNION [`smart, `any] ``.
+    /// keeps its name: `` TYPE ALIAS Case: [| `smart, `any |] ``.
     fn declare_variants_alias(&mut self, alias: &ast::TypeAlias) {
         let shape = alias_shape(&alias.body);
         self.check_alias_shape(alias, &shape);
@@ -1534,7 +1553,7 @@ impl<'a> Checker<'a> {
                     checker.error(
                         span,
                         format!(
-                            "found the type alias `{name}` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or a `NAMED TYPE` that holds them through a `LIST`"
+                            "found the type alias `{name}` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record declared with `TYPE` or a `NAMED TYPE` that holds them through a `LIST`"
                         ),
                     )
                 });
@@ -1833,7 +1852,7 @@ impl<'a> Checker<'a> {
         };
         let similar = similar + &parameter;
         let message = format!(
-            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a `RECORD`, `NAMED TYPE` or `TYPE ALIAS` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
+            "found `{written}`, which is not a type of {scope}; expected a built-in type ({built_in}), `LIST: type`, `MAP: type`, or a record, `NAMED TYPE` or `TYPE ALIAS` defined here; define `{written}`, or fix the name; import the declaration directly with `USE` if it is in another file{similar}",
             built_in = crate::prelude::intrinsics()
                 .iter()
                 .map(|intrinsic| format!("`{}`", intrinsic.name))
@@ -1993,7 +2012,7 @@ impl<'a> Checker<'a> {
                 format!(
                     "found the field `{}` with words alone; write {} to make it a variant when present and `null` when omitted",
                     words.value,
-                    code(&format!("`({0}: UNION [`{0}, `null]) DEFAULT `null", words.value)),
+                    code(&format!("`({0}: [| `{0}, `null |]) DEFAULT `null", words.value)),
                 ),
             );
         }
@@ -2358,12 +2377,12 @@ impl<'a> Checker<'a> {
     }
 
     /// Reads a method's `ERRORS`, to flatten once the schema is read. A
-    /// method without one is reported: one that can't fail says `ERRORS []`.
-    fn method_errors(&mut self, list: Option<&ast::ErrorList>, name: &ast::CallName, index: usize) {
+    /// method without one is reported: one that can't fail says `ERRORS [| |]`.
+    fn method_errors(&mut self, list: Option<&ast::UnionType>, name: &ast::CallName, index: usize) {
         let Some(list) = list else {
             self.error(
                 name.span,
-                "found a method without `ERRORS`; expected its errors after what it returns, as in `` ERRORS [`missing] ``, or `ERRORS []` when it can't fail, so that a reader sees that its errors were declared up front",
+                "found a method without `ERRORS`; expected its errors after what it returns, as in `` ERRORS [| `missing |] ``, or `ERRORS [| |]` when it can't fail, so that a reader sees that its errors were declared up front",
             );
             return;
         };
@@ -2391,7 +2410,8 @@ impl<'a> Checker<'a> {
                     entries.push(VariantsEntry::Alias(r#type, *span));
                 }
                 ast::UnionMember::Refined(ast::RefinedType { span, .. })
-                | ast::UnionMember::Union(ast::UnionType { span, .. }) => {
+                | ast::UnionMember::Union(ast::UnionType { span, .. })
+                | ast::UnionMember::Record(ast::RecordType { span, .. }) => {
                     self.not_an_error(*span);
                 }
             }
@@ -2601,15 +2621,54 @@ impl<'a> Checker<'a> {
             ast::Type::Refined(refined) => self.refined(refined),
             ast::Type::List(list) => Type::List(Box::new(self.r#type(&list.item))),
             ast::Type::Map(map) => Type::Map(Box::new(self.r#type(&map.value))),
+            ast::Type::Record(record) => self.inline_record(record),
             ast::Type::Union(union) => self.union(union),
             ast::Type::Named(reference) => self.type_use(reference),
         }
     }
 
+    /// Give an inline record a schema index so it shares record checking,
+    /// structural subtyping, codecs and generated structs with named records.
+    fn inline_record(&mut self, record: &ast::RecordType) -> Type {
+        let position = self.inline_records.len();
+        let index = self.types.len() + position;
+        let name = format!("Inline Record {}", position + 1);
+        self.inline_records.push((
+            record.span,
+            self.file,
+            TypeDefinition {
+                anonymous: true,
+                public: false,
+                doc: None,
+                name,
+                parameters: Vec::new(),
+                kind: TypeKind::Record(Vec::new()),
+            },
+        ));
+        let fields = self.fields(index, &record.field);
+        let used: Vec<_> = fields
+            .iter()
+            .flat_map(|field| field.r#type.parameters())
+            .collect();
+        let parameters: Vec<_> = self
+            .parameters
+            .iter()
+            .filter(|name| used.contains(&name.as_str()))
+            .cloned()
+            .collect();
+        let definition = &mut self.inline_records[position].2;
+        definition.kind = TypeKind::Record(fields);
+        definition.parameters = parameters.clone();
+        if parameters.is_empty() {
+            Type::Named(index)
+        } else {
+            Type::Generic(index, parameters.into_iter().map(Type::Parameter).collect())
+        }
+    }
+
     fn union(&mut self, union: &ast::UnionType) -> Type {
         let members = union
-            .members
-            .value
+            .union_member
             .iter()
             .map(|member| match member {
                 ast::UnionMember::Variant(variant) => Type::Variant(Box::new(self.shape(
@@ -2618,6 +2677,7 @@ impl<'a> Checker<'a> {
                     "a variant",
                 ))),
                 ast::UnionMember::Refined(refined) => self.refined(refined),
+                ast::UnionMember::Record(record) => self.inline_record(record),
                 ast::UnionMember::Union(union) => self.union(union),
                 ast::UnionMember::Named {
                     name,
@@ -2779,7 +2839,7 @@ impl<'a> Checker<'a> {
     /// Reports an alias of a union of variants that leads back to itself,
     /// through lists, maps or other such aliases: an alias is only another
     /// name for its type, so it would stand for a type without end. A
-    /// `RECORD` or a `NAMED TYPE` holds values of its own kind instead.
+    /// Records declared with `TYPE` and types declared with `NAMED TYPE` can be recursive.
     fn check_variants_recursion(&mut self, schema: &Schema) {
         fn reached(r#type: &Type, schema: &Schema, found: &mut Vec<usize>) {
             match r#type {
@@ -2830,7 +2890,7 @@ impl<'a> Checker<'a> {
                     checker.error(
                         span,
                         format!(
-                            "found the type alias `{name}`, a union of variants that leads back to itself; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a `RECORD` or a `NAMED TYPE` that holds them through a `LIST`"
+                            "found the type alias `{name}`, a union of variants that leads back to itself; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record declared with `TYPE` or a `NAMED TYPE` that holds them through a `LIST`"
                         ),
                     );
                 });

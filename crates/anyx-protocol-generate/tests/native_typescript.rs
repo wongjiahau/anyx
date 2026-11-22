@@ -8,7 +8,10 @@ use std::pin::pin;
 use std::process::{Command, Stdio};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
-use types::{Reminder, Schedule, Server, SnoozeForError};
+use types::{
+    InlineRecord1, InlineRecord2, InlineRecord3, InlineRecord4, InspectError, Reminder, Schedule,
+    Server, SnoozeForError,
+};
 
 struct Handler;
 impl Server for Handler {
@@ -31,6 +34,23 @@ impl Server for Handler {
         _: Duration,
     ) -> Result<Result<Vec<Reminder>, SnoozeForError>, Self::Error> {
         Ok(Err(SnoozeForError::OverdueSince { since: reminder.at }))
+    }
+    async fn inspect(
+        &self,
+        filter: InlineRecord3,
+    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error> {
+        if filter.query.is_empty() {
+            return Ok(Err(InspectError::Invalid {
+                detail: InlineRecord4 {
+                    path: "query".into(),
+                },
+            }));
+        }
+        Ok(Ok(Some(InlineRecord1 {
+            rows: vec![InlineRecord2 {
+                value: filter.query,
+            }],
+        })))
     }
 }
 fn run<T>(future: impl std::future::Future<Output = T>) -> T {

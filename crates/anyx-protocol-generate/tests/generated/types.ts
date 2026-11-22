@@ -40,10 +40,30 @@ export interface SchemaFile {
   source: string;
 }
 
+export interface InlineRecord1<Item> {
+  rows: InlineRecord2<Item>[];
+}
+
+export interface InlineRecord2<Item> {
+  value: Item;
+}
+
+export interface InlineRecord3 {
+  query: string;
+}
+
+export interface InlineRecord4 {
+  path: string;
+}
+
 /** The errors of `snooze _ for _`. */
 export type SnoozeForError =
   /** Snoozed past its next time. */
   | { kind: "overdueSince"; since: Date };
+
+/** The errors of `inspect _`. */
+export type InspectError =
+  | { kind: "invalid"; detail: InlineRecord4 };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
 // A `union`'s `args` are its members, each told by its form; a `variant` is
@@ -218,7 +238,8 @@ function encodeCall(method: MethodDescriptor, args: unknown[]): string {
   return method.shape.text.split(" ").map(word => {
     if (word !== "_") return word;
     const p = method.shape.params[i];
-    return `(${encodeValue(p.type, args[i++])} AS: ${p.annotation})`;
+    const value = encodeValue(p.type, args[i++]);
+    return p.annotation ? `(${value} AS: ${p.annotation})` : `(${value})`;
   }).join(" ");
 }
 
@@ -535,10 +556,15 @@ const definitions: Definition[] = [{parameters:[],kind:'record', fields:[{wire:"
 {parameters:[],kind:'choice', variants:[{text:"chime", kind:"chime", params:[]},{text:"silent", kind:"silent", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"never", kind:"never", params:[]},{text:"once at _", kind:"onceAt", params:[{name:"at", type:{k:'instant'}, annotation:"Instant"}]},{text:"every _", kind:"every", params:[{name:"period", type:{k:'duration'}, annotation:"Duration"}]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
-{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
+{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:["Item"],kind:'record', fields:[{wire:"rows _", form:"shape", name:"rows", type:{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}, slots:[{k:'list', item:{k:'named', index:6, args:[{k:'parameter', name:"Item"}]}}]}]},
+{parameters:["Item"],kind:'record', fields:[{wire:"value _", form:"shape", name:"value", type:{k:'parameter', name:"Item"}, slots:[{k:'parameter', name:"Item"}]}]},
+{parameters:[],kind:'record', fields:[{wire:"query _", form:"shape", name:"query", type:{k:'text'}, slots:[{k:'text'}]}]},
+{parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["remind _"]:{shape:{text:"remind _", kind:"remind", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"}]}, returns:{k:'named', index:2, args:[]}, errors:[]},
 ["count _"]:{shape:{text:"count _", kind:"count", params:[{name:"reminders", type:{k:'map', item:{k:'named', index:0, args:[]}}, annotation:"MAP Reminder"}]}, returns:{k:'map', item:{k:'integer'}}, errors:[]},
 ["snooze _ for _"]:{shape:{text:"snooze _ for _", kind:"snoozeFor", params:[{name:"reminder", type:{k:'named', index:0, args:[]}, annotation:"Reminder"},{name:"duration", type:{k:'duration'}, annotation:"Duration"}]}, returns:{k:'list', item:{k:'named', index:0, args:[]}}, errors:[{text:"overdue since _", kind:"overdueSince", params:[{name:"since", type:{k:'instant'}, annotation:"Instant"}]}]},
+["inspect _"]:{shape:{text:"inspect _", kind:"inspect", params:[{name:"filter", type:{k:'named', index:7, args:[]}, annotation:""}]}, returns:{k:'union', args:[{k:'named', index:5, args:[{k:'text'}]},{k:'variant', shape:{text:"null", kind:"null", params:[]}}]}, errors:[{text:"invalid _", kind:"invalid", params:[{name:"detail", type:{k:'named', index:8, args:[]}, annotation:""}]}]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
 ["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:4, args:[]}}, errors:[]}};
 /** What came of one call. */
@@ -631,6 +657,11 @@ export class Client {
     return this.snoozeFor(reminder, 300000n);
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
+  inspect(filter: InlineRecord3): Promise<Outcome<(InlineRecord1<string> | { kind: "null" }), InspectError>> {
+    return this.call("inspect _", [filter]);
+  }
+
   /** `SCHEMA`, returning the guide to the schema. */
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
@@ -663,6 +694,7 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "remind _": { readOnly: false, idempotent: false, undoneBy: null },
   "count _": { readOnly: false, idempotent: false, undoneBy: null },
   "snooze _ for _": { readOnly: false, idempotent: false, undoneBy: null },
+  "inspect _": { readOnly: false, idempotent: false, undoneBy: null },
   "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
   "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

@@ -7,8 +7,8 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SCALE: &str = "PROTOCOL a VERSION 1,
-METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [],
-METHOD repeat (count: Integer) RETURNS NOTHING ERRORS [],";
+METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [| |],
+METHOD repeat (count: Integer) RETURNS NOTHING ERRORS [| |],";
 
 #[test]
 fn a_number_with_a_point_or_an_exponent_is_a_float() {
@@ -59,21 +59,20 @@ fn a_float_is_written_with_a_point() {
 
 #[test]
 fn a_default_and_an_example_type_their_numbers_too() {
-    let default =
-        diagnostics("PROTOCOL a VERSION 1, RECORD Row { ratio (Float) DEFAULT ratio 1 },");
+    let default = diagnostics("PROTOCOL a VERSION 1, TYPE Row: { ratio (Float) DEFAULT ratio 1 },");
     assert!(
         default.contains("found the Integer `1`; expected a Float, such as `1.0`"),
         "{default}"
     );
     let example = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [] EXAMPLES [scale 2 RETURNS 4.0],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [| |] EXAMPLES [scale 2 RETURNS 4.0],",
     );
     assert!(
         example.contains("found the Integer `2`; expected a Float, such as `2.0`"),
         "{example}"
     );
     let returned = diagnostics(
-        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [] EXAMPLES [scale 2.0 RETURNS 4],",
+        "PROTOCOL a VERSION 1, METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [| |] EXAMPLES [scale 2.0 RETURNS 4],",
     );
     assert!(
         returned.contains("found the Integer `4`; expected a Float, such as `4.0`"),

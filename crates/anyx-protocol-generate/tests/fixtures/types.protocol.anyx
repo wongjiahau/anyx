@@ -2,7 +2,7 @@
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-RECORD Reminder {
+TYPE Reminder: {
     note: Text,
     at: Instant,
     every (Duration?) DEFAULT every (`null),
@@ -14,22 +14,28 @@ RECORD Reminder {
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
     `(tone: Tone) DEFAULT `chime,
-    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
-    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
+    `(hidden: [| `hidden, `null |]) DEFAULT `null,
+    `(pinned: [| `pinned, `null |]) DEFAULT `null,
 },
 
-TYPE ALIAS Tone: UNION [`chime, `silent],
+TYPE ALIAS Tone: [| `chime, `silent |],
 
-TYPE ALIAS Schedule: UNION [`never, `once at (at: Instant), `every (period: Duration)],
+TYPE ALIAS Schedule: [| `never, `once at (at: Instant), `every (period: Duration) |],
 
-METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [],
+METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [| |],
 
-METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [],
+METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [| |],
 
 # Snoozed for 5 minutes, unless it says for how long.
 METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minutes)]
     RETURNS (reminders: LIST: Reminder)
-    ERRORS [
+    ERRORS [|
         # Snoozed past its next time.
         `overdue since (since: Instant),
-    ],
+    |],
+
+TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
+
+METHOD inspect (filter: { query: Text })
+    RETURNS (result: [| page of (Text), `null |])
+    ERRORS [| `invalid (detail: { path: Text }) |],

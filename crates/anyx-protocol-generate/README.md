@@ -18,8 +18,8 @@ the file.
 
 ## Rust
 
-- A struct per `RECORD` and an enum per alias of a union of variants,
-  `` TYPE ALIAS Colour: UNION [`dark, `custom hue (hue: Float)] ``, with a
+- A struct per record and an enum per alias of a union of variants,
+  `` TYPE ALIAS Colour: [| `dark, `custom hue (hue: Float) |] ``, with a
   variant per shape:
   `custom hue (hue: Float)` is `CustomHue { hue: f64 }`.
 - `Instant` is `std::time::SystemTime` and `Duration` is
@@ -45,12 +45,12 @@ the file.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `RECORD Page of (Item: TYPE)`
+  `IntoValue` and `FromValue` bound on them: `TYPE Page of (Item: TYPE): { items: LIST Item }`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
-  is `PageOf<Order>`. `RECORD (Item: TYPE) history` is `History<Item>`,
-  `RECORD Table from (Key: TYPE) to (Value: TYPE)` is
-  `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left: TYPE) or (Right: TYPE): UNION [ … ]` is
+  is `PageOf<Order>`. `TYPE (Item: TYPE) history: { items: LIST Item }` is `History<Item>`,
+  `TYPE Table from (Key: TYPE) to (Value: TYPE): { keys: LIST Key, values: LIST Value }` is
+  `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left: TYPE) or (Right: TYPE): [| … |]` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
   `page (Item: TYPE)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the

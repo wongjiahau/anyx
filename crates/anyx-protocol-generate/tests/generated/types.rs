@@ -12,7 +12,7 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-RECORD Reminder {
+TYPE Reminder: {
     note: Text,
     at: Instant,
     every (Duration?) DEFAULT every (`null),
@@ -24,25 +24,31 @@ RECORD Reminder {
     quiet from (Integer) to (Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
     `(tone: Tone) DEFAULT `chime,
-    `(hidden: UNION [`hidden, `null]) DEFAULT `null,
-    `(pinned: UNION [`pinned, `null]) DEFAULT `null,
+    `(hidden: [| `hidden, `null |]) DEFAULT `null,
+    `(pinned: [| `pinned, `null |]) DEFAULT `null,
 },
 
-TYPE ALIAS Tone: UNION [`chime, `silent],
+TYPE ALIAS Tone: [| `chime, `silent |],
 
-TYPE ALIAS Schedule: UNION [`never, `once at (at: Instant), `every (period: Duration)],
+TYPE ALIAS Schedule: [| `never, `once at (at: Instant), `every (period: Duration) |],
 
-METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [],
+METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [| |],
 
-METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [],
+METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [| |],
 
 # Snoozed for 5 minutes, unless it says for how long.
 METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minutes)]
     RETURNS (reminders: LIST: Reminder)
-    ERRORS [
+    ERRORS [|
         # Snoozed past its next time.
         `overdue since (since: Instant),
-    ],
+    |],
+
+TYPE ALIAS page of (Item: TYPE): { rows: LIST { value: Item } },
+
+METHOD inspect (filter: { query: Text })
+    RETURNS (result: [| page of (Text), `null |])
+    ERRORS [| `invalid (detail: { path: Text }) |],
 "#,
 }];
 
@@ -316,6 +322,98 @@ impl FromValue for SchemaFile {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineRecord1<Item> {
+    pub rows: Vec<InlineRecord2<Item>>,
+}
+
+impl<Item: IntoValue> IntoValue for InlineRecord1<Item> {
+    fn into_value(self) -> Value {
+        Value::Record(FieldsBuilder::new().field("rows", self.rows).build())
+    }
+}
+
+impl<Item: FromValue> FromValue for InlineRecord1<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            rows: fields.field("rows")?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineRecord2<Item> {
+    pub value: Item,
+}
+
+impl<Item: IntoValue> IntoValue for InlineRecord2<Item> {
+    fn into_value(self) -> Value {
+        Value::Record(FieldsBuilder::new().field("value", self.value).build())
+    }
+}
+
+impl<Item: FromValue> FromValue for InlineRecord2<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            value: fields.field("value")?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineRecord3 {
+    pub query: String,
+}
+
+impl IntoValue for InlineRecord3 {
+    fn into_value(self) -> Value {
+        Value::Record(FieldsBuilder::new().field("query", self.query).build())
+    }
+}
+
+impl FromValue for InlineRecord3 {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            query: fields.field("query")?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineRecord4 {
+    pub path: String,
+}
+
+impl IntoValue for InlineRecord4 {
+    fn into_value(self) -> Value {
+        Value::Record(FieldsBuilder::new().field("path", self.path).build())
+    }
+}
+
+impl FromValue for InlineRecord4 {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Record(fields) = value else {
+            return None;
+        };
+        let mut fields = FieldsReader::new(fields);
+        Some(Self {
+            path: fields.field("path")?,
+        })
+    }
+}
+
 /// The errors of `snooze _ for _`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SnoozeForError {
@@ -343,6 +441,38 @@ impl FromValue for SnoozeForError {
         Some(match shape.as_str() {
             "overdue since _" => SnoozeForError::OverdueSince {
                 since: FromValue::from_value(arguments.next()?)?,
+            },
+            _ => return None,
+        })
+    }
+}
+
+/// The errors of `inspect _`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum InspectError {
+    Invalid { detail: InlineRecord4 },
+}
+
+impl IntoValue for InspectError {
+    fn into_value(self) -> Value {
+        match self {
+            InspectError::Invalid { detail } => Value::Variant {
+                shape: "invalid _".to_string(),
+                arguments: vec![detail.into_value()],
+            },
+        }
+    }
+}
+
+impl FromValue for InspectError {
+    fn from_value(value: Value) -> Option<Self> {
+        let Value::Variant { shape, arguments } = value else {
+            return None;
+        };
+        let mut arguments = arguments.into_iter();
+        Some(match shape.as_str() {
+            "invalid _" => InspectError::Invalid {
+                detail: FromValue::from_value(arguments.next()?)?,
             },
             _ => return None,
         })
@@ -378,6 +508,14 @@ pub trait Server {
         reminder: Reminder,
         duration: ::std::time::Duration,
     ) -> Result<Result<Vec<Reminder>, SnoozeForError>, Self::Error>;
+
+    /// `inspect _`, returning `result`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn inspect(
+        &self,
+        filter: InlineRecord3,
+    ) -> Result<Result<Option<InlineRecord1<String>>, InspectError>, Self::Error>;
 }
 
 /// Runs `request` against `implementation` and writes the response. Every
@@ -420,6 +558,13 @@ pub async fn handle<S: Server>(
                 <S as Server>::snooze_for(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
+                    anyx_protocol::server::argument(&mut arguments),
+                )
+                .await,
+            ),
+            3 => anyx_protocol::server::result(
+                <S as Server>::inspect(
+                    implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
                 .await,
@@ -507,16 +652,26 @@ impl<T: Transport> Client<T> {
             .await
     }
 
+    /// `inspect _`, returning `result`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn inspect(
+        &self,
+        filter: InlineRecord3,
+    ) -> Result<Option<InlineRecord1<String>>, CallError<InspectError, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 3, vec![filter.into_value()]).await
+    }
+
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 3, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
     }
 
     /// `SCHEMA FILES`, returning the files of the schema, the entry first.
     pub async fn schema_files(
         &self,
     ) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 4, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 5, vec![]).await
     }
 }
 
@@ -536,6 +691,13 @@ pub const COUNT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client:
 
 /// What a call of `snooze _ for _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
 pub const SNOOZE_FOR_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
+
+/// What a call of `inspect _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const INSPECT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: false,
     undone_by: None,
