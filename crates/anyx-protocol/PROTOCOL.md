@@ -90,6 +90,18 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   through a `LIST` or a `MAP`. A named type can wrap a record in a slot.
   `NAMED TYPE Quiet Hours (schedule: { quiet from (start: Integer) to (end: Integer) })`
   is written `Quiet Hours { quiet from 22 to 7 }`.
+
+  A named type can have type parameters alongside its value slots:
+  `NAMED TYPE Id of (Item: TYPE) (value: Text)`. A type use fills only
+  the type parameter slots, so `Id of (Order)` and `Id of (File)` are
+  distinct types. The constructor fills only the value slots, as in
+  `Id of "a"`. A whole method argument supplies its type with `AS`, as
+  in `load (Id of "a" AS: Id of (Order))`. A return or a nested value uses
+  the type from the schema. JSON uses the same tag for all instantiations,
+  such as `{ "IdOf": "a" }`. Generated Rust and TypeScript use
+  `IdOf<Order>`. Type parameters may appear in value slot types or serve
+  only to distinguish instantiations. A named type fits only the same
+  instantiation.
 - **`TYPE ALIAS Name: T`** names a type without making a new one:
   `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
   wire, in JSON, in the guide and in generated code, so an alias and its
@@ -113,8 +125,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   entry of its field. A record can also appear directly in a type slot:
 
   ```anyx
-  TYPE ALIAS Lookup Result [| { count (Integer) }, `null |],
-  METHOD search (filter: { query (Text) }) RETURNS (result: Lookup Result) ERRORS [| |],
+  TYPE ALIAS Lookup Result [| { count (count: Integer) }, `null |],
+  METHOD search (filter: { query (query: Text) }) RETURNS (result: Lookup Result) ERRORS [| |],
   ```
 
   Anonymous records in generated Rust and TypeScript receive sequential names
@@ -134,8 +146,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   each of its members does, so a `Depth` fits where a `Depth?` is expected.
 - **Nullability** is the prelude's `T?`, the alias `` [| Item, `null |] ``:
   `` `null ``, or a value of the item written as it is, `note "hi"`.
-  `note: Text?` is required but admits `` `null ``;
-  `` note (note: Text?) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
+  `note (note: Text?)` is required but admits `` `null ``;
+  `` note (note (note: Text?)) DEFAULT note (`null) `` may be omitted. `OPTIONAL` is no longer a
   protocol keyword. The parser generator's `OPTIONAL` combinator is unchanged.
 - **`` TYPE ALIAS Name [| `variant, `… |] ``**, a union of variants
   alone: one of its variants. A variant is a *shape*: words, with
@@ -187,9 +199,9 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `TYPE ALIAS Box of (Item: TYPE) sealed: { item (Item) }`, used as `Box of (Letter) sealed`, and
+  `TYPE ALIAS Box of (Item: TYPE) sealed: { item (item: Item) }`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (LIST Key), values (LIST Value) }`.
+  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (keys: LIST Key), values (values: LIST Value) }`.
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
@@ -210,8 +222,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `TYPE ALIAS Trashed File: { file (File Summary), trashed at (Instant) }`,
-  not `TYPE ALIAS (Item: TYPE) in trash since (When: TYPE): { item (Item), when (When) }` used only as
+  name reads better: `TYPE ALIAS Trashed File: { file (file: File Summary), trashed at (instant: Instant) }`,
+  not `TYPE ALIAS (Item: TYPE) in trash since (When: TYPE): { item (item: Item), when (when: When) }` used only as
   `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: Type) ERRORS [| errors |]`**: the method's
   shape, what it returns, and the errors it may return. The returned value

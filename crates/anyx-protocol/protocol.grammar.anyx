@@ -97,7 +97,9 @@ intrinsic type: ANYFIX CALL [
 ## with a value in each slot: `NAMED TYPE File Id (value: Text)` is written
 ## `File Id "a"`, `` NAMED TYPE (value: [| `red, `blue |]) Color `` is written
 ## `` (`red) Color ``, and `NAMED TYPE Range from (start: Integer) to (end: Integer)` is
-## written `Range from 1 to 3`. One with no slots has one value, its name.
+## written `Range from 1 to 3`. One with no value slots has one value.
+## A `(Name: TYPE)` slot belongs to the type's name. Other slots belong
+## to its constructor. Both shapes keep all the declaration's words.
 named type: ANYFIX CALL [
   doc: OPTIONAL: LINE STRING,
   public: OPTIONAL: WORD "PUBLIC",
@@ -106,7 +108,7 @@ named type: ANYFIX CALL [
 
 named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: named slot],
 
-named slot: ONE OF [parameter, unnamed: ANY NODE],
+named slot: ONE OF [type parameter, parameter, unnamed: ANY NODE],
 
 ## A type alias names a type without making a new one: the alias and the
 ## type it stands for are the same type, in the wire and in generated code.

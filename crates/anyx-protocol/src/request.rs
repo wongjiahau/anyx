@@ -184,12 +184,12 @@ fn decode_raw(schema: &Schema, expected: &Type, value: &Syntax) -> Result<Value,
                         _ => Err(mismatch(match value {
                             Syntax::Variant(variant) if variant.body.name.text == text => format!(
                                 "a `{}`, written with its name and no backtick, since its constructor is a function: `{}`",
-                                definition.name,
+                                schema.type_name(expected),
                                 text.replace('_', "…")
                             ),
                             _ => format!(
                                 "a `{}`, written with its name: `{}`",
-                                definition.name,
+                                schema.type_name(expected),
                                 text.replace('_', "…")
                             ),
                         })),

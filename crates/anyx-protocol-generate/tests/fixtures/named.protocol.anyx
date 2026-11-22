@@ -46,3 +46,11 @@ TYPE ALIAS Openings: MAP: Opened At,
 TYPE ALIAS Visit: { at (at: Opened At), by person (by person: Openings), label (label: Share Id) DEFAULT label (Share Id "none") },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit) ERRORS [| |],
+
+# An identifier scoped to the item type.
+NAMED TYPE Id of (Item: TYPE) (value: Text),
+
+# A named wrapper whose value has the parameter's type.
+NAMED TYPE Wrapped (Item: TYPE) (item: Item),
+
+METHOD echo (id: Id of (File Id)) RETURNS (id: Id of (File Id)) ERRORS [| |],

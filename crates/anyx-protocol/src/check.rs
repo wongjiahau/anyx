@@ -132,6 +132,22 @@ fn slot_tuple(slots: Vec<Parameter>) -> Type {
     Type::Tuple(types, names)
 }
 
+/// The type name and constructor share words, but the type name keeps
+/// only type parameter slots and the constructor keeps only value slots.
+fn named_shape(body: &ast::NamedTypeBody, type_slots: bool) -> Vec<ShapePart> {
+    let mut arguments = body.arguments.iter();
+    ShapePart::of(&body.name.parts)
+        .into_iter()
+        .filter(|part| {
+            if *part != ShapePart::Slot {
+                return true;
+            }
+            let is_type = matches!(arguments.next(), Some(ast::NamedSlot::TypeParameter(_)));
+            is_type == type_slots
+        })
+        .collect()
+}
+
 /// A named type's constructor and the type it holds.
 fn constructor_kind(constructor: Vec<ShapePart>, mut slots: Vec<Parameter>) -> TypeKind {
     let underlying = if slots.len() == 1 {
@@ -550,12 +566,22 @@ impl<'a> Checker<'a> {
                         self.declare_type_parameters(&[]);
                     }
                     ast::Definition::NamedType(found) => {
-                        let name = spanned_words(&found.body.name);
-                        // A slot's word may be lowercase, as `from` in
-                        // `Range from (Integer) to (Integer)`.
-                        self.check_type_words(&name, !found.body.arguments.is_empty());
+                        self.check_type_words(
+                            &spanned_words(&found.body.name),
+                            !found.body.arguments.is_empty(),
+                        );
+                        let name = ast::Spanned {
+                            value: ShapePart::text(&named_shape(&found.body, true)),
+                            span: found.body.name.span,
+                        };
                         self.declare_type(&name, found.public.is_some());
-                        self.declare_type_parameters(&[]);
+                        let parameters: Vec<_> = found.body.arguments.iter().filter_map(|slot| {
+                            match slot {
+                                ast::NamedSlot::TypeParameter(parameter) => Some(parameter),
+                                _ => None,
+                            }
+                        }).collect();
+                        self.declare_type_parameters(&parameters);
                     }
                     ast::Definition::TypeAlias(found) => {
                         let shape = alias_shape(&found.body);
@@ -621,14 +647,16 @@ impl<'a> Checker<'a> {
                         kind: constructor_kind(ShapePart::of(&found.name.name.parts), Vec::new()),
                     }),
                     ast::Definition::NamedType(found) => {
-                        let slots = self.named_slots(&found.body.arguments);
+                        let index = types.len();
+                        let slots = self
+                            .generic(index, |checker| checker.named_slots(&found.body.arguments));
                         types.push(TypeDefinition {
                             anonymous: false,
                             public: found.public.is_some() || self.file == self.prelude_file,
                             doc: doc(&found.doc),
-                            name: spanned_words(&found.body.name).value,
-                            parameters: Vec::new(),
-                            kind: constructor_kind(ShapePart::of(&found.body.name.parts), slots),
+                            name: ShapePart::text(&named_shape(&found.body, true)),
+                            parameters: self.parameter_names(index),
+                            kind: constructor_kind(named_shape(&found.body, false), slots),
                         });
                     }
                     ast::Definition::TypeAlias(found) => {
@@ -1900,6 +1928,7 @@ impl<'a> Checker<'a> {
         let mut checked: Vec<Parameter> = Vec::new();
         for (index, slot) in slots.iter().enumerate() {
             match slot {
+                ast::NamedSlot::TypeParameter(_) => {}
                 ast::NamedSlot::Parameter(parameter) => {
                     let ty = self.r#type(&parameter.r#type);
                     self.push_slot(&mut checked, &parameter.name, ty);

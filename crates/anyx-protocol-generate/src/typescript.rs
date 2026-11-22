@@ -37,6 +37,7 @@ pub fn typescript(schema: &Schema) -> Result<String, Error> {
                 schema,
                 &name,
                 &definition.name,
+                &definition.parameters,
                 &slot_types(constructor, underlying),
                 slot_names(underlying),
             ),
@@ -417,28 +418,46 @@ fn slot_object(
     format!("{{ {fields} }}")
 }
 
-/// A named type is branded with its name. Its constructor checks refinements.
+/// A named type carries a brand for its declaration and type arguments.
 fn branded(
     out: &mut String,
     schema: &Schema,
     name: &str,
     full_name: &str,
+    type_parameters: &[String],
     slots: &[&Type],
     names: &[String],
 ) {
-    let refined = slots
-        .iter()
-        .any(|slot| anyx_protocol::refinement::has_refinements(schema, slot));
-    let validation = match refined {
-        true => {
+    let applied = generic_name(schema, name, type_parameters);
+    let generic = generic_name(schema, "", type_parameters);
+    let refined = |slot| anyx_protocol::refinement::has_refinements(schema, slot);
+    let validation = if type_parameters.is_empty() {
+        if slots.iter().any(|slot| refined(slot)) {
             let index = schema
                 .types
                 .iter()
                 .position(|definition| definition.name == full_name)
                 .unwrap();
             format!("  encodeValue({{k:'named', index:{index}, args:[]}}, value);\n")
+        } else {
+            String::new()
         }
-        false => String::new(),
+    } else {
+        // The method codec supplies the concrete arguments at the wire
+        // boundary. The constructor can already check closed slots.
+        slots
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.parameters().is_empty() && refined(slot))
+            .map(|(index, slot)| {
+                let value = if slots.len() == 1 {
+                    "value".to_string()
+                } else {
+                    format!("value[{:?}]", camel_case(&names[index]))
+                };
+                format!("  encodeValue({}, {value});\n", native_type(slot))
+            })
+            .collect()
     };
     let types: Vec<String> = slots.iter().map(|slot| ts_type(schema, slot)).collect();
     let (held, parameters, value) = match types.as_slice() {
@@ -454,14 +473,30 @@ fn branded(
             (held, parameters, "value")
         }
     };
+    let brand = if type_parameters.is_empty() {
+        format!("__brand: {full_name:?}")
+    } else {
+        let arguments = type_parameters
+            .iter()
+            .map(|parameter| parameter_name(schema, parameter))
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(out, "declare const __{name}Brand: unique symbol;").unwrap();
+        format!("[__{name}Brand]: (args: [{arguments}]) => [{arguments}]")
+    };
     writeln!(
         out,
-        "export type {name} = {held} & {{ readonly __brand: {full_name:?} }};\n"
+        "export type {applied} = {held} & {{ readonly {brand} }};\n"
     )
     .unwrap();
+    let constructor_doc = if type_parameters.is_empty() {
+        format!("Makes a `{name}`, which the schema writes as `{full_name} …`.")
+    } else {
+        format!("Makes a `{applied}` from its value slots.")
+    };
     writeln!(
         out,
-        "/** Makes a `{name}`, which the schema writes as `{full_name} …`. */\nexport function {name}({parameters}): {name} {{\n{validation}  return {value} as unknown as {name};\n}}\n"
+        "/** {constructor_doc} */\nexport function {name}{generic}({parameters}): {applied} {{\n{validation}  return {value} as unknown as {applied};\n}}\n"
     )
     .unwrap();
 }

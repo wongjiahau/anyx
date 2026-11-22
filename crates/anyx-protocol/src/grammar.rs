@@ -152,6 +152,7 @@ pub struct NamedTypeBody {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NamedSlot {
+    TypeParameter(TypeParameter),
     Parameter(Parameter),
     Unnamed(Node),
 }
@@ -449,6 +450,7 @@ impl ChoicePart {
 impl NamedSlot {
     pub fn span(&self) -> Span {
         match self {
+            NamedSlot::TypeParameter(value) => value.span,
             NamedSlot::Parameter(value) => value.span,
             NamedSlot::Unnamed(value) => value.span,
         }
@@ -685,6 +687,7 @@ impl support::Errors for NamedTypeBody {
 impl support::Errors for NamedSlot {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
+            NamedSlot::TypeParameter(value) => support::Errors::errors(value, found),
             NamedSlot::Parameter(value) => support::Errors::errors(value, found),
             NamedSlot::Unnamed(value) => support::Errors::errors(value, found),
         }
@@ -1205,8 +1208,9 @@ pub fn decode_named_type_body(node: &Node) -> Result<NamedTypeBody, DecodeError>
 }
 
 pub fn decode_named_slot(node: &Node) -> Result<NamedSlot, DecodeError> {
-    decode_parameter(node)
-        .map(NamedSlot::Parameter)
+    decode_type_parameter(node)
+        .map(NamedSlot::TypeParameter)
+        .or_else(|error| error.or(decode_parameter(node).map(NamedSlot::Parameter)))
         .or_else(|error| error.or(support::any_node(node).map(NamedSlot::Unnamed)))
 }
 

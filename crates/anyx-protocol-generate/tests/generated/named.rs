@@ -56,6 +56,14 @@ TYPE ALIAS Openings: MAP: Opened At,
 TYPE ALIAS Visit: { at (at: Opened At), by person (by person: Openings), label (label: Share Id) DEFAULT label (Share Id "none") },
 
 READ ONLY METHOD visits RETURNS (visits: LIST: Visit) ERRORS [| |],
+
+# An identifier scoped to the item type.
+NAMED TYPE Id of (Item: TYPE) (value: Text),
+
+# A named wrapper whose value has the parameter's type.
+NAMED TYPE Wrapped (Item: TYPE) (item: Item),
+
+METHOD echo (id: Id of (File Id)) RETURNS (id: Id of (File Id)) ERRORS [| |],
 "#,
 }];
 
@@ -321,6 +329,90 @@ impl FromValue for Visit {
     }
 }
 
+/// An identifier scoped to the item type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IdOf<Item>(pub String, ::std::marker::PhantomData<fn(Item) -> (Item,)>);
+
+impl<Item: IntoValue> IntoValue for IdOf<Item> {
+    fn into_value(self) -> Value {
+        let IdOf(slot_0, _) = self;
+        Value::Variant {
+            shape: "Id of _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for IdOf<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments } if shape == "Id of _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(IdOf(slot_0, ::std::marker::PhantomData))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<Item> IdOf<Item> {
+    pub fn new(slot_0: String) -> Self {
+        IdOf(slot_0, ::std::marker::PhantomData)
+    }
+}
+
+impl<Item> IdOf<Item> {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+/// A named wrapper whose value has the parameter's type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Wrapped<Item>(pub Item, ::std::marker::PhantomData<fn(Item) -> (Item,)>);
+
+impl<Item: IntoValue> IntoValue for Wrapped<Item> {
+    fn into_value(self) -> Value {
+        let Wrapped(slot_0, _) = self;
+        Value::Variant {
+            shape: "Wrapped _".to_string(),
+            arguments: vec![slot_0.into_value()],
+        }
+    }
+}
+
+impl<Item: FromValue> FromValue for Wrapped<Item> {
+    fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Variant { shape, arguments } if shape == "Wrapped _" && arguments.len() == 1 => {
+                let mut arguments = arguments.into_iter();
+                let slot_0 = FromValue::from_value(arguments.next()?)?;
+                Some(Wrapped(slot_0, ::std::marker::PhantomData))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<Item> Wrapped<Item> {
+    pub fn new(slot_0: Item) -> Self {
+        Wrapped(slot_0, ::std::marker::PhantomData)
+    }
+}
+
+impl<Item> Wrapped<Item> {
+    pub fn get(&self) -> &Item {
+        &self.0
+    }
+    pub fn into_inner(self) -> Item {
+        self.0
+    }
+}
+
 /// `` `true `` or `` `false ``.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Boolean {
@@ -467,6 +559,11 @@ pub trait Server {
     ///
     /// Read only: it changes nothing, so it is safe to call freely.
     async fn visits(&self) -> Result<Vec<Visit>, Self::Error>;
+
+    /// `echo _`, returning `id`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    async fn echo(&self, id: IdOf<FileId>) -> Result<IdOf<FileId>, Self::Error>;
 }
 
 /// Runs `request` against `implementation` and writes the response. Every
@@ -531,6 +628,13 @@ pub async fn handle<S: Server>(
                 .await,
             ),
             6 => anyx_protocol::server::value(<S as Server>::visits(implementation).await),
+            7 => anyx_protocol::server::value(
+                <S as Server>::echo(
+                    implementation,
+                    anyx_protocol::server::argument(&mut arguments),
+                )
+                .await,
+            ),
             _ => Ok::<_, <S as Server>::Error>(
                 anyx_protocol::server::built_in(schema, call)
                     .expect("the codec read a method of the schema"),
@@ -653,16 +757,26 @@ impl<T: Transport> Client<T> {
         anyx_protocol::client::call(&self.transport, schema(), 6, vec![]).await
     }
 
+    /// `echo _`, returning `id`.
+    ///
+    /// It may change anything, and calling it again may do it again, so don't retry it blindly.
+    pub async fn echo(
+        &self,
+        id: IdOf<FileId>,
+    ) -> Result<IdOf<FileId>, CallError<::std::convert::Infallible, T::Error>> {
+        anyx_protocol::client::call(&self.transport, schema(), 7, vec![id.into_value()]).await
+    }
+
     /// `SCHEMA`, returning the guide to the schema.
     pub async fn schema(&self) -> Result<String, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 7, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 8, vec![]).await
     }
 
     /// `SCHEMA FILES`, returning the files of the schema, the entry first.
     pub async fn schema_files(
         &self,
     ) -> Result<Vec<SchemaFile>, CallError<::std::convert::Infallible, T::Error>> {
-        anyx_protocol::client::call(&self.transport, schema(), 8, vec![]).await
+        anyx_protocol::client::call(&self.transport, schema(), 9, vec![]).await
     }
 }
 
@@ -712,5 +826,12 @@ pub const SHOW_TO_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::clien
 pub const VISITS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: true,
     idempotent: true,
+    undone_by: None,
+};
+
+/// What a call of `echo _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const ECHO_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
     undone_by: None,
 };

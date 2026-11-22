@@ -344,3 +344,46 @@ METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [| |],
     let request = encode_request(&schema, std::slice::from_ref(&call)).unwrap();
     assert_eq!(decode_request(&schema, &request).unwrap(), vec![call]);
 }
+
+#[test]
+fn generic_named_types_are_nominal_and_substitute_value_slots() {
+    let schema = schema(
+        "PROTOCOL generic VERSION 1,
+        NAMED TYPE Id of (Item: TYPE) (value: Text),
+        NAMED TYPE Wrapped (Item: TYPE) (item: Item),
+        TYPE ALIAS Positive: Integer . WHERE [0 < _],
+        METHOD order (id: Id of (Integer)) RETURNS NOTHING ERRORS [| |],
+        METHOD file (id: Id of (Text)) RETURNS NOTHING ERRORS [| |],
+        METHOD wrap (value: Wrapped (Integer)) RETURNS NOTHING ERRORS [| |],
+        METHOD positive (id: Id of (Positive)) RETURNS NOTHING ERRORS [| |],",
+    );
+    let order = &schema.methods[0].shape.parameters[0].r#type;
+    let file = &schema.methods[1].shape.parameters[0].r#type;
+    assert!(!schema.fits(order, file));
+    assert!(!schema.fits(file, order));
+    assert!(schema.fits(order, order));
+    let positive = &schema.methods[3].shape.parameters[0].r#type;
+    assert!(!schema.fits(positive, order));
+    let calls = decode_request(
+        &schema,
+        "order (Id of \"a\" AS: Id of (Integer)),
+         file (Id of \"a\" AS: Id of (Text)),
+         wrap (Wrapped 7 AS: Wrapped (Integer))",
+    )
+    .unwrap();
+    assert_eq!(
+        decode_request(&schema, &encode_request(&schema, &calls).unwrap()).unwrap(),
+        calls
+    );
+    assert!(decode_request(&schema, "wrap (Wrapped \"a\" AS: Wrapped (Integer))").is_err());
+    assert!(decode_request(&schema, "order (Id of \"a\" AS: Id of (Text))").is_err());
+    #[cfg(feature = "json")]
+    {
+        let json = anyx_protocol::json::decode_request_json(
+            &schema,
+            "order (Id of \"a\" AS: Id of (Integer))",
+        )
+        .unwrap();
+        assert!(json.to_string().contains(r#""IdOf":"a""#), "{json}");
+    }
+}

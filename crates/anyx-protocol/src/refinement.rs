@@ -967,26 +967,25 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
             Type::Named(_) | Type::Generic(..) => {
                 // A named type's value is a call of its constructor, with a
                 // value of each slot's type.
-                if let Type::Named(index) = ty
-                    && let TypeKind::Distinct {
-                        constructor,
-                        underlying,
-                    } = &schema.types[*index].kind
-                {
-                    let Value::Variant { shape, arguments } = value else {
-                        return Err(format!("expected a `{}`", schema.types[*index].name));
-                    };
-                    let slots = crate::schema::slot_types(constructor, underlying);
-                    if *shape != ShapePart::text(constructor) || slots.len() != arguments.len() {
-                        return Err(format!("expected a `{}`", schema.types[*index].name));
-                    }
-                    for (slot, argument) in slots.into_iter().zip(arguments) {
-                        walk(schema, slot, argument, label)?;
-                    }
-                    return Ok(());
-                }
                 let (definition, kind) = schema.instance(ty).ok_or("expected a known type")?;
                 match (kind.as_ref(), value) {
+                    (
+                        TypeKind::Distinct {
+                            constructor,
+                            underlying,
+                        },
+                        Value::Variant { shape, arguments },
+                    ) => {
+                        let slots = crate::schema::slot_types(constructor, underlying);
+                        if *shape != ShapePart::text(constructor) || slots.len() != arguments.len()
+                        {
+                            return Err(format!("expected a `{}`", definition.name));
+                        }
+                        for (slot, argument) in slots.into_iter().zip(arguments) {
+                            walk(schema, slot, argument, label)?;
+                        }
+                        Ok(())
+                    }
                     (TypeKind::Record(fields), Value::Record(values)) => {
                         for field in fields {
                             if let Some(value) = values.get(&field.name) {
@@ -1085,6 +1084,9 @@ pub fn validate(schema: &Schema, expected: &Type, value: &Value) -> Result<(), S
             {
                 Ok(())
             }
+            // A generated generic constructor validates its concrete
+            // constraints here. Its FromValue bounds check the type slots.
+            Type::Parameter(_) => Ok(()),
             Type::Float if matches!(value,Value::Float(n) if n.is_finite()) => Ok(()),
             _ => Err(format!("found `{}`; expected `{label}`", value_text(value))),
         }

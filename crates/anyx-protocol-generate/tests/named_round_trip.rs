@@ -11,8 +11,8 @@ use std::task::{Context, Poll, Waker};
 
 use anyx_protocol::client::{CallError, Transport};
 use named::{
-    Access, Client, Everyone, FileId, FileLink, Server, ShareId, ShareTaggedError, SpanFromTo,
-    Visit,
+    Access, Client, Everyone, FileId, FileLink, IdOf, Server, ShareId, ShareTaggedError,
+    SpanFromTo, Visit,
 };
 
 /// A visit at one second after 1970, by one person.
@@ -78,6 +78,10 @@ impl Server for Sharing {
             start: span.start,
             end: span.end + 1,
         })
+    }
+
+    async fn echo(&self, id: IdOf<FileId>) -> Result<IdOf<FileId>, Self::Error> {
+        Ok(id)
     }
 
     async fn visits(&self) -> Result<Vec<Visit>, Self::Error> {
@@ -192,4 +196,20 @@ fn each_method_has_its_effects_as_a_constant() {
     let share = named::SHARE_TAGGED_EFFECTS;
     assert!(!share.read_only && !share.may_retry());
     assert_eq!(share.undone_by, None);
+}
+
+#[test]
+fn generic_named_types_cross_the_wire_with_contextual_type_arguments() {
+    let client = client();
+    let id = IdOf::<FileId>::new("a".to_string());
+    assert_eq!(run(client.echo(id.clone())), Ok(id));
+    assert_eq!(
+        client.transport.exchanged.borrow()[0],
+        (
+            "echo (Id of \"a\" AS Id of (File Id))\n".to_string(),
+            "RETURNS Id of \"a\"\n".to_string(),
+        )
+    );
+    let wrapped = named::Wrapped::new(7_i64);
+    assert_eq!(wrapped.into_inner(), 7);
 }

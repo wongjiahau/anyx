@@ -352,6 +352,18 @@ fn newtype(
     constructor: &[ShapePart],
     underlying: &Type,
 ) {
+    let generics = Generics::new(schema, &schema.types[index].parameters);
+    let applied = generics.of(name);
+    let generic_impl = generics.of("impl");
+    let into_impl = generics.implementation("IntoValue");
+    let from_impl = generics.implementation("FromValue");
+    let marker = if generics.names.is_empty() {
+        String::new()
+    } else {
+        let names = generics.names.join(", ");
+        format!("::std::marker::PhantomData<fn({names}) -> ({names},)>")
+    };
+    let marker_value = "::std::marker::PhantomData";
     let slots: Vec<String> = slot_types(constructor, underlying)
         .into_iter()
         .map(|slot| rust_type(schema, slot))
@@ -362,11 +374,26 @@ fn newtype(
     let bound: Vec<String> = (0..slots.len())
         .map(|index| format!("slot_{index}"))
         .collect();
-    let (declared, pattern) = match slots.as_slice() {
-        [] => (format!("pub struct {name};"), name.to_string()),
-        [slot] => (
-            format!("pub struct {name}({visibility}{slot});"),
+    let (declared, pattern, construct) = match slots.as_slice() {
+        [] if marker.is_empty() => (
+            format!("pub struct {name};"),
+            name.to_string(),
+            name.to_string(),
+        ),
+        [] => (
+            format!("pub struct {applied}({marker});"),
+            format!("{name}(_)"),
+            format!("{name}({marker_value})"),
+        ),
+        [slot] if marker.is_empty() => (
+            format!("pub struct {applied}({visibility}{slot});"),
             format!("{name}(slot_0)"),
+            format!("{name}(slot_0)"),
+        ),
+        [slot] => (
+            format!("pub struct {applied}({visibility}{slot}, {marker});"),
+            format!("{name}(slot_0, _)"),
+            format!("{name}(slot_0, {marker_value})"),
         ),
         _ => {
             let Type::Tuple(_, names) = underlying else {
@@ -384,9 +411,19 @@ fn newtype(
                 .map(|(field, binding)| format!("{field}: {binding}"))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let (marker_field, ignore_marker, set_marker) = if marker.is_empty() {
+                (String::new(), "", "")
+            } else {
+                (
+                    format!("    __anyx_marker: {marker},\n"),
+                    ", ..",
+                    ", __anyx_marker: ::std::marker::PhantomData",
+                )
+            };
             (
-                format!("pub struct {name} {{\n{declarations}}}"),
-                format!("{name} {{ {bindings} }}"),
+                format!("pub struct {applied} {{\n{declarations}{marker_field}}}"),
+                format!("{name} {{ {bindings}{ignore_marker} }}"),
+                format!("{name} {{ {bindings}{set_marker} }}"),
             )
         }
     };
@@ -409,8 +446,8 @@ fn newtype(
     write!(
         out,
         "{doc}#[derive(Clone, Debug, PartialEq)]\n{declared}\n\n\
-         impl IntoValue for {name} {{\n    fn into_value(self) -> Value {{\n        let {pattern} = self;\n        Value::Variant {{ shape: {shape:?}.to_string(), arguments: vec![{into}] }}\n    }}\n}}\n\n\
-         impl FromValue for {name} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        {check}match value {{\n            Value::Variant {{ shape, arguments }} if shape == {shape:?} && arguments.len() == {count} => {{\n                let mut arguments = arguments.into_iter();\n                {read}\n                Some({pattern})\n            }}\n            _ => None,\n        }}\n    }}\n}}\n\n",
+         {into_impl} IntoValue for {applied} {{\n    fn into_value(self) -> Value {{\n        let {pattern} = self;\n        Value::Variant {{ shape: {shape:?}.to_string(), arguments: vec![{into}] }}\n    }}\n}}\n\n\
+         {from_impl} FromValue for {applied} {{\n    fn from_value(value: Value) -> Option<Self> {{\n        {check}match value {{\n            Value::Variant {{ shape, arguments }} if shape == {shape:?} && arguments.len() == {count} => {{\n                let mut arguments = arguments.into_iter();\n                {read}\n                Some({construct})\n            }}\n            _ => None,\n        }}\n    }}\n}}\n\n",
         count = slots.len(),
     )
     .unwrap();
@@ -420,6 +457,27 @@ fn newtype(
         .map(|(slot, bound)| format!("{bound}: {slot}"))
         .collect::<Vec<_>>()
         .join(", ");
+    if !marker.is_empty() {
+        let signature = if refined {
+            let checked_impl = generics.implementation("IntoValue + Clone");
+            format!(
+                "{checked_impl} {applied} {{\n    pub fn new({parameters}) -> Result<Self, String> {{\n        let value = {construct};\n        anyx_protocol::refinement::validate(schema(), &anyx_protocol::schema::Type::Named({index}), &value.clone().into_value())?;\n        Ok(value)\n    }}\n}}\n"
+            )
+        } else {
+            format!(
+                "{generic_impl} {applied} {{\n    pub fn new({parameters}) -> Self {{\n        {construct}\n    }}\n}}\n"
+            )
+        };
+        writeln!(out, "{signature}").unwrap();
+        if let [inner] = slots.as_slice() {
+            write!(
+                out,
+                "{generic_impl} {applied} {{\n    pub fn get(&self) -> &{inner} {{\n        &self.0\n    }}\n    pub fn into_inner(self) -> {inner} {{\n        self.0\n    }}\n}}\n\n"
+            )
+            .unwrap();
+        }
+        return;
+    }
     if refined {
         write!(
             out,

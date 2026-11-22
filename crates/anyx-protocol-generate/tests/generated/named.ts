@@ -47,6 +47,24 @@ export interface Visit {
   label: ShareId;
 }
 
+/** An identifier scoped to the item type. */
+declare const __IdOfBrand: unique symbol;
+export type IdOf<Item> = string & { readonly [__IdOfBrand]: (args: [Item]) => [Item] };
+
+/** Makes a `IdOf<Item>` from its value slots. */
+export function IdOf<Item>(value: string): IdOf<Item> {
+  return value as unknown as IdOf<Item>;
+}
+
+/** A named wrapper whose value has the parameter's type. */
+declare const __WrappedBrand: unique symbol;
+export type Wrapped<Item> = Item & { readonly [__WrappedBrand]: (args: [Item]) => [Item] };
+
+/** Makes a `Wrapped<Item>` from its value slots. */
+export function Wrapped<Item>(value: Item): Wrapped<Item> {
+  return value as unknown as Wrapped<Item>;
+}
+
 /** `` `true `` or `` `false ``. */
 export type Boolean =
   | { kind: "false" }
@@ -567,6 +585,8 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', shape:"File I
 {parameters:[],kind:'distinct', shape:"Span from _ to _", slots:[{k:'integer'},{k:'integer'}], slotNames:["start","end"]},
 {parameters:[],kind:'distinct', shape:"Everyone", slots:[]},
 {parameters:[],kind:'record', fields:[{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"by person _", form:"shape", name:"byPerson", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}]},{wire:"label _", form:"shape", name:"label", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], defaultValue:()=>("none")}]},
+{parameters:["Item"],kind:'distinct', shape:"Id of _", slots:[{k:'text'}]},
+{parameters:["Item"],kind:'distinct', shape:"Wrapped _", slots:[{k:'parameter', name:"Item"}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
 const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{text:"share _ tagged _", kind:"shareTagged", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"},{name:"tags", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'named', index:2, args:[]}, errors:[{text:"missing _", kind:"missing", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
@@ -576,8 +596,9 @@ const methods: Record<string, MethodDescriptor> = {["share _ tagged _"]:{shape:{
 ["grant _ on _"]:{shape:{text:"grant _ on _", kind:"grantOn", params:[{name:"level", type:{k:'named', index:3, args:[]}, annotation:"Access"},{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}, returns:{k:'named', index:3, args:[]}, errors:[]},
 ["show _ to _"]:{shape:{text:"show _ to _", kind:"showTo", params:[{name:"span", type:{k:'named', index:4, args:[]}, annotation:"Span from to"},{name:"who", type:{k:'named', index:5, args:[]}, annotation:"Everyone"}]}, returns:{k:'named', index:4, args:[]}, errors:[]},
 ["visits"]:{shape:{text:"visits", kind:"visits", params:[]}, returns:{k:'list', item:{k:'named', index:6, args:[]}}, errors:[]},
+["echo _"]:{shape:{text:"echo _", kind:"echo", params:[{name:"id", type:{k:'named', index:7, args:[{k:'named', index:0, args:[]}]}, annotation:"Id of (File Id)"}]}, returns:{k:'named', index:7, args:[{k:'named', index:0, args:[]}]}, errors:[]},
 ["SCHEMA"]:{shape:{text:"SCHEMA", kind:"SCHEMA", params:[]}, returns:{k:'text'}, errors:[]},
-["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:8, args:[]}}, errors:[]}};
+["SCHEMA FILES"]:{shape:{text:"SCHEMA FILES", kind:"SCHEMAFILES", params:[]}, returns:{k:'list', item:{k:'named', index:10, args:[]}}, errors:[]}};
 /** What came of one call. */
 export type Outcome<T, E> =
   | { kind: "value"; value: T }
@@ -683,6 +704,11 @@ export class Client {
     return this.call("visits", []);
   }
 
+  /** It may change anything, and calling it again may do it again, so don't retry it blindly. */
+  echo(id: IdOf<FileId>): Promise<Outcome<IdOf<FileId>, never>> {
+    return this.call("echo _", [id]);
+  }
+
   /** `SCHEMA`, returning the guide to the schema. */
   schema(): Promise<Outcome<string, never>> {
     return this.call("SCHEMA", []);
@@ -719,6 +745,7 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "grant _ on _": { readOnly: false, idempotent: false, undoneBy: null },
   "show _ to _": { readOnly: false, idempotent: false, undoneBy: null },
   "visits": { readOnly: true, idempotent: true, undoneBy: null },
+  "echo _": { readOnly: false, idempotent: false, undoneBy: null },
   "SCHEMA": { readOnly: true, idempotent: true, undoneBy: null },
   "SCHEMA FILES": { readOnly: true, idempotent: true, undoneBy: null },
 };

@@ -338,10 +338,13 @@ fn named_types(schema: &Schema) -> String {
                 [slot] => format!(", holding a {slot}"),
                 slots => format!(", holding {}", slots.join(", ")),
             };
-            Some(format!(
-                "  - `{}`{holding}.{doc}\n",
-                ShapePart::text(constructor).replace('_', "…"),
-            ))
+            let written = ShapePart::text(constructor).replace('_', "…");
+            let shown = if definition.parameters.is_empty() {
+                format!("`{written}`")
+            } else {
+                format!("`{}` as a type, written `{written}`", definition.shape())
+            };
+            Some(format!("  - {shown}{holding}.{doc}\n"))
         })
         .collect();
     match named.is_empty() {
@@ -457,27 +460,29 @@ fn sample(schema: &Schema, r#type: &Type) -> String {
             .map(|slot| sample(schema, slot))
             .collect::<Vec<_>>()
             .join(" "),
-        Type::Named(index) | Type::Generic(index, _) => match &schema.types[*index].kind {
-            TypeKind::Record(_) => "{ … }".to_string(),
-            TypeKind::Variants(_) => "(…)".to_string(),
-            TypeKind::Distinct {
-                constructor,
-                underlying,
-            } => {
-                let mut slots = crate::schema::slot_types(constructor, underlying).into_iter();
-                let written = constructor
-                    .iter()
-                    .map(|part| match part {
-                        ShapePart::Word(word) => word.clone(),
-                        ShapePart::Slot => slots
-                            .next()
-                            .map_or("…".to_string(), |slot| sample(schema, slot)),
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                format!("({written})")
+        ty @ (Type::Named(_) | Type::Generic(..)) => {
+            match schema.instance(ty).unwrap().1.as_ref() {
+                TypeKind::Record(_) => "{ … }".to_string(),
+                TypeKind::Variants(_) => "(…)".to_string(),
+                TypeKind::Distinct {
+                    constructor,
+                    underlying,
+                } => {
+                    let mut slots = crate::schema::slot_types(constructor, underlying).into_iter();
+                    let written = constructor
+                        .iter()
+                        .map(|part| match part {
+                            ShapePart::Word(word) => word.clone(),
+                            ShapePart::Slot => slots
+                                .next()
+                                .map_or("…".to_string(), |slot| sample(schema, slot)),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("({written})")
+                }
             }
-        },
+        }
         Type::Parameter(_) => "…".to_string(),
         Type::Union(members) => members
             .first()
