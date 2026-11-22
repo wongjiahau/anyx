@@ -357,7 +357,7 @@ impl Builder<'_> {
                 let transparent = is_transparent(elements) && !is_rule && *order == Order::Written;
                 self.definitions[definition].body = if transparent {
                     Body::Transparent {
-                        kind: *kind,
+                        kind: kind.clone(),
                         steps: self.steps(elements, path, "item"),
                     }
                 } else {
@@ -514,7 +514,7 @@ impl Builder<'_> {
                 elements,
                 order,
             } => Record {
-                source: Source::Container(*kind),
+                source: Source::Container(kind.clone()),
                 steps: self.steps(elements, path, "item"),
                 order: *order,
             },
@@ -1470,12 +1470,25 @@ impl Printer<'_> {
         }
     }
 
-    fn open_container(kind: ContainerKind) -> &'static str {
+    fn open_container(output: &mut String, kind: &ContainerKind) {
         match kind {
-            ContainerKind::CurlyBrace => "let mut elements = support::curly_brace(node)?;",
-            ContainerKind::SquareBracket => "let mut elements = support::square_bracket(node)?;",
-            ContainerKind::Parenthesis => "let mut elements = support::parenthesis(node)?;",
+            ContainerKind::CurlyBrace => {
+                writeln!(output, "let mut elements = support::curly_brace(node)?;")
+            }
+            ContainerKind::SquareBracket => {
+                writeln!(output, "let mut elements = support::square_bracket(node)?;")
+            }
+            ContainerKind::Parenthesis => {
+                writeln!(output, "let mut elements = support::parenthesis(node)?;")
+            }
+            ContainerKind::Custom(bracket) => writeln!(
+                output,
+                "let mut elements = support::custom_bracket(node, {:?}, {:?})?;",
+                bracket.open(),
+                format!("the closing `{}`", bracket.close())
+            ),
         }
+        .unwrap();
     }
 
     /// The body of a function decoding `record` into `constructor`.
@@ -1489,7 +1502,7 @@ impl Printer<'_> {
                 "elements"
             }
             Source::Container(kind) => {
-                writeln!(output, "{}", Self::open_container(*kind)).unwrap();
+                Self::open_container(output, kind);
                 "elements"
             }
             Source::Call { expected } => {
@@ -1681,7 +1694,7 @@ impl Printer<'_> {
             }
             Body::Group(_) => unreachable!("a group is decoded in its call's sequence"),
             Body::Transparent { kind, steps } => {
-                writeln!(output, "{}", Self::open_container(*kind)).unwrap();
+                Self::open_container(output, kind);
                 let (fields, rest) = self.sequence("elements", steps);
                 match fields.first() {
                     Some((_, expression)) => writeln!(

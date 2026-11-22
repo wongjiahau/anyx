@@ -519,6 +519,7 @@ pub(crate) fn describe(node: &Node) -> String {
         NodeKind::Parens(_) => "parentheses".to_string(),
         NodeKind::Brackets(_) => "a list `[…]`".to_string(),
         NodeKind::Braces(_) => "braces `{…}`".to_string(),
+        NodeKind::CustomBracket(bracket, _) => bracket.picture(),
         NodeKind::Underscore => "`_`".to_string(),
         NodeKind::Missing => "nothing".to_string(),
     }

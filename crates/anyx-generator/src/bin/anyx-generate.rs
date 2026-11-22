@@ -97,7 +97,10 @@ fn print_tree(source: &str, path: &str) -> ExitCode {
         println!("{}{described}", "  ".repeat(depth));
         let inside = match &node.kind {
             NodeKind::Call(call) => &call.arguments[..],
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => nodes,
             _ => &[],
         };
         for node in inside {

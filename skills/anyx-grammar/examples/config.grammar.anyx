@@ -24,5 +24,6 @@ value: ONE OF [
   text: STRING,
   number: NUMBER,
   list: SQUARE BRACKET: ZERO OR MORE: value,
+  custom list: BRACKET "[|>" [ZERO OR MORE: value],
   section: CURLY BRACE: EACH: setting,
 ],

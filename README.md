@@ -68,7 +68,8 @@ run        = item { item } ;                      (* the anyx run *)
 item       = word | number | string
            | "(" sequence ")"
            | "[" sequence "]"
-           | "{" sequence "}" ;
+           | "{" sequence "}"
+           | custom-open sequence matching-custom-close ;
 
 (* Lexical *)
 special    = "," | ":" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "#" | '"' ;
@@ -105,7 +106,8 @@ digit      = "0" … "9" ;                          (* ASCII only *)
    by a comment. Write a shebang line as `##!`, a comment. A byte order mark
    (U+FEFF) at the very start is whitespace.
 2. Each special character is its own token, except that `"` starts a string,
-   `#` a [line string](#line-strings), and `##` a comment.
+   `#` a [line string](#line-strings), `##` a comment, and brackets can form
+   [custom delimiters](#custom-brackets).
 3. A word is as long as possible within its kind (name or symbols). Switching
    kinds ends it, with or without a space. A `-` before an ASCII digit also
    ends a symbol word, because it starts a number (rule 5).
@@ -137,6 +139,26 @@ digit      = "0" … "9" ;                          (* ASCII only *)
    interpolation.
 8. Three or more `"` open a [raw string](#raw-strings).
    `""` is still the empty string.
+
+## Custom brackets
+
+An opening `(`, `[` or `{` immediately followed by one or more symbol
+characters and then whitespace starts a custom bracket. After whitespace,
+a run of symbols immediately followed by `)`, `]` or `}` is a custom
+closer. The closer reverses the opening symbols, swaps `<` with `>`,
+and ends with the matching ordinary closing bracket.
+
+For example, `(* a *)`, `[| |]` and `[|> a, b <|]` are custom groups.
+The tree keeps the opener and the sequence of children, including for
+an empty group or a group with one child. Consumers give these groups
+meaning through their grammar, for example `BRACKET "[|>" [elements]`.
+
+Both delimiters are recognized independently. In `[| a ||]`, the
+whole `||]` is a closer and the parser reports that it expected `|]`.
+For an ordinary group, leave a space between a symbol word and the
+bracket when the word would otherwise form a delimiter. Write
+`[ <= 3]` or `[a | ]`. Forms such as `(-1)`, `(@by name)` and
+`[||]` remain ordinary groups.
 
 ## Raw strings
 
@@ -404,7 +426,8 @@ run      : item { item },
 item     : word | number | string
          | "(" sequence ")"
          | "[" sequence "]"
-         | "{" sequence "}",
+         | "{" sequence "}"
+         | custom open sequence matching custom close,
 
 special    : "," | ":" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "#" | "\"",
 alnum      : letter | digit | "_",
@@ -470,7 +493,9 @@ formatting it again changes nothing.
   a line each, with commas when there is more than one.
 - **Spacing.** One space between items. `:` hugs its left (`a: b`). `.` has a
   space on both sides (`x . f`), except that it hugs a symbol word after it
-  (`1 .+ 2`). Braces pad their contents (`{ a }`); parens and brackets don't.
+  (`1 .+ 2`). Braces and custom brackets pad their contents
+  (`{ a }`, `[| a |]`). Ordinary parens and square brackets add space
+  where a symbol word might otherwise become part of a delimiter.
 - **Comments and blank lines.** A comment stays after the token it followed
   on the same line, or on its own line before the next one, moving to a
   neighbour when its token is removed. A trailing comment inside a run ends

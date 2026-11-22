@@ -20,6 +20,8 @@ pub enum TokenKind {
     CloseBracket,
     OpenBrace,
     CloseBrace,
+    OpenCustom(CustomBracket),
+    CloseCustom(CustomBracket),
     /// The end of input. It carries the document's trailing trivia.
     End,
 }
@@ -175,27 +177,77 @@ impl Item {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A custom bracket identified by its opening delimiter, such as `[|>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CustomBracket(String);
+
+impl CustomBracket {
+    /// Constructs a bracket from an opening delimiter with a nonempty symbol run.
+    pub fn from_opener(open: &str) -> Option<Self> {
+        let mut chars = open.chars();
+        if !matches!(chars.next(), Some('(' | '[' | '{')) {
+            return None;
+        }
+        let symbols = chars.as_str();
+        (!symbols.is_empty() && symbols.chars().all(crate::lexer::is_symbol))
+            .then(|| Self(open.to_owned()))
+    }
+
+    pub(crate) fn from_closer(close: &str) -> Self {
+        Self(close.chars().rev().map(flip_bracket_symbol).collect())
+    }
+
+    pub fn open(&self) -> &str {
+        &self.0
+    }
+
+    pub fn close(&self) -> String {
+        self.0.chars().rev().map(flip_bracket_symbol).collect()
+    }
+
+    pub fn picture(&self) -> String {
+        format!("`{} ... {}`", self.open(), self.close())
+    }
+}
+
+fn flip_bracket_symbol(c: char) -> char {
+    match c {
+        '(' => ')',
+        ')' => '(',
+        '[' => ']',
+        ']' => '[',
+        '{' => '}',
+        '}' => '{',
+        '<' => '>',
+        '>' => '<',
+        _ => c,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GroupKind {
     Parens,
     Brackets,
     Braces,
+    Custom(CustomBracket),
 }
 
 impl GroupKind {
-    pub fn open(self) -> char {
+    pub fn open(&self) -> &str {
         match self {
-            GroupKind::Parens => '(',
-            GroupKind::Brackets => '[',
-            GroupKind::Braces => '{',
+            GroupKind::Parens => "(",
+            GroupKind::Brackets => "[",
+            GroupKind::Braces => "{",
+            GroupKind::Custom(bracket) => bracket.open(),
         }
     }
 
-    pub fn close(self) -> char {
+    pub fn close(&self) -> std::borrow::Cow<'_, str> {
         match self {
-            GroupKind::Parens => ')',
-            GroupKind::Brackets => ']',
-            GroupKind::Braces => '}',
+            GroupKind::Parens => ")".into(),
+            GroupKind::Brackets => "]".into(),
+            GroupKind::Braces => "}".into(),
+            GroupKind::Custom(bracket) => bracket.close().into(),
         }
     }
 }

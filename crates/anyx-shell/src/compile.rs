@@ -830,7 +830,10 @@ fn relocate(node: &mut Node, offset: usize) {
                 relocate(argument, offset);
             }
         }
-        NodeKind::Brackets(items) | NodeKind::Braces(items) | NodeKind::Parens(items) => {
+        NodeKind::Brackets(items)
+        | NodeKind::Braces(items)
+        | NodeKind::Parens(items)
+        | NodeKind::CustomBracket(_, items) => {
             for item in items {
                 relocate(item, offset);
             }

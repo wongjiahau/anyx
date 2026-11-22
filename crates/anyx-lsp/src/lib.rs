@@ -258,7 +258,10 @@ fn completion(expected: &str) -> Option<Completion> {
 pub fn folds(source: &str) -> Vec<Span> {
     fn visit(node: &Node, found: &mut Vec<Span>) {
         let children: &[Node] = match &node.kind {
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => {
                 found.push(node.span);
                 nodes
             }

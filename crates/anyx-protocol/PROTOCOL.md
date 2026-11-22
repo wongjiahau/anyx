@@ -15,7 +15,7 @@ RECORD File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
     path: Text,
     revision: Integer,
-    note (Text ?) DEFAULT note (`null),
+    note (Text ? ) DEFAULT note (`null),
 },
 
 TYPE ALIAS Shade: UNION [`dark, `light],

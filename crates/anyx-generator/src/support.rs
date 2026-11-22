@@ -238,6 +238,7 @@ pub fn describe(node: &Node) -> String {
         NodeKind::Parens(_) => "`(...)`".to_string(),
         NodeKind::Brackets(_) => "`[...]`".to_string(),
         NodeKind::Braces(_) => "`{...}`".to_string(),
+        NodeKind::CustomBracket(bracket, _) => bracket.picture(),
         NodeKind::Underscore => "`_`".to_string(),
         NodeKind::Missing => "nothing".to_string(),
     }
@@ -335,6 +336,27 @@ pub fn parenthesis(node: &Node) -> Result<Sequence<'_>, DecodeError> {
     match &node.kind {
         NodeKind::Parens(nodes) => Ok(Sequence::bracket(node, nodes, "the closing `)`")),
         _ => Err(mismatch(node, "`(...)`")),
+    }
+}
+
+/// The elements of the custom bracket named by its opening delimiter.
+pub fn custom_bracket<'a>(
+    node: &'a Node,
+    opener: &str,
+    closing: &'static str,
+) -> Result<Sequence<'a>, DecodeError> {
+    match &node.kind {
+        NodeKind::CustomBracket(bracket, nodes) if bracket.open() == opener => {
+            let end = node.span.end;
+            Ok(Sequence::new(
+                nodes.iter().map(Item::Node).collect(),
+                (closing, Span::new(end.saturating_sub(opener.len()).max(node.span.start), end)),
+            ))
+        }
+        _ => {
+            let expected = anyx::CustomBracket::from_opener(opener).expect("a checked bracket opener");
+            Err(mismatch(node, &expected.picture()))
+        }
     }
 }
 
@@ -1033,9 +1055,10 @@ fn mark_breaks(nodes: &[Node], rules: &[LayoutRule], layout: &mut anyx::Layout) 
                 }
                 mark_breaks(&call.arguments, rules, layout);
             }
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
-                mark_breaks(nodes, rules, layout)
-            }
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => mark_breaks(nodes, rules, layout),
             _ => {}
         }
     }

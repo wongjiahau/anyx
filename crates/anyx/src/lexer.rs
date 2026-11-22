@@ -1,7 +1,7 @@
 use crate::error::{Error, ErrorCode};
 use crate::span::Span;
 use crate::string::{StringKind, StringLiteral};
-use crate::syntax::{Token, TokenKind, Trivia, TriviaKind};
+use crate::syntax::{CustomBracket, Token, TokenKind, Trivia, TriviaKind};
 
 /// The eleven characters that never appear inside a word.
 pub(crate) const SPECIAL: [char; 11] = [',', ':', '.', '(', ')', '[', ']', '{', '}', '#', '"'];
@@ -33,7 +33,7 @@ pub fn is_keyword(text: &str) -> bool {
         && !text.chars().any(char::is_lowercase)
 }
 
-fn is_symbol(c: char) -> bool {
+pub(crate) fn is_symbol(c: char) -> bool {
     !c.is_whitespace() && !SPECIAL.contains(&c) && !is_alnum(c)
 }
 
@@ -131,11 +131,11 @@ impl Lexer<'_> {
                     ',' => TokenKind::Comma,
                     ':' => TokenKind::Colon,
                     '.' => TokenKind::Dot,
-                    '(' => TokenKind::OpenParen,
+                    '(' => self.open_bracket(start, TokenKind::OpenParen),
                     ')' => TokenKind::CloseParen,
-                    '[' => TokenKind::OpenBracket,
+                    '[' => self.open_bracket(start, TokenKind::OpenBracket),
                     ']' => TokenKind::CloseBracket,
-                    '{' => TokenKind::OpenBrace,
+                    '{' => self.open_bracket(start, TokenKind::OpenBrace),
                     '}' => TokenKind::CloseBrace,
                     '"' => self.string(start),
                     '#' => TokenKind::String(Box::new(self.line_string(start))),
@@ -156,7 +156,19 @@ impl Lexer<'_> {
                         {
                             self.bump();
                         }
-                        TokenKind::Word
+                        if matches!(self.peek(), Some(')' | ']' | '}'))
+                            && self.source[..start]
+                                .chars()
+                                .next_back()
+                                .is_some_and(char::is_whitespace)
+                        {
+                            self.bump();
+                            TokenKind::CloseCustom(CustomBracket::from_closer(
+                                &self.source[start..self.position],
+                            ))
+                        } else {
+                            TokenKind::Word
+                        }
                     }
                 }
             }
@@ -170,6 +182,21 @@ impl Lexer<'_> {
             span,
             leading,
             trailing,
+        }
+    }
+
+    fn open_bracket(&mut self, start: usize, ordinary: TokenKind) -> TokenKind {
+        let mut chars = self.rest().char_indices();
+        if let Some((len, c)) = chars.find(|&(_, c)| !is_symbol(c))
+            && len > 0
+            && c.is_whitespace()
+        {
+            self.position += len;
+            let bracket = CustomBracket::from_opener(&self.source[start..self.position])
+                .expect("an opening bracket followed by symbols");
+            TokenKind::OpenCustom(bracket)
+        } else {
+            ordinary
         }
     }
 

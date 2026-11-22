@@ -1849,7 +1849,10 @@ fn words_within(nodes: &[Node], span: Span) -> Vec<(&str, Span)> {
                 }
                 &call.arguments
             }
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => nodes,
             _ => &[],
         };
         children.iter().for_each(|child| walk(child, span, found));
@@ -1915,7 +1918,10 @@ fn optional_part_without_words(nodes: &[Node], span: Span) -> Option<Span> {
         }
         let children: &[Node] = match &node.kind {
             NodeKind::Call(call) => &call.arguments,
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => nodes,
             _ => &[],
         };
         children.iter().find_map(|child| within(child, span))
@@ -1934,7 +1940,10 @@ fn default_outside_record(nodes: &[Node], span: Span) -> Option<Span> {
         }
         let children: &[Node] = match &node.kind {
             NodeKind::Call(call) => &call.arguments,
-            NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => nodes,
+            NodeKind::Parens(nodes)
+            | NodeKind::Brackets(nodes)
+            | NodeKind::Braces(nodes)
+            | NodeKind::CustomBracket(_, nodes) => nodes,
             _ => &[],
         };
         children

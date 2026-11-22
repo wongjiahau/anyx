@@ -2603,7 +2603,10 @@ pub mod support {
     //! generated parser depends only on `anyx` (and on `regex`, when its
     //! grammar uses `MATCHING REGEX`).
 
-    use anyx::{FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringLiteral, line_column};
+    use anyx::{
+        FlatWord, LineColumn, NamePart, Node, NodeKind, Span, StringKind, StringLiteral,
+        line_column,
+    };
 
     /// A value and where it was written.
     #[derive(Clone, Debug, PartialEq)]
@@ -2842,23 +2845,27 @@ pub mod support {
     pub fn describe(node: &Node) -> String {
         match &node.kind {
             NodeKind::Number(text) => format!("the number `{text}`"),
-            NodeKind::String(literal) => {
-                let mut value: String = literal.value.chars().take(40).collect();
-                if value.len() < literal.value.len() {
-                    value.push('…');
-                }
-                format!("the string {value:?}")
-            }
+            NodeKind::String(literal) => format!("the string {}", string_value(literal)),
             NodeKind::Call(call) => match &call.name[..] {
-                [NamePart::Word { text, .. }] => format!("the word `{text}`"),
-                _ => format!("the call `{}`", call.name_text()),
+                [NamePart::Word { text, .. }] => format!("the word {}", code(text)),
+                _ => format!("the call {}", code(&call.name_text())),
             },
             NodeKind::Parens(_) => "`(...)`".to_string(),
             NodeKind::Brackets(_) => "`[...]`".to_string(),
             NodeKind::Braces(_) => "`{...}`".to_string(),
+            NodeKind::CustomBracket(bracket, _) => bracket.picture(),
             NodeKind::Underscore => "`_`".to_string(),
             NodeKind::Missing => "nothing".to_string(),
         }
+    }
+
+    /// A string's value as an error quotes it, cut short after 40 characters.
+    fn string_value(literal: &StringLiteral) -> String {
+        let mut value: String = literal.value.chars().take(40).collect();
+        if value.len() < literal.value.len() {
+            value.push('…');
+        }
+        format!("{value:?}")
     }
 
     /// The error for a node that is not what the grammar expects there.
@@ -2947,6 +2954,31 @@ pub mod support {
         match &node.kind {
             NodeKind::Parens(nodes) => Ok(Sequence::bracket(node, nodes, "the closing `)`")),
             _ => Err(mismatch(node, "`(...)`")),
+        }
+    }
+
+    /// The elements of the custom bracket named by its opening delimiter.
+    pub fn custom_bracket<'a>(
+        node: &'a Node,
+        opener: &str,
+        closing: &'static str,
+    ) -> Result<Sequence<'a>, DecodeError> {
+        match &node.kind {
+            NodeKind::CustomBracket(bracket, nodes) if bracket.open() == opener => {
+                let end = node.span.end;
+                Ok(Sequence::new(
+                    nodes.iter().map(Item::Node).collect(),
+                    (
+                        closing,
+                        Span::new(end.saturating_sub(opener.len()).max(node.span.start), end),
+                    ),
+                ))
+            }
+            _ => {
+                let expected =
+                    anyx::CustomBracket::from_opener(opener).expect("a checked bracket opener");
+                Err(mismatch(node, &expected.picture()))
+            }
         }
     }
 
@@ -3044,7 +3076,7 @@ pub mod support {
         fn unexpected(&mut self, expected: &str) -> DecodeError {
             let error = match self.items.get(self.index) {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), expected)
+                    DecodeError::new(*span, format!("the word {}", code(text)), expected)
                 }
                 Some(Item::Node(node)) => mismatch(node, expected),
                 None => DecodeError::new(self.end.1, self.end.0, expected),
@@ -3058,6 +3090,20 @@ pub mod support {
         fn is_other_call(&mut self) -> DecodeError {
             self.missed = None;
             self.other_call.clone().expect("the sequence of a call")
+        }
+
+        /// Whether the call may be another shape: not when the item at the
+        /// front is a string that an optional part refused, such as a quoted
+        /// string where a `#` line string goes. The call then has the expected
+        /// shape, a slot where the part goes, and the string is what is wrong.
+        fn may_be_other_call(&self) -> bool {
+            let refused_string = match (self.items.get(self.index), &self.missed) {
+                (Some(Item::Node(node)), Some(missed)) => {
+                    matches!(node.kind, NodeKind::String(_)) && missed.span == node.span
+                }
+                _ => false,
+            };
+            self.other_call.is_some() && !refused_string
         }
 
         fn fail(&mut self, error: DecodeError) -> DecodeError {
@@ -3114,7 +3160,7 @@ pub mod support {
             }
             let mut error = match next {
                 Some(Item::Word(text, span)) => {
-                    DecodeError::new(*span, format!("the word `{text}`"), "")
+                    DecodeError::new(*span, format!("the word {}", code(text)), "")
                 }
                 Some(Item::Node(node)) => mismatch(node, ""),
                 None => DecodeError::new(self.end.1, self.end.0, ""),
@@ -3124,7 +3170,7 @@ pub mod support {
                 self.missed = Some(self.fail(error));
                 return Ok(None);
             }
-            if self.other_call.is_some() {
+            if self.may_be_other_call() {
                 return Err(self.is_other_call());
             }
             Err(self.fail(error))
@@ -3146,10 +3192,10 @@ pub mod support {
                 let found = match self.items.get(self.index) {
                     Some(Item::Word(found, at)) if *found == word => *at,
                     Some(Item::Node(node)) if is_word(node, word) => node.span,
-                    Some(Item::Node(_)) if self.other_call.is_some() => {
+                    Some(Item::Node(_)) if self.may_be_other_call() => {
                         return Err(self.is_other_call());
                     }
-                    _ => return Err(self.unexpected(&format!("the word `{text}`"))),
+                    _ => return Err(self.unexpected(&format!("the word {}", code(text)))),
                 };
                 self.index += 1;
                 self.other_call = None;
@@ -3173,7 +3219,7 @@ pub mod support {
                 })
                 .collect();
             let (Some((_, first)), Some((_, last))) = (words.first(), words.last()) else {
-                if self.other_call.is_some() {
+                if self.may_be_other_call() {
                     return Err(self.is_other_call());
                 }
                 return Err(self.unexpected(expected));
@@ -3188,7 +3234,8 @@ pub mod support {
                 let error = match self.other_call.is_some() {
                     true => self.is_other_call(),
                     false => {
-                        let error = DecodeError::new(span, format!("the words `{text}`"), expected);
+                        let error =
+                            DecodeError::new(span, format!("the words {}", code(&text)), expected);
                         self.fail(error)
                     }
                 };
@@ -3388,7 +3435,24 @@ pub mod support {
     pub fn word(node: &Node, text: &str) -> Result<Span, DecodeError> {
         match is_word(node, text) {
             true => Ok(node.span),
-            false => Err(mismatch(node, &format!("the word `{text}`"))),
+            false => Err(mismatch(node, &format!("the word {}", code(text)))),
+        }
+    }
+
+    /// `text` quoted as code: `` `x` ``, or with two backticks around text
+    /// that holds one, as the word `` ` ``.
+    pub fn code(text: &str) -> String {
+        match text.contains('`') {
+            true => format!("`` {text} ``"),
+            false => format!("`{text}`"),
+        }
+    }
+
+    /// The node `_`.
+    pub fn underscore(node: &Node) -> Result<Span, DecodeError> {
+        match node.kind {
+            NodeKind::Underscore => Ok(node.span),
+            _ => Err(mismatch(node, "`_`")),
         }
     }
 
@@ -3431,6 +3495,29 @@ pub mod support {
                 span: node.span,
             }),
             _ => Err(mismatch(node, expected)),
+        }
+    }
+
+    /// A `#` line string whose value passes `condition`. A quoted or raw string
+    /// is named by its kind, since its kind is what is wrong.
+    pub fn line_string(
+        node: &Node,
+        condition: impl Fn(&str) -> bool,
+        expected: &str,
+    ) -> Result<Spanned<StringLiteral>, DecodeError> {
+        match &node.kind {
+            NodeKind::String(literal) if literal.kind != StringKind::Line => {
+                let kind = match literal.kind {
+                    StringKind::Raw => "raw",
+                    _ => "quoted",
+                };
+                Err(DecodeError::new(
+                    node.span,
+                    format!("the {kind} string {}", string_value(literal)),
+                    expected,
+                ))
+            }
+            _ => string(node, condition, expected),
         }
     }
 
@@ -3607,11 +3694,36 @@ pub mod support {
                     }
                     mark_breaks(&call.arguments, rules, layout);
                 }
-                NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
-                    mark_breaks(nodes, rules, layout)
-                }
+                NodeKind::Parens(nodes)
+                | NodeKind::Brackets(nodes)
+                | NodeKind::Braces(nodes)
+                | NodeKind::CustomBracket(_, nodes) => mark_breaks(nodes, rules, layout),
                 _ => {}
             }
         }
+    }
+
+    /// A number classified by its spelling, retaining its text exactly. A based
+    /// integer's hexadecimal `e` is a digit, never an exponent.
+    pub fn number_literal(
+        node: &Node,
+        float: bool,
+        expected: &str,
+    ) -> Result<Spanned<String>, DecodeError> {
+        let NodeKind::Number(text) = &node.kind else {
+            return Err(mismatch(node, expected));
+        };
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        let based = ["0x", "0X", "0b", "0B", "0o", "0O"]
+            .iter()
+            .any(|prefix| digits.starts_with(prefix));
+        let is_float = !based && digits.contains(['.', 'e', 'E']);
+        if is_float != float {
+            return Err(mismatch(node, expected));
+        }
+        Ok(Spanned {
+            value: text.clone(),
+            span: node.span,
+        })
     }
 }

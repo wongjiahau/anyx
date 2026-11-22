@@ -120,9 +120,29 @@ pub enum Repetition {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Container {
-    CurlyBrace { contents: Box<Contents>, span: Span },
-    SquareBracket { contents: Box<Contents>, span: Span },
-    Parenthesis { contents: Box<Contents>, span: Span },
+    CurlyBrace {
+        contents: Box<Contents>,
+        span: Span,
+    },
+    SquareBracket {
+        contents: Box<Contents>,
+        span: Span,
+    },
+    Parenthesis {
+        contents: Box<Contents>,
+        span: Span,
+    },
+    CustomBracket {
+        arguments: ContainerCustomBracketArguments,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContainerCustomBracketArguments {
+    pub opener: Spanned<StringLiteral>,
+    pub contents: Box<Contents>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -347,7 +367,8 @@ impl Container {
         match self {
             Container::CurlyBrace { span, .. }
             | Container::SquareBracket { span, .. }
-            | Container::Parenthesis { span, .. } => *span,
+            | Container::Parenthesis { span, .. }
+            | Container::CustomBracket { span, .. } => *span,
         }
     }
 }
@@ -574,7 +595,17 @@ impl support::Errors for Container {
             Container::Parenthesis { contents, .. } => {
                 support::Errors::errors(contents, found);
             }
+            Container::CustomBracket { arguments, .. } => {
+                support::Errors::errors(arguments, found);
+            }
         }
+    }
+}
+
+impl support::Errors for ContainerCustomBracketArguments {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.opener, found);
+        support::Errors::errors(&self.contents, found);
     }
 }
 
@@ -996,6 +1027,7 @@ pub fn decode_container(node: &Node) -> Result<Container, DecodeError> {
     decode_container_curly_brace(node)
         .or_else(|error| error.or(decode_container_square_bracket(node)))
         .or_else(|error| error.or(decode_container_parenthesis(node)))
+        .or_else(|error| error.or(decode_container_custom_bracket(node)))
 }
 
 fn decode_container_curly_brace(node: &Node) -> Result<Container, DecodeError> {
@@ -1030,6 +1062,34 @@ fn decode_container_parenthesis(node: &Node) -> Result<Container, DecodeError> {
         contents: parts
             .word("PARENTHESIS")?
             .one(|node| decode_contents(node).map(Box::new), "contents")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_container_custom_bracket(node: &Node) -> Result<Container, DecodeError> {
+    let mut parts = support::call(node, "the call `BRACKET _`")?;
+    let decoded = Container::CustomBracket {
+        arguments: parts
+            .word("BRACKET")?
+            .one(decode_container_custom_bracket_arguments, "the call `_ _`")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_container_custom_bracket_arguments(
+    node: &Node,
+) -> Result<ContainerCustomBracketArguments, DecodeError> {
+    let mut parts = support::call(node, "the call `_ _`")?;
+    let decoded = ContainerCustomBracketArguments {
+        opener: parts.one(
+            |node| support::string(node, |_| true, "a string"),
+            "a string",
+        )?,
+        contents: parts.one(|node| decode_contents(node).map(Box::new), "contents")?,
         span: node.span,
     };
     parts.finish()?;
@@ -1815,6 +1875,7 @@ pub mod support {
             NodeKind::Parens(_) => "`(...)`".to_string(),
             NodeKind::Brackets(_) => "`[...]`".to_string(),
             NodeKind::Braces(_) => "`{...}`".to_string(),
+            NodeKind::CustomBracket(bracket, _) => bracket.picture(),
             NodeKind::Underscore => "`_`".to_string(),
             NodeKind::Missing => "nothing".to_string(),
         }
@@ -1915,6 +1976,31 @@ pub mod support {
         match &node.kind {
             NodeKind::Parens(nodes) => Ok(Sequence::bracket(node, nodes, "the closing `)`")),
             _ => Err(mismatch(node, "`(...)`")),
+        }
+    }
+
+    /// The elements of the custom bracket named by its opening delimiter.
+    pub fn custom_bracket<'a>(
+        node: &'a Node,
+        opener: &str,
+        closing: &'static str,
+    ) -> Result<Sequence<'a>, DecodeError> {
+        match &node.kind {
+            NodeKind::CustomBracket(bracket, nodes) if bracket.open() == opener => {
+                let end = node.span.end;
+                Ok(Sequence::new(
+                    nodes.iter().map(Item::Node).collect(),
+                    (
+                        closing,
+                        Span::new(end.saturating_sub(opener.len()).max(node.span.start), end),
+                    ),
+                ))
+            }
+            _ => {
+                let expected =
+                    anyx::CustomBracket::from_opener(opener).expect("a checked bracket opener");
+                Err(mismatch(node, &expected.picture()))
+            }
         }
     }
 
@@ -2630,9 +2716,10 @@ pub mod support {
                     }
                     mark_breaks(&call.arguments, rules, layout);
                 }
-                NodeKind::Parens(nodes) | NodeKind::Brackets(nodes) | NodeKind::Braces(nodes) => {
-                    mark_breaks(nodes, rules, layout)
-                }
+                NodeKind::Parens(nodes)
+                | NodeKind::Brackets(nodes)
+                | NodeKind::Braces(nodes)
+                | NodeKind::CustomBracket(_, nodes) => mark_breaks(nodes, rules, layout),
                 _ => {}
             }
         }

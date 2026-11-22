@@ -124,7 +124,7 @@ fn operators_are_spaced_canonically() {
     // A symbol word that starts a run is a prefix and hugs what follows,
     // except a number, which `-` would make negative.
     assert_eq!(
-        fmt("{@ by name, @ \"src\", @ (x), @ 3}"),
+        fmt("{ @ by name, @ \"src\", @ (x), @ 3}"),
         "{ @by name, @\"src\", @x, @ 3 }\n"
     );
     assert_eq!(fmt("f(x)"), "f (x)\n");

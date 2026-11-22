@@ -3,7 +3,9 @@
 use crate::lexer::{is_keyword, is_symbol_word};
 use crate::span::Span;
 use crate::string::StringLiteral;
-use crate::syntax::{Expression, Group, GroupKind, Item, Run, Sequence, SyntaxTree, TokenKind};
+use crate::syntax::{
+    CustomBracket, Expression, Group, GroupKind, Item, Run, Sequence, SyntaxTree, TokenKind,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Node {
@@ -24,6 +26,7 @@ pub enum NodeKind {
     Parens(Vec<Node>),
     Brackets(Vec<Node>),
     Braces(Vec<Node>),
+    CustomBracket(CustomBracket, Vec<Node>),
     /// The bare word `_`, left over when no `.` or `:` consumed it. It is a
     /// placeholder in the scope of the nearest enclosing brackets, so `(_)`
     /// stays `Parens[_]`.
@@ -410,10 +413,11 @@ fn group_node(group: &Group) -> Node {
     if group.kind == GroupKind::Parens && only_groups(group, &children) {
         return children.into_iter().next().expect("one child");
     }
-    let kind = match group.kind {
+    let kind = match &group.kind {
         GroupKind::Parens => NodeKind::Parens(children),
         GroupKind::Brackets => NodeKind::Brackets(children),
         GroupKind::Braces => NodeKind::Braces(children),
+        GroupKind::Custom(bracket) => NodeKind::CustomBracket(bracket.clone(), children),
     };
     Node {
         kind,

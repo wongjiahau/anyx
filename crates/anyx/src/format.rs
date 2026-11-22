@@ -102,6 +102,7 @@ pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> 
             .map(|(k, token)| (token.span.start, k))
             .collect(),
         comments: &comments,
+        tokens: &simplified.tokens,
         start: None,
         after_dot: false,
         breaks: kept_ids
@@ -120,8 +121,6 @@ pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> 
     Ok(output)
 }
 
-/// Token texts joined by single spaces: a source with the same tokens, since
-/// whitespace never merges or splits them.
 /// The tokens' text, separated by spaces. A line string ends its line, and
 /// starts one so that its continuation lines still join it. Two in a row get
 /// a blank line between them, or they would read back as one.
@@ -292,6 +291,9 @@ fn same_node(a: &Node, b: &Node) -> bool {
         (NodeKind::Parens(a), NodeKind::Parens(b))
         | (NodeKind::Brackets(a), NodeKind::Brackets(b))
         | (NodeKind::Braces(a), NodeKind::Braces(b)) => same_nodes(a, b),
+        (NodeKind::CustomBracket(a, left), NodeKind::CustomBracket(b, right)) => {
+            a == b && same_nodes(left, right)
+        }
         (NodeKind::Underscore, NodeKind::Underscore) | (NodeKind::Missing, NodeKind::Missing) => {
             true
         }
@@ -478,6 +480,7 @@ struct Builder<'a> {
     /// A kept token's index, by where it starts in the simplified source.
     index: HashMap<usize, usize>,
     comments: &'a Comments,
+    tokens: &'a [&'a Token],
     /// Set at the start of an element, holding whether a blank line may come
     /// before it. Taken by the element's first token.
     start: Option<bool>,
@@ -614,8 +617,10 @@ impl Builder<'_> {
         let close_doc = Doc::Text(close.text.clone());
         let close_trailing = self.trailing(close_index);
         let elements = &group.sequence.elements;
+        let custom = matches!(group.kind, GroupKind::Custom(_));
         if elements.is_empty() && close_comments.is_empty() {
-            return Doc::Concat(vec![open, close_doc, close_trailing]);
+            let pad = Doc::Text(if custom { " " } else { "" }.into());
+            return Doc::Concat(vec![open, pad, close_doc, close_trailing]);
         }
 
         let mut inner = Vec::new();
@@ -650,14 +655,42 @@ impl Builder<'_> {
             inner.push(Doc::Text(comment.text.clone()));
         }
 
-        let pad = || match group.kind {
-            GroupKind::Braces => Doc::Line,
-            GroupKind::Parens | GroupKind::Brackets => Doc::SoftLine,
+        let first_index = self.index[&group.open.span.start] + 1;
+        let first = self.tokens[first_index];
+        let before_close = self.tokens[close_index - 1];
+        let last = if before_close.kind == TokenKind::Comma {
+            self.tokens[close_index - 2]
+        } else {
+            before_close
         };
-        let mut body = vec![pad()];
+        let hugged_prefix = elements.first().is_some_and(|element| {
+            prefix_hugs(&first_run(&element.expression).items, 1)
+                && self.comments.trailing[first_index].is_none()
+                && self.comments.leading[first_index + 1].is_empty()
+                && !is_line_string(self.tokens[first_index + 1])
+        });
+        // Keep a lone symbol tight, as in `[||]`. Otherwise pad a symbol
+        // at either edge so it cannot become part of an ordinary delimiter.
+        let lone_token = first.span == last.span;
+        let pad = |neighbor: &Token, tight: bool| {
+            if custom
+                || group.kind == GroupKind::Braces
+                || (!tight && neighbor.kind == TokenKind::Word && is_symbol_word(&neighbor.text))
+            {
+                Doc::Line
+            } else {
+                Doc::SoftLine
+            }
+        };
+        let mut body = vec![pad(first, lone_token || hugged_prefix)];
         body.extend(inner);
         let group = bracket_group(
-            Doc::Concat(vec![open, indent(Doc::Concat(body)), pad(), close_doc]),
+            Doc::Concat(vec![
+                open,
+                indent(Doc::Concat(body)),
+                pad(last, lone_token),
+                close_doc,
+            ]),
             !close_comments.is_empty(),
         );
         Doc::Concat(vec![group, close_trailing])
@@ -715,6 +748,15 @@ impl Builder<'_> {
             .collect();
         parts.push(self.trailing(k));
         Doc::Concat(parts)
+    }
+}
+
+fn first_run(mut expression: &Expression) -> &crate::syntax::Run {
+    loop {
+        match expression {
+            Expression::Run(run) => return run,
+            Expression::Dot(binary) | Expression::Colon(binary) => expression = &binary.left,
+        }
     }
 }
 

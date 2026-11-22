@@ -258,20 +258,22 @@ pub enum Order {
     Any,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContainerKind {
     CurlyBrace,
     SquareBracket,
     Parenthesis,
+    Custom(anyx::CustomBracket),
 }
 
 impl ContainerKind {
     /// How the bracket looks in an error message.
-    pub fn picture(self) -> &'static str {
+    pub fn picture(&self) -> String {
         match self {
-            ContainerKind::CurlyBrace => "`{...}`",
-            ContainerKind::SquareBracket => "`[...]`",
-            ContainerKind::Parenthesis => "`(...)`",
+            ContainerKind::CurlyBrace => "`{...}`".into(),
+            ContainerKind::SquareBracket => "`[...]`".into(),
+            ContainerKind::Parenthesis => "`(...)`".into(),
+            ContainerKind::Custom(bracket) => bracket.picture(),
         }
     }
 }
@@ -496,7 +498,7 @@ impl Grammar {
                 }
                 return all;
             }
-            Pattern::Container { kind, .. } => kind.picture().to_string(),
+            Pattern::Container { kind, .. } => kind.picture(),
             Pattern::SpecificCall(parts) if has_groups(parts) => {
                 let mut all = Vec::new();
                 for way in shortest_ways(parts) {
