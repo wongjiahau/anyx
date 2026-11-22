@@ -582,7 +582,7 @@ impl Builder<'_> {
                 for binary in links.into_iter().rev() {
                     rest.push(Doc::Line);
                     rest.push(self.token(&binary.operator));
-                    if !starts_with_symbol_word(&binary.right) {
+                    if !starts_with_dot_hugging_symbol(&binary.right) {
                         rest.push(Doc::Text(" ".into()));
                     }
                     self.after_dot = true;
@@ -796,13 +796,16 @@ fn prefix_hugs(items: &[Item], index: usize) -> bool {
         }
 }
 
-/// A `.` hugs a symbol word after it: `1 .+ 2`.
-fn starts_with_symbol_word(expression: &Expression) -> bool {
+/// A `.` hugs a symbol word after it, as in `1 .+ 2`. A dot run needs
+/// a space to keep it separate from the grouping dot.
+fn starts_with_dot_hugging_symbol(expression: &Expression) -> bool {
     matches!(
         expression,
         Expression::Run(run) if matches!(
             run.items.first(),
-            Some(Item::Atom(token)) if token.kind == TokenKind::Word && is_symbol_word(&token.text)
+            Some(Item::Atom(token)) if token.kind == TokenKind::Word
+                && is_symbol_word(&token.text)
+                && !token.text.starts_with('.')
         )
     )
 }
