@@ -117,7 +117,7 @@ fn diagnostics_in_imported_libraries_are_published_at_their_own_locations() {
             .unwrap()
             .contains("missing")
     );
-    assert_eq!(library["diagnostics"][0]["range"]["start"]["character"], 19);
+    assert_eq!(library["diagnostics"][0]["range"]["start"]["character"], 26);
 }
 
 #[test]
