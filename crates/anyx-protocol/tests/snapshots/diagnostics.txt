@@ -89,10 +89,10 @@ schema:1:71: found a second method `f` with the same parameter types as one befo
                                                                         ^
 
 == overloads with the same parameter types
-PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
-schema:1:169: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
-  PROTOCOL a VERSION 1, NAMED TYPE Id (Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
-                                                                                                                                                                          ^^^
+PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
+schema:1:176: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+  PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
+                                                                                                                                                                                 ^^^
 
 == overloads that differ only in what they return
 PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [| |], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [| |],

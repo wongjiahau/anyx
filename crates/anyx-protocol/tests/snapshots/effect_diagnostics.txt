@@ -41,7 +41,7 @@ schema:1:85: found `UNDONE BY show (id: Text)`, but this schema has no method `s
                                                                                       ^^^^
 
 == an undo whose types match no method of its words
-PROTOCOL a VERSION 1, NAMED TYPE File Id (Text), METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],
-schema:1:112: found `UNDONE BY show (id: Text)`, which matches no method; expected the type in each slot to be the same as in exactly one of: `show (id: File Id)`
-  PROTOCOL a VERSION 1, NAMED TYPE File Id (Text), METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],
-                                                                                                                 ^^^^^^^^^^^^^^^
+PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text), METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],
+schema:1:119: found `UNDONE BY show (id: Text)`, which matches no method; expected the type in each slot to be the same as in exactly one of: `show (id: File Id)`
+  PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text), METHOD hide (id: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: Text), METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],
+                                                                                                                        ^^^^^^^^^^^^^^^

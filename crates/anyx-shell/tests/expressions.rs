@@ -240,10 +240,10 @@ impl Tool for Identity {
 fn named_result_types_keep_their_identity_across_protocols() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("source", Identity(Schema::parse(
-        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     interpreter.register("target", Identity(Schema::parse(
-        "PROTOCOL target VERSION 1, TYPE Earlier { count: Integer }, NAMED TYPE Identifier (Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL target VERSION 1, TYPE Earlier { count: Integer }, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("target / identity (source / identity (Identifier \"example\"))")
@@ -262,7 +262,7 @@ fn named_result_types_keep_their_identity_across_protocols() {
             .is_err()
     );
     interpreter.register("different", Identity(Schema::parse(
-        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (Integer), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (value: Integer), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     assert!(
         interpreter
@@ -302,7 +302,7 @@ fn generic_records_and_defaults_can_contain_computed_fields() {
 fn a_field_with_several_slots_takes_a_computed_value_in_each() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("range", Identity(Schema::parse(
-        "PROTOCOL range VERSION 1, TYPE Span { between (Text) and (Integer) or (Integer?) }, METHOD identity (value: Span) RETURNS (value: Span) ERRORS [| |]"
+        "PROTOCOL range VERSION 1, TYPE Span { between (label: Text) and (start: Integer) or (end: Integer?) }, METHOD identity (value: Span) RETURNS (value: Span) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("range / identity { between (example / text) and 2 or 3 }")
@@ -312,7 +312,7 @@ fn a_field_with_several_slots_takes_a_computed_value_in_each() {
         panic!()
     };
     assert_eq!(
-        record["between and or"],
+        record["between"],
         Value::Tuple(vec![
             Value::Text("hello".into()),
             Value::Integer(2),

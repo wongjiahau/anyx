@@ -74,7 +74,10 @@ impl Server for Sharing {
     }
 
     async fn show_to(&self, span: SpanFromTo, _who: Everyone) -> Result<SpanFromTo, Self::Error> {
-        Ok(SpanFromTo(span.0, span.1 + 1))
+        Ok(SpanFromTo {
+            start: span.start,
+            end: span.end + 1,
+        })
     }
 
     async fn visits(&self) -> Result<Vec<Visit>, Self::Error> {
@@ -146,8 +149,8 @@ fn named_types_cross_the_wire_with_their_names() {
 fn a_named_type_may_have_several_slots_or_none() {
     let client = client();
     assert_eq!(
-        run(client.show_to(SpanFromTo(1, 3), Everyone)),
-        Ok(SpanFromTo(1, 4))
+        run(client.show_to(SpanFromTo { start: 1, end: 3 }, Everyone)),
+        Ok(SpanFromTo { start: 1, end: 4 })
     );
     assert_eq!(
         client.transport.exchanged.borrow()[0],

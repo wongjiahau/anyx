@@ -1,4 +1,4 @@
-//! Named types: `NAMED TYPE File Id (Text)` makes a type of its own, which
+//! Named types: `NAMED TYPE File Id (value: Text)` makes a type of its own, which
 //! no other type fits. Its name is a shape whose slots hold types, and its
 //! values are written with that shape: `File Id "a"`.
 
@@ -11,7 +11,7 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 const SHARING: &str = "PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 
 TYPE ALIAS Tags: LIST Text,
 
@@ -87,9 +87,9 @@ fn a_named_value_is_written_with_its_name() {
 fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
     let schema = schema(
         "PROTOCOL shapes VERSION 1,
-NAMED TYPE Range from (Integer) to (Integer),
+NAMED TYPE Range from (start: Integer) to (end: Integer),
 NAMED TYPE Unit,
-NAMED TYPE ([| `red, `blue |]) Color,
+NAMED TYPE (value: [| `red, `blue |]) Color,
 METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING ERRORS [| |],
 ",
     );
@@ -125,8 +125,8 @@ METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS
 fn a_union_of_named_types_picks_its_member_by_name() {
     let schema = schema(
         "PROTOCOL sharing VERSION 1,
-NAMED TYPE File Id (Text),
-NAMED TYPE Share Id (Text),
+NAMED TYPE File Id (value: Text),
+NAMED TYPE Share Id (value: Text),
 METHOD open (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
@@ -153,7 +153,7 @@ METHOD open (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 #[cfg(feature = "json")]
 #[test]
 fn a_named_value_is_under_its_tag_in_json() {
-    use anyx_protocol::json::{decode_response_json, encode_request_json};
+    use anyx_protocol::json::{decode_request_json, decode_response_json, encode_request_json};
     let schema = schema(SHARING);
     assert_eq!(
         encode_request_json(
@@ -185,22 +185,50 @@ fn a_named_value_is_under_its_tag_in_json() {
     );
     let shapes = self::schema(
         "PROTOCOL shapes VERSION 1,
-NAMED TYPE Range from (Integer) to (Integer),
+NAMED TYPE Range from (start: Integer) to (end: Integer),
 NAMED TYPE Unit,
-NAMED TYPE File Id (Text),
-NAMED TYPE Share Id (Text),
+NAMED TYPE File Id (value: Text),
+NAMED TYPE Share Id (value: Text),
 METHOD mark (range: Range from to) and (unit: Unit) for (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
+    let method = "mark _ and _ for _";
+    let arguments = r#"[{"RangeFromTo":{"end":3,"start":1}},{"Unit":[]},{"ShareId":"b"}]"#;
+    let wire = "mark (Range from 1 to 3) and (Unit) for (Share Id \"b\")\n";
     assert_eq!(
+        encode_request_json(&shapes, method, arguments).unwrap(),
+        wire
+    );
+    assert_eq!(
+        decode_request_json(&shapes, wire).unwrap(),
+        format!(r#"[{{"arguments":{arguments},"method":"{method}"}}]"#)
+    );
+    assert!(
         encode_request_json(
             &shapes,
-            "mark _ and _ for _",
-            r#"[{"RangeFromTo": [1, 3]}, {"Unit": []}, {"ShareId": "b"}]"#
+            method,
+            r#"[{"RangeFromTo":[1,3]},{"Unit":[]},{"ShareId":"b"}]"#
         )
-        .unwrap(),
-        "mark (Range from 1 to 3) and (Unit) for (Share Id \"b\")\n"
+        .is_err()
     );
+}
+
+#[test]
+fn named_types_require_unique_slot_names() {
+    for (declaration, expected) in [
+        (
+            "NAMED TYPE File Id (Text)",
+            "found an unnamed slot; write `(name: Type)`",
+        ),
+        (
+            "NAMED TYPE Span from (edge: Integer) to (edge: Integer)",
+            "found a second slot named `edge`",
+        ),
+    ] {
+        let source = format!("PROTOCOL a VERSION 1, {declaration},");
+        let found = diagnostics(&source);
+        assert!(found.contains(expected), "{found}");
+    }
 }
 
 #[test]
@@ -230,7 +258,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC NAMED TYPE File Id (Text), NAMED TYPE Secret (Text),",
+            "PUBLIC NAMED TYPE File Id (value: Text), NAMED TYPE Secret (value: Text),",
         ),
         (
             "files.protocol.anyx",
@@ -269,19 +297,19 @@ fn mistakes_in_named_types_are_diagnosed() {
         ),
         (
             "a named type holding itself",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Alpha),",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: Alpha),",
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (Row),",
+            "PROTOCOL a VERSION 1, TYPE Row { x: Alpha }, NAMED TYPE Alpha (value: Row),",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (Text), TYPE Alpha { b: Text },",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: Text), TYPE Alpha { b: Text },",
         ),
         (
             "a named type over an unknown type",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (thing),",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: thing),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -298,7 +326,7 @@ fn mistakes_in_named_types_are_diagnosed() {
 fn a_named_type_may_hold_itself_through_a_list() {
     let schema = schema(
         "PROTOCOL trees VERSION 1,
-NAMED TYPE Tree (LIST Tree),
+NAMED TYPE Tree (value: LIST Tree),
 METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [| |],
 ",
     );

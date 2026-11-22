@@ -101,7 +101,7 @@ pub enum TypeKind {
     /// aliases it keeps its name, for generated code and messages, while
     /// its values are its variants, written the same.
     Variants(Vec<Shaped>),
-    /// A named type, `NAMED TYPE File Id (Text)`: a type of its own, which no
+    /// A named type, `NAMED TYPE File Id (value: Text)`: a type of its own, which no
     /// other type fits. A value is written with its constructor, the shape
     /// of its name with a value in each slot, `File Id "a"`, and holds the
     /// values of its slots, as a variant of the constructor's shape does.
@@ -240,7 +240,7 @@ pub fn json_tag(constructor: &[ShapePart]) -> String {
 /// that type for one slot, and the tuple's for any other number.
 pub fn slot_types<'t>(constructor: &[ShapePart], underlying: &'t Type) -> Vec<&'t Type> {
     match underlying {
-        Type::Tuple(slots)
+        Type::Tuple(slots, _)
             if constructor
                 .iter()
                 .filter(|part| **part == ShapePart::Slot)
@@ -521,7 +521,7 @@ pub(crate) fn each_shape(schema: &mut Schema, visit: &mut dyn FnMut(&mut Shape))
         match r#type {
             Type::Refined(base, _) => in_type(base, visit),
             Type::List(item) | Type::Map(item) => in_type(item, visit),
-            Type::Generic(_, types) | Type::Tuple(types) | Type::Union(types) => {
+            Type::Generic(_, types) | Type::Tuple(types, _) | Type::Union(types) => {
                 types.iter_mut().for_each(|r#type| in_type(r#type, visit))
             }
             Type::Variant(shape) => in_shape(shape, visit),
@@ -750,9 +750,10 @@ pub enum Type {
     /// each of its parameters, in the order of its slots.
     Generic(usize, Vec<Type>),
     /// The slots of a record's field with several of them, as in
-    /// `between (Integer) and (Integer)`: a type for each, in order. It has
+    /// `between (start: Integer) and (end: Integer)`: a type for each, in order. It has
     /// no syntax of its own; a value is written in the field's shape.
-    Tuple(Vec<Type>),
+    /// Slot types and their names in Anyx shape order. Both are empty for a unit.
+    Tuple(Vec<Type>, Vec<String>),
     /// A type parameter, by its name, within the generic record or choice
     /// that declares it. A use of that type puts its argument in its place,
     /// so a value is never of this type.
@@ -795,11 +796,12 @@ impl Type {
             ),
             Type::List(item) => Type::List(Box::new(item.substitute(parameters, arguments))),
             Type::Map(value) => Type::Map(Box::new(value.substitute(parameters, arguments))),
-            Type::Tuple(slots) => Type::Tuple(
+            Type::Tuple(slots, names) => Type::Tuple(
                 slots
                     .iter()
                     .map(|slot| slot.substitute(parameters, arguments))
                     .collect(),
+                names.clone(),
             ),
             Type::Generic(index, inner) => Type::Generic(
                 *index,
@@ -827,7 +829,9 @@ impl Type {
             match r#type {
                 Type::Parameter(name) if !found.contains(&name.as_str()) => found.push(name),
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => walk(item, found),
-                Type::Generic(_, arguments) | Type::Tuple(arguments) | Type::Union(arguments) => {
+                Type::Generic(_, arguments)
+                | Type::Tuple(arguments, _)
+                | Type::Union(arguments) => {
                     arguments.iter().for_each(|argument| walk(argument, found))
                 }
                 Type::Variant(shape) => shape
@@ -1103,7 +1107,7 @@ impl Schema {
                 fill_slots(&definition.name, &arguments)
             }
             Type::Parameter(name) => name.clone(),
-            Type::Tuple(slots) => slots
+            Type::Tuple(slots, _) => slots
                 .iter()
                 .map(|slot| format!("({})", self.type_name(slot)))
                 .collect::<Vec<_>>()
@@ -1138,7 +1142,7 @@ impl Schema {
             Type::Refined(base, _) | Type::List(base) | Type::Map(base) => {
                 self.has_anonymous_record(base)
             }
-            Type::Union(members) | Type::Tuple(members) => members
+            Type::Union(members) | Type::Tuple(members, _) => members
                 .iter()
                 .any(|member| self.has_anonymous_record(member)),
             Type::Variant(shape) => shape
@@ -1167,10 +1171,13 @@ impl Schema {
                 }
                 FieldForm::Shape(shape) => {
                     let slots = match &field.r#type {
-                        Type::Tuple(slots) => slots.as_slice(),
-                        slot => std::slice::from_ref(slot),
+                        Type::Tuple(slots, names) => slots
+                            .iter()
+                            .zip(names)
+                            .map(|(slot, name)| format!("{name}: {}", self.type_name(slot)))
+                            .collect(),
+                        slot => vec![self.type_name(slot)],
                     };
-                    let slots: Vec<_> = slots.iter().map(|slot| self.type_name(slot)).collect();
                     fill_slots(shape, &slots)
                 }
             })
@@ -1255,7 +1262,9 @@ impl Schema {
         Some(match self.underlying(r#type) {
             Type::Text | Type::Bytes | Type::Instant => vec![JsonForm::String],
             Type::Integer | Type::Float | Type::Duration => vec![JsonForm::Number],
-            Type::List(_) | Type::Tuple(_) => vec![JsonForm::Array],
+            Type::List(_) => vec![JsonForm::Array],
+            Type::Tuple(_, names) if names.is_empty() => vec![JsonForm::Array],
+            Type::Tuple(_, _) => vec![JsonForm::Object],
             Type::Map(_) => vec![JsonForm::Object],
             Type::Parameter(_) => return None,
             Type::Variant(shape) => vec![JsonForm::Kind(camel_case(&shape.words()))],
@@ -1370,7 +1379,7 @@ impl Schema {
             }
             (Type::List(actual), Type::List(expected))
             | (Type::Map(actual), Type::Map(expected)) => fits(actual, expected),
-            (Type::Tuple(actual), Type::Tuple(expected)) => {
+            (Type::Tuple(actual, _), Type::Tuple(expected, _)) => {
                 actual.len() == expected.len()
                     && actual
                         .iter()
@@ -1455,7 +1464,7 @@ impl Schema {
     }
 
     /// The type a value of `type` holds, past refinements and named types:
-    /// `Text` for `File Id`, `NAMED TYPE File Id (Text)`. A refinement's
+    /// `Text` for `File Id`, `NAMED TYPE File Id (value: Text)`. A refinement's
     /// predicate reads a value as this type.
     pub fn held_type<'t>(&'t self, r#type: &'t Type) -> &'t Type {
         let mut underlying = r#type;

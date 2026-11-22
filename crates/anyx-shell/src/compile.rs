@@ -706,7 +706,7 @@ impl Compiler<'_> {
                         FieldForm::Unnamed => self.argument(schema, entry, Some(&field.r#type))?,
                         _ => match &field.r#type {
                             // A field with several slots holds a value for each.
-                            Type::Tuple(slots) => Argument {
+                            Type::Tuple(slots, _) => Argument {
                                 r#type: field.r#type.clone(),
                                 value: ExpressionValue::Tuple(
                                     slots
@@ -882,11 +882,12 @@ fn transfer(
         ),
         Type::List(item) => Type::List(Box::new(transfer(origin, target, item, visited)?)),
         Type::Map(item) => Type::Map(Box::new(transfer(origin, target, item, visited)?)),
-        Type::Tuple(slots) => Type::Tuple(
+        Type::Tuple(slots, names) => Type::Tuple(
             slots
                 .iter()
                 .map(|slot| transfer(origin, target, slot, visited))
                 .collect::<Option<Vec<_>>>()?,
+            names.clone(),
         ),
         Type::Named(index) | Type::Generic(index, _) => {
             let definition = &origin.types[*index];

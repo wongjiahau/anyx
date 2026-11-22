@@ -26,10 +26,10 @@ export type Access =
   | { kind: "write" };
 
 /** Lines of a file, counted from 1. */
-export type SpanFromTo = readonly [bigint, bigint] & { readonly __brand: "Span from to" };
+export type SpanFromTo = { "start": bigint; "end": bigint } & { readonly __brand: "Span from to" };
 
 /** Makes a `SpanFromTo`, which the schema writes as `Span from to …`. */
-export function SpanFromTo(...value: [bigint, bigint]): SpanFromTo {
+export function SpanFromTo(value: { "start": bigint; "end": bigint }): SpanFromTo {
   return value as unknown as SpanFromTo;
 }
 
@@ -72,14 +72,10 @@ type TypeDescriptor = { k: string; item?: TypeDescriptor; index?: number; args?:
 type ParameterDescriptor = { name: string; type: TypeDescriptor; annotation: string };
 type ShapeDescriptor = { text: string; kind: string; params: ParameterDescriptor[] };
 // A field's `wire` is its shape, `path _`, `_ case`, or `\` _` for
-// a field written as its variant alone. Its `slots` are each slot's type; a
-// field with several slots holds an array, a value for each. A field written
-// as its variant has the `forms` of its variants, which find it.
-type FieldDescriptor = { wire: string; form: "shape" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; forms?: string[]; defaultValue?: () => unknown };
-// A `distinct` definition is a named type: its constructor's `shape`, `File
-// Id _`, and each slot's type. Its value is its one slot's value, or an
-// array of its slots' values.
-type Definition = { name?: string; parameters: string[]; kind: string; shape?: string; slots?: TypeDescriptor[]; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
+// a field written as its variant alone. Its forms find that field by variant.
+type FieldDescriptor = { wire: string; form: "shape" | "unnamed"; name: string; type: TypeDescriptor; slots: TypeDescriptor[]; slotNames?: string[]; forms?: string[]; defaultValue?: () => unknown };
+// A distinct definition has a constructor shape and one type per slot.
+type Definition = { name?: string; parameters: string[]; kind: string; shape?: string; slots?: TypeDescriptor[]; slotNames?: string[]; fields?: FieldDescriptor[]; variants?: ShapeDescriptor[] };
 type MethodDescriptor = { shape: ShapeDescriptor; returns: TypeDescriptor | null; errors: ShapeDescriptor[] };
 type Bindings = Record<string, TypeDescriptor>;
 
@@ -170,6 +166,18 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
   }
   return fail(`invalid ${type.k} value`);
 }
+function slotValues(count: number, names: string[] | undefined, value: unknown): unknown[] {
+  if (count === 1) return [value];
+  if (count === 0 && Array.isArray(value) && value.length === 0) return [];
+  if (names && value && typeof value === "object" && names.every(name => Object.hasOwn(value, name))) {
+    return names.map(name => (value as Record<string, unknown>)[name]);
+  }
+  return fail(`expected slots ${names?.join(", ") ?? "(none)"}`);
+}
+function heldSlots(names: string[] | undefined, values: unknown[]): unknown {
+  if (values.length === 1) return values[0];
+  return names ? Object.fromEntries(names.map((name, i) => [name, values[i]])) : values;
+}
 // A field as a reader writes it: the variant
 // alone, or the shape with the value in its slot, after a `:` when the slot
 // is last. A `null` default is left out.
@@ -178,7 +186,7 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
   if (!present && f.defaultValue) return [];
   const value = present ? obj[f.name] as {kind?: string} & Record<string, unknown> : undefined;
   if (f.slots.length === 1 && value?.kind === "null" && (f.defaultValue?.() as {kind?: string} | undefined)?.kind === "null") return [];
-  const values: unknown[] = f.slots.length === 1 ? [value] : Array.isArray(value) && value.length === f.slots.length ? value : fail(`invalid slots of ${f.name}`);
+  const values = slotValues(f.slots.length, f.slotNames, value);
   const texts = f.slots.map((slot, i) => encodeValue(slot, values[i], bindings));
   // `\`by name`: the variant alone.
   if (f.form === "unnamed") {
@@ -207,12 +215,12 @@ function formOf(node: Syntax): string {
 // each slot.
 function decodeField(f: FieldDescriptor, nodes: Syntax[], bindings: Bindings): unknown {
   const values = f.slots.map((slot, i) => decodeValue(slot, nodes[i], bindings));
-  return f.slots.length === 1 ? values[0] : values;
+  return heldSlots(f.slotNames, values);
 }
 // A named type's value written in its constructor's shape, `File Id "a"`.
 function encodeNamed(def: Definition, value: unknown, bindings: Bindings): string {
   const slots = def.slots!;
-  const values = slots.length === 1 ? [value] : Array.isArray(value) && value.length === slots.length ? value : fail(`expected ${slots.length} slot values`);
+  const values = slotValues(slots.length, def.slotNames, value);
   let i = 0;
   return def.shape!.split(" ").map(word => word === "_" ? `(${encodeValue(slots[i], values[i++], bindings)})` : word).join(" ");
 }
@@ -225,7 +233,7 @@ function decodeNamed(def: Definition, node: Syntax, bindings: Bindings): unknown
   if (words.some((part, i) => part === "_" ? tokens[i].tag === "word" : !word(tokens[i], part))) return invalid;
   const values: unknown[] = [];
   words.forEach((part, i) => { if (part === "_") values.push(decodeValue(slots[values.length], tokens[i], bindings)); });
-  return slots.length === 1 ? values[0] : values;
+  return heldSlots(def.slotNames, values);
 }
 function encodeShape(shape: ShapeDescriptor, args: unknown[], bindings: Bindings = {}): string {
   if (args.length !== shape.params.length) return fail("incorrect argument count");
@@ -556,7 +564,7 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', shape:"File I
 {parameters:[],kind:'distinct', shape:"Share Id _", slots:[{k:'text'}]},
 {parameters:[],kind:'record', fields:[{wire:"share id _", form:"shape", name:"shareId", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}]},{wire:"file id _", form:"shape", name:"fileId", type:{k:'named', index:0, args:[]}, slots:[{k:'named', index:0, args:[]}]},{wire:"tags _", form:"shape", name:"tags", type:{k:'list', item:{k:'text'}}, slots:[{k:'list', item:{k:'text'}}]}]},
 {parameters:[],kind:'choice', variants:[{text:"read", kind:"read", params:[]},{text:"write", kind:"write", params:[]}]},
-{parameters:[],kind:'distinct', shape:"Span from _ to _", slots:[{k:'integer'},{k:'integer'}]},
+{parameters:[],kind:'distinct', shape:"Span from _ to _", slots:[{k:'integer'},{k:'integer'}], slotNames:["start","end"]},
 {parameters:[],kind:'distinct', shape:"Everyone", slots:[]},
 {parameters:[],kind:'record', fields:[{wire:"at _", form:"shape", name:"at", type:{k:'instant'}, slots:[{k:'instant'}]},{wire:"by person _", form:"shape", name:"byPerson", type:{k:'map', item:{k:'instant'}}, slots:[{k:'map', item:{k:'instant'}}]},{wire:"label _", form:"shape", name:"label", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}], defaultValue:()=>("none")}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},

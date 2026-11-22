@@ -1,5 +1,5 @@
 PROTOCOL native VERSION 1,
-NAMED TYPE Identifier (Integer),
+NAMED TYPE Identifier (value: Integer),
 TYPE ALIAS Selection [| `none, `selected (item: Text) |],
 TYPE Packet {
   text: Text,

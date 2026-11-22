@@ -23,7 +23,7 @@ TYPE ALIAS Shade [| `dark, `light |],
 TYPE ALIAS Colour [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
 
 # Which file, among every account's.
-NAMED TYPE File Id (Text),
+NAMED TYPE File Id (value: Text),
 
 TYPE ALIAS File Errors [|
     # The owner moved this file to the trash.
@@ -71,21 +71,22 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   the name of a record, named type or alias, or a use of a generic type such
   as `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
-- **`NAMED TYPE File Id (Text)`** makes a type of its own, which no other
+- **`NAMED TYPE File Id (value: Text)`** makes a type of its own, which no other
   type fits, so that values that hold the same thing but mean different
-  things can't be mixed up. Its name is a shape whose slots hold types, and
+  things can't be mixed up. Each slot in its name declares a name and a type, and
   a value is written with that shape and a value in each slot: `File Id
   "a"`. A slot may be anywhere among the words, and there may be several or
-  none: `` NAMED TYPE ([| `red, `blue |]) Color `` is written `` (`red) Color ``,
-  `NAMED TYPE Range from (Integer) to (Integer)` is written `Range from 1 to
+  none: `` NAMED TYPE (value: [| `red, `blue |]) Color `` is written `` (`red) Color ``,
+  `NAMED TYPE Range from (start: Integer) to (end: Integer)` is written `Range from 1 to
   3`, and `NAMED TYPE Unit` is written `Unit`. Since a value shows its type,
   it needs no annotation, and a union of named types tells its members
   apart by name. A use names it by its words, `Range from to`. In JSON a
   value is an object whose one key is the type's words in camel case,
-  starting with a capital, holding its slot's value, or an array of its
-  slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3] }`, `{
-  "Unit": [] }`. Generated code keeps it distinct: a newtype in Rust, a
-  branded type in TypeScript. A slot's type may hold the named type only
+  starting with a capital. It holds the value directly for one slot, an
+  object keyed by slot name for several, and an empty array for none:
+  `{ "FileId": "a" }`, `{ "RangeFromTo": { "start": 1, "end": 3 } }`, and
+  `{ "Unit": [] }`. Rust generates a newtype for one slot and a struct with
+  named fields for several. TypeScript generates a branded type. A slot's type may hold the named type only
   through a `LIST` or a `MAP`. A bare `TYPE Name: T` is an error that names
   both choices, since readers would otherwise have to guess which one it
   means.
@@ -316,7 +317,7 @@ The wire and JSON keep the base type's representation, and a value needs
 no annotation beyond its base type's: `write "a.poentaro" at revision 1`.
 An annotation names the refinement as written, `(… AS: Integer . WHERE [1
 <= _])`, since an alias makes no type of its own. A refinement in a `NAMED
-TYPE`'s slot applies to its slot's value: `NAMED TYPE Revision (Integer .
+TYPE`'s slot applies to its slot's value: `NAMED TYPE Revision (value: Integer .
 WHERE [1 <= _])` is written `Revision 4`.
 
 A failed argument, including a nested field or item, rejects the whole
@@ -484,27 +485,27 @@ days, seconds and milliseconds.
 
 ### Records
 
-A record's field is a shape whose slots hold types. Its words name it, in
-generated code too, and a value writes it as it is declared:
+A record field is a shape with words and slots. An Anyx value fills the
+slots in shape order:
 
 | Declared | Written | Named |
 | --- | --- | --- |
 | `path: Text` | `path "a"` | `path` |
 | `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
 | `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
-| `between (Integer) and (Integer)` | `between 1 and 3` | `between and` |
+| `between (start: Integer) and (end: Integer)` | `between 1 and 3` | `between` |
 | `` `(hidden: [| `hidden, `null |]) DEFAULT `null `` | `` `hidden `` | `hidden` |
 | `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
-- **The slot holds a type, not a parameter**: `(Case) case`, since the words
-  already name the field.
-- **A field with several slots holds a value for each**, as a tuple:
-  `between 1 and 3` is `[1, 3]` in JSON, `(i64, i64)` in Rust and
-  `[bigint, bigint]` in TypeScript. A tuple has no syntax of its own; it is
-  only ever a field's slots.
+- **A single-slot field keeps the shorthand.** The words name the field and
+  its slot holds a type, as in `path: Text` or `(Case) case`.
+- **A multi-slot field names each slot.** Its first word names the field.
+  The field's value is a named struct in Rust and an object in TypeScript
+  and JSON. For example, `between 1 and 3` contributes
+  `"between": { "start": 1, "end": 3 }` to its JSON record.
 - **A `DEFAULT` takes the whole field**, and is the entry the field holds
   when left out, written as a value writes it: `age (Integer) DEFAULT age 0`,
-  `between (Integer) and (Integer) DEFAULT between 1 and 9`,
+  `between (start: Integer) and (end: Integer) DEFAULT between 1 and 9`,
   `` `(order: Order) DEFAULT `newest first ``. With a `:`, the field goes in
   parentheses, `(age: Integer) DEFAULT age 0`, since `age: Integer DEFAULT
   age 0` is `age (Integer DEFAULT age 0)`, a `DEFAULT` in the slot.
@@ -968,8 +969,8 @@ camelCase, next to its parameters:
 `{ "kind": "conflictAtRevisionContent", "revision": 4, "content": "…" }`.
 A named type's value is an object whose one key is the type's words in
 camel case, starting with a capital, holding its one slot's value or an
-array of its slots' values: `{ "FileId": "a" }`, `{ "RangeFromTo": [1, 3]
-}`, `{ "Unit": [] }`. An `Instant` is its text, as on the wire, and a `Duration` its whole
+object keyed by slot name: `{ "FileId": "a" }`,
+`{ "RangeFromTo": { "start": 1, "end": 3 } }`, `{ "Unit": [] }`. An `Instant` is its text, as on the wire, and a `Duration` its whole
 milliseconds: `5400000` for `1 hours 30 minutes`.
 A field with a `DEFAULT` that is left out takes its default. An explicitly
 supplied value is always checked against the field's type.

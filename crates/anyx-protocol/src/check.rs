@@ -138,14 +138,20 @@ fn choice(choice: &ast::Choice) -> Declaration<'_, TypeShape<'_, Vec<ast::Varian
     }
 }
 
-/// A named type's constructor and the type it holds: `NAMED TYPE Range
-/// from (Integer) to (Integer)` is written `Range from _ to _` and holds
-/// a tuple of two `Integer`s.
-fn constructor_kind(constructor: Vec<ShapePart>, mut slots: Vec<Type>) -> TypeKind {
+fn slot_tuple(slots: Vec<Parameter>) -> Type {
+    let (types, names) = slots
+        .into_iter()
+        .map(|slot| (slot.r#type, slot.name))
+        .unzip();
+    Type::Tuple(types, names)
+}
+
+/// A named type's constructor and the type it holds.
+fn constructor_kind(constructor: Vec<ShapePart>, mut slots: Vec<Parameter>) -> TypeKind {
     let underlying = if slots.len() == 1 {
-        slots.remove(0)
+        slots.remove(0).r#type
     } else {
-        Type::Tuple(slots)
+        slot_tuple(slots)
     };
     TypeKind::Distinct {
         constructor,
@@ -656,12 +662,7 @@ impl<'a> Checker<'a> {
                         kind: constructor_kind(ShapePart::of(&found.name.name.parts), Vec::new()),
                     }),
                     ast::Definition::NamedType(found) => {
-                        let slots = found
-                            .body
-                            .arguments
-                            .iter()
-                            .map(|r#type| self.r#type(r#type))
-                            .collect();
+                        let slots = self.named_slots(&found.body.arguments);
                         types.push(TypeDefinition {
                             anonymous: false,
                             public: found.public.is_some() || self.file == self.prelude_file,
@@ -987,7 +988,7 @@ impl<'a> Checker<'a> {
             Type::List(item) | Type::Map(item) | Type::Refined(item, _) => {
                 self.check_instance(schema, item, parameters, arguments, span, seen)
             }
-            Type::Tuple(slots) => {
+            Type::Tuple(slots, _) => {
                 for slot in slots {
                     self.check_instance(schema, slot, parameters, arguments, span, seen);
                 }
@@ -1951,8 +1952,8 @@ impl<'a> Checker<'a> {
 
     /// A field, and the span of its name. Every field is a shape: words
     /// and typed slots make a shaped field. A backtick and slot declare a
-    /// field written as its variant alone. A shaped field holds its one slot, or
-    /// a tuple of its slots' types when it has several. A `DEFAULT` holds
+    /// field written as its variant alone. A shaped field holds its one slot
+    /// or a tuple with a name for each slot. A `DEFAULT` holds
     /// an entry of the field, read once every type is known.
     fn field(&mut self, record: usize, index: usize, field: &ast::Field) -> (Field, Span) {
         let (declared, default) = match field {
@@ -1969,6 +1970,43 @@ impl<'a> Checker<'a> {
             });
         }
         (field, span)
+    }
+
+    fn named_slots(&mut self, slots: &[ast::NamedSlot]) -> Vec<Parameter> {
+        let mut checked: Vec<Parameter> = Vec::new();
+        for (index, slot) in slots.iter().enumerate() {
+            match slot {
+                ast::NamedSlot::Parameter(parameter) => {
+                    let ty = self.r#type(&parameter.r#type);
+                    self.push_slot(&mut checked, &parameter.name, ty);
+                }
+                ast::NamedSlot::Unnamed(node) => {
+                    self.unnamed_slot(node.span);
+                    checked.push(Parameter {
+                        name: format!("slot {}", index + 1),
+                        r#type: Type::Text,
+                    });
+                }
+            }
+        }
+        checked
+    }
+
+    fn push_slot(&mut self, slots: &mut Vec<Parameter>, name: &ast::Spanned<String>, ty: Type) {
+        self.check_words(name, "a slot");
+        if slots.iter().any(|other| other.name == name.value) {
+            self.error(
+                name.span,
+                format!(
+                    "found a second slot named `{}`; give each slot a different name",
+                    name.value
+                ),
+            );
+        }
+        slots.push(Parameter {
+            name: name.value.clone(),
+            r#type: ty,
+        });
     }
 
     fn declared_field(&mut self, field: &ast::DeclaredField) -> (Field, Span) {
@@ -2015,31 +2053,63 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        let types: Vec<Type> = slots
-            .iter()
-            .map(|slot| match slot {
-                ast::FieldSlot::Type(r#type) => self.r#type(r#type),
-                ast::FieldSlot::Doc(doc) => {
-                    self.error(
-                        doc.span,
-                        "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it",
-                    );
-                    Type::Text
+        let (field_name, r#type) = match slots.as_slice() {
+            [] => (words.value, Type::Text),
+            [slot] => (words.value, self.field_slot_type(slot)),
+            _ => {
+                let mut checked = Vec::new();
+                for (index, slot) in slots.into_iter().enumerate() {
+                    match slot {
+                        ast::FieldSlot::Parameter(parameter) => {
+                            let ty = self.r#type(&parameter.arguments);
+                            self.push_slot(&mut checked, &spanned_words(&parameter.name), ty);
+                        }
+                        _ => {
+                            self.unnamed_slot(slot.span());
+                            checked.push(Parameter {
+                                name: format!("slot {}", index + 1),
+                                r#type: Type::Text,
+                            });
+                        }
+                    }
                 }
-            })
-            .collect();
-        let r#type = match <[Type; 1]>::try_from(types) {
-            Ok([r#type]) => r#type,
-            Err(types) => Type::Tuple(types),
+                let short = words.value.split(' ').next().unwrap();
+                (short.to_string(), slot_tuple(checked))
+            }
         };
         let field = Field {
             doc,
-            name: words.value,
+            name: field_name,
             r#type,
             default: None,
             form: FieldForm::Shape(name.text.clone()),
         };
         (field, name.span)
+    }
+
+    fn field_slot_type(&mut self, slot: &ast::FieldSlot) -> Type {
+        match slot {
+            ast::FieldSlot::Type(ty) => self.r#type(ty),
+            ast::FieldSlot::Parameter(call) => {
+                // The one-slot shorthand uses this call shape as a generic type.
+                let path = Path {
+                    name: call.name.text.clone(),
+                };
+                let argument = self.r#type(&call.arguments);
+                self.resolve_type_use(call.span, path, vec![argument])
+            }
+            ast::FieldSlot::Doc(doc) => {
+                self.error(doc.span, "found a string in a field's slot; expected the field's type, as in `at least (Size) bytes`; a field's `#` doc goes on the lines before it");
+                Type::Text
+            }
+        }
+    }
+
+    fn unnamed_slot(&mut self, span: Span) {
+        self.error(
+            span,
+            "found an unnamed slot; write `(name: Type)`, for example `(start: Integer)`",
+        );
     }
 
     /// Whether `alias` is an alias of a union of variants, and its members.
@@ -2781,6 +2851,10 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|argument| self.r#type(argument))
             .collect();
+        self.resolve_type_use(reference.span, path, arguments)
+    }
+
+    fn resolve_type_use(&mut self, span: Span, path: Path, arguments: Vec<Type>) -> Type {
         if let Some(alias) = self
             .aliases
             .iter()
@@ -2789,7 +2863,7 @@ impl<'a> Checker<'a> {
             let known = &self.aliases[alias].declared;
             if !self.accessible(known) {
                 let (name, file, public) = (known.name.clone(), known.file, known.public);
-                self.unavailable(reference.span, &name, file, public);
+                self.unavailable(span, &name, file, public);
             }
             let parameters: Vec<String> = self.aliases[alias]
                 .parameters
@@ -2805,13 +2879,13 @@ impl<'a> Checker<'a> {
                     parameters: parameters.clone(),
                     arguments: arguments.clone(),
                     written: false,
-                    span: reference.span,
+                    span,
                     file: self.file,
                 });
             }
             return r#type.substitute(&parameters, &arguments);
         }
-        let Some(index) = self.resolve_type(reference.span, &path, arguments.len()) else {
+        let Some(index) = self.resolve_type(span, &path, arguments.len()) else {
             return Type::Text;
         };
         match arguments.is_empty() {
@@ -2823,7 +2897,7 @@ impl<'a> Checker<'a> {
                     parameters: Vec::new(),
                     arguments: Vec::new(),
                     written: false,
-                    span: reference.span,
+                    span,
                     file: self.file,
                 });
                 r#type
@@ -2861,7 +2935,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                Type::Union(members) | Type::Tuple(members) => {
+                Type::Union(members) | Type::Tuple(members, _) => {
                     for member in members {
                         reached(member, schema, found);
                     }
@@ -3028,7 +3102,7 @@ impl<'a> Checker<'a> {
                     arguments.iter().for_each(|argument| uses(argument, found));
                 }
                 Type::List(item) | Type::Map(item) | Type::Refined(item, _) => uses(item, found),
-                Type::Tuple(slots) | Type::Union(slots) => {
+                Type::Tuple(slots, _) | Type::Union(slots) => {
                     slots.iter().for_each(|slot| uses(slot, found))
                 }
                 Type::Variant(shape) => shape

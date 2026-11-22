@@ -307,20 +307,7 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
                     .collect(),
             )
         }
-        // A field's slots, as an array of their values.
-        Value::Tuple(values) => {
-            let slots = match r#type {
-                Type::Tuple(slots) => &slots[..],
-                _ => &[],
-            };
-            Json::Array(
-                values
-                    .iter()
-                    .zip(slots)
-                    .map(|(value, slot)| to_json(schema, slot, value))
-                    .collect(),
-            )
-        }
+        Value::Tuple(values) => slots_to_json(schema, r#type, values),
         Value::Map(entries) => {
             let value_type = match r#type {
                 Type::Map(value) => value.as_ref(),
@@ -364,24 +351,75 @@ pub fn to_json(schema: &Schema, r#type: &Type, value: &Value) -> Json {
     }
 }
 
-/// A named type's value under its tag: its one slot's value,
-/// `{ "FileId": "a" }`, or an array of its slots' values,
-/// `{ "RangeFromTo": [1, 3] }`, `{ "Unit": [] }`.
+fn slots_to_json(schema: &Schema, r#type: &Type, values: &[Value]) -> Json {
+    let Type::Tuple(types, names) = r#type else {
+        return Json::Object(Map::new());
+    };
+    if names.is_empty() {
+        return Json::Array(Vec::new());
+    }
+    Json::Object(
+        names
+            .iter()
+            .zip(types)
+            .zip(values)
+            .map(|((name, slot), value)| (camel_case(name), to_json(schema, slot, value)))
+            .collect(),
+    )
+}
+
+fn slots_from_json(
+    schema: &Schema,
+    types: &[Type],
+    names: &[String],
+    json: &Json,
+) -> Result<Vec<Value>, String> {
+    if names.is_empty() && json.as_array().is_some_and(Vec::is_empty) {
+        return Ok(Vec::new());
+    }
+    let object = json
+        .as_object()
+        .filter(|object| !names.is_empty() && object.len() == names.len())
+        .ok_or_else(|| {
+            format!(
+                "found {json}; expected {}",
+                if names.is_empty() {
+                    "an empty array".to_string()
+                } else {
+                    format!(
+                        "an object with slots {}",
+                        names
+                            .iter()
+                            .map(|name| camel_case(name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            )
+        })?;
+    names
+        .iter()
+        .zip(types)
+        .map(|(name, slot)| {
+            let key = camel_case(name);
+            let item = object
+                .get(&key)
+                .ok_or_else(|| format!("found no slot {key:?}"))?;
+            from_json(schema, slot, item).map_err(|message| format!("in {key:?}: {message}"))
+        })
+        .collect()
+}
+
+/// A named type's value under its tag.
 fn named_to_json(
     schema: &Schema,
     constructor: &[ShapePart],
     underlying: &Type,
     arguments: &[Value],
 ) -> Json {
-    let slots = slot_types(constructor, underlying);
-    let mut values: Vec<Json> = slots
-        .iter()
-        .zip(arguments)
-        .map(|(slot, value)| to_json(schema, slot, value))
-        .collect();
-    let held = match (slots.len(), values.len()) {
-        (1, 1) => values.remove(0),
-        _ => Json::Array(values),
+    let held = match (slot_types(constructor, underlying).as_slice(), arguments) {
+        ([slot], [value]) => to_json(schema, slot, value),
+        _ => slots_to_json(schema, underlying, arguments),
     };
     json!({ json_tag(constructor): held })
 }
@@ -404,19 +442,14 @@ fn named_from_json(
             ShapePart::words(constructor)
         ));
     };
-    let slots = slot_types(constructor, underlying);
-    let arguments = match (slots.as_slice(), held) {
-        ([slot], held) => vec![from_json(schema, slot, held)?],
-        (slots, Json::Array(items)) if items.len() == slots.len() => slots
-            .iter()
-            .zip(items)
-            .map(|(slot, json)| from_json(schema, slot, json))
-            .collect::<Result<_, _>>()?,
-        (slots, _) => {
-            return Err(format!(
-                "found {held} under \"{tag}\"; expected an array of {} values, one for each slot",
-                slots.len()
-            ));
+    let arguments = match slot_types(constructor, underlying).as_slice() {
+        [slot] => vec![from_json(schema, slot, held)?],
+        _ => {
+            let Type::Tuple(types, names) = underlying else {
+                unreachable!()
+            };
+            slots_from_json(schema, types, names, held)
+                .map_err(|message| format!("under {tag:?}: {message}"))?
         }
     };
     Ok(Value::Variant {
@@ -511,18 +544,7 @@ fn from_json_raw(schema: &Schema, r#type: &Type, json: &Json) -> Result<Value, S
                 .map(Value::List),
             _ => mismatch("an array"),
         },
-        Type::Tuple(slots) => match json {
-            Json::Array(items) if items.len() == slots.len() => slots
-                .iter()
-                .zip(items)
-                .map(|(slot, json)| from_json(schema, slot, json))
-                .collect::<Result<_, _>>()
-                .map(Value::Tuple),
-            _ => mismatch(&format!(
-                "an array of {} values, one for each slot",
-                slots.len()
-            )),
-        },
+        Type::Tuple(types, names) => slots_from_json(schema, types, names, json).map(Value::Tuple),
         Type::Map(value_type) => match json {
             Json::Object(object) => object
                 .iter()
