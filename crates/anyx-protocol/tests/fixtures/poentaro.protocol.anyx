@@ -12,20 +12,20 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: Text,
-    revision: Integer,
+    path (Text),
+    revision (Integer),
 },
 
-TYPE ALIAS File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File { path (Text), revision (Integer), content (Text) },
 
 # One problem in a score.
 TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
-    line: Integer,
+    line (Integer),
     # Counted from 1, in characters.
-    column: Integer,
-    code: Text,
-    message: Text,
+    column (Integer),
+    code (Text),
+    message (Text),
 },
 
 TYPE ALIAS File Errors [|

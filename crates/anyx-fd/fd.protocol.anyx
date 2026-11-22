@@ -101,10 +101,10 @@ TYPE ALIAS Search: {
 
 # What a found file is, as `fd --list-details` shows it.
 TYPE ALIAS Details: {
-    path: Text,
-    kind: Kind,
-    size: Size,
-    modified: Instant,
+    path (Text),
+    kind (Kind),
+    size (Size) bytes,
+    modified at (Instant),
 },
 
 TYPE ALIAS Fd Errors [|

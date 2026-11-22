@@ -66,7 +66,12 @@ the account, such as by sending or sharing it.
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
   words, put `:` after its key: `` { "hymn": `done } ``.
 - A record is its fields in braces, each written in its declared shape with
-  a value in each slot, in any order: `{ path "a", revision 3 }`,
+  a value in each slot, in any order. When declaring fields, prefer
+  parentheses around slots and use words that make the value read as a
+  phrase. For example, `quiet from (start: Integer) to (end: Integer)` is
+  one field, written `{ quiet from 22 to 7 }`. The `name: Type` shorthand
+  is discouraged for field declarations. Other record values include
+  `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
   keeps its parentheses. A field declared as a backtick and a slot is written
   as its variant alone: `` { `by name, `hidden } ``. A field with a `DEFAULT` may
@@ -176,20 +181,20 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: Text,
-    revision: Integer,
+    path (Text),
+    revision (Integer),
 },
 
-TYPE ALIAS File { path: Text, revision: Integer, content: Text },
+TYPE ALIAS File { path (Text), revision (Integer), content (Text) },
 
 # One problem in a score.
 TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
-    line: Integer,
+    line (Integer),
     # Counted from 1, in characters.
-    column: Integer,
-    code: Text,
-    message: Text,
+    column (Integer),
+    code (Text),
+    message (Text),
 },
 
 TYPE ALIAS File Errors [|
