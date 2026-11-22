@@ -20,9 +20,9 @@ fn is_alnum(c: char) -> bool {
 }
 
 /// Whether a word token is made of symbol characters (`<=`, `+`), not a name.
-/// A word never mixes the two, so its first character decides.
+/// Runs of repeated dots or colons are also symbol words.
 pub fn is_symbol_word(text: &str) -> bool {
-    text.chars().next().is_some_and(is_symbol)
+    text.chars().next().is_some_and(is_symbol) || text.starts_with("..") || text.starts_with("::")
 }
 
 /// A name word in all caps: at least one uppercase letter and no lowercase
@@ -129,6 +129,10 @@ impl Lexer<'_> {
                 self.bump();
                 match c {
                     ',' => TokenKind::Comma,
+                    '.' | ':' if self.peek() == Some(c) => {
+                        self.bump_while(|next| next == c);
+                        TokenKind::Word
+                    }
                     ':' => TokenKind::Colon,
                     '.' => TokenKind::Dot,
                     '(' => TokenKind::OpenParen,

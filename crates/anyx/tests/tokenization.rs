@@ -65,12 +65,27 @@ fn a_word_is_all_name_or_all_symbol_characters() {
 }
 
 #[test]
-fn special_characters_never_appear_inside_a_word() {
+fn single_special_characters_are_token_boundaries() {
     assert_eq!(tree("a,b"), "a, b");
     assert_eq!(tree("a:b"), "(`a _` b)");
     assert_eq!(tree("+.-"), "(`_ -` +)");
     assert_eq!(tree("f(x)[y]{z}"), "(`f _ _ _` x Brackets[y] Braces[z])");
     assert_eq!(atoms(r#"a"b""#), [word("a"), Atom::String("b".into())]);
+}
+
+#[test]
+fn repeated_dots_and_colons_are_symbol_words() {
+    assert_eq!(
+        atoms("..File Errors"),
+        [word(".."), word("File"), word("Errors")]
+    );
+    assert_eq!(atoms("a::b"), [word("a"), word("::"), word("b")]);
+    assert_eq!(
+        atoms("...:::..<"),
+        [word("..."), word(":::"), word(".."), word("<")]
+    );
+    assert_eq!(atoms("1..3"), [number("1"), word(".."), number("3")]);
+    assert_eq!(tree("a .. b"), "(`_ .. _` a b)");
 }
 
 #[test]

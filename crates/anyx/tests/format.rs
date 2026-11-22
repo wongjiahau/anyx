@@ -434,3 +434,13 @@ fn a_prefix_after_a_keyword_hugs_what_follows() {
         "[\n    # Gone.\n    `trashed,\n]\n"
     );
 }
+
+#[test]
+fn formats_dot_and_colon_symbol_runs() {
+    assert_eq!(fmt(".. File Errors").trim_end(), "..File Errors");
+    assert_eq!(fmt(":: Name").trim_end(), "::Name");
+    assert_eq!(fmt("a::b").trim_end(), "a :: b");
+    assert_eq!(fmt("1..3").trim_end(), "1 .. 3");
+    fmt("left . .. right");
+    fmt("left: :: right");
+}

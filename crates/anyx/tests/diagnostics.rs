@@ -48,11 +48,11 @@ fn unexpected_closer() {
 
 #[test]
 fn empty_operand_needs_a_run_on_both_sides() {
-    assert_eq!(errors("a..b"), [(ErrorCode::EmptyOperand, 1, 2)]);
+    assert_eq!(errors("a. .b"), [(ErrorCode::EmptyOperand, 1, 2)]);
     assert_eq!(errors(". a"), [(ErrorCode::EmptyOperand, 0, 1)]);
     assert_eq!(errors("a :"), [(ErrorCode::EmptyOperand, 2, 3)]);
     assert_eq!(errors(": b"), [(ErrorCode::EmptyOperand, 0, 1)]);
-    assert_eq!(errors("a::b"), [(ErrorCode::EmptyOperand, 1, 2)]);
+    assert_eq!(errors("a: :b"), [(ErrorCode::EmptyOperand, 1, 2)]);
     assert_eq!(errors("(a .)"), [(ErrorCode::EmptyOperand, 3, 4)]);
     assert_eq!(tree_despite_errors("a :"), "(`a _` Missing)");
     assert_eq!(tree_despite_errors(". a"), "(`_ a` Missing)");
