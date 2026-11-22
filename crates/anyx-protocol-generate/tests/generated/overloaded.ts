@@ -26,12 +26,12 @@ export interface SchemaFile {
   source: string;
 }
 
-/** The errors of `tag (LIST Text)`. */
-export type TagWithListOfTextError =
+/** The errors of `tag paths _`. */
+export type TagPathsError =
   | { kind: "missing"; path: string };
 
-/** The errors of `tag (LIST File Id)`. */
-export type TagWithListOfFileIdError =
+/** The errors of `tag ids _`. */
+export type TagIdsError =
   | { kind: "unknown"; id: FileId };
 
 // Runtime descriptors are emitted from the same checked schema as the API.
@@ -533,8 +533,8 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', shape:"File I
 {parameters:[],kind:'choice', variants:[{text:"dark", kind:"dark", params:[]},{text:"light", kind:"light", params:[]}]},
 {parameters:[],kind:'choice', variants:[{text:"false", kind:"false", params:[]},{text:"true", kind:"true", params:[]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'text'}, slots:[{k:'text'}]},{wire:"source _", form:"shape", name:"source", type:{k:'text'}, slots:[{k:'text'}]}]}];
-const methods: Record<string, MethodDescriptor> = {["tag (LIST Text)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
-["tag (LIST File Id)"]:{shape:{text:"tag _", kind:"tag", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
+const methods: Record<string, MethodDescriptor> = {["tag paths _"]:{shape:{text:"tag paths _", kind:"tagPaths", params:[{name:"paths", type:{k:'list', item:{k:'text'}}, annotation:"LIST Text"}]}, returns:{k:'integer'}, errors:[{text:"missing _", kind:"missing", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}]},
+["tag ids _"]:{shape:{text:"tag ids _", kind:"tagIds", params:[{name:"ids", type:{k:'list', item:{k:'named', index:0, args:[]}}, annotation:"LIST File Id"}]}, returns:{k:'integer'}, errors:[{text:"unknown _", kind:"unknown", params:[{name:"id", type:{k:'named', index:0, args:[]}, annotation:"File Id"}]}]},
 ["scale (Float)"]:{shape:{text:"scale _", kind:"scale", params:[{name:"factor", type:{k:'float'}, annotation:"Float"}]}, returns:{k:'float'}, errors:[]},
 ["scale (Integer)"]:{shape:{text:"scale _", kind:"scale", params:[{name:"times", type:{k:'integer'}, annotation:"Integer"}]}, returns:{k:'integer'}, errors:[]},
 ["hide (Text)"]:{shape:{text:"hide _", kind:"hide", params:[{name:"path", type:{k:'text'}, annotation:"Text"}]}, returns:null, errors:[]},
@@ -618,11 +618,11 @@ export class Client {
    * Examples:
    *
    * ```anyx
-   * tag ["a"] RETURNS 1
+   * tag paths ["a"] RETURNS 1
    * ```
    */
-  tagWithListOfText(paths: string[]): Promise<Outcome<bigint, TagWithListOfTextError>> {
-    return this.call("tag (LIST Text)", [paths]);
+  tagPaths(paths: string[]): Promise<Outcome<bigint, TagPathsError>> {
+    return this.call("tag paths _", [paths]);
   }
 
   /**
@@ -633,11 +633,11 @@ export class Client {
    * Examples:
    *
    * ```anyx
-   * tag ([] AS: LIST: File Id) RETURNS 0
+   * tag ids ([] AS: LIST: File Id) RETURNS 0
    * ```
    */
-  tagWithListOfFileId(ids: FileId[]): Promise<Outcome<bigint, TagWithListOfFileIdError>> {
-    return this.call("tag (LIST File Id)", [ids]);
+  tagIds(ids: FileId[]): Promise<Outcome<bigint, TagIdsError>> {
+    return this.call("tag ids _", [ids]);
   }
 
   /** Read only: it changes nothing, so it is safe to call freely. */
@@ -704,8 +704,8 @@ export interface Effects {
 /** Each method's `Effects`, by the full name the client calls it by. Only a
  * method whose `idempotent` is true may be retried on its own. */
 export const EFFECTS: { readonly [method: string]: Effects } = {
-  "tag (LIST Text)": { readOnly: false, idempotent: false, undoneBy: null },
-  "tag (LIST File Id)": { readOnly: false, idempotent: false, undoneBy: null },
+  "tag paths _": { readOnly: false, idempotent: false, undoneBy: null },
+  "tag ids _": { readOnly: false, idempotent: false, undoneBy: null },
   "scale (Float)": { readOnly: true, idempotent: true, undoneBy: null },
   "scale (Integer)": { readOnly: true, idempotent: true, undoneBy: null },
   "hide (Text)": { readOnly: false, idempotent: true, undoneBy: "show (path: Text)" },

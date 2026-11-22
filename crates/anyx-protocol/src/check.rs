@@ -426,13 +426,13 @@ fn doc(doc: &Option<ast::Spanned<StringLiteral>>) -> Option<String> {
 
 /// A way to write both `a` and `b` that their parameter types can't tell
 /// apart, if there is one: the first such form's text.
-fn clash(a: &Shape, b: &Shape) -> Option<String> {
+fn clash(schema: &Schema, a: &Shape, b: &Shape) -> Option<String> {
     a.forms().into_iter().find_map(|form| {
         let written = a.written_as(&form);
         b.forms()
             .into_iter()
             .filter(|other| other.text == form.text)
-            .any(|other| same_types(&written, &b.written_as(&other)))
+            .any(|other| parameters_overlap(schema, &written, &b.written_as(&other)))
             .then_some(form.text)
     })
 }
@@ -443,21 +443,18 @@ fn own_clash(shape: &Shape) -> Option<String> {
     forms.iter().enumerate().find_map(|(index, form)| {
         forms[index + 1..]
             .iter()
-            .any(|other| {
-                other.text == form.text
-                    && same_types(&shape.written_as(form), &shape.written_as(other))
-            })
+            .any(|other| other.text == form.text)
             .then(|| form.text.clone())
     })
 }
 
 /// Whether a call's arguments can't tell `a` from `b`, two shapes written
 /// alike.
-fn same_types(a: &Shape, b: &Shape) -> bool {
+fn parameters_overlap(schema: &Schema, a: &Shape, b: &Shape) -> bool {
     a.parameters
         .iter()
         .zip(&b.parameters)
-        .all(|(a, b)| crate::annotation::overlaps(&a.r#type, &b.r#type))
+        .all(|(a, b)| schema.types_overlap(&a.r#type, &b.r#type))
 }
 
 fn spanned_words(name: &ast::CallName) -> ast::Spanned<String> {
@@ -708,6 +705,7 @@ impl<'a> Checker<'a> {
             self.check_alias_parameters_used(index);
         }
         let mut intrinsic_functions = Vec::new();
+        let mut method_locations = Vec::new();
         for (index, file) in decoded.iter().enumerate() {
             self.file = index;
             for definition in &file.document.definition {
@@ -746,38 +744,7 @@ impl<'a> Checker<'a> {
                             ),
                         );
                     }
-                    let overlapping = methods.iter().find_map(|other: &Method| {
-                        clash(&other.shape, &method.shape).map(|form| (other, form))
-                    });
-                    if let Some((other, form)) = overlapping {
-                        if form != method.shape.text || other.shape.text != method.shape.text {
-                            self.error(
-                                parts.shape.name.span,
-                                format!(
-                                    "found the method `{}`, which may be written as `{form}` with the same parameter types as `{}` before it; expected each way to write a method to differ from every other method's, in its words or a parameter's type; reword one of them, or write `{}` in full",
-                                    method.shape.text, other.shape.text, method.shape.text
-                                ),
-                            );
-                            methods.push(method);
-                            continue;
-                        }
-                        let only_returns = match other
-                            .returns
-                            .as_ref()
-                            .map(|returns| &returns.r#type)
-                            != method.returns.as_ref().map(|returns| &returns.r#type)
-                        {
-                            true => {
-                                "; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types"
-                            }
-                            false => "",
-                        };
-                        let message = format!(
-                            "found a second method `{}` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type{only_returns}",
-                            method.shape.text
-                        );
-                        self.error(parts.shape.name.span, message);
-                    }
+                    method_locations.push((index, parts.shape.name.span));
                     methods.push(method);
                 }
             }
@@ -865,6 +832,26 @@ impl<'a> Checker<'a> {
             self.read_part_defaults(&mut schema, true);
         }
         self.check_forms(&schema);
+        if self.diagnostics.is_empty() {
+            for (index, (file, span)) in method_locations.into_iter().enumerate() {
+                let method = &schema.methods[index];
+                let overlapping = schema.methods[..index].iter().find_map(|other| {
+                    clash(&schema, &other.shape, &method.shape).map(|form| (other, form))
+                });
+                if let Some((other, form)) = overlapping {
+                    let previous = schema.typed_shape(&other.shape);
+                    let current = schema.typed_shape(&method.shape);
+                    self.within(file, |checker| {
+                        checker.error(
+                            span,
+                            format!(
+                                "found overlapping methods `{previous}` and `{current}` written as `{form}`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types"
+                            ),
+                        );
+                    });
+                }
+            }
+        }
         // Examples are read against the schema, defaults and all, which
         // must be whole first: a mistake elsewhere would only show up again
         // in them.

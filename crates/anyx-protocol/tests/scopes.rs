@@ -220,7 +220,7 @@ fn duplicate_methods_across_files_are_rejected() {
         )
         .unwrap_err()
         .iter()
-        .any(|error| error.message.contains("second method"))
+        .any(|error| error.message.contains("found overlapping methods"))
     );
 }
 

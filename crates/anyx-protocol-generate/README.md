@@ -146,15 +146,13 @@ Overloads, methods of one shape with different parameter types, each get a
 name of their own: the shape's words, `with`, then each parameter's type in
 words, joined by `and`. `LIST: T` is `list of T`, `MAP: T` is `map of T`, a
 type of the schema is its plain words, and a generic type has
-its arguments' words in its slots: `tag (paths: LIST Text)` is
-`tag_with_list_of_text` (`tagWithListOfText`, `TagWithListOfTextError`,
-`TAG_WITH_LIST_OF_TEXT_EFFECTS`), `open (id: File Id)` is
-`open_with_file_id`, and `scale (factor: Float)` is
-`scale_with_float`. A method without overloads keeps its shape's words, so
+its arguments' words in its slots. An overload of `open` taking a
+`File Id` becomes `open_with_file_id`, and one of `scale` taking a
+`Float` becomes `scale_with_float` (`scaleWithFloat` in TypeScript). A method without overloads keeps its shape's words, so
 adding an overload renames the methods of its shape. The server runs the
 overload a call resolves to, and the clients write the annotations a
 request needs themselves. TypeScript calls an overload, and keys its
-`EFFECTS`, by its typed name, `"tag (LIST Text)"`, as JSON does.
+`EFFECTS`, by its typed name, `"scale (Float)"`, as JSON does.
 
 A schema whose names become the same name in the generated code, such as a
 type `read error` next to the method `read _`, or a method `tag with text`

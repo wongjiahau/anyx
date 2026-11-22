@@ -10,7 +10,7 @@ use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
 use anyx_protocol::client::{CallError, Transport};
-use overloaded::{Client, FileId, Server, Shade, TagWithListOfFileIdError, TagWithListOfTextError};
+use overloaded::{Client, FileId, Server, Shade, TagIdsError, TagPathsError};
 
 /// Runs a future that never waits, as every future here is.
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -30,22 +30,19 @@ struct Tagging;
 impl Server for Tagging {
     type Error = std::convert::Infallible;
 
-    async fn tag_with_list_of_text(
+    async fn tag_paths(
         &self,
         paths: Vec<String>,
-    ) -> Result<Result<i64, TagWithListOfTextError>, Self::Error> {
+    ) -> Result<Result<i64, TagPathsError>, Self::Error> {
         match paths.iter().find(|path| path.is_empty()) {
-            Some(path) => Ok(Err(TagWithListOfTextError::Missing { path: path.clone() })),
+            Some(path) => Ok(Err(TagPathsError::Missing { path: path.clone() })),
             None => Ok(Ok(paths.len() as i64)),
         }
     }
 
-    async fn tag_with_list_of_file_id(
-        &self,
-        ids: Vec<FileId>,
-    ) -> Result<Result<i64, TagWithListOfFileIdError>, Self::Error> {
+    async fn tag_ids(&self, ids: Vec<FileId>) -> Result<Result<i64, TagIdsError>, Self::Error> {
         match ids.iter().find(|id| id.0.is_empty()) {
-            Some(id) => Ok(Err(TagWithListOfFileIdError::Unknown { id: id.clone() })),
+            Some(id) => Ok(Err(TagIdsError::Unknown { id: id.clone() })),
             None => Ok(Ok(100 + ids.len() as i64)),
         }
     }
@@ -108,12 +105,12 @@ fn the_server_runs_the_overload_a_call_resolves_to() {
             |error| match error {},
         ))
     };
-    assert_eq!(response("tag [\"a\", \"b\"]"), "RETURNS 2\n");
-    assert_eq!(response("tag [File Id \"a\"]"), "RETURNS 101\n");
+    assert_eq!(response("tag paths [\"a\", \"b\"]"), "RETURNS 2\n");
+    assert_eq!(response("tag ids [File Id \"a\"]"), "RETURNS 101\n");
     assert_eq!(response("scale 1.5"), "RETURNS 3.0\n");
     assert_eq!(response("scale 2"), "RETURNS 6\n");
     assert!(
-        response("tag []").starts_with("INVALID REQUEST"),
+        response("tag paths []").starts_with("INVALID REQUEST"),
         "`[]` has no type of its own"
     );
 }
@@ -121,19 +118,16 @@ fn the_server_runs_the_overload_a_call_resolves_to() {
 #[test]
 fn the_client_annotates_what_its_arguments_leave_open() {
     let client = client();
-    assert_eq!(run(client.tag_with_list_of_text(Vec::new())), Ok(0));
-    assert_eq!(
-        run(client.tag_with_list_of_file_id(vec![FileId("a".to_string())])),
-        Ok(101)
-    );
+    assert_eq!(run(client.tag_paths(Vec::new())), Ok(0));
+    assert_eq!(run(client.tag_ids(vec![FileId("a".to_string())])), Ok(101));
     assert_eq!(run(client.scale_with_float(3.0)), Ok(6.0));
     assert_eq!(run(client.scale_with_integer(3)), Ok(9));
     assert_eq!(run(client.paint(Shade::Dark)), Ok(()));
     assert_eq!(
         *client.transport.requests.borrow(),
         [
-            "tag ([] AS: LIST Text)\n",
-            "tag [File Id \"a\"]\n",
+            "tag paths ([] AS: LIST Text)\n",
+            "tag ids [File Id \"a\"]\n",
             "scale 3.0\n",
             "scale 3\n",
             "paint (`dark)\n",
@@ -144,8 +138,8 @@ fn the_client_annotates_what_its_arguments_leave_open() {
 #[test]
 fn each_overload_has_its_errors() {
     assert_eq!(
-        run(client().tag_with_list_of_file_id(vec![FileId(String::new())])),
-        Err(CallError::Method(TagWithListOfFileIdError::Unknown {
+        run(client().tag_ids(vec![FileId(String::new())])),
+        Err(CallError::Method(TagIdsError::Unknown {
             id: FileId(String::new())
         }))
     );

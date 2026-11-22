@@ -17,16 +17,16 @@ NAMED TYPE File Id (value: Text),
 TYPE ALIAS Shade [| `dark, `light |],
 
 # Tags files by their paths.
-METHOD tag (paths: LIST Text)
+METHOD tag paths (paths: LIST Text)
     RETURNS (tagged: Integer)
     ERRORS [| `missing (path: Text) |]
-    EXAMPLES [tag ["a"] RETURNS 1],
+    EXAMPLES [tag paths ["a"] RETURNS 1],
 
 # Tags files by their ids.
-METHOD tag (ids: LIST: File Id)
+METHOD tag ids (ids: LIST: File Id)
     RETURNS (tagged: Integer)
     ERRORS [| `unknown (id: File Id) |]
-    EXAMPLES [tag ([] AS: LIST: File Id) RETURNS 0],
+    EXAMPLES [tag ids ([] AS: LIST: File Id) RETURNS 0],
 
 READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [| |],
 
@@ -202,16 +202,16 @@ impl FromValue for SchemaFile {
     }
 }
 
-/// The errors of `tag (LIST Text)`.
+/// The errors of `tag paths _`.
 #[derive(Clone, Debug, PartialEq)]
-pub enum TagWithListOfTextError {
+pub enum TagPathsError {
     Missing { path: String },
 }
 
-impl IntoValue for TagWithListOfTextError {
+impl IntoValue for TagPathsError {
     fn into_value(self) -> Value {
         match self {
-            TagWithListOfTextError::Missing { path } => Value::Variant {
+            TagPathsError::Missing { path } => Value::Variant {
                 shape: "missing _".to_string(),
                 arguments: vec![path.into_value()],
             },
@@ -219,14 +219,14 @@ impl IntoValue for TagWithListOfTextError {
     }
 }
 
-impl FromValue for TagWithListOfTextError {
+impl FromValue for TagPathsError {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Variant { shape, arguments } = value else {
             return None;
         };
         let mut arguments = arguments.into_iter();
         Some(match shape.as_str() {
-            "missing _" => TagWithListOfTextError::Missing {
+            "missing _" => TagPathsError::Missing {
                 path: FromValue::from_value(arguments.next()?)?,
             },
             _ => return None,
@@ -234,16 +234,16 @@ impl FromValue for TagWithListOfTextError {
     }
 }
 
-/// The errors of `tag (LIST File Id)`.
+/// The errors of `tag ids _`.
 #[derive(Clone, Debug, PartialEq)]
-pub enum TagWithListOfFileIdError {
+pub enum TagIdsError {
     Unknown { id: FileId },
 }
 
-impl IntoValue for TagWithListOfFileIdError {
+impl IntoValue for TagIdsError {
     fn into_value(self) -> Value {
         match self {
-            TagWithListOfFileIdError::Unknown { id } => Value::Variant {
+            TagIdsError::Unknown { id } => Value::Variant {
                 shape: "unknown _".to_string(),
                 arguments: vec![id.into_value()],
             },
@@ -251,14 +251,14 @@ impl IntoValue for TagWithListOfFileIdError {
     }
 }
 
-impl FromValue for TagWithListOfFileIdError {
+impl FromValue for TagIdsError {
     fn from_value(value: Value) -> Option<Self> {
         let Value::Variant { shape, arguments } = value else {
             return None;
         };
         let mut arguments = arguments.into_iter();
         Some(match shape.as_str() {
-            "unknown _" => TagWithListOfFileIdError::Unknown {
+            "unknown _" => TagIdsError::Unknown {
                 id: FromValue::from_value(arguments.next()?)?,
             },
             _ => return None,
@@ -274,35 +274,32 @@ pub trait Server {
 
     /// Tags files by their paths.
     ///
-    /// `tag (LIST Text)`, returning `tagged`.
+    /// `tag paths _`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ["a"] RETURNS 1
+    /// tag paths ["a"] RETURNS 1
     /// ```
-    async fn tag_with_list_of_text(
+    async fn tag_paths(
         &self,
         paths: Vec<String>,
-    ) -> Result<Result<i64, TagWithListOfTextError>, Self::Error>;
+    ) -> Result<Result<i64, TagPathsError>, Self::Error>;
 
     /// Tags files by their ids.
     ///
-    /// `tag (LIST File Id)`, returning `tagged`.
+    /// `tag ids _`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ([] AS: LIST: File Id) RETURNS 0
+    /// tag ids ([] AS: LIST: File Id) RETURNS 0
     /// ```
-    async fn tag_with_list_of_file_id(
-        &self,
-        ids: Vec<FileId>,
-    ) -> Result<Result<i64, TagWithListOfFileIdError>, Self::Error>;
+    async fn tag_ids(&self, ids: Vec<FileId>) -> Result<Result<i64, TagIdsError>, Self::Error>;
 
     /// `scale (Float)`, returning `scaled`.
     ///
@@ -363,14 +360,14 @@ pub async fn handle<S: Server>(
         let mut arguments = call.arguments.clone().into_iter();
         let outcome = match call.method {
             0 => anyx_protocol::server::result(
-                <S as Server>::tag_with_list_of_text(
+                <S as Server>::tag_paths(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
                 .await,
             ),
             1 => anyx_protocol::server::result(
-                <S as Server>::tag_with_list_of_file_id(
+                <S as Server>::tag_ids(
                     implementation,
                     anyx_protocol::server::argument(&mut arguments),
                 )
@@ -458,37 +455,34 @@ impl<T: Transport> Client<T> {
 
     /// Tags files by their paths.
     ///
-    /// `tag (LIST Text)`, returning `tagged`.
+    /// `tag paths _`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ["a"] RETURNS 1
+    /// tag paths ["a"] RETURNS 1
     /// ```
-    pub async fn tag_with_list_of_text(
+    pub async fn tag_paths(
         &self,
         paths: Vec<String>,
-    ) -> Result<i64, CallError<TagWithListOfTextError, T::Error>> {
+    ) -> Result<i64, CallError<TagPathsError, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 0, vec![paths.into_value()]).await
     }
 
     /// Tags files by their ids.
     ///
-    /// `tag (LIST File Id)`, returning `tagged`.
+    /// `tag ids _`, returning `tagged`.
     ///
     /// It may change anything, and calling it again may do it again, so don't retry it blindly.
     ///
     /// Examples:
     ///
     /// ```anyx
-    /// tag ([] AS: LIST: File Id) RETURNS 0
+    /// tag ids ([] AS: LIST: File Id) RETURNS 0
     /// ```
-    pub async fn tag_with_list_of_file_id(
-        &self,
-        ids: Vec<FileId>,
-    ) -> Result<i64, CallError<TagWithListOfFileIdError, T::Error>> {
+    pub async fn tag_ids(&self, ids: Vec<FileId>) -> Result<i64, CallError<TagIdsError, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![ids.into_value()]).await
     }
 
@@ -575,21 +569,19 @@ impl<T: Transport> Client<T> {
     }
 }
 
-/// What a call of `tag (LIST Text)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-pub const TAG_WITH_LIST_OF_TEXT_EFFECTS: anyx_protocol::client::Effects =
-    anyx_protocol::client::Effects {
-        read_only: false,
-        idempotent: false,
-        undone_by: None,
-    };
+/// What a call of `tag paths _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const TAG_PATHS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
 
-/// What a call of `tag (LIST File Id)` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
-pub const TAG_WITH_LIST_OF_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
-    anyx_protocol::client::Effects {
-        read_only: false,
-        idempotent: false,
-        undone_by: None,
-    };
+/// What a call of `tag ids _` may do. It may change anything, and calling it again may do it again, so don't retry it blindly.
+pub const TAG_IDS_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
+    read_only: false,
+    idempotent: false,
+    undone_by: None,
+};
 
 /// What a call of `scale (Float)` may do. Read only: it changes nothing, so it is safe to call freely.
 pub const SCALE_WITH_FLOAT_EFFECTS: anyx_protocol::client::Effects =

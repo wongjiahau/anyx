@@ -1434,6 +1434,77 @@ impl Schema {
         }
     }
 
+    /// Whether the types can accept a common value. Refinements are compared
+    /// by their bases because overload selection cannot rely on predicates.
+    pub(crate) fn types_overlap(&self, a: &Type, b: &Type) -> bool {
+        self.overlap(a, b, &mut Vec::new())
+    }
+
+    fn overlap(&self, a: &Type, b: &Type, records: &mut Vec<(Type, Type)>) -> bool {
+        let (a, b) = (self.underlying(a), self.underlying(b));
+        let mut overlaps = |a: &Type, b: &Type| self.overlap(a, b, records);
+        if let Some(members) = self.variants_of(a) {
+            return members.iter().any(|member| overlaps(member, b));
+        }
+        if let Some(members) = self.variants_of(b) {
+            return members.iter().any(|member| overlaps(a, member));
+        }
+        match (a, b) {
+            (Type::Union(members), _) => members.iter().any(|member| overlaps(member, b)),
+            (_, Type::Union(members)) => members.iter().any(|member| overlaps(a, member)),
+            (Type::List(_), Type::List(_)) | (Type::Map(_), Type::Map(_)) => true,
+            (Type::Tuple(a, _), Type::Tuple(b, _)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| overlaps(a, b))
+            }
+            (Type::Variant(a), Type::Variant(b)) => a.forms().iter().any(|form| {
+                b.forms()
+                    .iter()
+                    .filter(|other| form.text == other.text)
+                    .any(|other| {
+                        a.written_as(form)
+                            .parameters
+                            .iter()
+                            .zip(&b.written_as(other).parameters)
+                            .all(|(a, b)| overlaps(&a.r#type, &b.r#type))
+                    })
+            }),
+            (Type::Named(_) | Type::Generic(..), Type::Named(_) | Type::Generic(..)) => {
+                let (Some((_, a_kind)), Some((_, b_kind))) = (self.instance(a), self.instance(b))
+                else {
+                    return false;
+                };
+                let (TypeKind::Record(a_fields), TypeKind::Record(b_fields)) =
+                    (a_kind.as_ref(), b_kind.as_ref())
+                else {
+                    return a == b;
+                };
+                let pair = (a.clone(), b.clone());
+                if records.contains(&pair) {
+                    // Requiring the same pair again cannot produce a finite value.
+                    return false;
+                }
+                records.push(pair);
+                let mut required_fields_fit = |fields: &[Field], others: &[Field]| {
+                    fields
+                        .iter()
+                        .filter(|field| field.default.is_none())
+                        .all(|field| {
+                            others.iter().any(|other| {
+                                field.form == other.form
+                                    && self.overlap(&field.r#type, &other.r#type, records)
+                            })
+                        })
+                };
+                // A field with a default on both sides can be omitted.
+                let shared = required_fields_fit(a_fields, b_fields)
+                    && required_fields_fit(b_fields, a_fields);
+                records.pop();
+                shared
+            }
+            _ => a == b,
+        }
+    }
+
     /// The variants of an alias of a union of variants, as types: `Shade`,
     /// `` TYPE ALIAS Shade [| `dark, `light |] ``, is `` `dark `` and
     /// `` `light ``. `None` for any other type.

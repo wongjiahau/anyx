@@ -268,7 +268,7 @@ fn mistakes_in_a_schema_are_diagnosed() {
             "PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| |], METHOD f RETURNS (z: Text) ERRORS [| |],",
         ),
         (
-            "overloads with the same parameter types",
+            "overloads on lists",
             "PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],",
         ),
         (

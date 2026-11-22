@@ -142,7 +142,7 @@ fn no_two_methods_may_be_written_alike() {
 METHOD find (pattern: Text) RETURNS NOTHING ERRORS [| |],
 METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in ["."]] RETURNS NOTHING ERRORS [| |],"#,
     );
-    assert!(found.contains("may be written as `find _`"), "{found}");
+    assert!(found.contains("written as `find _`"), "{found}");
     // Told apart by a parameter's type, they are overloads.
     schema(
         r#"PROTOCOL p VERSION 1,

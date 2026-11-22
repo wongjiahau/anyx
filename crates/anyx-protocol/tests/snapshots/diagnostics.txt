@@ -84,19 +84,22 @@ schema:1:45: found a second parameter named `x`; expected each parameter once; r
 
 == a method twice
 PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| |], METHOD f RETURNS (z: Text) ERRORS [| |],
-schema:1:71: found a second method `f` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+schema:1:71: found overlapping methods `f` and `f` written as `f`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
   PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| |], METHOD f RETURNS (z: Text) ERRORS [| |],
                                                                         ^
 
-== overloads with the same parameter types
+== overloads on lists
 PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
-schema:1:176: found a second method `tag _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type
+schema:1:119: found overlapping methods `tag (names: LIST Text)` and `tag (ids: LIST Id)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
+  PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
+                                                                                                                        ^^^
+schema:1:176: found overlapping methods `tag (names: LIST Text)` and `tag (other: LIST Text)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
   PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
                                                                                                                                                                                  ^^^
 
 == overloads that differ only in what they return
 PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [| |], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [| |],
-schema:1:93: found a second method `scale _` with the same parameter types as one before it; expected the overloads of a shape in the protocol to differ in a parameter's type, so that a call's arguments choose one; rename one, or change a parameter's type; overloads that differ only in what they return can't be told apart, since a call states only its arguments' types
+schema:1:93: found overlapping methods `scale (by: Float)` and `scale (by: Float)` written as `scale _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
   PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [| |], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [| |],
                                                                                               ^^^^^
 

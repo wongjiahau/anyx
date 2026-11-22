@@ -11,13 +11,13 @@ use common::schema;
 const TAGS: &str = "PROTOCOL a VERSION 1,
 NAMED TYPE File Id (value: Text),
 TYPE ALIAS Shade [| `dark, `light |],
-TYPE ALIAS Colour [| `dark, `red |],
+TYPE ALIAS Colour [| `blue, `red |],
 TYPE ALIAS Mood [| `calm, `wild |],
 TYPE Point { x: Integer, y: Integer },
 TYPE Size { x: Integer, label (Text) DEFAULT label \"\" },
 TYPE Width { x: Integer },
 METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |],
-METHOD tag (ids: LIST Integer) RETURNS NOTHING ERRORS [| |],
+METHOD tag ids (ids: LIST Integer) RETURNS NOTHING ERRORS [| |],
 METHOD open (path: Text) RETURNS NOTHING ERRORS [| |],
 METHOD open (id: File Id) RETURNS NOTHING ERRORS [| |],
 METHOD scale (factor: Float) RETURNS NOTHING ERRORS [| |],
@@ -70,12 +70,12 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
         [(0, vec![list(vec![text("hymn"), text("ode")])])]
     );
     assert_eq!(
-        calls("tag [1, 2]"),
+        calls("tag ids [1, 2]"),
         [(1, vec![list(vec![Value::Integer(1), Value::Integer(2)])])]
     );
     assert_eq!(calls("tag ([] AS: LIST Text)"), [(0, vec![list(vec![])])]);
     assert_eq!(
-        calls("tag ([] AS: LIST Integer)"),
+        calls("tag ids ([] AS: LIST Integer)"),
         [(1, vec![list(vec![])])]
     );
     assert_eq!(calls("open \"a\""), [(2, vec![text("a")])]);
@@ -87,8 +87,8 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
     );
     assert_eq!(calls("scale 3.0"), [(4, vec![Value::Float(3.0)])]);
     assert_eq!(calls("scale 3"), [(5, vec![Value::Integer(3)])]);
-    assert_eq!(calls("paint (`dark AS: Shade)")[0].0, 6);
-    assert_eq!(calls("paint (`dark AS: Colour)")[0].0, 7);
+    assert_eq!(calls("paint (`dark)")[0].0, 6);
+    assert_eq!(calls("paint (`blue)")[0].0, 7);
     assert_eq!(calls("paint (`red)")[0].0, 7, "`red` is only a `colour`");
 }
 
@@ -96,11 +96,7 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
 fn a_value_with_no_type_of_its_own_needs_an_annotation() {
     assert_eq!(
         message("tag []"),
-        "in `tag _`: `[]` has no type of its own, so no overload of `tag _` can be chosen by it; annotate it with the type of the one to call, as in `tag ([] AS: LIST Text)`; the overloads are `tag (names: LIST Text)`, `tag (ids: LIST Integer)`"
-    );
-    assert_eq!(
-        message("paint (`dark)"),
-        "in `paint _`: `` `dark `` has no type of its own, so no overload of `paint _` can be chosen by it; annotate it with the type of the one to call, as in `` paint (`dark AS: Shade) ``; the overloads are `paint (shade: Shade)`, `paint (colour: Colour)`"
+        "in `names` of `tag _`: `[]` has no type of its own; annotate it, as in `tag ([] AS: LIST Text)`"
     );
     // Even when the method has no overloads, so that adding one never
     // breaks a call.
@@ -145,8 +141,8 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
 #[test]
 fn a_call_no_overload_fits_lists_them() {
     assert_eq!(
-        message("tag [1.5]"),
-        "found `tag _` with an argument of the type `LIST Float`; expected the types of one of its overloads: `tag (names: LIST Text)`, `tag (ids: LIST Integer)`; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`"
+        message("scale \"a\""),
+        "found `scale _` with an argument of the type `Text`; expected the types of one of its overloads: `scale (factor: Float)`, `scale (times: Integer)`; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`"
     );
 }
 
@@ -213,10 +209,10 @@ fn a_request_states_the_types_it_depends_on() {
     assert_eq!(
         request,
         "tag ([] AS: LIST Text),
-tag [1],
+tag ids [1],
 open (File Id \"a\"),
 scale 3.0,
-paint (`dark AS Shade),
+paint (`dark),
 feel (`calm),
 "
     );
@@ -299,8 +295,12 @@ fn json_names_an_overload_with_its_parameters_types() {
         "read (File Id \"a\")\n"
     );
     assert_eq!(
-        decode_request_json(&schema, "tag ([] AS: LIST Integer), read (File Id \"a\")").unwrap(),
-        r#"[{"arguments":[[]],"method":"tag (LIST Integer)"},{"arguments":[{"FileId":"a"}],"method":"read _"}]"#
+        decode_request_json(
+            &schema,
+            "tag ids ([] AS: LIST Integer), read (File Id \"a\")"
+        )
+        .unwrap(),
+        r#"[{"arguments":[[]],"method":"tag ids _"},{"arguments":[{"FileId":"a"}],"method":"read _"}]"#
     );
 }
 
@@ -309,9 +309,8 @@ fn the_guide_lists_each_shape_s_overloads_together() {
     let guide = anyx_protocol::guide(&schema(TAGS), "");
     assert!(
         guide.contains(
-            "argument whose value doesn't show its type (see Values):
+            "One parameter position accepts disjoint types for each pair:
 
-- `tag (names: LIST Text)`, `tag (ids: LIST Integer)`
 - `open (path: Text)`, `open (id: File Id)`
 - `scale (factor: Float)`, `scale (times: Integer)`
 - `paint (shade: Shade)`, `paint (colour: Colour)`
@@ -320,4 +319,79 @@ fn the_guide_lists_each_shape_s_overloads_together() {
         "{guide}"
     );
     assert!(guide.contains("`tag ([] AS: LIST Text)`"), "{guide}");
+}
+
+#[test]
+fn overloads_that_share_a_value_are_rejected() {
+    for (definitions, a, b) in [
+        ("", "LIST Text", "LIST Integer"),
+        ("", "MAP Text", "MAP Integer"),
+        ("", "[| Text, `null |]", "[| Integer, `null |]"),
+        (
+            "TYPE ALIAS Shade [| `dark, `light |], TYPE ALIAS Colour [| `dark, `red |],",
+            "Shade",
+            "Colour",
+        ),
+        (
+            "TYPE Crop { width: Integer }, TYPE Pad { width: Integer, fill (Text) DEFAULT fill \"black\" },",
+            "Crop",
+            "Pad",
+        ),
+        (
+            "TYPE Alpha { x (Text) DEFAULT x \"\" }, TYPE Beta { x (Integer) DEFAULT x 0 },",
+            "Alpha",
+            "Beta",
+        ),
+    ] {
+        let source = format!(
+            "PROTOCOL a VERSION 1, {definitions}
+METHOD use (a: {a}) RETURNS NOTHING ERRORS [| |],
+METHOD use (b: {b}) RETURNS NOTHING ERRORS [| |],"
+        );
+        let problem = common::diagnostics(&source);
+        assert!(problem.contains("found overlapping methods"), "{problem}");
+    }
+}
+
+#[test]
+fn overloads_are_checked_in_every_optional_form() {
+    let problem = common::diagnostics(
+        "PROTOCOL a VERSION 1,
+METHOD find (name: Text) [in (paths: LIST Text) DEFAULT in [\".\"]] RETURNS NOTHING ERRORS [| |],
+METHOD find (name: Text) RETURNS NOTHING ERRORS [| |],",
+    );
+    assert!(problem.contains("written as `find _`"), "{problem}");
+}
+
+#[test]
+fn disjoint_records_and_variant_slots_select_an_overload_by_value() {
+    let schema = schema(
+        "PROTOCOL a VERSION 1,
+TYPE Crop { width: Integer },
+TYPE Pad { width: Integer, fill: Text },
+TYPE Marker { width: Integer },
+TYPE Label { width: Text },
+TYPE ALIAS Text Option [| `item (value: Text) |],
+TYPE ALIAS Number Option [| `item (value: Integer) |],
+METHOD resize (crop: Crop) RETURNS NOTHING ERRORS [| |],
+METHOD resize (pad: Pad) RETURNS NOTHING ERRORS [| |],
+METHOD mark (number: Marker) RETURNS NOTHING ERRORS [| |],
+METHOD mark (label: Label) RETURNS NOTHING ERRORS [| |],
+METHOD select (text: Text Option) RETURNS NOTHING ERRORS [| |],
+METHOD select (number: Number Option) RETURNS NOTHING ERRORS [| |],
+METHOD tag (names: LIST Text) as (label: Text) RETURNS NOTHING ERRORS [| |],
+METHOD tag (ids: LIST Integer) as (code: Integer) RETURNS NOTHING ERRORS [| |],",
+    );
+    let calls = decode_request(
+        &schema,
+        "resize { width 10 }, resize { width 10, fill \"black\" },
+mark { width 3 }, mark { width \"wide\" },
+select (`item \"a\"), select (`item 1),
+tag [] as \"label\", tag [] as 2",
+    )
+    .unwrap();
+    assert_eq!(
+        calls.iter().map(|call| call.method).collect::<Vec<_>>(),
+        (0..8).collect::<Vec<_>>()
+    );
 }
