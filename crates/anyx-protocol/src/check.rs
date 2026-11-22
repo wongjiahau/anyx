@@ -1799,11 +1799,11 @@ impl<'a> Checker<'a> {
     }
 
     /// Simple type names use Title Case. Generic shapes can use connective
-    /// words or the nullable `?` operator around their type parameters.
+    /// words or symbol words around their type parameters.
     fn check_type_words(&mut self, name: &ast::Spanned<String>, generic: bool) {
         let fits = name.value.split(' ').all(|word| {
             if generic {
-                return word == "?"
+                return anyx::is_symbol_word(word)
                     || word.starts_with(|c: char| c.is_ascii_alphabetic())
                         && word.bytes().all(|c| c.is_ascii_alphanumeric());
             }
@@ -1815,7 +1815,7 @@ impl<'a> Checker<'a> {
         });
         if !fits {
             let expected = if generic {
-                "words of ASCII letters and digits, each starting with a letter, such as `Page of`"
+                "symbol words or ASCII letters and digits starting with a letter, such as `+` or `Page of`"
             } else {
                 "words in Title Case, such as `File Summary`"
             };

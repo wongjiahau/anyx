@@ -71,6 +71,7 @@ dependencies = [
 name = "anyx-protocol-generate"
 version = "0.1.0"
 dependencies = [
+ "anyx",
  "anyx-generator",
  "anyx-protocol",
  "serde_json",

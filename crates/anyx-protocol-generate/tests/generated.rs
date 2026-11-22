@@ -243,3 +243,21 @@ fn refined_types_are_generated_with_checked_constructors() {
         &anyx_protocol_generate::typescript(&schema).unwrap(),
     );
 }
+
+#[test]
+fn generic_symbol_words_generate_identifiers() {
+    let schema = Schema::parse(
+        "PROTOCOL p VERSION 1,
+        TYPE ALIAS (Item: TYPE) ++: { item: Item },
+        METHOD f (wrapped: Text++) RETURNS NOTHING ERRORS [| |],",
+    )
+    .unwrap();
+    let rust = anyx_protocol_generate::rust(&schema).unwrap();
+    let rust = anyx_protocol_generate::format_rust(&rust).unwrap();
+    assert!(rust.contains("pub struct Symbol2b2b<Item>"));
+    assert!(rust.contains("Symbol2b2b<String>"));
+
+    let typescript = anyx_protocol_generate::typescript(&schema).unwrap();
+    assert!(typescript.contains("export interface Symbol2b2b<Item>"));
+    assert!(typescript.contains("Symbol2b2b<string>"));
+}
