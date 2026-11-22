@@ -318,7 +318,8 @@ fn read_arguments(
             }
             let value = crate::request::decode(schema, &parameter.r#type, argument.value)
                 .map_err(in_parameter)?;
-            if !schema.has_anonymous_record(&parameter.r#type)
+            if methods.len() == 1
+                && !schema.has_anonymous_record(&parameter.r#type)
                 && !argument
                     .stated()
                     .is_some_and(|stated| schema.fits_literal(stated, &parameter.r#type))
@@ -373,8 +374,8 @@ fn read_argument<'n>(
 }
 
 /// Which of `methods`, overloads of one shape, a call is of: the one whose
-/// parameters match the types its arguments state, allowing base types for
-/// unannotated inline refinements. Predicates are checked after selection.
+/// parameters fit its arguments. Prefer stated types and use the schema to
+/// read composite literals when their own types leave the overload open.
 fn choose(
     schema: &Schema,
     source: &str,
@@ -384,7 +385,7 @@ fn choose(
     arguments: &[Argument],
 ) -> Result<usize, Mismatch> {
     let text = &call.name.text;
-    let fits = |method: &Method, except: Option<usize>| {
+    let fits = |method: &Method, except: Option<usize>, contextual: bool| {
         method
             .shape
             .parameters
@@ -395,7 +396,15 @@ fn choose(
                 Some(index) == except
                     || match &argument.annotated {
                         Some(annotated) => annotated == &parameter.r#type,
-                        None if schema.has_anonymous_record(&parameter.r#type) => {
+                        None if schema.has_anonymous_record(&parameter.r#type)
+                            || (contextual
+                                && matches!(
+                                    argument.value,
+                                    request::Value::Braces(_)
+                                        | request::Value::Variant(_)
+                                        | request::Value::List(_)
+                                )) =>
+                        {
                             crate::request::decode(schema, &parameter.r#type, argument.value)
                                 .is_ok()
                         }
@@ -407,7 +416,7 @@ fn choose(
             })
     };
     let fitting: Vec<usize> = (0..methods.len())
-        .filter(|index| fits(methods[*index], None))
+        .filter(|index| fits(methods[*index], None, false))
         .collect();
     if let [chosen] = fitting[..] {
         return Ok(chosen);
@@ -428,13 +437,24 @@ fn choose(
             ),
         });
     }
+    // Inference can leave a composite literal's type open. Try reading it
+    // directly against each candidate's parameter type.
+    let mut structural = methods
+        .iter()
+        .enumerate()
+        .filter(|(_, method)| fits(method, None, true));
+    if let Some((index, _)) = structural.next()
+        && structural.next().is_none()
+    {
+        return Ok(index);
+    }
     let untyped = arguments
         .iter()
         .position(|argument| argument.stated().is_none());
     if let Some(index) = untyped {
         let example = methods
             .iter()
-            .find(|method| fits(method, Some(index)))
+            .find(|method| fits(method, Some(index), false))
             .unwrap_or(&methods[0]);
         return Err(Mismatch {
             span: arguments[index].span,

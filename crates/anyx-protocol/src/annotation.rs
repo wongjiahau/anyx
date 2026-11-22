@@ -248,23 +248,3 @@ fn resolve(schema: &Schema, written: &ast::Type) -> Option<Type> {
         }
     })
 }
-
-/// Whether no annotation could tell a value of `a` from one of `b`: the
-/// same type, where a type parameter stands for every type.
-pub(crate) fn overlaps(a: &Type, b: &Type) -> bool {
-    match (a, b) {
-        (Type::Refined(a, _), Type::Refined(b, _)) => overlaps(a, b),
-        (Type::Refined(a, _), b) | (b, Type::Refined(a, _)) => overlaps(a, b),
-        (Type::Parameter(_), _) | (_, Type::Parameter(_)) => true,
-        (Type::List(a), Type::List(b)) | (Type::Map(a), Type::Map(b)) => overlaps(a, b),
-        (Type::Generic(a, a_arguments), Type::Generic(b, b_arguments)) => {
-            a == b
-                && a_arguments.len() == b_arguments.len()
-                && a_arguments
-                    .iter()
-                    .zip(b_arguments)
-                    .all(|(a, b)| overlaps(a, b))
-        }
-        (a, b) => a == b,
-    }
-}

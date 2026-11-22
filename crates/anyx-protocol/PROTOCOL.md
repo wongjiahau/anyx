@@ -241,16 +241,18 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 - A method's errors are flattened: its own variants and those of each
   alias it names, in order, each once. The generated code has one error
   type for each method, holding them all.
-- **Overloads:** methods of a protocol may share a shape and differ in their
-  parameters' types, `METHOD tag (paths: LIST Text)` and `METHOD tag (ids:
-  LIST File Id)`. A call runs the one whose parameters have its
-  arguments' types; see [Annotations and
-  overloads](#annotations-and-overloads). Two methods of a shape whose
-  parameters have the same types are an error, also when they differ only
-  in what they return, since a call states only its arguments' types. (A
-  type parameter would overlap every type, should methods ever be
-  generic.) `UNDONE BY` writes the types in its call, so it names one
-  overload.
+- **Overloads:** methods may share a shape when at least one parameter
+  position accepts disjoint types, as in `METHOD scale (factor: Float)`
+  and `METHOD scale (times: Integer)`. This rule applies to every form
+  produced by omitting optional parts. `UNDONE BY` writes the parameter
+  types to name an overload.
+
+  Records are disjoint if either requires a field the other lacks, or if
+  a shared field required by either record accepts disjoint types. Unions
+  are disjoint if every pair of members is disjoint. Two nullable types
+  share `` `null ``. Two lists share `[]`, and two maps share `{}`,
+  regardless of their element types. Refinements are compared by their
+  base types. Rename one method if its arguments can also fit another.
 - A parameter can't be named `kind`, which JSON uses for a variant's name.
 
 ### Refinements
@@ -892,8 +894,8 @@ Anything else has no type of its own: `[]`, `{}`, a value of a generic
 type, and a record or variant that several types fit. A `Bytes` and an
 `Instant` are written like a string, so their own type is never theirs.
 
-**An argument of a call must have its parameter's type, of its own or by
-an annotation**, even when the method has no overloads:
+Use an annotation when an argument needs to state a type its spelling
+leaves open:
 
 ```anyx
 read (File Id "abc"),
@@ -903,21 +905,17 @@ tag ([] AS: LIST Text),
 
 Without it, the request is `INVALID REQUEST` and none of its calls run:
 "in `content` of `upload _`: `"TVRoZA=="` has the type Text of its own, not `Bytes`;
-annotate it, as in `upload ("TVRoZA==" AS: Bytes)`". So adding an overload never
-breaks a call that worked: every call already states the types it depends
-on. Only a whole argument is annotated; a value inside one is read by the
+annotate it, as in `upload ("TVRoZA==" AS: Bytes)`". Only a whole argument is annotated; a value inside one is read by the
 type around it, so `AS` inside a value is an error. The schema's
 `EXAMPLES` are calls, so they follow these rules too; a `DEFAULT` is read as
 an entry of its field.
 
-A call of a shape with overloads runs the one whose parameters have exactly
-its arguments' types. When none has, or an argument has no type of its own,
-the request is `INVALID REQUEST`, and the message lists the overloads by
-their typed shapes: "in `tag _`: `[]` has no type of its own, so no
-overload of `tag _` can be chosen by it; annotate it with the type of the
-one to call, as in `tag ([] AS: LIST Text)`; the overloads are `tag
-(names: LIST Text)`, `tag (ids: LIST Integer)`". Since two overloads
-can't have the same parameter types, no call fits two.
+A call of a shape with overloads selects the one its arguments fit.
+A record, variant, or collection can be read against the overload's parameter type
+when its type cannot be inferred from the schema alone. An annotation
+can still state the type of a value whose spelling leaves it open, such
+as `upload ("TVRoZA==" AS Bytes)`. When no overload fits, the invalid
+request diagnostic lists the overloads by their typed shapes.
 
 `encode_request`, and so the generated clients, annotate each argument
 whose value as written doesn't show its parameter's type, so their callers

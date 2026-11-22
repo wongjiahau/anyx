@@ -29,7 +29,6 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
             METHOD handle (value: Text) RETURNS (handled: Text) ERRORS [| |],
             METHOD handle (value: Integer) RETURNS (handled: Text) ERRORS [| |],
             METHOD handle (value: LIST Text) RETURNS (handled: Text) ERRORS [| |],
-            METHOD handle (value: LIST Integer) RETURNS (handled: Text) ERRORS [| |],
             METHOD envelope (value: Envelope) RETURNS (value: Envelope) ERRORS [| |],
             METHOD mapping (value: MAP Text) RETURNS (value: MAP Text) ERRORS [| |],
             METHOD message (value: Message) RETURNS (value: Message) ERRORS [| |],
@@ -629,4 +628,31 @@ fn completion_suggests_opened_methods_and_qualifies_collisions() {
             .iter()
             .any(|item| item.insert_text == "other / text")
     );
+}
+
+#[test]
+fn scoped_overloads_resolve_variants_with_disjoint_slots() {
+    let (mut interpreter, _) = interpreter();
+    let schema = Schema::parse(
+        "PROTOCOL example VERSION 1,
+TYPE ALIAS Label [| `item (value: Text) |],
+TYPE ALIAS Count [| `item (value: Integer) |],
+METHOD use (label: Label) RETURNS (value: Label) ERRORS [| |],
+METHOD use (count: Count) RETURNS (value: Count) ERRORS [| |],",
+    )
+    .unwrap();
+    interpreter.register("choice", Identity(schema)).unwrap();
+    for (request, value) in [
+        (r#"choice / use (`item "a")"#, Value::Text("a".into())),
+        ("choice / use (`item 1)", Value::Integer(1)),
+    ] {
+        let result = interpreter.execute(request).unwrap();
+        assert_eq!(
+            result.values,
+            [Value::Variant {
+                shape: "item _".into(),
+                arguments: vec![value],
+            }]
+        );
+    }
 }

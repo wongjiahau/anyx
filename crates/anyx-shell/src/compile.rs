@@ -318,7 +318,7 @@ impl Compiler<'_> {
             .collect::<Result<Vec<_>, _>>();
         let arguments = match arguments {
             Ok(arguments) => arguments,
-            Err(error) if self.opened.is_empty() => return Err(error),
+            Err(error) if self.opened.is_empty() && methods.len() == 1 => return Err(error),
             Err(error) => {
                 let mut contextual = methods.iter().filter_map(|(method, form, written)| {
                     self.check_parameters(schema, &call.arguments, &written.parameters)

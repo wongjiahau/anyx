@@ -189,7 +189,7 @@ fn overloads(schema: &Schema) -> String {
         })
         .collect();
     format!(
-        "\nSome methods share a shape, and differ in their parameters' types. A call\nruns the one whose parameters have its arguments' types, so annotate an\nargument whose value doesn't show its type (see Values):\n\n{lines}"
+        "\nSome methods share a shape. Each call selects the overload its arguments\nfit. One parameter position accepts disjoint types for each pair:\n\n{lines}"
     )
 }
 
