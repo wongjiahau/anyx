@@ -131,7 +131,9 @@ fn details_and_any_match() {
     let directory = tree();
     let details = answer(directory.path(), r#"details of "lib""#);
     assert!(
-        details.starts_with("RETURNS [{ path \"src/lib.rs\", kind: `file, size 14, modified \""),
+        details.starts_with(
+            "RETURNS [{ path \"src/lib.rs\", kind: `file, size 14 bytes, modified at \""
+        ),
         "{details}"
     );
     assert_eq!(

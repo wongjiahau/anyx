@@ -46,11 +46,11 @@ the file.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `TYPE ALIAS Page of (Item: TYPE): { items: LIST Item }`
+  `IntoValue` and `FromValue` bound on them: `TYPE ALIAS Page of (Item: TYPE): { items (LIST Item) }`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
-  is `PageOf<Order>`. `TYPE ALIAS (Item: TYPE) history: { items: LIST Item }` is `History<Item>`,
-  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys: LIST Key, values: LIST Value }` is
+  is `PageOf<Order>`. `TYPE ALIAS (Item: TYPE) history: { items (LIST Item) }` is `History<Item>`,
+  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (LIST Key), values (LIST Value) }` is
   `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left: TYPE) or (Right: TYPE) [| … |]` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
   `page (Item: TYPE)`, would get the same name, so generating either

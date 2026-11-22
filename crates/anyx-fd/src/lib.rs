@@ -669,7 +669,7 @@ impl Found {
                     },
                 ),
                 (
-                    "size".to_string(),
+                    "size bytes".to_string(),
                     Value::Integer(
                         metadata
                             .as_ref()
@@ -677,7 +677,7 @@ impl Found {
                     ),
                 ),
                 (
-                    "modified".to_string(),
+                    "modified at".to_string(),
                     Value::Instant(
                         metadata
                             .and_then(|m| m.modified().ok())

@@ -13,8 +13,8 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path: Text,
-    revision: Integer,
+    path (Text),
+    revision (Integer),
     note (Text ? ) DEFAULT note (`null),
 },
 
@@ -67,7 +67,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   (64-bit), `Float` (a finite 64-bit IEEE 754 float: `f64` in Rust,
   `number` in TypeScript), `Boolean`, `Instant` (a point in time) and
   `Duration` (a length of time), declared in the [prelude](#the-prelude);
-  `LIST: T`, `MAP: T` (text keys, each to a `T`), `{ field: T }`, `[| A, B |]`,
+  `LIST: T`, `MAP: T` (text keys, each to a `T`), `{ field (T) }`, `[| A, B |]`,
   the name of a record, named type or alias, or a use of a generic type such
   as `Page of (Order)`. A type may hold itself only through a
   `LIST` or a `MAP`, which may be empty.
@@ -88,8 +88,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   `{ "Unit": [] }`. Rust generates a newtype for one slot and a struct with
   named fields for several. TypeScript generates a branded type. A slot's type may hold the named type only
   through a `LIST` or a `MAP`. A named type can wrap a record in a slot.
-  `NAMED TYPE Quiet Hours (schedule: { start: Integer, end: Integer })`
-  is written `Quiet Hours { start 22, end 7 }`.
+  `NAMED TYPE Quiet Hours (schedule: { quiet from (start: Integer) to (end: Integer) })`
+  is written `Quiet Hours { quiet from 22 to 7 }`.
 - **`TYPE ALIAS Name: T`** names a type without making a new one:
   `TYPE ALIAS Paths: LIST Text`. Each use of `Paths` is `LIST Text`, on the
   wire, in JSON, in the guide and in generated code, so an alias and its
@@ -103,7 +103,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   the same thing, and `TYPE ALIAS` when a long type only needs a short name.
   An alias of a union of variants alone keeps its name in generated code,
   as an enum, and in the guide and messages: see below.
-  A record alias such as `TYPE ALIAS Name: { field: T, … }` keeps its name
+  A record alias such as `TYPE ALIAS Name: { field (T), … }` keeps its name
   as a generated struct or object type and fits structurally. A value writes
   each field in its declared shape, in any order. See [Records](#records).
   `DEFAULT` after a whole field makes it omittable, and says, as an entry
@@ -113,8 +113,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   entry of its field. A record can also appear directly in a type slot:
 
   ```anyx
-  TYPE ALIAS Lookup Result [| { count: Integer }, `null |],
-  METHOD search (filter: { query: Text }) RETURNS (result: Lookup Result) ERRORS [| |],
+  TYPE ALIAS Lookup Result [| { count (Integer) }, `null |],
+  METHOD search (filter: { query (Text) }) RETURNS (result: Lookup Result) ERRORS [| |],
   ```
 
   Anonymous records in generated Rust and TypeScript receive sequential names
@@ -158,7 +158,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```anyx
   # A page of a long list, and where the next one starts. (A slot at the end.)
   TYPE ALIAS Page of (Item: TYPE): {
-      items: LIST: Item,
+      items (LIST Item),
       next (Text?) DEFAULT next (`null),
   },
 
@@ -170,8 +170,7 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
 
   # A value and who vouches for it. (A slot between words.)
   TYPE ALIAS (Value: TYPE) signed by (Signer: TYPE): {
-      value: Value,
-      signer: Signer,
+      value (value: Value) signed by (signer: Signer),
   },
 
   METHOD orders RETURNS (orders: Page of (Order)) ERRORS [| |],
@@ -188,15 +187,15 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   ```
 
   A slot may also sit between words in the middle of a name,
-  `TYPE ALIAS Box of (Item: TYPE) sealed: { item: Item }`, used as `Box of (Letter) sealed`, and
+  `TYPE ALIAS Box of (Item: TYPE) sealed: { item (Item) }`, used as `Box of (Letter) sealed`, and
   a name may have several slots side by side with words around them,
-  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys: LIST Key, values: LIST Value }`.
+  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (LIST Key), values (LIST Value) }`.
 
   A type is known by its words and where its slots are, so `Page` and
   `Page of (Item: TYPE)` are two types, and both may be declared; two
   declarations of the same shape are an error. A `TYPE ALIAS` can declare
   type parameters, and
-  `PUBLIC TYPE ALIAS Page of (Item: TYPE): { items: LIST Item }` shares one. A parameter is a
+  `PUBLIC TYPE ALIAS Page of (Item: TYPE): { items (LIST Item) }` shares one. A parameter is a
   Title Case name, as a type's is, marked by the keyword `TYPE`, not a
   type, so that no type of types is needed. It is once in its declaration, used by at least one field or
   variant, and not the name of a type visible there: a type declared in its file,
@@ -211,8 +210,8 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
   Make a type generic only when it is used with different arguments, such
   as `Page of (Order)` and `Page of (File)`. If every use passes the same
   types, a plain record says the same thing more simply, and its generated
-  name reads better: `TYPE ALIAS Trashed File: { file: File Summary, trashed at: Instant }`,
-  not `TYPE ALIAS (Item: TYPE) in trash since (When: TYPE): { item: Item, when: When }` used only as
+  name reads better: `TYPE ALIAS Trashed File: { file (File Summary), trashed at (Instant) }`,
+  not `TYPE ALIAS (Item: TYPE) in trash since (When: TYPE): { item (Item), when (When) }` used only as
   `(File Summary) in trash since (Instant)`.
 - **`METHOD shape RETURNS (name: Type) ERRORS [| errors |]`**: the method's
   shape, what it returns, and the errors it may return. The returned value
@@ -353,7 +352,7 @@ one call's result is another call's argument, before anything runs.
   Depth` fits `LIST Integer`, and `Page of (Depth)` fits `Page of
   (Integer)`.
 - **A record fits a larger one** when each field it lacks has a `DEFAULT`:
-  `{ x: Integer, y: Integer }` fits `{ x: Integer, y: Integer, label (Text)
+  `{ x (Integer), y (Integer) }` fits `{ x (Integer), y (Integer), label (Text)
   DEFAULT label "" }`. A field the larger record lacks never fits, since
   the receiver would reject it.
 - **A named type fits only itself.** `File Id` doesn't fit `Text`, nor
@@ -489,19 +488,28 @@ days, seconds and milliseconds.
 ### Records
 
 A record field is a shape with words and slots. An Anyx value fills the
-slots in shape order:
+slots in shape order. For example, one field can keep the start and end
+of quiet hours together:
+
+```anyx
+TYPE ALIAS Quiet Hours { quiet from (start: Integer) to (end: Integer) },
+```
+
+Its value is `{ quiet from 22 to 7 }`.
 
 | Declared | Written | Named |
 | --- | --- | --- |
-| `path: Text` | `path "a"` | `path` |
+| `path (Text)` | `path "a"` | `path` |
 | `` (Case) case DEFAULT (`smart) case `` | `` (`any) case `` | `case` |
 | `` at least (Size?) bytes DEFAULT at least (`null) bytes `` | `at least 14 bytes` | `at least bytes` |
 | `between (start: Integer) and (end: Integer)` | `between 1 and 3` | `between` |
 | `` `(hidden: [| `hidden, `null |]) DEFAULT `null `` | `` `hidden `` | `hidden` |
 | `` `(order: Order) DEFAULT `newest first `` | `` `by name `` | `order` |
 
-- **A single-slot field keeps the shorthand.** The words name the field and
-  its slot holds a type, as in `path: Text` or `(Case) case`.
+- **Prefer parentheses around field slots.** Write `path (Text)` or
+  `(Case) case`. The shorthand `name: Type` is discouraged because it
+  suggests a key–value pair. Put words around slots where they help the
+  value read as a phrase.
 - **A multi-slot field names each slot.** Its first word names the field.
   The field's value is a named struct in Rust and an object in TypeScript
   and JSON. For example, `between 1 and 3` contributes
@@ -683,7 +691,7 @@ USE "./files.protocol.anyx",
 USE "./files/export.protocol.anyx",
 
 ## notes/common.protocol.anyx
-PUBLIC TYPE ALIAS Diagnostic: { line: Integer, message: Text },
+PUBLIC TYPE ALIAS Diagnostic: { line (Integer), message (Text) },
 PUBLIC TYPE ALIAS Common Errors [| `missing |],
 
 ## notes/files.protocol.anyx
@@ -811,7 +819,7 @@ SCHEMA,
 `SCHEMA FILES` is the other built-in call. It returns the schema itself, as
 a `LIST Schema File`: the entry file first, then each file it imports, each
 with its `path` (as the `USE` lines reach it) and its `source`. The prelude
-declares `TYPE ALIAS Schema File: { path: Text, source: Text }`. A client that
+declares the `Schema File` record alias. A client that
 checks calls itself, such as the anyx shell, loads the schema from these
 files. Both built-ins are `READ ONLY`, and neither is in a scope.
 
