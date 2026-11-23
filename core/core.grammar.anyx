@@ -1,0 +1,117 @@
+## The grammar of a minimal dependently typed core: DATA, FUNCTION, MATCH,
+## dependent function types, and macros with QUOTE and UNQUOTE.
+
+## A file is its declarations, separated by commas.
+ENTRY [ZERO OR MORE: declaration],
+
+declaration: ONE OF [
+  data,
+  function,
+  macro,
+  ## Any other call at the top is a macro use: `ENUM Color WITH [red]`.
+  ## Its arguments are handed to the macro as trees.
+  macro use: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: quoted],
+],
+
+## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`.
+data: ANYFIX CALL [
+  WORD "DATA", head,
+  WORD "RETURNS", type: expression,
+  given: OPTIONAL [WORD "GIVEN", parameters: implicit parameters],
+  WORD "WITH", constructors: SQUARE BRACKET: ZERO OR MORE: constructor,
+] FORMAT [BREAK BEFORE WORD "GIVEN", BREAK BEFORE WORD "WITH"],
+
+## `successor of (n: Natural) RETURNS Natural`.
+constructor: ANYFIX CALL [
+  head,
+  WORD "RETURNS", type: expression,
+  given: OPTIONAL [WORD "GIVEN", parameters: implicit parameters],
+] FORMAT [BREAK BEFORE WORD "RETURNS", BREAK BEFORE WORD "GIVEN"],
+
+## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS: ...`.
+function: ANYFIX CALL [
+  WORD "FUNCTION", head,
+  WORD "RETURNS", result: expression,
+  given: OPTIONAL [WORD "GIVEN", parameters: implicit parameters],
+  WORD "IS", body: expression,
+] FORMAT [BREAK BEFORE WORD "GIVEN", BREAK BEFORE WORD "IS"],
+
+## `MACRO (ENUM (name) WITH (cases)) IS: ...`. Every parameter is a tree,
+## and the body returns the tree of a declaration.
+macro: ANYFIX CALL [
+  WORD "MACRO", head: macro head,
+  WORD "IS", body: expression,
+] FORMAT [BREAK BEFORE WORD "IS"],
+
+## What is declared: a name, with a typed parameter in each slot.
+head: ONE OF [
+  with parameters: ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    ARGUMENTS: ONE OR MORE: parameter,
+  ],
+  plain: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+],
+
+## `(n: Natural)` is the call `n _` of its type.
+parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type: expression],
+
+implicit parameters: SQUARE BRACKET: ONE OR MORE: parameter,
+
+## A macro's name may hold keywords, as `ENUM _ WITH _` does, and its
+## parameters are bare names: `(name)`.
+macro head: ANYFIX CALL [
+  NAME [MATCHING REGEX "_"],
+  ARGUMENTS: ONE OR MORE: macro parameter,
+],
+
+macro parameter: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+
+expression: ONE OF [
+  ## `(n: Natural) RETURNS Vector of (item) length (n)`.
+  function type: ANYFIX CALL [parameter, WORD "RETURNS", result: expression],
+  match: ANYFIX CALL [
+    WORD "MATCH", subject: expression,
+    WORD "WITH", cases: SQUARE BRACKET: ONE OR MORE: case,
+  ],
+  ## The tree of the code, not its value.
+  quote: ANYFIX CALL [WORD "QUOTE", quoted],
+  ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
+  call: ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    ARGUMENTS: ONE OR MORE: expression,
+  ],
+  ## A name alone: a variable, a constant, `Type`.
+  name: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+  ## A hole: `(successor of _)` is a function.
+  hole: UNDERSCORE,
+  list: SQUARE BRACKET: ZERO OR MORE: expression,
+  text: STRING,
+  number: NUMBER,
+],
+
+## `WHEN successor of (k) THEN ...`.
+case: ANYFIX CALL [
+  WORD "WHEN", pattern,
+  WORD "THEN", result: expression,
+] FORMAT [BREAK BEFORE WORD "THEN"],
+
+pattern: ONE OF [
+  constructor: ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    ARGUMENTS: ONE OR MORE: pattern,
+  ],
+  ## A constructor of no arguments, or a variable.
+  name: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+],
+
+## Quoted code is any tree. `UNQUOTE` marks where a computed tree goes.
+quoted: ONE OF [
+  unquote: ANYFIX CALL [WORD "UNQUOTE", expression],
+  call: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: quoted],
+  parenthesis: PARENTHESIS: ZERO OR MORE: quoted,
+  list: SQUARE BRACKET: ZERO OR MORE: quoted,
+  braces: CURLY BRACE: ZERO OR MORE: quoted,
+  text: STRING,
+  number: NUMBER,
+  hole: UNDERSCORE,
+],
