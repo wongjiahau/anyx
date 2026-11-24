@@ -1,7 +1,7 @@
 use anyx_core::{
     kernel::{
-        Case, Declaration, Document, EvaluationError, Global, Index, Pattern, Term, convertible,
-        normalize,
+        Case, CheckingError, Declaration, Document, EvaluationError, Global, Index, Level, Neutral,
+        Pattern, Term, TypeChecker, Value, convertible, normalize, read_back,
     },
     lowering::{GlobalKind, lower_document},
     parser::parse_document,
@@ -174,5 +174,33 @@ fn reports_invalid_kernel_operations() {
     assert_eq!(
         normalize(&apply(Term::Type, vec![Term::Type]), 0),
         Err(EvaluationError::ApplyNonFunction)
+    );
+    assert_eq!(
+        normalize(
+            &Term::Match {
+                subject: Box::new(Term::Type),
+                cases: Vec::new(),
+            },
+            0,
+        ),
+        Err(EvaluationError::NoMatchingCase),
+    );
+    assert_eq!(
+        read_back(&Value::Neutral(Neutral::Local(Level(0))), 0),
+        Err(EvaluationError::UnboundLevel(Level(0))),
+    );
+    assert_eq!(
+        TypeChecker::default()
+            .with_global_type(
+                Global {
+                    name: "example".into(),
+                    kind: GlobalKind::Function,
+                },
+                &local(0),
+            )
+            .err(),
+        Some(CheckingError::Evaluation(EvaluationError::UnboundIndex(
+            Index(0)
+        ))),
     );
 }

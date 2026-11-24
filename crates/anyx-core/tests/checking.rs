@@ -552,3 +552,129 @@ fn rejects_negative_data_hidden_behind_a_transparent_function() {
         Err(DeclarationCheckingError::NonPositiveOccurrence { .. })
     ));
 }
+
+#[test]
+fn rejects_expressions_without_the_required_types() {
+    for (source, expected) in [
+        (
+            "FUNCTION example RETURNS Type IS (successor of _)",
+            CheckingError::ExpectedFunctionType,
+        ),
+        (
+            "FUNCTION example RETURNS Natural IS (successor of (Type))",
+            CheckingError::TypeMismatch,
+        ),
+        (
+            "FUNCTION example RETURNS Natural IS (MATCH (MATCH zero WITH [WHEN value THEN value]) WITH [WHEN value THEN value])",
+            CheckingError::MatchNeedsExpectedType,
+        ),
+        (
+            "FUNCTION example RETURNS Type IS []",
+            CheckingError::UnsupportedTerm,
+        ),
+    ] {
+        let source = format!("{}{source}", include_str!("fixtures/sample.anyx"));
+        assert_eq!(
+            TypeChecker::default()
+                .check_document(&kernel_document(&source))
+                .err(),
+            Some(DeclarationCheckingError::Body {
+                name: "example".into(),
+                error: expected,
+            }),
+            "{source}",
+        );
+    }
+}
+
+#[test]
+fn rejects_malformed_kernel_patterns() {
+    let mut document = kernel_document(
+        "DATA Natural RETURNS Type WITH [zero RETURNS Natural, successor of (number: Natural) RETURNS Natural],
+         FUNCTION example RETURNS Natural IS (MATCH zero WITH [WHEN successor of (number) THEN zero]),",
+    );
+    let Declaration::Function {
+        body: Term::Match { cases, .. },
+        ..
+    } = &mut document.declarations[1]
+    else {
+        panic!("expected a match in the sample function");
+    };
+    let anyx_core::kernel::Pattern::Constructor { arguments, .. } = &mut cases[0].pattern else {
+        panic!("expected a constructor pattern");
+    };
+    // Source names include argument slots, so an arity mismatch requires a kernel term.
+    arguments.clear();
+    assert_eq!(
+        TypeChecker::default().check_document(&document).err(),
+        Some(DeclarationCheckingError::Body {
+            name: "example".into(),
+            error: CheckingError::WrongPatternArgumentCount {
+                constructor: "successor of _".into(),
+                expected: 1,
+                actual: 0,
+            },
+        }),
+    );
+}
+
+#[test]
+fn rejects_duplicate_kernel_declarations_and_unbound_references() {
+    let mut document = kernel_document("FUNCTION example RETURNS Type IS Type");
+    document.declarations.push(document.declarations[0].clone());
+    let checker = TypeChecker::default();
+    assert_eq!(
+        checker.clone().check_document(&document).err(),
+        Some(DeclarationCheckingError::DuplicateGlobal("example".into())),
+    );
+    assert_eq!(
+        checker.synthesize(&Term::Local(Index(0))),
+        Err(CheckingError::UnboundLocal(Index(0))),
+    );
+    let missing = anyx_core::kernel::Global {
+        name: "missing".into(),
+        kind: anyx_core::lowering::GlobalKind::Function,
+    };
+    assert_eq!(
+        checker.synthesize(&Term::Global(missing.clone())),
+        Err(CheckingError::UnknownGlobal(missing)),
+    );
+}
+
+#[test]
+fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
+    for (declaration, highlighted, diagnostic) in [
+        (
+            "FUNCTION example RETURNS zero IS zero",
+            "example RETURNS zero",
+            "signature of `example`",
+        ),
+        (
+            "FUNCTION example RETURNS Natural IS Type",
+            "Type",
+            "body of `example`",
+        ),
+        (
+            "FUNCTION example RETURNS Natural IS example",
+            "example",
+            "cannot establish structural termination",
+        ),
+    ] {
+        let source =
+            format!("DATA Natural RETURNS Type WITH [zero RETURNS Natural],\n{declaration}");
+        let parsed = parse_document(&source);
+        assert!(parsed.syntax_errors.is_empty());
+        let syntax = parsed.document.unwrap();
+        let error = TypeChecker::default()
+            .check_document(&kernel_document(&source))
+            .err()
+            .expect("expected the declaration to fail checking");
+        let span = error.span(&syntax);
+        assert_eq!(&source[span.start..span.end], highlighted);
+        assert_eq!(
+            span.start,
+            source.find(declaration).unwrap() + declaration.find(highlighted).unwrap()
+        );
+        assert!(error.to_string().starts_with(diagnostic), "{error}");
+    }
+}

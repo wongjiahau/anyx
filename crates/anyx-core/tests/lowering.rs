@@ -144,3 +144,39 @@ fn rejects_a_bare_hole_and_a_pattern_binding_outside_its_case() {
     .unwrap_err();
     assert_eq!(error.message, "unknown name `first`");
 }
+
+#[test]
+fn rejects_invalid_names_at_the_offending_token() {
+    for (source, token, message) in [
+        (
+            "FUNCTION example RETURNS Type IS Type, FUNCTION example RETURNS Type IS Type",
+            "example",
+            "duplicate declaration of `example`",
+        ),
+        (
+            "FUNCTION choose (value: Type) and (value: Type) RETURNS Type IS Type",
+            "value",
+            "duplicate binding of `value`",
+        ),
+        (
+            "FUNCTION Type RETURNS Type IS Type",
+            "Type",
+            "`Type` is reserved",
+        ),
+        (
+            "FUNCTION example RETURNS Type IS (MATCH Type WITH [WHEN missing (field) THEN field])",
+            "missing",
+            "unknown constructor `missing _`",
+        ),
+    ] {
+        let error = lower(source).unwrap_err();
+        assert_eq!(error.message, message);
+        let start = if message.starts_with("duplicate") {
+            source.rfind(token).unwrap()
+        } else {
+            source.find(token).unwrap()
+        };
+        assert_eq!(error.span.start, start);
+        assert_eq!(&source[error.span.start..error.span.end], token);
+    }
+}

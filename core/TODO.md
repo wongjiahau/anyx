@@ -102,8 +102,9 @@ inference. Macros and effects come later.
     - Locate checking errors at the enclosing signature or body, and termination errors at the first implicated head, because the generated tree already records these spans.
     - Use `anyx-core FILE [--evaluate EXPRESSION --type TYPE]` because the expression and its expected type can be supplied explicitly and decoded with the existing grammar.
     - Print the normalized kernel term because the core has no surface syntax for every normal form.
-14. Tests: the sample declarations as passing cases, and a failing case for
+14. Tests: the sample declarations as passing cases, and a failing case for (done)
     each check.
+    - Run the sample through the CLI and exercise rejections in the existing test suites because each test can then assert the error at the layer that reports it.
 
 ## Later
 
