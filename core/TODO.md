@@ -15,12 +15,22 @@ inference. Macros and effects come later.
 
 ## Front end
 
-3. Turn the generated tree into core terms, consuming the tree as it is.
-   - Name resolution: variables, functions and constructors.
-   - Holes as functions: decide how far a hole's function reaches (the
-     nearest parentheses?).
-   - Parameter order: decide whether a name's parameters may come in any
-     order without cycles, as in `(x: a) equals (y: a) in (a: Type)`.
+3. Turn the generated tree into core terms, consuming the tree as it is. (done)
+   - Resolve exact call names in one file-wide namespace and resolve locals
+     lexically. This lets declarations refer to one another in any order.
+   - Reject duplicate names in the same scope and allow nested bindings to
+     shadow outer ones. Each scope has one meaning for each name.
+   - Reserve `Type` so it always denotes the universe.
+   - Give constructors their own explicit parameters so any arguments to the
+     data type are written in the constructor's signature.
+   - In patterns, resolve a bare constructor name to that constructor and
+     bind other bare names within the case. This needs no type information.
+   - Abstract a call's direct holes from left to right and reject holes outside
+     calls. The generated tree retains call nesting and argument order.
+   - Resolve parameter annotations in written order, with earlier parameters
+     in scope. This makes dependencies visible and rules out cycles.
+   - Keep resolved binding identities in the lowered tree so item 4 can
+     choose the kernel's indexing and evaluation representation.
 
 ## Kernel
 
