@@ -7,7 +7,7 @@ inference. Macros and effects come later.
 
 ## Syntax
 
-1. Remove `MACRO`, `QUOTE`, `UNQUOTE`, the macro-use catch-all and `GIVEN`
+1. Remove `MACRO`, `QUOTE`, `UNQUOTE`, the macro-use catch-all and `GIVEN` (done)
    from `core.grammar.anyx`. That also removes both generator warnings.
 2. Create a `crates/anyx-core` crate whose parser is generated from that
    grammar, as the other crates do.
