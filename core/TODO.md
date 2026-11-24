@@ -106,10 +106,26 @@ inference. Macros and effects come later.
     each check.
     - Run the sample through the CLI and exercise rejections in the existing test suites because each test can then assert the error at the layer that reports it.
 
+## Universes
+
+15. Two levels: `Type: Kind`, replacing `Type` in `Type`.
+    - `Kind` has no type: it may only be written as the result of a
+      signature, never as a parameter's type or inside an expression.
+    - A function type is in `Kind` when either side is, otherwise in `Type`:
+      `(n: Natural) RETURNS Natural` is in `Type`, `(a: Type) RETURNS Type`
+      is in `Kind`.
+    - `DATA` keeps `RETURNS`, which must say `Type` or `Kind` (with any
+      written parameters before it, as now). The checker verifies it and
+      never infers it: a `DATA` that `RETURNS Type` may only have constructor
+      fields in `Type`, so a value in `Type` never holds a type.
+    - Tests: Girard's paradox is ruled out by rejecting a `Type` data type
+      with a field `(item: Type)`, the same data accepted as `RETURNS Kind`,
+      and a function that takes or returns a `Kind`-level type.
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword
   being a macro use.
 - Effects: monads as library types, or effect rows.
-- Universe levels, and whether `MATCH` stays in the core or becomes
-  recursors.
+- More universe levels, only if two prove too few, and whether `MATCH`
+  stays in the core or becomes recursors.
