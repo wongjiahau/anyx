@@ -34,8 +34,14 @@ inference. Macros and effects come later.
 
 ## Kernel
 
-4. Term representation: de Bruijn indices for terms, separate values for
+4. Term representation: de Bruijn indices for terms, separate values for (done)
    evaluation.
+   - Convert resolved binding identities in a separate pass so syntax and name resolution keep their existing interface.
+   - Count indices from the innermost binder and value levels from the outermost so local values stay stable when a scope grows.
+   - Keep declaration parameters in written order and place pattern binders into scope left to right so each index has a predictable meaning.
+   - Drop local binder names in kernel terms because indices carry their identity, and retain exact global names for lookup.
+   - Give function values closures over ordered environments and represent blocked eliminations as neutral values so evaluation can retain their inputs.
+   - Carry match and literal forms through to the kernel so conversion preserves the lowered tree.
 5. Evaluation, read-back and conversion checking, by normalisation by
    evaluation.
 6. Bidirectional checking of `Type`, function types, holes, calls and names.
