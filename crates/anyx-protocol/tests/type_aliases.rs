@@ -1,4 +1,4 @@
-//! Type aliases: `TYPE ALIAS Paths: LIST Text` names a type without making
+//! Type aliases: `TYPE ALIAS Paths ⁽LIST Text` names a type without making
 //! a new one, so each use of the alias is the type it stands for.
 
 mod common;
@@ -10,12 +10,12 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 fn an_alias_is_the_type_it_stands_for() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Page of (Item: TYPE): { items (items: LIST Item) },
-        TYPE ALIAS Payment: { amount (amount: Integer) },
+        TYPE ALIAS Page of (Item ⁽TYPE) ⁽{ items (items ⁽LIST Item) },
+        TYPE ALIAS Payment ⁽{ amount (amount ⁽Integer) },
         # Many paths.
-        TYPE ALIAS Paths: LIST Text,
-        TYPE ALIAS Payments: Page of (Payment),
-        METHOD list (paths: Paths) RETURNS (payments: Payments) ERRORS [| |],",
+        TYPE ALIAS Paths ⁽LIST Text,
+        TYPE ALIAS Payments ⁽Page of (Payment),
+        METHOD list (paths ⁽Paths) RETURNS (payments ⁽Payments) ERRORS [| |],",
     );
     let list = schema.method("list _").unwrap();
     assert_eq!(
@@ -39,12 +39,12 @@ fn an_alias_is_the_type_it_stands_for() {
 fn a_generic_alias_puts_its_arguments_in_place_of_its_parameters() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) Pair: LIST Item,
-        TYPE ALIAS Box of (Item: TYPE): { pairs (pairs: (Item) Pair) },
-        TYPE ALIAS Entry from (Key: TYPE) to (Value: TYPE): { key (key: Key), value (value: Value) },
-        TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): LIST: Entry from (Key) to (Value),
-        METHOD a (x: (Integer) Pair) RETURNS (y: Table from (Text) to (Integer)) ERRORS [| |],
-        METHOD b (x: Box of (Text)) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS (Item ⁽TYPE) Pair ⁽LIST Item,
+        TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ pairs (pairs ⁽(Item) Pair) },
+        TYPE ALIAS Entry from (Key ⁽TYPE) to (Value ⁽TYPE) ⁽{ key (key ⁽Key), value (value ⁽Value) },
+        TYPE ALIAS Table from (Key ⁽TYPE) to (Value ⁽TYPE) ⁽LIST ⁽Entry from (Key) to (Value),
+        METHOD a (x ⁽(Integer) Pair) RETURNS (y ⁽Table from (Text) to (Integer)) ERRORS [| |],
+        METHOD b (x ⁽Box of (Text)) RETURNS NOTHING ERRORS [| |],",
     );
     let a = schema.method("a _").unwrap();
     assert_eq!(
@@ -68,9 +68,9 @@ fn a_generic_alias_puts_its_arguments_in_place_of_its_parameters() {
 fn an_alias_may_be_used_before_it_is_declared() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        METHOD a (x: Names) RETURNS NOTHING ERRORS [| |],
-        TYPE ALIAS Names: LIST Name,
-        TYPE ALIAS Name: Text,",
+        METHOD a (x ⁽Names) RETURNS NOTHING ERRORS [| |],
+        TYPE ALIAS Names ⁽LIST Name,
+        TYPE ALIAS Name ⁽Text,",
     );
     assert_eq!(
         schema.method("a _").unwrap().shape.parameters[0].r#type,
@@ -87,11 +87,11 @@ fn a_public_alias_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC TYPE ALIAS Paths: LIST Text, TYPE ALIAS Secret: Text,",
+            "PUBLIC TYPE ALIAS Paths ⁽LIST Text, TYPE ALIAS Secret ⁽Text,",
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (paths: Paths) RETURNS (text: Text) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", METHOD read (paths ⁽Paths) RETURNS (text ⁽Text) ERRORS [| |],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -104,7 +104,7 @@ fn a_public_alias_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", METHOD read (id ⁽Secret) RETURNS (text ⁽Text) ERRORS [| |],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -123,31 +123,31 @@ fn mistakes_in_type_aliases_are_diagnosed() {
     let cases = [
         (
             "an alias that leads back to itself, directly or through another",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Tree: LIST Tree, TYPE ALIAS Alpha: Beta, TYPE ALIAS Beta: LIST Alpha,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Tree ⁽LIST Tree, TYPE ALIAS Alpha ⁽Beta, TYPE ALIAS Beta ⁽LIST Alpha,",
         ),
         (
             "an alias with the name of another type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Row: Text, TYPE ALIAS Paths: Text, TYPE ALIAS Paths: Integer,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Row ⁽{ a (a ⁽Text) }, TYPE ALIAS Row ⁽Text, TYPE ALIAS Paths ⁽Text, TYPE ALIAS Paths ⁽Integer,",
         ),
         (
             "an alias without its type, or with a type in another slot",
-            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) Pair, TYPE ALIAS Pair of (Text): LIST Text,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Item ⁽TYPE) Pair, TYPE ALIAS Pair of (Text) ⁽LIST Text,",
         ),
         (
             "an alias over an unknown type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Paths: LIST Path,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Paths ⁽LIST Path,",
         ),
         (
             "a parameter unused, twice, lowercase, or named like a type",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS (Item: TYPE) Pair: LIST Text, TYPE ALIAS (Item: TYPE) with (Item: TYPE): LIST Item, TYPE ALIAS (item: TYPE) Box: LIST item, TYPE ALIAS (Row: TYPE) Rows: LIST Row,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Row ⁽{ a (a ⁽Text) }, TYPE ALIAS (Item ⁽TYPE) Pair ⁽LIST Text, TYPE ALIAS (Item ⁽TYPE) with (Item ⁽TYPE) ⁽LIST Item, TYPE ALIAS (item ⁽TYPE) Box ⁽LIST item, TYPE ALIAS (Row ⁽TYPE) Rows ⁽LIST Row,",
         ),
         (
             "a name not in Title Case",
-            "PROTOCOL a VERSION 1, TYPE ALIAS paths: LIST Text,",
+            "PROTOCOL a VERSION 1, TYPE ALIAS paths ⁽LIST Text,",
         ),
         (
             "a use with the wrong number of arguments",
-            "PROTOCOL a VERSION 1, TYPE ALIAS (Item: TYPE) Pair: LIST Item, METHOD a (x: Pair) RETURNS NOTHING ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS (Item ⁽TYPE) Pair ⁽LIST Item, METHOD a (x ⁽Pair) RETURNS NOTHING ERRORS [| |],",
         ),
     ];
     let rendered: Vec<String> = cases

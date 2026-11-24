@@ -526,7 +526,7 @@ mod tests {
             }
         }
         let mut shell = Interpreter::new();
-        shell.register("math", Math(Schema::parse("PROTOCOL math VERSION 1, METHOD plus (a: Integer) with (b: Integer) RETURNS (value: Integer) ERRORS [| |], METHOD number (seed: Integer) RETURNS (value: Integer) ERRORS [| |]").unwrap())).unwrap();
+        shell.register("math", Math(Schema::parse("PROTOCOL math VERSION 1, METHOD plus (a ⁽Integer) with (b ⁽Integer) RETURNS (value ⁽Integer) ERRORS [| |], METHOD number (seed ⁽Integer) RETURNS (value ⁽Integer) ERRORS [| |]").unwrap())).unwrap();
         let mut editor = Editor::default();
         type_text(&mut editor, &shell, "math / pl");
         press(&mut editor, &shell, KeyCode::Enter);

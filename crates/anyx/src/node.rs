@@ -27,7 +27,7 @@ pub enum NodeKind {
     Brackets(Vec<Node>),
     Braces(Vec<Node>),
     CustomBracket(CustomBracket, Vec<Node>),
-    /// The bare word `_`, left over when no `.` or `:` consumed it. It is a
+    /// The bare word `_`, left over when no `₎` or `⁽` consumed it. It is a
     /// placeholder in the scope of the nearest enclosing brackets, so `(_)`
     /// stays `Parens[_]`.
     Underscore,
@@ -173,7 +173,7 @@ fn holds_only_skipped(expression: &Expression) -> bool {
     matches!(expression, Expression::Run(run) if !run.items.is_empty() && run.is_empty())
 }
 
-/// A run's items before they become a node. `.` and `:` fill a slot at this
+/// A run's items before they become a node. `₎` and `⁽` fill a slot at this
 /// level, where a bare `_` is still a top-level item of the run.
 struct Pieces {
     items: Vec<Piece>,
@@ -216,20 +216,20 @@ fn expression_node(expression: &Expression) -> Node {
     pieces_node(expression_pieces(expression))
 }
 
-/// `.` and `:` do not survive into the abstract view. Each hands its left
+/// `₎` and `⁽` do not survive into the abstract view. Each hands its grouped
 /// value to the run on its other side (see [`fill`]):
 ///
-/// - `x . y (z)` is `(x) y (z)` and `x . y _` is `y (x)`;
-/// - `f : x` is `f (x)` and `_ f : x` is `(x) f`.
+/// - `x₎ y (z)` is `(x) y (z)` and `x₎ y _` is `y (x)`;
+/// - `f ⁽x` is `f (x)` and `_ f ⁽x` is `(x) f`.
 fn expression_pieces(expression: &Expression) -> Pieces {
     match expression {
         Expression::Run(run) => run_pieces(run),
-        Expression::Dot(binary) => fill(
+        Expression::LeftGroup(binary) => fill(
             argument(expression_pieces(&binary.left)),
             expression_pieces(&binary.right),
             Side::Front,
         ),
-        Expression::Colon(binary) => fill(
+        Expression::RightGroup(binary) => fill(
             argument(expression_pieces(&binary.right)),
             expression_pieces(&binary.left),
             Side::Back,

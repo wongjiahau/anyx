@@ -4,7 +4,7 @@ use crate::string::{StringKind, StringLiteral};
 use crate::syntax::{CustomBracket, Token, TokenKind, Trivia, TriviaKind};
 
 /// The eleven characters that never appear inside a word.
-pub(crate) const SPECIAL: [char; 11] = [',', ':', '.', '(', ')', '[', ']', '{', '}', '#', '"'];
+pub(crate) const SPECIAL: [char; 11] = [',', '⁽', '₎', '(', ')', '[', ']', '{', '}', '#', '"'];
 
 fn is_name_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
@@ -20,9 +20,8 @@ fn is_alnum(c: char) -> bool {
 }
 
 /// Whether a word token is made of symbol characters (`<=`, `+`), not a name.
-/// Runs of repeated dots or colons are also symbol words.
 pub fn is_symbol_word(text: &str) -> bool {
-    text.chars().next().is_some_and(is_symbol) || text.starts_with("..") || text.starts_with("::")
+    text.chars().next().is_some_and(is_symbol)
 }
 
 /// A name word in all caps: at least one uppercase letter and no lowercase
@@ -129,12 +128,8 @@ impl Lexer<'_> {
                 self.bump();
                 match c {
                     ',' => TokenKind::Comma,
-                    '.' | ':' if self.peek() == Some(c) => {
-                        self.bump_while(|next| next == c);
-                        TokenKind::Word
-                    }
-                    ':' => TokenKind::Colon,
-                    '.' => TokenKind::Dot,
+                    '⁽' => TokenKind::RightGroup,
+                    '₎' => TokenKind::LeftGroup,
                     '(' => self.open_bracket(start, TokenKind::OpenParen),
                     ')' => TokenKind::CloseParen,
                     '[' => self.open_bracket(start, TokenKind::OpenBracket),

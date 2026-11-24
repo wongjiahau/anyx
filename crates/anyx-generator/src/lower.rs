@@ -179,7 +179,7 @@ impl Lowerer<'_> {
             ast::Pattern::Repetition(ast::Repetition::OptionalGroup { span, .. }) => {
                 self.error(
                     *span,
-                    "found `OPTIONAL [...]` outside the parts of a call; expected a group of parts only among the parts of an `ANYFIX CALL [...]`, since only a call has name words to leave out together; write `OPTIONAL: pattern` for one element that may be missing",
+                    "found `OPTIONAL [...]` outside the parts of a call; expected a group of parts only among the parts of an `ANYFIX CALL [...]`, since only a call has name words to leave out together; write `OPTIONAL ⁽pattern` for one element that may be missing",
                 );
                 Pattern::String(StringPattern::any())
             }
@@ -289,8 +289,8 @@ impl Lowerer<'_> {
             return Pattern::Reference(index);
         }
         let fix = match closest(name, &self.rule_names) {
-            Some(close) => format!("write `{close}`, or define `{name}: ...`"),
-            None => format!("define `{name}: ...`"),
+            Some(close) => format!("write `{close}`, or define `{name} ⁽...`"),
+            None => format!("define `{name} ⁽...`"),
         };
         self.error(
             reference.span,
@@ -308,7 +308,7 @@ impl Lowerer<'_> {
             if element.repetition != Repetition::One {
                 self.error(
                     element.span,
-                    "found a repetition as a choice of `ONE OF`; expected each choice to match exactly one node; repeat the whole `ONE OF` instead, as in `ZERO OR MORE: ONE OF [...]`",
+                    "found a repetition as a choice of `ONE OF`; expected each choice to match exactly one node; repeat the whole `ONE OF` instead, as in `ZERO OR MORE ⁽ONE OF [...]`",
                 );
             }
             let name = match element.name.or_else(|| self.default_name(&element.pattern)) {
@@ -319,7 +319,7 @@ impl Lowerer<'_> {
                         self.error(
                             element.span,
                             format!(
-                                "found the choice `{written}` with no name; expected `name: pattern`, since only a rule reference or a `WORD` of letters names itself; add a name, as in `name: {written}`"
+                                "found the choice `{written}` with no name; expected `name ⁽pattern`, since only a rule reference or a `WORD` of letters names itself; add a name, as in `name ⁽{written}`"
                             ),
                         );
                     }
@@ -331,7 +331,7 @@ impl Lowerer<'_> {
                 self.error(
                     element.span,
                     format!(
-                        "found a second choice named `{name}`; expected each choice of a `ONE OF` to have its own name; name this one, as in `other {name}: ...`"
+                        "found a second choice named `{name}`; expected each choice of a `ONE OF` to have its own name; name this one, as in `other {name} ⁽...`"
                     ),
                 );
                 continue;
@@ -478,7 +478,7 @@ impl Lowerer<'_> {
                     self.error(
                         element.span,
                         format!(
-                            "found `{written}` with no name; expected `name: pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name: {written}`"
+                            "found `{written}` with no name; expected `name ⁽pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name ⁽{written}`"
                         ),
                     );
                 }
@@ -496,7 +496,7 @@ impl Lowerer<'_> {
                 self.error(
                     element.span,
                     format!(
-                        "found a second field named `{name}`; expected each field to have its own name; name this one, as in `other {name}: ...`"
+                        "found a second field named `{name}`; expected each field to have its own name; name this one, as in `other {name} ⁽...`"
                     ),
                 );
             }
@@ -787,7 +787,7 @@ impl Lowerer<'_> {
             if element.repetition != Repetition::One {
                 self.error(
                     element.span,
-                    "found a repetition as a choice of `ONE OF`; expected each choice to be one part, a `WORD` or a slot; make the whole `ONE OF` optional instead, as in `OPTIONAL: ONE OF [...]`",
+                    "found a repetition as a choice of `ONE OF`; expected each choice to be one part, a `WORD` or a slot; make the whole `ONE OF` optional instead, as in `OPTIONAL ⁽ONE OF [...]`",
                 );
                 continue;
             }
@@ -810,7 +810,7 @@ impl Lowerer<'_> {
                         self.error(
                             element.span,
                             format!(
-                                "found the choice `{written}` with no name; expected `name: pattern`, since only a rule reference or a `WORD` of letters names itself; add a name, as in `name: {written}`"
+                                "found the choice `{written}` with no name; expected `name ⁽pattern`, since only a rule reference or a `WORD` of letters names itself; add a name, as in `name ⁽{written}`"
                             ),
                         );
                     }
@@ -822,7 +822,7 @@ impl Lowerer<'_> {
                 self.error(
                     element.span,
                     format!(
-                        "found a second choice named `{name}`; expected each choice of a `ONE OF` to have its own name; name this one, as in `other {name}: ...`"
+                        "found a second choice named `{name}`; expected each choice of a `ONE OF` to have its own name; name this one, as in `other {name} ⁽...`"
                     ),
                 );
                 continue;
@@ -881,7 +881,7 @@ impl Lowerer<'_> {
             if matches!(part.pattern, Pattern::Group(_)) && leads[0].0.is_none() {
                 self.error(
                     part.span,
-                    "found an optional group that starts with a slot; expected a `WORD` first, since that word tells whether the group is there; put the group's word first, or write the slot alone as `OPTIONAL: pattern`",
+                    "found an optional group that starts with a slot; expected a `WORD` first, since that word tells whether the group is there; put the group's word first, or write the slot alone as `OPTIONAL ⁽pattern`",
                 );
                 continue;
             }

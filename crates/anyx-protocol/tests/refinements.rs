@@ -5,16 +5,16 @@ use anyx_protocol::{
 };
 
 const SOURCE: &str = r#"PROTOCOL checked VERSION 1,
-TYPE ALIAS Revision: Integer . WHERE [1 <= _],
-TYPE ALIAS Probability: Float . WHERE [0 <= _ <= 1],
-TYPE ALIAS Score Path: Text . WHERE [_ ends with ".poentaro"],
-TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30],
-TYPE ALIAS Short Text: Text . WHERE [1 <= (_ length) <= 3],
-TYPE ALIAS Summary: { path (path: Score Path), revision (revision: Revision), limit (limit: Limit) DEFAULT limit 10 },
-METHOD write (path: Score Path) at (revision: Revision) RETURNS (revision: Revision) ERRORS [| |],
-METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS (value: Integer . WHERE [10 <= _ < 30]) ERRORS [| |],
-METHOD summary (value: Summary) RETURNS (value: Summary) ERRORS [| |],
-METHOD label (text: Short Text) RETURNS NOTHING ERRORS [| |],
+TYPE ALIAS Revision ⁽Integer₎ WHERE [1 <= _],
+TYPE ALIAS Probability ⁽Float₎ WHERE [0 <= _ <= 1],
+TYPE ALIAS Score Path ⁽Text₎ WHERE [_ ends with ".poentaro"],
+TYPE ALIAS Limit ⁽(Integer) WHERE [10 <= _ < 30],
+TYPE ALIAS Short Text ⁽Text₎ WHERE [1 <= (_ length) <= 3],
+TYPE ALIAS Summary ⁽{ path (path ⁽Score Path), revision (revision ⁽Revision), limit (limit ⁽Limit) DEFAULT limit 10 },
+METHOD write (path ⁽Score Path) at (revision ⁽Revision) RETURNS (revision ⁽Revision) ERRORS [| |],
+METHOD limit (value ⁽Integer₎ WHERE [10 <= _ < 30]) RETURNS (value ⁽Integer₎ WHERE [10 <= _ < 30]) ERRORS [| |],
+METHOD summary (value ⁽Summary) RETURNS (value ⁽Summary) ERRORS [| |],
+METHOD label (text ⁽Short Text) RETURNS NOTHING ERRORS [| |],
 "#;
 fn schema() -> Schema {
     Schema::parse(SOURCE).unwrap()
@@ -24,7 +24,7 @@ fn schema() -> Schema {
 fn ty(source: &str, name: &str) -> Type {
     let source = source.trim_end().trim_end_matches(',');
     let probed = Schema::parse(&format!(
-        "{source}, METHOD probe (value: {name}) RETURNS NOTHING ERRORS [| |]"
+        "{source}, METHOD probe (value ⁽{name}) RETURNS NOTHING ERRORS [| |]"
     ))
     .unwrap();
     probed.method("probe _").unwrap().shape.parameters[0]
@@ -43,8 +43,8 @@ fn both_spellings_decode_to_the_same_refinement_and_annotations_round_trip() {
         let wire = encode_request(&schema, &calls).unwrap();
         assert_eq!(decode_request(&schema, &wire).unwrap(), calls, "{wire}");
     }
-    let a = Schema::parse("TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30]").unwrap();
-    let b = Schema::parse("TYPE ALIAS Limit: (Integer) WHERE [10 <= _ < 30]").unwrap();
+    let a = Schema::parse("TYPE ALIAS Limit ⁽Integer₎ WHERE [10 <= _ < 30]").unwrap();
+    let b = Schema::parse("TYPE ALIAS Limit ⁽(Integer) WHERE [10 <= _ < 30]").unwrap();
     assert_eq!(a.types[0].kind, b.types[0].kind);
     let formatted = anyx_protocol::format_schema(SOURCE).unwrap();
     assert_eq!(Schema::parse(&formatted).unwrap().types, schema.types);
@@ -69,7 +69,7 @@ fn failed_bound_names_value_type_predicate_argument_call_and_location() {
     ] {
         let error = decode_request(
             &schema,
-            &format!("limit ({n} AS: (Integer) WHERE [10 <= _ < 30])"),
+            &format!("limit ({n} AS ⁽(Integer) WHERE [10 <= _ < 30])"),
         )
         .unwrap_err();
         assert!(error.message.ends_with(expected), "{error}");
@@ -89,8 +89,8 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
     };
     assert_eq!(fields["limit"], Value::Integer(10));
     for source in [
-        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE ALIAS Row: { xs (xs: LIST Positive) }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
-        "TYPE ALIAS Positive: Integer . WHERE [0 < _], TYPE ALIAS Row: { xs (xs: MAP Positive) }, METHOD read (r: Row) RETURNS NOTHING ERRORS [| |]",
+        "TYPE ALIAS Positive ⁽Integer₎ WHERE [0 < _], TYPE ALIAS Row ⁽{ xs (xs ⁽LIST Positive) }, METHOD read (r ⁽Row) RETURNS NOTHING ERRORS [| |]",
+        "TYPE ALIAS Positive ⁽Integer₎ WHERE [0 < _], TYPE ALIAS Row ⁽{ xs (xs ⁽MAP Positive) }, METHOD read (r ⁽Row) RETURNS NOTHING ERRORS [| |]",
     ] {
         let s = Schema::parse(source).unwrap();
         let wire = if source.contains("LIST") {
@@ -101,7 +101,7 @@ fn nested_fields_lists_maps_and_defaults_enforce_refinements() {
         assert!(decode_request(&s, wire).is_err());
     }
     let invalid = Schema::parse(
-        "TYPE ALIAS Limit: Integer . WHERE [10 <= _ < 30], TYPE ALIAS Row: { limit (limit: Limit) DEFAULT limit 30 }",
+        "TYPE ALIAS Limit ⁽Integer₎ WHERE [10 <= _ < 30], TYPE ALIAS Row ⁽{ limit (limit ⁽Limit) DEFAULT limit 30 }",
     )
     .unwrap_err();
     assert!(
@@ -147,20 +147,20 @@ fn response_and_outgoing_request_values_are_checked() {
 #[test]
 fn predicates_are_typed_linear_and_do_not_guess_operator_precedence() {
     for body in [
-        "Integer . WHERE [_ ends with \"x\"]",
-        "Text . WHERE [0 < _]",
-        "Integer . WHERE [0 < _ <= 1 + 2]",
-        "Integer . WHERE [(_ * _) < 20]",
-        "Integer . WHERE [1 < 2]",
-        "Integer . WHERE [0.5 < _]",
-        "Integer . WHERE [(_ length) < 4]",
+        "Integer₎ WHERE [_ ends with \"x\"]",
+        "Text₎ WHERE [0 < _]",
+        "Integer₎ WHERE [0 < _ <= 1 + 2]",
+        "Integer₎ WHERE [(_ * _) < 20]",
+        "Integer₎ WHERE [1 < 2]",
+        "Integer₎ WHERE [0.5 < _]",
+        "Integer₎ WHERE [(_ length) < 4]",
     ] {
         assert!(
-            Schema::parse(&format!("TYPE ALIAS Bad: {body}")).is_err(),
+            Schema::parse(&format!("TYPE ALIAS Bad ⁽{body}")).is_err(),
             "{body}"
         );
     }
-    let s_source = "TYPE ALIAS Linear: Integer . WHERE [(_ + 1) <= 30, 0 < (_ * 2)], TYPE ALIAS Large: Integer . WHERE [9007199254740992 < _], TYPE ALIAS Ends: Text . WHERE [_ starts with \"a\", _ contains \"b\", _ ends with \"c\"]";
+    let s_source = "TYPE ALIAS Linear ⁽Integer₎ WHERE [(_ + 1) <= 30, 0 < (_ * 2)], TYPE ALIAS Large ⁽Integer₎ WHERE [9007199254740992 < _], TYPE ALIAS Ends ⁽Text₎ WHERE [_ starts with \"a\", _ contains \"b\", _ ends with \"c\"]";
     let s = Schema::parse(s_source).unwrap();
     for n in [1, 29] {
         assert!(
@@ -279,12 +279,12 @@ fn json_preserves_primitives_and_reports_the_same_predicate_errors() {
 #[test]
 fn refined_named_types_cannot_hide_recursive_cycles() {
     for source in [
-        "TYPE ALIAS Loop: Loop . WHERE [0 < _]",
-        "TYPE ALIAS Loop: { next (next: Loop . WHERE [0 < _]) }",
+        "TYPE ALIAS Loop ⁽Loop₎ WHERE [0 < _]",
+        "TYPE ALIAS Loop ⁽{ next (next ⁽Loop₎ WHERE [0 < _]) }",
     ] {
         assert!(Schema::parse(source).is_err());
     }
-    let s_source = "TYPE ALIAS First: Second . WHERE [1 <= _], TYPE ALIAS Second: Integer";
+    let s_source = "TYPE ALIAS First ⁽Second₎ WHERE [1 <= _], TYPE ALIAS Second ⁽Integer";
     let s = Schema::parse(s_source).unwrap();
     assert!(
         anyx_protocol::refinement::validate(&s, &ty(s_source, "First"), &Value::Integer(0))
@@ -294,7 +294,7 @@ fn refined_named_types_cannot_hide_recursive_cycles() {
 
 #[test]
 fn imports_keep_predicate_diagnostic_locations_and_aliased_refinements() {
-    let library = "PUBLIC TYPE ALIAS Bad: Text . WHERE [0 < _]";
+    let library = "PUBLIC TYPE ALIAS Bad ⁽Text₎ WHERE [0 < _]";
     let errors = Schema::load("main.protocol.anyx", |path| -> Result<String, String> {
         Ok(match path {
             "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\"",
@@ -307,7 +307,7 @@ fn imports_keep_predicate_diagnostic_locations_and_aliased_refinements() {
     assert_eq!(errors[0].path, "library.protocol.anyx");
     assert_eq!(&library[errors[0].span.start..errors[0].span.end], "0 < _");
     let schema = Schema::load("main.protocol.anyx", |path| -> Result<String,String> {
-        Ok(match path { "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\", METHOD set (revision: Revision) RETURNS NOTHING ERRORS [| |]", "library.protocol.anyx" => "PUBLIC TYPE ALIAS Revision: Integer . WHERE [1 <= _]", _ => return Err(path.into()) }.into())
+        Ok(match path { "main.protocol.anyx" => "PROTOCOL main VERSION 1, USE \"library.protocol.anyx\", METHOD set (revision ⁽Revision) RETURNS NOTHING ERRORS [| |]", "library.protocol.anyx" => "PUBLIC TYPE ALIAS Revision ⁽Integer₎ WHERE [1 <= _]", _ => return Err(path.into()) }.into())
     }).unwrap();
     assert!(
         decode_request(&schema, "set 0")
@@ -319,7 +319,7 @@ fn imports_keep_predicate_diagnostic_locations_and_aliased_refinements() {
 
 #[test]
 fn inline_refinements_work_inside_generic_arguments_and_container_constraints() {
-    let schema_source = "TYPE ALIAS Box of (Item: TYPE): { value (value: Item) }, TYPE ALIAS Batch: (LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value: Box of (Integer . WHERE [10 <= _ < 30])) RETURNS NOTHING ERRORS [| |], METHOD batch (value: Batch) RETURNS NOTHING ERRORS [| |]";
+    let schema_source = "TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ value (value ⁽Item) }, TYPE ALIAS Batch ⁽(LIST Integer) WHERE [1 <= (_ length) <= 3], METHOD boxed (value ⁽Box of (Integer₎ WHERE [10 <= _ < 30])) RETURNS NOTHING ERRORS [| |], METHOD batch (value ⁽Batch) RETURNS NOTHING ERRORS [| |]";
     let schema = Schema::parse(schema_source).unwrap();
     let call = Call {
         method: 0,
@@ -330,13 +330,13 @@ fn inline_refinements_work_inside_generic_arguments_and_container_constraints() 
     assert!(
         decode_request(
             &schema,
-            "boxed ({ value 30 } AS: Box of (Integer . WHERE [10 <= _ < 30]))"
+            "boxed ({ value 30 } AS ⁽Box of (Integer₎ WHERE [10 <= _ < 30]))"
         )
         .is_err()
     );
     assert!(decode_request(&schema, "batch [1, 2]").is_ok());
     assert!(decode_request(&schema, "batch [1, 2, 3, 4]").is_err());
-    assert!(Schema::parse("METHOD set (value: Integer . WHERE [0 < _]) RETURNS NOTHING ERRORS [| |], METHOD set (value: Integer . WHERE [_ < 10]) RETURNS NOTHING ERRORS [| |]").is_err());
+    assert!(Schema::parse("METHOD set (value ⁽Integer₎ WHERE [0 < _]) RETURNS NOTHING ERRORS [| |], METHOD set (value ⁽Integer₎ WHERE [_ < 10]) RETURNS NOTHING ERRORS [| |]").is_err());
 }
 
 #[test]
@@ -348,12 +348,12 @@ fn guide_example_satisfies_its_parameter_refinements() {
         .find(|line| line.starts_with("    write "))
         .unwrap()
         .trim();
-    decode_request(&schema, example).unwrap_or_else(|e| panic!("{example}: {e}"));
+    decode_request(&schema, example).unwrap_or_else(|e| panic!("{example} ⁽{e}"));
 }
 
 #[test]
 fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
-    let schema_source = "TYPE ALIAS Wide: Integer . WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE ALIAS Pair Of Bytes: Bytes . WHERE [(_ length) = 2], TYPE ALIAS Small Map: (MAP Integer) WHERE [(_ length) <= 1]";
+    let schema_source = "TYPE ALIAS Wide ⁽Integer₎ WHERE [0 < ((_ * 9223372036854775807) * 9223372036854775807)], TYPE ALIAS Pair Of Bytes ⁽Bytes₎ WHERE [(_ length) = 2], TYPE ALIAS Small Map ⁽(MAP Integer) WHERE [(_ length) <= 1]";
     let schema = Schema::parse(schema_source).unwrap();
     assert!(
         anyx_protocol::refinement::validate(
@@ -398,16 +398,16 @@ fn integer_overflow_fails_and_container_lengths_use_their_actual_units() {
         anyx_protocol::refinement::validate(&schema, &ty(schema_source, "Small Map"), &map)
             .is_err()
     );
-    assert!(anyx_protocol::decode_type(&schema, "Text . WHERE [0 < _]").is_err());
+    assert!(anyx_protocol::decode_type(&schema, "Text₎ WHERE [0 < _]").is_err());
 }
 
 #[test]
 fn inline_refinement_arguments_need_no_annotation() {
     let schema = Schema::parse(
         r#"
-METHOD short (value: Text . WHERE [1 <= (_ length) <= 3]) RETURNS NOTHING ERRORS [| |],
-METHOD limit (value: Integer . WHERE [10 <= _ < 30]) RETURNS NOTHING ERRORS [| |],
-METHOD many (values: LIST (Integer . WHERE [0 < _])) RETURNS NOTHING ERRORS [| |],
+METHOD short (value ⁽Text₎ WHERE [1 <= (_ length) <= 3]) RETURNS NOTHING ERRORS [| |],
+METHOD limit (value ⁽Integer₎ WHERE [10 <= _ < 30]) RETURNS NOTHING ERRORS [| |],
+METHOD many (values ⁽LIST (Integer₎ WHERE [0 < _])) RETURNS NOTHING ERRORS [| |],
 "#,
     )
     .unwrap();
@@ -433,8 +433,8 @@ METHOD many (values: LIST (Integer . WHERE [0 < _])) RETURNS NOTHING ERRORS [| |
 fn refinement_overloads_use_base_types() {
     let schema = Schema::parse(
         r#"
-METHOD use (value: Text . WHERE [1 <= (_ length)]) RETURNS NOTHING ERRORS [| |],
-METHOD use (value: Integer . WHERE [0 < _]) RETURNS NOTHING ERRORS [| |],
+METHOD use (value ⁽Text₎ WHERE [1 <= (_ length)]) RETURNS NOTHING ERRORS [| |],
+METHOD use (value ⁽Integer₎ WHERE [0 < _]) RETURNS NOTHING ERRORS [| |],
 "#,
     )
     .unwrap();

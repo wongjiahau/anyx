@@ -19,7 +19,7 @@
  *   number       `42`, `-1.5`, `1_000`, `2.5e-3`, `0xFF`
  *   string       `"…"`, `"""` raw strings, and `#` line strings
  *   comment      `##` to the end of the line
- *   delimiter    `,` `:` `.` and the brackets `( ) [ ] { }`
+ *   delimiter    `,` `⁽` `₎` and the brackets `( ) [ ] { }`
  *
  * The rules mirror the lexer in crates/anyx/src/lexer.rs and the README's
  * "Tokenization rules". Copy the file again when those change.
@@ -35,7 +35,7 @@ const nameStart = String.raw`[\p{Alphabetic}_]`
 const nameContinue = String.raw`[\p{Alphabetic}\p{N}_]`
 /** A character of a symbol word: anything but whitespace, a special
  * character, a letter, an ASCII digit or `_`. */
-const symbolCharacter = String.raw`[^\s\p{Alphabetic}0-9_,:.()\[\]{}#"]`
+const symbolCharacter = String.raw`[^\s\p{Alphabetic}0-9_,⁽₎()\[\]{}#"]`
 
 /** The tokenizer. Rules are tried in order, and the first match wins. */
 export const anyxMonarchLanguage: Monaco.languages.IMonarchLanguage = {
@@ -77,7 +77,7 @@ export const anyxMonarchLanguage: Monaco.languages.IMonarchLanguage = {
         },
       ],
       [/[()[\]{}]/, '@brackets'],
-      [/[,:.]/, 'delimiter'],
+      [/[,⁽₎]/, 'delimiter'],
       // A symbol word stops before a `-` that starts a number: `<-5` is `<`
       // then `-5`.
       [new RegExp(`(?:(?!-[0-9])${symbolCharacter})+`, 'u'), 'operator'],

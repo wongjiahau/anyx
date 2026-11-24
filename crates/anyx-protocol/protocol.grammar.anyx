@@ -4,7 +4,7 @@
 
 ## A protocol entry starts with its header; a headerless file is a library.
 ## USE explicitly includes a file and exposes its PUBLIC declarations.
-ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
+ENTRY [header ⁽OPTIONAL ⁽protocol, ZERO OR MORE ⁽definition],
 
 ## Every doc is a `#` line string, `LINE STRING`: a quoted or raw string
 ## where a doc goes is an error.
@@ -14,138 +14,138 @@ ENTRY [header: OPTIONAL: protocol, ZERO OR MORE: definition],
 ## for the built-in types of `prelude.protocol.anyx`. The schema checker lets only
 ## the prelude use it.
 
-protocol: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  WORD "PROTOCOL", name: type name,
-  WORD "VERSION", version: NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
+protocol ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  WORD "PROTOCOL", name ⁽type name,
+  WORD "VERSION", version ⁽NUMBER [INTEGER, AT LEAST 1, AT MOST 4294967295],
 ],
 
-definition: ONE OF [choice, intrinsic type, named type, type alias, errors, method, function, import],
+definition ⁽ONE OF [choice, intrinsic type, named type, type alias, errors, method, function, import],
 
-import: ANYFIX CALL [WORD "USE", path: STRING],
+import ⁽ANYFIX CALL [WORD "USE", path ⁽STRING],
 
 ## A type parameter of a generic record or alias, in a
-## slot of its name: `(Item: TYPE)`. Its name is Title Case, as a type's
+## slot of its name: `(Item ⁽TYPE)`. Its name is Title Case, as a type's
 ## is. `TYPE` is a keyword, not a type, so a type parameter never reads as
 ## the use of a generic type, and no type of types is needed.
-type parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], marker: type marker],
+type parameter ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], marker ⁽type marker],
 
-type marker: ONE OF [WORD "TYPE"],
+type marker ⁽ONE OF [WORD "TYPE"],
 
 ## A field is a shape, written in a value as it is declared, in any order
 ## among the others. Its words name it, and each slot holds a type:
 ##
-## - `path (path: Text)`, the shape `path _`, written `path "a"`;
-## - `(mode: Case) case`, written `(any) case`;
-## - `between (start: Integer) and (end: Integer)`, written `between 1 and 3`, holds a
+## - `path (path ⁽Text)`, the shape `path _`, written `path "a"`;
+## - `(mode ⁽Case) case`, written `(any) case`;
+## - `between (start ⁽Integer) and (end ⁽Integer)`, written `between 1 and 3`, holds a
 ##   value for each slot;
-## - `` `(order: Order) ``, a backtick and a slot, so a parameter names it.
+## - `` `(order ⁽Order) ``, a backtick and a slot, so a parameter names it.
 ##   It is written as its variant alone: `` `newest first ``. Its type's
 ##   every value is a variant, and the checker finds which such field an
 ##   entry fills by the variant's shape.
 ##
 ## A field that may be left out says what it is then, as an entry written
-## as a value writes it: `age (age: Integer) DEFAULT age 0`,
-## `` `(order: Order) DEFAULT `newest first ``.
-## The `DEFAULT` takes the whole field, so `path: Text DEFAULT path "a"`
+## as a value writes it: `age (age ⁽Integer) DEFAULT age 0`,
+## `` `(order ⁽Order) DEFAULT `newest first ``.
+## The `DEFAULT` takes the whole field, so `path ⁽Text DEFAULT path "a"`
 ## puts it in the slot, where a slot declaration is required.
-field: ONE OF [
-  defaulted: ANYFIX CALL [field: declared field, WORD "DEFAULT", default: ANY NODE],
-  declared: declared field,
+field ⁽ONE OF [
+  defaulted ⁽ANYFIX CALL [field ⁽declared field, WORD "DEFAULT", default ⁽ANY NODE],
+  declared ⁽declared field,
 ],
 
-declared field: ONE OF [
-  unnamed: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", parameter],
+declared field ⁽ONE OF [
+  unnamed ⁽ANYFIX CALL [doc ⁽OPTIONAL ⁽LINE STRING, WORD "`", parameter],
   ## Its first word isn't a backtick, after any slot for a doc or for its
   ## type.
-  words: ANYFIX CALL [
+  words ⁽ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_`]"],
-    ARGUMENTS: ZERO OR MORE: field slot,
+    ARGUMENTS ⁽ZERO OR MORE ⁽field slot,
   ],
 ],
 
-field slot: ONE OF [doc: LINE STRING, parameter: field parameter],
+field slot ⁽ONE OF [doc ⁽LINE STRING, parameter ⁽field parameter],
 
-field parameter: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$"], ARGUMENTS: type],
+field parameter ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$"], ARGUMENTS ⁽type],
 
 ## `` CHOICE Case { `smart, `any } ``, which a union of variants replaced:
 ## read only so that the checker can name what replaces it,
 ## `` TYPE ALIAS Case [| `smart, `any |] ``.
-choice: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "CHOICE", body: choice body,
+choice ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  public ⁽OPTIONAL ⁽WORD "PUBLIC",
+  WORD "CHOICE", body ⁽choice body,
 ],
 
 ## A choice's name is a shape like a record's, with its variants in braces
-## last: `(Left: TYPE) or (Right: TYPE) { first (value: Left), … }`.
-choice body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: choice part],
+## last: `(Left ⁽TYPE) or (Right ⁽TYPE) { first (value ⁽Left), … }`.
+choice body ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽choice part],
 
-choice part: ONE OF [variants: CURLY BRACE [ONE OR MORE: variant], type parameter],
+choice part ⁽ONE OF [variants ⁽CURLY BRACE [ONE OR MORE ⁽variant], type parameter],
 
 ## A type the implementation supplies, by its name alone, as the prelude
 ## declares `INTRINSIC TYPE Integer`.
-intrinsic type: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  intrinsic: WORD "INTRINSIC",
-  WORD "TYPE", name: type name,
+intrinsic type ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  intrinsic ⁽WORD "INTRINSIC",
+  WORD "TYPE", name ⁽type name,
 ],
 
 ## A named type is a type of its own, which no other type fits, written
 ## with its constructor so that a value shows which type it is. Its name is
 ## a shape whose slots hold types, and its constructor is the same shape
-## with a value in each slot: `NAMED TYPE File Id (value: Text)` is written
-## `File Id "a"`, `` NAMED TYPE (value: [| `red, `blue |]) Color `` is written
-## `` (`red) Color ``, and `NAMED TYPE Range from (start: Integer) to (end: Integer)` is
+## with a value in each slot: `NAMED TYPE File Id (value ⁽Text)` is written
+## `File Id "a"`, `` NAMED TYPE (value ⁽[| `red, `blue |]) Color `` is written
+## `` (`red) Color ``, and `NAMED TYPE Range from (start ⁽Integer) to (end ⁽Integer)` is
 ## written `Range from 1 to 3`. One with no value slots has one value.
-## A `(Name: TYPE)` slot belongs to the type's name. Other slots belong
+## A `(Name ⁽TYPE)` slot belongs to the type's name. Other slots belong
 ## to its constructor. Both shapes keep all the declaration's words.
-named type: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "NAMED", WORD "TYPE", body: named type body,
+named type ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  public ⁽OPTIONAL ⁽WORD "PUBLIC",
+  WORD "NAMED", WORD "TYPE", body ⁽named type body,
 ],
 
-named type body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: named slot],
+named type body ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽named slot],
 
-named slot: ONE OF [type parameter, parameter, unnamed: ANY NODE],
+named slot ⁽ONE OF [type parameter, parameter, unnamed ⁽ANY NODE],
 
 ## A type alias names a type without making a new one: the alias and the
 ## type it stands for are the same type, in the wire and in generated code.
-## `TYPE ALIAS Paths: LIST Text`. A generic alias has a type parameter in
+## `TYPE ALIAS Paths ⁽LIST Text`. A generic alias has a type parameter in
 ## each other slot of its name, anywhere among the words:
-## `TYPE ALIAS (Item: TYPE) Pair: LIST Item`. The type it stands for fills
+## `TYPE ALIAS (Item ⁽TYPE) Pair ⁽LIST Item`. The type it stands for fills
 ## the last slot; the checker reads the parameters from the others.
-## A record alias such as `TYPE ALIAS Page of (Item: TYPE): { items: LIST Item }`
+## A record alias such as `TYPE ALIAS Page of (Item ⁽TYPE) ⁽{ items ⁽LIST Item }`
 ## keeps its name for generated structs. An alias of a union of variants, `` TYPE ALIAS Case [| `smart,
 ## `any |] ``, keeps its name, so generated code has an enum `Case` and
 ## messages say `Case`.
-type alias: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "TYPE", WORD "ALIAS", body: alias body,
+type alias ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  public ⁽OPTIONAL ⁽WORD "PUBLIC",
+  WORD "TYPE", WORD "ALIAS", body ⁽alias body,
 ],
 
-alias body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ONE OR MORE: alias part],
+alias body ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ONE OR MORE ⁽alias part],
 
-alias part: ONE OF [type parameter, type],
+alias part ⁽ONE OF [type parameter, type],
 
 ## A variant is written with a backtick, then in the shape it takes on the
-## wire: `` `missing (id: File Id) ``, `` `((left: Integer) + (right:
+## wire: `` `missing (id ⁽File Id) ``, `` `((left ⁽Integer) + (right ⁽
 ## Integer)) ``. The backtick tells it from a function call and, in a
 ## union, from a type. Its doc comes first, before the backtick.
-variant: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "`", body: variant body],
+variant ⁽ANYFIX CALL [doc ⁽OPTIONAL ⁽LINE STRING, WORD "`", body ⁽variant body],
 
-variant body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: shape part],
+variant body ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽shape part],
 
 ## A group of errors, `` ERRORS file errors [`missing] + other errors ``,
 ## which an alias of a union of variants replaced: `` TYPE ALIAS File
 ## Errors [| `missing, Other Errors |] ``. It is read only so that the
 ## checker can say how to write it now.
-errors: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  public: OPTIONAL: WORD "PUBLIC",
-  WORD "ERRORS", body: ANY NODE,
+errors ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  public ⁽OPTIONAL ⁽WORD "PUBLIC",
+  WORD "ERRORS", body ⁽ANY NODE,
 ],
 
 ## A method's clauses come in this order. It returns a value or `NOTHING`,
@@ -156,17 +156,17 @@ errors: ANYFIX CALL [
 ## safe to call freely, or to retry; without them it may change anything,
 ## once per call. Both together are read, so that the schema checker can say
 ## that `READ ONLY` already means `IDEMPOTENT`.
-method: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  read only: OPTIONAL: WORDS "READ ONLY",
-  idempotent: OPTIONAL: WORD "IDEMPOTENT",
-  WORD "METHOD", shape: shape,
-  requires: OPTIONAL [WORD "REQUIRES", condition],
-  WORD "RETURNS", returns: ONE OF [value: returns, nothing: WORD "NOTHING"],
-  ensures: OPTIONAL [WORD "ENSURES", condition],
-  errors: OPTIONAL [WORD "ERRORS", union type],
-  undone by: OPTIONAL [WORD "UNDONE", WORD "BY", undo],
-  examples: OPTIONAL [WORD "EXAMPLES", examples],
+method ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  read only ⁽OPTIONAL ⁽WORDS "READ ONLY",
+  idempotent ⁽OPTIONAL ⁽WORD "IDEMPOTENT",
+  WORD "METHOD", shape ⁽shape,
+  requires ⁽OPTIONAL [WORD "REQUIRES", condition],
+  WORD "RETURNS", returns ⁽ONE OF [value ⁽returns, nothing ⁽WORD "NOTHING"],
+  ensures ⁽OPTIONAL [WORD "ENSURES", condition],
+  errors ⁽OPTIONAL [WORD "ERRORS", union type],
+  undone by ⁽OPTIONAL [WORD "UNDONE", WORD "BY", undo],
+  examples ⁽OPTIONAL [WORD "EXAMPLES", examples],
 ] FORMAT [
   BREAK BEFORE WORD "REQUIRES",
   BREAK BEFORE WORD "RETURNS",
@@ -179,125 +179,125 @@ method: ANYFIX CALL [
 ## Functions are evaluated locally by the codec. Bodyless declarations are
 ## reserved for the bundled prelude. An `INTRINSIC` one may also be written
 ## in a value, as `Duration`'s constructor is: `1 hours 30 minutes`.
-function: ANYFIX CALL [
-  doc: OPTIONAL: LINE STRING,
-  intrinsic: OPTIONAL: WORD "INTRINSIC",
+function ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽LINE STRING,
+  intrinsic ⁽OPTIONAL ⁽WORD "INTRINSIC",
   WORD "FUNCTION", shape,
   WORD "RETURNS", returns,
 ] FORMAT [BREAK BEFORE WORD "RETURNS"],
 
-condition: SQUARE BRACKET [predicate: ONE OR MORE: term],
+condition ⁽SQUARE BRACKET [predicate ⁽ONE OR MORE ⁽term],
 
 ## The call that undoes a method, written like a shape whose slots are the
-## method's own parameters: `UNDONE BY move (new path: Text) to (path: Text)`.
+## method's own parameters: `UNDONE BY move (new path ⁽Text) to (path ⁽Text)`.
 ## The types say which method it is, among methods of the same words.
-undo: fixed shape,
+undo ⁽fixed shape,
 
 ## Examples of a method, each a call of it and its outcome side by side, the
 ## call as a request writes it and the outcome as a response writes it:
 ## `EXAMPLES [write "a" at revision 3 content "x" RETURNS 4]`. An empty list
 ## reads, so that the checker can say what is wrong with it.
-examples: SQUARE BRACKET [ZERO OR MORE: example],
+examples ⁽SQUARE BRACKET [ZERO OR MORE ⁽example],
 
 ## The call is kept as a node for the schema checker to decode against the
 ## method. A `#` doc before an example lands inside its call, as the call's
 ## first argument, since `RETURNS` and `ERROR` split the run first; the
 ## checker reads it out of there.
-example: ONE OF [
-  returns nothing: ANYFIX CALL [call: ANY NODE, WORD "RETURNS", WORD "NOTHING"],
-  returns: ANYFIX CALL [call: ANY NODE, WORD "RETURNS", value: ANY NODE],
-  error: ANYFIX CALL [call: ANY NODE, WORD "ERROR", error: ANY NODE],
+example ⁽ONE OF [
+  returns nothing ⁽ANYFIX CALL [call ⁽ANY NODE, WORD "RETURNS", WORD "NOTHING"],
+  returns ⁽ANYFIX CALL [call ⁽ANY NODE, WORD "RETURNS", value ⁽ANY NODE],
+  error ⁽ANYFIX CALL [call ⁽ANY NODE, WORD "ERROR", error ⁽ANY NODE],
 ],
 
 ## A method that has nothing to return, such as `sign out`, says
 ## `RETURNS NOTHING`; a call of it that succeeds answers `RETURNS NOTHING`.
 
-## What a method returns is named too: `RETURNS (new revision: Integer)`.
-returns: parameter,
+## What a method returns is named too: `RETURNS (new revision ⁽Integer)`.
+returns ⁽parameter,
 
 ## A method's, a variant's or a function's shape: its words, and a
 ## parameter in each slot. A part in square brackets may be left out of a
 ## call, which then holds the entry after `DEFAULT`, written as a call
-## writes the part: `find (pattern: Text) [in (paths: LIST Text) DEFAULT in
+## writes the part: `find (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT in
 ## ["."]]` is called `find "x"` or `find "x" in ["src"]`. The full form is
 ## the one method; a shorter call is sugar for it, filled in from the
 ## defaults.
-shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: shape part],
+shape ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽shape part],
 
-shape part: ONE OF [
-  parameter: parameter,
-  optional: SQUARE BRACKET [optional part],
+shape part ⁽ONE OF [
+  parameter ⁽parameter,
+  optional ⁽SQUARE BRACKET [optional part],
 ],
 
-optional part: ANYFIX CALL [part: fixed shape, WORD "DEFAULT", default: ANY NODE],
+optional part ⁽ANYFIX CALL [part ⁽fixed shape, WORD "DEFAULT", default ⁽ANY NODE],
 
 ## A shape with no optional parts.
-fixed shape: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: parameter],
+fixed shape ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽parameter],
 
-parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type],
+parameter ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], type],
 
 ## A built-in type such as `Integer` is no keyword: the prelude declares
 ## it, so it reads as a `reference` like any other type.
-type: ONE OF [
-  refined: refined type,
-  list: list type,
-  map: map type,
-  record: record type,
-  union: union type,
-  named: reference,
+type ⁽ONE OF [
+  refined ⁽refined type,
+  list ⁽list type,
+  map ⁽map type,
+  record ⁽record type,
+  union ⁽union type,
+  named ⁽reference,
 ],
 
-refined type: ANYFIX CALL [base: type, WORD "WHERE", predicate: SQUARE BRACKET [ONE OR MORE: term]],
+refined type ⁽ANYFIX CALL [base ⁽type, WORD "WHERE", predicate ⁽SQUARE BRACKET [ONE OR MORE ⁽term]],
 
 ## A predicate's term: the value it tests, `_`, a parameter's name, a
 ## constant, or a function of terms. Which function a call means, such as
 ## `_ <= _ < _` or `_ ends with _`, the checker reads from the prelude's
 ## `FUNCTION`s: `[10 <= _ < 30]`, `` [_ and (`true)] ``,
-## `` [items . has at most one of [`any case, `_ encoding]] ``.
-term: ONE OF [
-  subject: UNDERSCORE,
-  integer: NUMBER [WRITTEN INTEGER],
-  float: NUMBER [WRITTEN FLOAT],
-  text: STRING,
-  variants: SQUARE BRACKET [ZERO OR MORE: term variant],
-  variant: term variant,
-  call: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS: ZERO OR MORE: term],
+## `` [items₎ has at most one of [`any case, `_ encoding]] ``.
+term ⁽ONE OF [
+  subject ⁽UNDERSCORE,
+  integer ⁽NUMBER [WRITTEN INTEGER],
+  float ⁽NUMBER [WRITTEN FLOAT],
+  text ⁽STRING,
+  variants ⁽SQUARE BRACKET [ZERO OR MORE ⁽term variant],
+  variant ⁽term variant,
+  call ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^`]"], ARGUMENTS ⁽ZERO OR MORE ⁽term],
 ],
 ## A variant in a predicate, `` `true ``, or a variant's shape with `_` in
 ## each slot, `` `_ encoding ``.
-term variant: ANYFIX CALL [WORD "`", body: ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS: ZERO OR MORE: UNDERSCORE]],
+term variant ⁽ANYFIX CALL [WORD "`", body ⁽ANYFIX CALL [NAME [NO KEYWORD], ARGUMENTS ⁽ZERO OR MORE ⁽UNDERSCORE]],
 
-list type: ANYFIX CALL [WORD "LIST", item: type],
+list type ⁽ANYFIX CALL [WORD "LIST", item ⁽type],
 
 ## Text keys, each to a value: `{ "hymn" 3, "ode" 1 }`.
-map type: ANYFIX CALL [WORD "MAP", value: type],
+map type ⁽ANYFIX CALL [WORD "MAP", value ⁽type],
 
-record type: CURLY BRACE [ZERO OR MORE: field],
+record type ⁽CURLY BRACE [ZERO OR MORE ⁽field],
 
 ## Values of any of its members, each written as that member writes it:
 ## `` [| Integer, `none |] `` holds `3` and `` `none ``. A value's form tells its
 ## member, so the checker rejects two members written alike.
-union type: BRACKET "[|" [ZERO OR MORE: union member],
+union type ⁽BRACKET "[|" [ZERO OR MORE ⁽union member],
 
 ## A member of a union. The backtick tells which: a variant is marked, as
-## in `` `null `` or `` `custom hue (hue: Float) ``, and a type is not, as
-## in `Integer`, `Text?`, `{ path: Text }` or `(Text) Pair`. A list or map
-## is named first, as in `TYPE ALIAS Paths: LIST Text`. A variant or named
+## in `` `null `` or `` `custom hue (hue ⁽Float) ``, and a type is not, as
+## in `Integer`, `Text?`, `{ path ⁽Text }` or `(Text) Pair`. A list or map
+## is named first, as in `TYPE ALIAS Paths ⁽LIST Text`. A variant or named
 ## type may have a doc before it; the checker reads a named type's from the
 ## slot before its first word.
-union member: ONE OF [
-  variant: variant,
-  refined: refined type,
-  record: record type,
-  union: union type,
-  named: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^`_]"], ARGUMENTS: ZERO OR MORE: member slot],
+union member ⁽ONE OF [
+  variant ⁽variant,
+  refined ⁽refined type,
+  record ⁽record type,
+  union ⁽union type,
+  named ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^`_]"], ARGUMENTS ⁽ZERO OR MORE ⁽member slot],
 ],
 
-member slot: ONE OF [doc: LINE STRING, type],
+member slot ⁽ONE OF [doc ⁽LINE STRING, type],
 
 ## A type by its name, `Diagnostic`, or a generic one by its shape with a
 ## type in each slot, in parentheses: `Page of (File)`, `(Integer) or
 ## (Text)`. Names are always unqualified; the checker rejects legacy paths.
-reference: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_`]|^_( _)*$"], ARGUMENTS: ZERO OR MORE: type],
+reference ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^(_ )*[^_`]|^_( _)*$"], ARGUMENTS ⁽ZERO OR MORE ⁽type],
 
-type name: ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS],
+type name ⁽ANYFIX CALL [NAME [NO KEYWORD], NO ARGUMENTS],

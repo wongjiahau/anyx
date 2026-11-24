@@ -12,8 +12,8 @@ pub enum TokenKind {
     /// Boxed so tokens stay small on the parser's recursion.
     String(Box<StringLiteral>),
     Comma,
-    Colon,
-    Dot,
+    RightGroup,
+    LeftGroup,
     OpenParen,
     CloseParen,
     OpenBracket,
@@ -109,17 +109,17 @@ pub struct Element {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression {
     Run(Run),
-    /// `left . right`, left-associative.
-    Dot(Box<BinaryExpression>),
-    /// `left : right`, right-associative.
-    Colon(Box<BinaryExpression>),
+    /// `left₎ right`, left-associative.
+    LeftGroup(Box<BinaryExpression>),
+    /// `left ⁽right`, right-associative.
+    RightGroup(Box<BinaryExpression>),
 }
 
 impl Expression {
     fn write(&self, out: &mut String) {
         match self {
             Expression::Run(run) => run.items.iter().for_each(|item| item.write(out)),
-            Expression::Dot(binary) | Expression::Colon(binary) => {
+            Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
                 binary.left.write(out);
                 binary.operator.write(out);
                 binary.right.write(out);

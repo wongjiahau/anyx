@@ -41,9 +41,9 @@ pub enum Test<B = ()> {
     All(String, Vec<Test<B>>),
     Flag(B),
     Literal(bool),
-    /// `items . has no repeats`: no two items of the list are equal.
+    /// `items₎ has no repeats`: no two items of the list are equal.
     NoRepeats(B),
-    /// `items . has at most one of [a, b]`: at most one item of the list is
+    /// `items₎ has at most one of [a, b]`: at most one item of the list is
     /// a variant of these shapes, written with `_` in each slot.
     AtMostOneOf(B, Vec<String>),
 }
@@ -317,7 +317,7 @@ pub(crate) fn check_methods(schema: &Schema) -> Vec<Diagnostic> {
 }
 
 fn unsupported() -> String {
-    "unsupported predicate; expected a comparison chain such as `10 <= _ < 30`, a text test such as `_ ends with \".poentaro\"`, or a comparison of `(_ length)`; group nested calls with parentheses, dot, or colon, as in `(_ + 1) <= 30` or `30 >=: _ + 1`".into()
+    "unsupported predicate; expected a comparison chain such as `10 <= _ < 30`, a text test such as `_ ends with \".poentaro\"`, or a comparison of `(_ length)`; group nested calls with parentheses or half parentheses, as in `(_ + 1) <= 30` or `30 >= ⁽_ + 1`".into()
 }
 
 fn expr<B>(term: &Term, binding: &impl Fn(&Term) -> Result<B, String>) -> Result<Expr<B>, String> {

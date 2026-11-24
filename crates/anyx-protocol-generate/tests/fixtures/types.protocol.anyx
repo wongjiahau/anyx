@@ -2,40 +2,40 @@
 PROTOCOL types VERSION 1,
 
 # When to remind the owner.
-TYPE ALIAS Reminder: {
-    note (note: Text),
-    at (at: Instant),
-    every (every: Duration?) DEFAULT every (`null),
+TYPE ALIAS Reminder ⁽{
+    note (note ⁽Text),
+    at (at ⁽Instant),
+    every (every ⁽Duration?) DEFAULT every (`null),
     # How many times to remind before giving up.
-    times (times: Integer) DEFAULT times 3,
+    times (times ⁽Integer) DEFAULT times 3,
     # When each person last saw it, by their name.
-    seen (seen: MAP Instant) DEFAULT seen {},
+    seen (seen ⁽MAP Instant) DEFAULT seen {},
     # The hours of the day it stays quiet, from and to.
-    quiet from (start: Integer) to (end: Integer) DEFAULT quiet from 22 to 7,
+    quiet from (start ⁽Integer) to (end ⁽Integer) DEFAULT quiet from 22 to 7,
     # How it sounds, written as the variant alone.
-    `(tone: Tone) DEFAULT `chime,
-    `(hidden: [| `hidden, `null |]) DEFAULT `null,
-    `(pinned: [| `pinned, `null |]) DEFAULT `null,
+    `(tone ⁽Tone) DEFAULT `chime,
+    `(hidden ⁽[| `hidden, `null |]) DEFAULT `null,
+    `(pinned ⁽[| `pinned, `null |]) DEFAULT `null,
 },
 
 TYPE ALIAS Tone [| `chime, `silent |],
 
-TYPE ALIAS Schedule [| `never, `once at (at: Instant), `every (period: Duration) |],
+TYPE ALIAS Schedule [| `never, `once at (at ⁽Instant), `every (period ⁽Duration) |],
 
-METHOD remind (reminder: Reminder) RETURNS (schedule: Schedule) ERRORS [| |],
+METHOD remind (reminder ⁽Reminder) RETURNS (schedule ⁽Schedule) ERRORS [| |],
 
-METHOD count (reminders: MAP: Reminder) RETURNS (times: MAP Integer) ERRORS [| |],
+METHOD count (reminders ⁽MAP ⁽Reminder) RETURNS (times ⁽MAP Integer) ERRORS [| |],
 
 # Snoozed for 5 minutes, unless it says for how long.
-METHOD snooze (reminder: Reminder) [for (duration: Duration) DEFAULT for (5 minutes)]
-    RETURNS (reminders: LIST: Reminder)
+METHOD snooze (reminder ⁽Reminder) [for (duration ⁽Duration) DEFAULT for (5 minutes)]
+    RETURNS (reminders ⁽LIST ⁽Reminder)
     ERRORS [|
         # Snoozed past its next time.
-        `overdue since (since: Instant),
+        `overdue since (since ⁽Instant),
     |],
 
-TYPE ALIAS page of (Item: TYPE): { rows (rows: LIST { value (value: Item) }) },
+TYPE ALIAS page of (Item ⁽TYPE) ⁽{ rows (rows ⁽LIST { value (value ⁽Item) }) },
 
-METHOD inspect (filter: { query (query: Text) })
-    RETURNS (result: [| page of (Text), `null |])
-    ERRORS [| `invalid (detail: { path (path: Text) }) |],
+METHOD inspect (filter ⁽{ query (query ⁽Text) })
+    RETURNS (result ⁽[| page of (Text), `null |])
+    ERRORS [| `invalid (detail ⁽{ path (path ⁽Text) }) |],

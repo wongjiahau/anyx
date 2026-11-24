@@ -9,7 +9,7 @@ fn variant(shape: &str, arguments: Vec<Value>) -> Value {
 }
 
 fn null_shape() -> anyx_protocol::schema::Shape {
-    let schema = Schema::parse("METHOD f (x: Text?) RETURNS NOTHING ERRORS [| |]").unwrap();
+    let schema = Schema::parse("METHOD f (x ⁽Text?) RETURNS NOTHING ERRORS [| |]").unwrap();
     let Type::Union(members) = &schema.method("f _").unwrap().shape.parameters[0].r#type else {
         panic!("`Text?` is a union")
     };
@@ -22,9 +22,10 @@ fn null_shape() -> anyx_protocol::schema::Shape {
 
 #[test]
 fn prelude_unions_are_checked_schema_definitions() {
-    let schema =
-        Schema::parse("TYPE ALIAS Example: { flag (flag: Boolean), note (note: Text?) DEFAULT note (`null) }")
-            .unwrap();
+    let schema = Schema::parse(
+        "TYPE ALIAS Example ⁽{ flag (flag ⁽Boolean), note (note ⁽Text?) DEFAULT note (`null) }",
+    )
+    .unwrap();
     let boolean = schema
         .types
         .iter()
@@ -60,38 +61,38 @@ fn prelude_unions_are_checked_schema_definitions() {
 
 #[test]
 fn nullable_and_omittable_are_independent() {
-    let schema = Schema::parse("TYPE ALIAS Example: { required (required: Text?), note (note: Text?) DEFAULT note (`null), count (count: Integer) DEFAULT count 0, flag (flag: Boolean) DEFAULT flag (`false) }").unwrap();
+    let schema = Schema::parse("TYPE ALIAS Example ⁽{ required (required ⁽Text?), note (note ⁽Text?) DEFAULT note (`null), count (count ⁽Integer) DEFAULT count 0, flag (flag ⁽Boolean) DEFAULT flag (`false) }").unwrap();
     let decode =
         |source: &str| anyx_protocol::codec::decode_value(&schema, &Type::Named(0), source);
     assert!(decode("{}").is_err());
-    let Value::Record(fields) = decode("{ required: `null }").unwrap() else {
+    let Value::Record(fields) = decode("{ required ⁽`null }").unwrap() else {
         panic!()
     };
     assert_eq!(fields["required"], variant("null", vec![]));
     assert_eq!(fields["note"], variant("null", vec![]));
     assert_eq!(fields["count"], Value::Integer(0));
     assert_eq!(fields["flag"], variant("false", vec![]));
-    let Value::Record(fields) = decode("{ required \"hello\", flag: `true }").unwrap() else {
+    let Value::Record(fields) = decode("{ required \"hello\", flag ⁽`true }").unwrap() else {
         panic!()
     };
     assert_eq!(fields["required"], Value::Text("hello".into()));
     assert_eq!(fields["flag"], variant("true", vec![]));
     assert!(decode("{ required 3 }").is_err());
-    assert!(decode("{ required: value (\"hello\") }").is_err());
-    assert!(decode("{ required: `null, count: `null }").is_err());
-    assert!(Schema::parse("TYPE ALIAS Example: { note (note: OPTIONAL Text) }").is_err());
+    assert!(decode("{ required ⁽value (\"hello\") }").is_err());
+    assert!(decode("{ required ⁽`null, count ⁽`null }").is_err());
+    assert!(Schema::parse("TYPE ALIAS Example ⁽{ note (note ⁽OPTIONAL Text) }").is_err());
 }
 
 #[test]
 fn ordinary_prelude_names_cannot_be_redeclared() {
     assert!(Schema::parse("TYPE ALIAS Boolean [| `maybe |]").is_err());
-    assert!(Schema::parse("TYPE ALIAS (Item: TYPE) ?: [| `empty, `full (Item) |]").is_err());
+    assert!(Schema::parse("TYPE ALIAS (Item ⁽TYPE) ? ⁽[| `empty, `full (Item) |]").is_err());
 }
 
 #[test]
 fn boolean_inference_uses_ordinary_variant_ambiguity() {
     let schema = Schema::parse(
-        "TYPE ALIAS Another [| `true |], METHOD set (flag: Boolean) RETURNS NOTHING ERRORS [| |]",
+        "TYPE ALIAS Another [| `true |], METHOD set (flag ⁽Boolean) RETURNS NOTHING ERRORS [| |]",
     )
     .unwrap();
     assert!(anyx_protocol::codec::decode_request(&schema, "set (`true)").is_err());
@@ -101,7 +102,7 @@ fn boolean_inference_uses_ordinary_variant_ambiguity() {
 #[test]
 fn generic_fields_may_default_to_a_parameter_independent_variant() {
     let schema = Schema::parse(
-        "TYPE ALIAS Box of (Item: TYPE): { content (content: Item?) DEFAULT content (`null) }",
+        "TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ content (content ⁽Item?) DEFAULT content (`null) }",
     )
     .unwrap();
     let ty = Type::Generic(0, vec![Type::Text]);
@@ -116,8 +117,10 @@ fn generic_fields_may_default_to_a_parameter_independent_variant() {
         Value::Record([("content".into(), Value::Text("hello".into()))].into())
     );
     assert!(
-        Schema::parse("TYPE ALIAS Box of (Item: TYPE): { content (content: Item) DEFAULT content 3 }")
-            .is_err()
+        Schema::parse(
+            "TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ content (content ⁽Item) DEFAULT content 3 }"
+        )
+        .is_err()
     );
 }
 
@@ -127,7 +130,7 @@ fn json_uses_ordinary_variant_values_and_only_omission_uses_defaults() {
     use anyx_protocol::json::{from_json, to_json};
     use serde_json::json;
     let schema = Schema::parse(
-        "TYPE ALIAS Example: { note (note: Text?) DEFAULT note (`null), flag (flag: Boolean) DEFAULT flag (`false) }",
+        "TYPE ALIAS Example ⁽{ note (note ⁽Text?) DEFAULT note (`null), flag (flag ⁽Boolean) DEFAULT flag (`false) }",
     )
     .unwrap();
     let ty = Type::Named(0);

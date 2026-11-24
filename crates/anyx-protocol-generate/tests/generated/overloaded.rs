@@ -12,35 +12,35 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL tagging VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (value: Text),
+NAMED TYPE File Id (value ⁽Text),
 
 TYPE ALIAS Shade [| `dark, `light |],
 
 # Tags files by their paths.
-METHOD tag paths (paths: LIST Text)
-    RETURNS (tagged: Integer)
-    ERRORS [| `missing (path: Text) |]
+METHOD tag paths (paths ⁽LIST Text)
+    RETURNS (tagged ⁽Integer)
+    ERRORS [| `missing (path ⁽Text) |]
     EXAMPLES [tag paths ["a"] RETURNS 1],
 
 # Tags files by their ids.
-METHOD tag ids (ids: LIST: File Id)
-    RETURNS (tagged: Integer)
-    ERRORS [| `unknown (id: File Id) |]
-    EXAMPLES [tag ids ([] AS: LIST: File Id) RETURNS 0],
+METHOD tag ids (ids ⁽LIST ⁽File Id)
+    RETURNS (tagged ⁽Integer)
+    ERRORS [| `unknown (id ⁽File Id) |]
+    EXAMPLES [tag ids ([] AS ⁽LIST ⁽File Id) RETURNS 0],
 
-READ ONLY METHOD scale (factor: Float) RETURNS (scaled: Float) ERRORS [| |],
+READ ONLY METHOD scale (factor ⁽Float) RETURNS (scaled ⁽Float) ERRORS [| |],
 
-READ ONLY METHOD scale (times: Integer) RETURNS (scaled: Integer) ERRORS [| |],
+READ ONLY METHOD scale (times ⁽Integer) RETURNS (scaled ⁽Integer) ERRORS [| |],
 
-IDEMPOTENT METHOD hide (path: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path: Text),
+IDEMPOTENT METHOD hide (path ⁽Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path ⁽Text),
 
-IDEMPOTENT METHOD hide (id: File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: File Id),
+IDEMPOTENT METHOD hide (id ⁽File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id ⁽File Id),
 
-IDEMPOTENT METHOD show (path: Text) RETURNS NOTHING ERRORS [| |],
+IDEMPOTENT METHOD show (path ⁽Text) RETURNS NOTHING ERRORS [| |],
 
-IDEMPOTENT METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],
+IDEMPOTENT METHOD show (id ⁽File Id) RETURNS NOTHING ERRORS [| |],
 
-METHOD paint (shade: Shade) RETURNS NOTHING ERRORS [| |],
+METHOD paint (shade ⁽Shade) RETURNS NOTHING ERRORS [| |],
 "#,
 }];
 
@@ -297,7 +297,7 @@ pub trait Server {
     /// Examples:
     ///
     /// ```anyx
-    /// tag ids ([] AS: LIST: File Id) RETURNS 0
+    /// tag ids ([] AS ⁽LIST ⁽File Id) RETURNS 0
     /// ```
     async fn tag_ids(&self, ids: Vec<FileId>) -> Result<Result<i64, TagIdsError>, Self::Error>;
 
@@ -313,12 +313,12 @@ pub trait Server {
 
     /// `hide (Text)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path ⁽Text)`.
     async fn hide_with_text(&self, path: String) -> Result<(), Self::Error>;
 
     /// `hide (File Id)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id ⁽File Id)`.
     async fn hide_with_file_id(&self, id: FileId) -> Result<(), Self::Error>;
 
     /// `show (Text)`, returning nothing.
@@ -480,7 +480,7 @@ impl<T: Transport> Client<T> {
     /// Examples:
     ///
     /// ```anyx
-    /// tag ids ([] AS: LIST: File Id) RETURNS 0
+    /// tag ids ([] AS ⁽LIST ⁽File Id) RETURNS 0
     /// ```
     pub async fn tag_ids(&self, ids: Vec<FileId>) -> Result<i64, CallError<TagIdsError, T::Error>> {
         anyx_protocol::client::call(&self.transport, schema(), 1, vec![ids.into_value()]).await
@@ -508,7 +508,7 @@ impl<T: Transport> Client<T> {
 
     /// `hide (Text)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path ⁽Text)`.
     pub async fn hide_with_text(
         &self,
         path: String,
@@ -518,7 +518,7 @@ impl<T: Transport> Client<T> {
 
     /// `hide (File Id)`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id ⁽File Id)`.
     pub async fn hide_with_file_id(
         &self,
         id: FileId,
@@ -599,19 +599,19 @@ pub const SCALE_WITH_INTEGER_EFFECTS: anyx_protocol::client::Effects =
         undone_by: None,
     };
 
-/// What a call of `hide (Text)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`.
+/// What a call of `hide (Text)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path ⁽Text)`.
 pub const HIDE_WITH_TEXT_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: true,
-    undone_by: Some("show (path: Text)"),
+    undone_by: Some("show (path ⁽Text)"),
 };
 
-/// What a call of `hide (File Id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`.
+/// What a call of `hide (File Id)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id ⁽File Id)`.
 pub const HIDE_WITH_FILE_ID_EFFECTS: anyx_protocol::client::Effects =
     anyx_protocol::client::Effects {
         read_only: false,
         idempotent: true,
-        undone_by: Some("show (id: File Id)"),
+        undone_by: Some("show (id ⁽File Id)"),
     };
 
 /// What a call of `show (Text)` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.

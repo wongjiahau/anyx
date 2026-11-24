@@ -1304,7 +1304,7 @@ impl<'a> Checker<'a> {
             self.error(
                 shape.name.span,
                 format!(
-                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (Item: TYPE)`"
+                    "found a `{keyword}` whose name has no words; expected at least one word to name it, with any type parameters among the words, as in `{keyword} Page of (Item ⁽TYPE)`"
                 ),
             );
         } else {
@@ -1333,7 +1333,7 @@ impl<'a> Checker<'a> {
             self.error(
                 *span,
                 format!(
-                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(Item: TYPE)` in the name's other slots"
+                    "found braces in the name of a `{keyword}`, before its end; expected its {what} in one pair of braces, last, and only type parameters such as `(Item ⁽TYPE)` in the name's other slots"
                 ),
             );
         }
@@ -1436,7 +1436,7 @@ impl<'a> Checker<'a> {
         if shape.words.value.is_empty() {
             self.error(
                 shape.name.span,
-                "found a `TYPE ALIAS` whose name has no words; expected at least one word to name it, as in `TYPE ALIAS Paths: LIST Text`",
+                "found a `TYPE ALIAS` whose name has no words; expected at least one word to name it, as in `TYPE ALIAS Paths ⁽LIST Text`",
             );
         } else {
             let slots = !shape.parameters.is_empty() || !shape.misplaced.is_empty();
@@ -1446,7 +1446,7 @@ impl<'a> Checker<'a> {
             self.error(
                 alias.body.span,
                 format!(
-                    "found the `TYPE ALIAS` `{}` without the type it stands for; expected it last, after a colon, as in `TYPE ALIAS {}: LIST Text`",
+                    "found the `TYPE ALIAS` `{}` without the type it stands for; expected it last, as in `TYPE ALIAS {} ⁽LIST Text`",
                     shape.name.value, shape.name.value
                 ),
             );
@@ -1454,7 +1454,7 @@ impl<'a> Checker<'a> {
         for span in &shape.misplaced {
             self.error(
                 *span,
-                "found a type in the name of a `TYPE ALIAS`, before its end; expected only type parameters such as `(Item: TYPE)` there, and the type it stands for last",
+                "found a type in the name of a `TYPE ALIAS`, before its end; expected only type parameters such as `(Item ⁽TYPE)` there, and the type it stands for last",
             );
         }
     }
@@ -2002,7 +2002,7 @@ impl<'a> Checker<'a> {
                 format!(
                     "found the field `{}` with words alone; write {} to make it a variant when present and `null` when omitted",
                     words.value,
-                    code(&format!("`({0}: [| `{0}, `null |]) DEFAULT `null", words.value)),
+                    code(&format!("`({0} ⁽[| `{0}, `null |]) DEFAULT `null", words.value)),
                 ),
             );
         }
@@ -2044,7 +2044,7 @@ impl<'a> Checker<'a> {
         match slot {
             ast::FieldSlot::Parameter(call) => self.r#type(&call.arguments),
             ast::FieldSlot::Doc(doc) => {
-                self.error(doc.span, "found a string in a field's slot; expected the field's type, as in `at least (size: Size) bytes`; a field's `#` doc goes on the lines before it");
+                self.error(doc.span, "found a string in a field's slot; expected the field's type, as in `at least (size ⁽Size) bytes`; a field's `#` doc goes on the lines before it");
                 Type::Text
             }
         }
@@ -2053,7 +2053,7 @@ impl<'a> Checker<'a> {
     fn unnamed_slot(&mut self, span: Span) {
         self.error(
             span,
-            "found an unnamed slot; write `(name: Type)`, for example `(start: Integer)`",
+            "found an unnamed slot; write `(name ⁽Type)`, for example `(start ⁽Integer)`",
         );
     }
 
@@ -2256,7 +2256,7 @@ impl<'a> Checker<'a> {
                             self.error(
                                 written.span,
                                 format!(
-                                    "found an optional part of {what} with no words, `[{}]`; expected a word in it, such as `[in (paths: LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word",
+                                    "found an optional part of {what} with no words, `[{}]`; expected a word in it, such as `[in (paths ⁽LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word",
                                     inner.name.text
                                 ),
                             );
@@ -2480,7 +2480,7 @@ impl<'a> Checker<'a> {
         self.error(
             span,
             format!(
-                "found `{written}` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong"
+                "found `{written}` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong"
             ),
         );
     }

@@ -299,7 +299,7 @@ pub struct Shape {
     pub optional: Vec<OptionalPart>,
 }
 
-/// A part of a shape that a call may leave out, `[in (paths: LIST Text)
+/// A part of a shape that a call may leave out, `[in (paths ⁽LIST Text)
 /// DEFAULT in ["."]]`, and what its parameters hold then.
 #[derive(Clone, Debug)]
 pub struct OptionalPart {
@@ -489,7 +489,7 @@ impl Shape {
     }
 
     /// The optional part at `index` alone, as its `DEFAULT` writes it:
-    /// `in (paths: LIST Text)`.
+    /// `in (paths ⁽LIST Text)`.
     pub fn part(&self, index: usize) -> Shape {
         let part = &self.optional[index];
         let parts = self.parts[part.parts.clone()].to_vec();
@@ -962,11 +962,11 @@ fn built_in(words: &[&str], doc: &str, returns: &str, r#type: Type) -> Method {
 }
 
 /// `keyword` before the type `name`, as the formatter writes it: with a
-/// `:` only where `name` starts with a keyword it would join, as in
-/// `LIST: LIST Text`, and without one otherwise, `LIST Text`.
+/// `⁽` only where `name` starts with a keyword it would join, as in
+/// `LIST ⁽LIST Text`, and without one otherwise, `LIST Text`.
 fn keyword_before(keyword: &str, name: String) -> String {
     match name.split(' ').next().is_some_and(anyx::is_keyword) {
-        true => format!("{keyword}: {name}"),
+        true => format!("{keyword} ⁽{name}"),
         false => format!("{keyword} {name}"),
     }
 }
@@ -1064,7 +1064,7 @@ impl Schema {
                     || "_".to_string(),
                     |parameter| {
                         format!(
-                            "({}: {})",
+                            "({} ⁽{})",
                             parameter.name,
                             self.type_name(&parameter.r#type)
                         )
@@ -1167,14 +1167,14 @@ impl Schema {
             .iter()
             .map(|field| match &field.form {
                 FieldForm::Unnamed => {
-                    format!("`({}: {})", field.name, self.type_name(&field.r#type))
+                    format!("`({} ⁽{})", field.name, self.type_name(&field.r#type))
                 }
                 FieldForm::Shape(shape) => {
                     let slots = match &field.r#type {
                         Type::Tuple(slots, names) => slots
                             .iter()
                             .zip(names)
-                            .map(|(slot, name)| format!("{name}: {}", self.type_name(slot)))
+                            .map(|(slot, name)| format!("{name} ⁽{}", self.type_name(slot)))
                             .collect(),
                         slot => vec![self.type_name(slot)],
                     };
@@ -1206,7 +1206,7 @@ impl Schema {
                 ShapePart::Word(word) => word.clone(),
                 ShapePart::Slot => parameters.next().map_or("_".to_string(), |parameter| {
                     format!(
-                        "({}: {})",
+                        "({} ⁽{})",
                         parameter.name,
                         self.type_name(&parameter.r#type)
                     )
@@ -1915,24 +1915,24 @@ fn decode_file(file: &SchemaFile) -> Result<ast::Document, Vec<Diagnostic>> {
         if let Some(part) = optional_part_without_words(&nodes, error.span) {
             return vec![found(
                 part,
-                "found an optional part with no words; expected a word in it before `DEFAULT`, as in `[in (paths: LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word".to_string(),
+                "found an optional part with no words; expected a word in it before `DEFAULT`, as in `[in (paths ⁽LIST Text) DEFAULT in [\".\"]]`, since slots side by side can't be told apart; add a word".to_string(),
             )];
         }
         if let Some(default) = default_outside_record(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (limit: Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
+                "found a `DEFAULT` outside a record; expected one only on a record field, as in `limit (limit ⁽Integer) DEFAULT limit 50`, since a parameter is always written".to_string(),
             )];
         }
         if let Some(default) = default_in_slot(&nodes, error.span) {
             return vec![found(
                 default,
-                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (age: Integer) DEFAULT age 0`".to_string(),
+                "found a `DEFAULT` in a field's slot; expected it after the whole field, with the entry the field takes when left out, as in `age (age ⁽Integer) DEFAULT age 0`".to_string(),
             )];
         }
         let message = match (unnamed_return(&nodes, error.span), lone_error(&nodes, error.span)) {
-            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is".to_string(),
-            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``".to_string(),
+            (true, _) => "found a `RETURNS` without a name; expected `RETURNS (name ⁽Type)`, such as `RETURNS (new revision ⁽Integer)`, since the name says what the value is".to_string(),
+            (_, true) => "found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``".to_string(),
             _ => error.message(),
         };
         vec![found(error.span, message)]

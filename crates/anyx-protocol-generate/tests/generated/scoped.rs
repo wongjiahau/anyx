@@ -20,7 +20,7 @@ USE "./files/export.protocol.anyx",
         path: "files.protocol.anyx",
         source: r#"USE "./common.protocol.anyx",
 
-TYPE ALIAS File: { path (path: Text), revision (revision: Integer), content (content: Text) },
+TYPE ALIAS File ⁽{ path (path ⁽Text), revision (revision ⁽Integer), content (content ⁽Text) },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
@@ -28,21 +28,21 @@ PUBLIC TYPE ALIAS File Errors [|
     Common Errors,
 |],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [| |],
+READ ONLY METHOD list RETURNS (paths ⁽LIST Text) ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
+READ ONLY METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| File Errors |],
 
 # Saves the note, if it is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (warnings: LIST Diagnostic)
+METHOD write (path ⁽Text) at revision (revision ⁽Integer) content (content ⁽Text)
+    RETURNS (warnings ⁽LIST Diagnostic)
     ERRORS [|
         # The note has errors, so nothing was saved.
-        `rejected (diagnostics: LIST Diagnostic),
+        `rejected (diagnostics ⁽LIST Diagnostic),
         File Errors,
     |],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [| File Errors |],
+IDEMPOTENT METHOD trash (path ⁽Text) RETURNS NOTHING ERRORS [| File Errors |],
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING ERRORS [| |],
@@ -51,7 +51,7 @@ METHOD empty trash RETURNS NOTHING ERRORS [| |],
     anyx_protocol::SchemaFile {
         path: "common.protocol.anyx",
         source: r#"# One problem in a note.
-PUBLIC TYPE ALIAS Diagnostic: { line (line: Integer), message (message: Text) },
+PUBLIC TYPE ALIAS Diagnostic ⁽{ line (line ⁽Integer), message (message ⁽Text) },
 
 PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.
@@ -65,14 +65,14 @@ PUBLIC TYPE ALIAS Common Errors [|
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE ALIAS Page: { html (html: Text), problem (problem: Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page ⁽{ html (html ⁽Text), problem (problem ⁽Diagnostic?) DEFAULT problem (`null) },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
+METHOD html (path ⁽Text) RETURNS (pages ⁽LIST Page) ERRORS [| File Errors |],
 
-METHOD pdf (path: Text) RETURNS (pdf: Bytes)
+METHOD pdf (path ⁽Text) RETURNS (pdf ⁽Bytes)
     ERRORS [|
         # The note has errors, so it can't be exported.
-        `unreadable (diagnostics: LIST Diagnostic),
+        `unreadable (diagnostics ⁽LIST Diagnostic),
         File Errors,
     |],
 "#,

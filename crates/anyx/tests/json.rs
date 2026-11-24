@@ -1,4 +1,4 @@
-//! Every JSON document parses with no errors, and its tree reads back as the
+//! JSON values written in Anyx parse with no errors, and their trees read back as the
 //! same JSON value. The documents are generated, covering every escape, number
 //! form and whitespace character JSON allows.
 
@@ -169,7 +169,7 @@ fn write(random: &mut Random, json: &Json, out: &mut String) {
                 out.push_str(space(random));
                 write_string(random, &member.key, out);
                 out.push_str(space(random));
-                out.push(':');
+                out.push('⁽');
                 out.push_str(space(random));
                 write(random, &member.value, out);
                 out.push_str(space(random));
@@ -244,7 +244,7 @@ fn formatted_json_reads_back_as_the_same_value() {
 
 #[test]
 fn a_leading_byte_order_mark_is_skipped() {
-    let nodes = nodes("\u{FEFF}{\"a\": [1e-5]}");
+    let nodes = nodes("\u{FEFF}{\"a\" ⁽[1e-5]}");
     assert_eq!(
         read(&nodes[0]),
         Json::Object(vec![Member {

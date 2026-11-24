@@ -183,7 +183,7 @@ fn boolean_tool_can_be_opened_in_a_batch() {
     let output = command()
         .args([
             "--expression",
-            "USE ALL FROM boolean, `true .and (`false .and (`true)), boolean / not (`true)",
+            "USE ALL FROM boolean, `true₎ and (`false₎ and (`true)), boolean / not (`true)",
         ])
         .output()
         .unwrap();

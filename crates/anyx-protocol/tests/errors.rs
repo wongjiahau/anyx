@@ -40,7 +40,7 @@ fn an_alias_is_flattened_in_order() {
         "PROTOCOL p VERSION 1,
         TYPE ALIAS Common Errors [| `offline, `busy |],
         TYPE ALIAS File Errors [| `trashed, Common Errors |],
-        METHOD read (path: Text) RETURNS NOTHING ERRORS [| `locked at (path: Text), File Errors, `too large |],",
+        METHOD read (path ⁽Text) RETURNS NOTHING ERRORS [| `locked at (path ⁽Text), File Errors, `too large |],",
         "read _",
     );
     assert_eq!(
@@ -65,7 +65,7 @@ fn an_alias_may_include_one_declared_after_it() {
 fn a_generic_alias_is_flattened_with_its_arguments() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) Conflicts [| `conflict with (current: Item) |],
+        TYPE ALIAS (Item ⁽TYPE) Conflicts [| `conflict with (current ⁽Item) |],
         METHOD save RETURNS NOTHING ERRORS [| (Integer) Conflicts |],",
     );
     let method = schema.method("save").unwrap();
@@ -80,7 +80,7 @@ fn a_generic_alias_is_flattened_with_its_arguments() {
 fn an_alias_may_include_a_generic_alias() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) Conflicts [| `conflict with (current: Item) |],
+        TYPE ALIAS (Item ⁽TYPE) Conflicts [| `conflict with (current ⁽Item) |],
         TYPE ALIAS Save Errors [| `busy, (Integer) Conflicts |],
         METHOD save RETURNS NOTHING ERRORS [| Save Errors |],",
     );

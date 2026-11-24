@@ -263,7 +263,7 @@ mod tests {
         let terminal = screen(&editor, 120, 12);
         let text = content(&terminal);
         assert!(text.contains("Completions"));
-        assert!(text.contains("set variable (name: Text) to (value: Text)"));
+        assert!(text.contains("set variable (name ⁽Text) to (value ⁽Text)"));
         assert!(text.contains("returns Variable"));
         assert!(text.contains("ERRORS ["));
         assert!(text.contains("invalid variable value"));

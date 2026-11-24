@@ -19,23 +19,23 @@ the file.
 ## Rust
 
 - A struct per record and an enum per alias of a union of variants,
-  `` TYPE ALIAS Colour [| `dark, `custom hue (hue: Float) |] ``, with a
+  `` TYPE ALIAS Colour [| `dark, `custom hue (hue ⁽Float) |] ``, with a
   variant per shape:
-  `custom hue (hue: Float)` is `CustomHue { hue: f64 }`.
+  `custom hue (hue ⁽Float)` is `CustomHue { hue: f64 }`.
 - `Instant` is `std::time::SystemTime` and `Duration` is
   `std::time::Duration`; the wire keeps both to the millisecond.
-- `MAP: T` is `std::collections::BTreeMap<String, T>`, and
+- `MAP ⁽T` is `std::collections::BTreeMap<String, T>`, and
   `Record<string, T>` in TypeScript.
 - A field with a `DEFAULT` may be omitted on input. The reader fills in
   its default, so generated records always contain the field.
-- A single-slot `NAMED TYPE File Id (value: Text)` generates
+- A single-slot `NAMED TYPE File Id (value ⁽Text)` generates
   `pub struct FileId(pub String)` with `From` conversions both ways.
-  A multi-slot `NAMED TYPE Span from (start: Integer) to (end: Integer)`
+  A multi-slot `NAMED TYPE Span from (start ⁽Integer) to (end ⁽Integer)`
   generates `pub struct SpanFromTo { pub start: i64, pub end: i64 }`.
   TypeScript generates a branded type and a constructor function, such as
   `SpanFromTo({ start: 1n, end: 3n })`.
 - Multi-slot record fields use a struct in Rust and an object in TypeScript.
-  `quiet from (start: Integer) to (end: Integer)` is accessed as `quiet.start`.
+  `quiet from (start ⁽Integer) to (end ⁽Integer)` is accessed as `quiet.start`.
 - A `NAMED TYPE` whose slot has a `WHERE` refinement has private fields, a
   checked `new` constructor, and `get` / `into_inner` accessors and
   `TryFrom` for a single slot. Its `FromValue` conversion checks the
@@ -46,14 +46,14 @@ the file.
 - A generic record or choice is a generic struct or enum. Its name is the
   PascalCase of its words, leaving out the slots, and it has a type
   parameter per slot, in PascalCase and in the slots' order, with its
-  `IntoValue` and `FromValue` bound on them: `TYPE ALIAS Page of (Item: TYPE): { items (items: LIST Item) }`
+  `IntoValue` and `FromValue` bound on them: `TYPE ALIAS Page of (Item ⁽TYPE) ⁽{ items (items ⁽LIST Item) }`
   is `pub struct PageOf<Item>`, with
   `impl<Item: IntoValue> IntoValue for PageOf<Item>`, and `page of (order)`
-  is `PageOf<Order>`. `TYPE ALIAS (Item: TYPE) history: { items (items: LIST Item) }` is `History<Item>`,
-  `TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (LIST Key), values (LIST Value) }` is
-  `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left: TYPE) or (Right: TYPE) [| … |]` is
+  is `PageOf<Order>`. `TYPE ALIAS (Item ⁽TYPE) history ⁽{ items (items ⁽LIST Item) }` is `History<Item>`,
+  `TYPE ALIAS Table from (Key ⁽TYPE) to (Value ⁽TYPE) ⁽{ keys (LIST Key), values (LIST Value) }` is
+  `TableFromTo<Key, Value>`, and `TYPE ALIAS (Left ⁽TYPE) or (Right ⁽TYPE) [| … |]` is
   `Or<Left, Right>`. Two types whose words are the same, such as `page` and
-  `page (Item: TYPE)`, would get the same name, so generating either
+  `page (Item ⁽TYPE)`, would get the same name, so generating either
   language is an error that names both. A parameter whose name the
   module already uses, such as `value` (the generated code uses `Value`) or
   a type of the protocol, gets `Parameter` after it: `ValueParameter`. The
@@ -144,7 +144,7 @@ types are copied into each protocol's generated output so outputs stand alone.
 
 Overloads, methods of one shape with different parameter types, each get a
 name of their own: the shape's words, `with`, then each parameter's type in
-words, joined by `and`. `LIST: T` is `list of T`, `MAP: T` is `map of T`, a
+words, joined by `and`. `LIST ⁽T` is `list of T`, `MAP ⁽T` is `map of T`, a
 type of the schema is its plain words, and a generic type has
 its arguments' words in its slots. An overload of `open` taking a
 `File Id` becomes `open_with_file_id`, and one of `scale` taking a

@@ -253,7 +253,7 @@ fn competing_choices(pattern: &Pattern, overlap: &mut Overlap, diagnostics: &mut
 /// finds:
 /// - a `ONE OF` between groups may have a slot choice, which a node
 ///   decides, and the parts after it may start with a node too:
-///   `F _ _?` and `F _?` of `[WORD "F", OPTIONAL: ONE OF [a: WORD "A",
+///   `F _ _?` and `F _?` of `[WORD "F", OPTIONAL ⁽ONE OF [a ⁽WORD "A",
 ///   v: STRING], OPTIONAL: STRING]` both fit `F "s"`;
 /// - parts before a group may take more or fewer nodes, which moves the
 ///   group's word to where a later word stands: `_* X _ _*` and

@@ -15,7 +15,7 @@ fn describes_manually_typed_arguments_and_their_source_ranges() {
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].label, label);
         assert_eq!(&source[info[0].range.clone()], format!("\"{text}\""));
-        assert!(info[0].signature.contains("set variable (name: Text)"));
+        assert!(info[0].signature.contains("set variable (name ⁽Text)"));
         assert!(
             info[0]
                 .documentation
@@ -30,13 +30,13 @@ fn describes_manually_typed_arguments_and_their_source_ranges() {
 fn prefers_nested_arguments_and_supports_grouping_sugar() {
     for source in [
         "environment / set variable \"A\" to (environment / read variable \"B\")",
-        "environment / set variable \"A\" to: environment / read variable \"B\"",
+        "environment / set variable \"A\" to ⁽environment / read variable \"B\"",
         "environment / list variables, environment / read variable \"B\"",
     ] {
         let info = shell().argument_info(source, source.find('B').unwrap());
         assert_eq!(info.len(), 1, "{source}");
         assert_eq!(info[0].label, "name: Text");
-        assert_eq!(info[0].signature, "read variable (name: Text)");
+        assert_eq!(info[0].signature, "read variable (name ⁽Text)");
     }
 }
 

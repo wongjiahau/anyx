@@ -1,4 +1,4 @@
-//! The formatter removes only redundant `.`, `:` and `( )`, lays the rest out
+//! The formatter removes only redundant `₎`, `⁽` and `( )`, lays the rest out
 //! canonically, keeps every comment, and never changes the tree.
 
 mod common;
@@ -65,7 +65,7 @@ fn visit_expression(expression: &anyx::Expression, f: &mut impl FnMut(&anyx::Tok
                 }
             }
         }
-        Expression::Dot(binary) | Expression::Colon(binary) => {
+        Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
             visit_expression(&binary.left, f);
             f(&binary.operator);
             visit_expression(&binary.right, f);
@@ -76,16 +76,16 @@ fn visit_expression(expression: &anyx::Expression, f: &mut impl FnMut(&anyx::Tok
 #[test]
 fn redundant_sugar_and_parens_are_removed() {
     let cases = [
-        ("1 . f", "1 f\n"),
-        ("f : 1", "f 1\n"),
-        ("f : [a]", "f [a]\n"),
+        ("1₎ f", "1 f\n"),
+        ("f ⁽1", "f 1\n"),
+        ("f ⁽[a]", "f [a]\n"),
         ("f ((1))", "f 1\n"),
         ("f ((x))", "f (x)\n"),
         ("(x)", "x\n"),
-        ("(a . b) . c", "a . b . c\n"),
-        ("1 .+ 2", "1 + 2\n"),
-        ("a .+ b .+ c", "a + b .+ c\n"),
-        ("f : 1 . g", "f: 1 g\n"),
+        ("(a₎ b)₎ c", "a₎ b₎ c\n"),
+        ("1₎ + 2", "1 + 2\n"),
+        ("a₎ + b₎ + c", "a + b₎ + c\n"),
+        ("f ⁽1₎ g", "f ⁽1 g\n"),
         (
             "IF (x > 0) THEN (x) ELSE (0 - x)",
             "IF x > 0 THEN x ELSE 0 - x\n",
@@ -99,17 +99,17 @@ fn redundant_sugar_and_parens_are_removed() {
 #[test]
 fn needed_sugar_and_parens_stay() {
     let cases = [
-        "x . f\n",
-        "f: x\n",
+        "x₎ f\n",
+        "f ⁽x\n",
         "f (x)\n",
         "f (_)\n",
         "(x,)\n",
-        "x . y _\n",
-        "a . (b . c)\n",
+        "x₎ y _\n",
+        "a₎ (b₎ c)\n",
         "x < (+)\n",
         "IF (T) THEN y\n",
-        "LET s BE: IF a THEN b ELSE c\n",
-        "a: b: c\n",
+        "LET s BE ⁽IF a THEN b ELSE c\n",
+        "a ⁽b ⁽c\n",
     ];
     for source in cases {
         assert_eq!(fmt(source), source, "{source:?}");
@@ -118,9 +118,9 @@ fn needed_sugar_and_parens_stay() {
 
 #[test]
 fn operators_are_spaced_canonically() {
-    assert_eq!(fmt("a:b"), "a: b\n");
-    assert_eq!(fmt("a   .   f"), "a . f\n");
-    assert_eq!(fmt("x.+y .- z"), "x + y .- z\n");
+    assert_eq!(fmt("a   ⁽   b"), "a ⁽b\n");
+    assert_eq!(fmt("a   ₎   f"), "a₎ f\n");
+    assert_eq!(fmt("x₎ +y₎ - z"), "x + y₎ - z\n");
     // A symbol word that starts a run is a prefix and hugs what follows,
     // except a number, which `-` would make negative.
     assert_eq!(
@@ -128,7 +128,7 @@ fn operators_are_spaced_canonically() {
         "{ @by name, @\"src\", @x, @ 3 }\n"
     );
     assert_eq!(fmt("f(x)"), "f (x)\n");
-    assert_eq!(fmt("{a:b}"), "{ a: b }\n");
+    assert_eq!(fmt("{a ⁽b}"), "{ a ⁽b }\n");
     assert_eq!(fmt("[ a , b , ]"), "[a, b]\n");
     assert_eq!(fmt("( a , b )"), "(a, b)\n");
     assert_eq!(fmt("{ }"), "{}\n");
@@ -170,11 +170,11 @@ fn a_lone_element_in_parens_keeps_its_comma_or_its_absence() {
 }
 
 #[test]
-fn long_dot_chains_break_before_each_dot() {
-    let source = format!("{} . first step . second step", "word ".repeat(18));
+fn long_left_group_chains_break_after_each_marker() {
+    let source = format!("{}₎ first step₎ second step", "word ".repeat(18).trim_end());
     let formatted = fmt(&source);
     assert!(
-        formatted.contains("\n    . first step\n    . second step\n"),
+        formatted.contains("₎\n    first step₎\n    second step\n"),
         "{formatted}"
     );
 }
@@ -202,7 +202,7 @@ fn comments_are_kept_in_place() {
 #[test]
 fn comments_on_removed_tokens_move_to_a_neighbour() {
     assert_eq!(fmt("f ( ## note\n 1 )"), "f ## note\n    1\n");
-    assert_eq!(fmt("1 ## one\n . f"), "1 ## one\n    f\n");
+    assert_eq!(fmt("1 ## one\n₎ f"), "1 ## one\n    f\n");
     assert_eq!(
         fmt("[a ## one\n ## two\n , b]"),
         "[\n    a, ## one\n    ## two\n    b,\n]\n"
@@ -214,7 +214,7 @@ fn comments_never_swallow_code() {
     // A comment in the middle of a run ends its line, and the run continues
     // one level in. So does one before a raw string, which must open a line's end.
     assert_eq!(fmt("f ## c\n x"), "f ## c\n    x\n");
-    assert_eq!(fmt("x . f ## c\n . g"), "x . f ## c\n    . g\n");
+    assert_eq!(fmt("x₎ f ## c\n₎ g"), "x₎ f₎ ## c\n    g\n");
     let formatted = fmt("f ## c\n \"\"\"\n  raw\n  \"\"\"");
     assert_eq!(
         formatted,
@@ -280,10 +280,10 @@ fn random_documents_format_to_the_same_tree() {
         "1",
         "2.5",
         "\"s\"",
-        ".",
-        ".",
-        ":",
-        ":",
+        "₎",
+        "₎",
+        "⁽",
+        "⁽",
         "(",
         ")",
         "(",
@@ -332,8 +332,8 @@ fn line_strings_end_their_line() {
     // The text after a line string goes on the next line: at the same level
     // when the string starts its line, one level in when it follows text.
     assert_eq!(
-        fmt("# A record.\nRECORD x { # The path.\n path: TEXT }"),
-        "# A record.\nRECORD x {\n    # The path.\n    path: TEXT,\n}\n"
+        fmt("# A record.\nRECORD x { # The path.\n path ⁽TEXT }"),
+        "# A record.\nRECORD x {\n    # The path.\n    path ⁽TEXT,\n}\n"
     );
     assert_eq!(fmt("f # s\n x"), "f # s\n    x\n");
     assert_eq!(fmt("#\n# two\n#\nx"), "#\n# two\n#\nx\n");
@@ -361,29 +361,29 @@ fn fmt_breaking_before(source: &str, words: &[&str]) -> String {
 
 #[test]
 fn a_layout_breaks_a_call_only_when_it_is_too_long() {
-    let short = "METHOD list files RETURNS files: LIST file summary";
+    let short = "METHOD list files RETURNS files ⁽LIST file summary";
     assert_eq!(
         fmt_breaking_before(short, &["RETURNS"]),
         format!("{short}\n")
     );
-    let long = "METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT) \
-                RETURNS (new revision: INTEGER) ERRORS [conflict at revision content, rejected, file errors]";
+    let long = "METHOD write (path ⁽TEXT) at revision (revision ⁽INTEGER) content (content ⁽TEXT) \
+                RETURNS (new revision ⁽INTEGER) ERRORS [conflict at revision content, rejected, file errors]";
     assert_eq!(
         fmt_breaking_before(long, &["RETURNS", "ERRORS"]),
-        "METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)\n    \
-         RETURNS (new revision: INTEGER)\n    \
+        "METHOD write (path ⁽TEXT) at revision (revision ⁽INTEGER) content (content ⁽TEXT)\n    \
+         RETURNS (new revision ⁽INTEGER)\n    \
          ERRORS [conflict at revision content, rejected, file errors]\n"
     );
 }
 
 #[test]
 fn a_layout_breaks_calls_inside_a_sequence_one_level_deeper() {
-    let source = "[METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT) \
-                  RETURNS (new revision: INTEGER), METHOD list files RETURNS (files: LIST: file)]";
+    let source = "[METHOD write (path ⁽TEXT) at revision (revision ⁽INTEGER) content (content ⁽TEXT) \
+                  RETURNS (new revision ⁽INTEGER), METHOD list files RETURNS (files ⁽LIST ⁽file)]";
     assert_eq!(
         fmt_breaking_before(source, &["RETURNS"]),
-        "[\n    METHOD write (path: TEXT) at revision (revision: INTEGER) content (content: TEXT)\n        \
-         RETURNS new revision: INTEGER,\n    METHOD list files RETURNS files: LIST file,\n]\n"
+        "[\n    METHOD write (path ⁽TEXT) at revision (revision ⁽INTEGER) content (content ⁽TEXT)\n        \
+         RETURNS new revision ⁽INTEGER,\n    METHOD list files RETURNS files ⁽LIST file,\n]\n"
     );
 }
 
@@ -414,10 +414,10 @@ fn random_layouts_keep_the_tree() {
 
 #[test]
 fn a_blank_line_or_comment_before_a_call_does_not_break_it() {
-    let source = "f,\n\n## c\nMETHOD x RETURNS (y: TEXT)";
+    let source = "f,\n\n## c\nMETHOD x RETURNS (y ⁽TEXT)";
     assert_eq!(
         fmt_breaking_before(source, &["RETURNS"]),
-        "f,\n\n## c\nMETHOD x RETURNS y: TEXT,\n"
+        "f,\n\n## c\nMETHOD x RETURNS y ⁽TEXT,\n"
     );
 }
 
@@ -441,6 +441,6 @@ fn formats_dot_and_colon_symbol_runs() {
     assert_eq!(fmt(":: Name").trim_end(), "::Name");
     assert_eq!(fmt("a::b").trim_end(), "a :: b");
     assert_eq!(fmt("1..3").trim_end(), "1 .. 3");
-    fmt("left . .. right");
-    fmt("left: :: right");
+    fmt("left₎ .. right");
+    fmt("left ⁽:: right");
 }

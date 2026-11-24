@@ -67,25 +67,52 @@ fn a_word_is_all_name_or_all_symbol_characters() {
 #[test]
 fn single_special_characters_are_token_boundaries() {
     assert_eq!(tree("a,b"), "a, b");
-    assert_eq!(tree("a:b"), "(`a _` b)");
-    assert_eq!(tree("+.-"), "(`_ -` +)");
+    assert_eq!(tree("a ⁽b"), "(`a _` b)");
+    assert_eq!(tree("+₎ -"), "(`_ -` +)");
     assert_eq!(tree("f(x)[y]{z}"), "(`f _ _ _` x Brackets[y] Braces[z])");
     assert_eq!(atoms(r#"a"b""#), [word("a"), Atom::String("b".into())]);
 }
 
 #[test]
-fn repeated_dots_and_colons_are_symbol_words() {
+fn dots_and_colons_are_ordinary_symbol_characters() {
     assert_eq!(
         atoms("..File Errors"),
         [word(".."), word("File"), word("Errors")]
     );
     assert_eq!(atoms("a::b"), [word("a"), word("::"), word("b")]);
-    assert_eq!(
-        atoms("...:::..<"),
-        [word("..."), word(":::"), word(".."), word("<")]
-    );
+    assert_eq!(atoms("a:=b"), [word("a"), word(":="), word("b")]);
+    assert_eq!(atoms(". :"), [word("."), word(":")]);
+    assert_eq!(atoms("1.5:=2"), [number("1.5"), word(":="), number("2")]);
+    assert_eq!(atoms("...:::..<"), [word("...:::..<")]);
     assert_eq!(atoms("1..3"), [number("1"), word(".."), number("3")]);
     assert_eq!(tree("a .. b"), "(`_ .. _` a b)");
+}
+
+#[test]
+fn half_parentheses_split_symbol_words_without_whitespace() {
+    for (source, kind, marker) in [
+        ("-₎+", TokenKind::LeftGroup, "₎"),
+        ("-⁽+", TokenKind::RightGroup, "⁽"),
+    ] {
+        let parsed = parse_round_trip(source);
+        assert!(parsed.errors.is_empty(), "{source}");
+        let group = match &parsed.syntax.sequence.elements[0].expression {
+            Expression::LeftGroup(group) | Expression::RightGroup(group) => group,
+            other => panic!("expected a grouping expression, got {other:?}"),
+        };
+        assert_eq!(group.operator.kind, kind);
+        assert_eq!(group.operator.text, marker);
+        for (operand, text) in [(&group.left, "-"), (&group.right, "+")] {
+            let Expression::Run(run) = operand else {
+                panic!("expected a run in {source}");
+            };
+            let [Item::Atom(token)] = run.items.as_slice() else {
+                panic!("expected a single token in {source}");
+            };
+            assert_eq!(token.kind, TokenKind::Word);
+            assert_eq!(token.text, text);
+        }
+    }
 }
 
 #[test]
@@ -140,10 +167,10 @@ fn any_other_letter_ends_a_number() {
 
 #[test]
 fn dot_in_a_number_needs_a_digit_after_it() {
-    assert_eq!(tree("1.to"), "(`_ to` 1)");
-    assert_eq!(tree("1. 2"), "(`_ _` 1 2)");
-    assert_eq!(tree("x.1"), "(`_ _` x 1)");
-    assert_eq!(tree("1.5.to"), "(`_ to` 1.5)");
+    assert_eq!(tree("1.to"), "(`_ . _` 1 to)");
+    assert_eq!(tree("1. 2"), "(`_ . _` 1 2)");
+    assert_eq!(tree("x.1"), "(`_ . _` x 1)");
+    assert_eq!(tree("1.5.to"), "(`_ . _` 1.5 to)");
 }
 
 #[test]
@@ -337,7 +364,7 @@ fn a_lone_surrogate_is_an_invalid_escape() {
 
 #[test]
 fn a_leading_byte_order_mark_is_whitespace() {
-    assert_eq!(tree("\u{FEFF}{\"a\": 1}"), r#"Braces[(`_ _` "a" 1)]"#);
+    assert_eq!(tree("\u{FEFF}{\"a\" ⁽1}"), r#"Braces[(`_ _` "a" 1)]"#);
     assert_eq!(atoms("a \u{FEFF}"), [word("a"), word("\u{FEFF}")]);
 }
 
