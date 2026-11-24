@@ -85,7 +85,12 @@ inference. Macros and effects come later.
     - Unify local values and injective data and constructor heads, keeping blocked equations possible for coverage because opaque calls cannot establish impossibility.
     - Refine a local indexed subject to its matched constructor so a written return type can depend on the subject.
     - Inspect immediate constructors of untested indexed fields because index contradictions can prove those fields empty without an unbounded search for inhabitants.
-11. Termination: structural recursion only, at first.
+11. Termination: structural recursion only, at first. (done)
+    - Require every call in a recursive group to pass a constructor subfield at the same written parameter position because one strict descent suffices for direct and mutual recursion.
+    - Check signatures first and publish each dependency group's bodies after type and termination checking because conversion must only run checked definitions.
+    - Unfold recursive calls only when saturated with a constructor at the decreasing position because evaluation must stop on unknown inputs.
+    - Refine local subjects in plain-data matches because inductive branches need the subject's constructor to compute their expected types.
+    - Treat data occurrences hidden in transparent functions as nonpositive because a function can place them in a negative position.
 
 ## Usable
 

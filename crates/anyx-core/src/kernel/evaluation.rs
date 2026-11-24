@@ -1,7 +1,8 @@
 //! Normalization by evaluation for the core kernel.
 
-use super::{Case, Closure, Environment, Index, Level, Neutral, Pattern, Term, Value};
+use super::{Case, Closure, Environment, Global, Index, Level, Neutral, Pattern, Term, Value};
 use crate::lowering::GlobalKind;
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,54 +32,179 @@ impl std::error::Error for EvaluationError {}
 
 /// Evaluate a term with one environment entry per enclosing binder.
 pub fn evaluate(term: &Term, environment: &[Value]) -> Result<Value, EvaluationError> {
-    Ok(match term {
-        Term::Type => Value::Type,
-        Term::Local(index) => {
-            let position = reverse_position(environment.len(), index.0)
-                .ok_or(EvaluationError::UnboundIndex(*index))?;
-            environment[position].clone()
-        }
-        Term::Global(global) if global.kind == GlobalKind::Constructor => Value::Constructor {
-            global: global.clone(),
-            arguments: Vec::new(),
-        },
-        Term::Global(global) => Value::Neutral(Neutral::Global(global.clone())),
-        Term::FunctionType {
-            parameter_type,
-            result,
-        } => Value::FunctionType {
-            parameter_type: Box::new(evaluate(parameter_type, environment)?),
-            result: Closure {
-                environment: environment.to_vec(),
-                body: result.clone(),
-            },
-        },
-        Term::Function { body } => Value::Function(Closure {
-            environment: environment.to_vec(),
-            body: body.clone(),
-        }),
-        Term::Apply {
-            function,
-            arguments,
-        } => {
-            let mut function = evaluate(function, environment)?;
-            for argument in arguments {
-                function = apply(function, evaluate(argument, environment)?)?;
+    Definitions::default().evaluate(term, environment)
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct Definition {
+    pub body: Term,
+    pub decreasing_parameter: Option<usize>,
+    pub parameter_count: usize,
+}
+
+#[derive(Clone, Default)]
+pub(super) struct Definitions(pub HashMap<String, Definition>);
+
+impl Definitions {
+    pub fn evaluate(&self, term: &Term, environment: &[Value]) -> Result<Value, EvaluationError> {
+        Ok(match term {
+            Term::Type => Value::Type,
+            Term::Local(index) => {
+                let position = reverse_position(environment.len(), index.0)
+                    .ok_or(EvaluationError::UnboundIndex(*index))?;
+                environment[position].clone()
             }
+            Term::Global(global) if global.kind == GlobalKind::Constructor => Value::Constructor {
+                global: global.clone(),
+                arguments: Vec::new(),
+            },
+            Term::Global(global) => self.evaluate_global(global, Vec::new())?,
+            Term::FunctionType {
+                parameter_type,
+                result,
+            } => Value::FunctionType {
+                parameter_type: Box::new(self.evaluate(parameter_type, environment)?),
+                result: Closure {
+                    environment: environment.to_vec(),
+                    body: result.clone(),
+                },
+            },
+            Term::Function { body } => Value::Function(Closure {
+                environment: environment.to_vec(),
+                body: body.clone(),
+            }),
+            Term::Apply {
+                function,
+                arguments,
+            } => {
+                let mut function = self.evaluate(function, environment)?;
+                for argument in arguments {
+                    function = self.apply(function, self.evaluate(argument, environment)?)?;
+                }
+                function
+            }
+            Term::Match { subject, cases } => {
+                self.evaluate_match(self.evaluate(subject, environment)?, cases, environment)?
+            }
+            Term::List(elements) => Value::List(
+                elements
+                    .iter()
+                    .map(|element| self.evaluate(element, environment))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Term::Text(text) => Value::Text(text.clone()),
+            Term::Number(number) => Value::Number(*number),
+        })
+    }
+
+    pub fn instantiate(
+        &self,
+        closure: &Closure,
+        argument: Value,
+    ) -> Result<Value, EvaluationError> {
+        let mut environment = closure.environment.clone();
+        environment.push(argument);
+        self.evaluate(&closure.body, &environment)
+    }
+
+    fn evaluate_global(
+        &self,
+        global: &Global,
+        arguments: Vec<Value>,
+    ) -> Result<Value, EvaluationError> {
+        if global.kind == GlobalKind::Function
+            && let Some(definition) = self.0.get(&global.name)
+        {
+            if let Some(position) = definition.decreasing_parameter {
+                if arguments.len() == definition.parameter_count
+                    && matches!(arguments[position], Value::Constructor { .. })
+                {
+                    return self.evaluate(&definition.body, &arguments);
+                }
+            } else {
+                return self.evaluate(&definition.body, &[]);
+            }
+        }
+
+        let function = Neutral::Global(global.clone());
+        Ok(Value::Neutral(if arguments.is_empty() {
             function
+        } else {
+            Neutral::Apply {
+                function: Box::new(function),
+                arguments,
+            }
+        }))
+    }
+
+    fn apply(&self, function: Value, argument: Value) -> Result<Value, EvaluationError> {
+        match function {
+            Value::Function(closure) => self.instantiate(&closure, argument),
+            Value::Constructor {
+                global,
+                mut arguments,
+            } => {
+                arguments.push(argument);
+                Ok(Value::Constructor { global, arguments })
+            }
+            Value::Neutral(Neutral::Apply {
+                function,
+                mut arguments,
+            }) => {
+                arguments.push(argument);
+                if let Neutral::Global(global) = function.as_ref() {
+                    return self.evaluate_global(global, arguments);
+                }
+                Ok(Value::Neutral(Neutral::Apply {
+                    function,
+                    arguments,
+                }))
+            }
+            Value::Neutral(Neutral::Global(global)) => {
+                self.evaluate_global(&global, vec![argument])
+            }
+            Value::Neutral(function) => Ok(Value::Neutral(Neutral::Apply {
+                function: Box::new(function),
+                arguments: vec![argument],
+            })),
+            _ => Err(EvaluationError::ApplyNonFunction),
         }
-        Term::Match { subject, cases } => {
-            evaluate_match(evaluate(subject, environment)?, cases, environment)?
+    }
+
+    fn evaluate_match(
+        &self,
+        subject: Value,
+        cases: &[Case],
+        environment: &[Value],
+    ) -> Result<Value, EvaluationError> {
+        if cases.is_empty() && matches!(subject, Value::Neutral(_)) {
+            return Ok(Value::Neutral(Neutral::Match {
+                subject: Box::new(subject),
+                cases: Vec::new(),
+                environment: Environment::new(),
+            }));
         }
-        Term::List(elements) => Value::List(
-            elements
-                .iter()
-                .map(|element| evaluate(element, environment))
-                .collect::<Result<_, _>>()?,
-        ),
-        Term::Text(text) => Value::Text(text.clone()),
-        Term::Number(number) => Value::Number(*number),
-    })
+
+        for (case_index, case) in cases.iter().enumerate() {
+            let mut bindings = Vec::new();
+            match match_pattern(&case.pattern, &subject, &mut bindings) {
+                PatternMatch::Matched => {
+                    let mut environment = environment.to_vec();
+                    environment.extend(bindings);
+                    return self.evaluate(&case.result, &environment);
+                }
+                PatternMatch::Mismatched => {}
+                PatternMatch::Blocked => {
+                    return Ok(Value::Neutral(Neutral::Match {
+                        subject: Box::new(subject),
+                        cases: cases[case_index..].to_vec(),
+                        environment: environment.to_vec(),
+                    }));
+                }
+            }
+        }
+        Err(EvaluationError::NoMatchingCase)
+    }
 }
 
 impl Closure {
@@ -90,72 +216,10 @@ impl Closure {
     }
 }
 
-fn apply(function: Value, argument: Value) -> Result<Value, EvaluationError> {
-    match function {
-        Value::Function(closure) => closure.instantiate(argument),
-        Value::Constructor {
-            global,
-            mut arguments,
-        } => {
-            arguments.push(argument);
-            Ok(Value::Constructor { global, arguments })
-        }
-        Value::Neutral(Neutral::Apply {
-            function,
-            mut arguments,
-        }) => {
-            arguments.push(argument);
-            Ok(Value::Neutral(Neutral::Apply {
-                function,
-                arguments,
-            }))
-        }
-        Value::Neutral(function) => Ok(Value::Neutral(Neutral::Apply {
-            function: Box::new(function),
-            arguments: vec![argument],
-        })),
-        _ => Err(EvaluationError::ApplyNonFunction),
-    }
-}
-
 enum PatternMatch {
     Matched,
     Mismatched,
     Blocked,
-}
-
-fn evaluate_match(
-    subject: Value,
-    cases: &[Case],
-    environment: &[Value],
-) -> Result<Value, EvaluationError> {
-    if cases.is_empty() && matches!(subject, Value::Neutral(_)) {
-        return Ok(Value::Neutral(Neutral::Match {
-            subject: Box::new(subject),
-            cases: Vec::new(),
-            environment: Environment::new(),
-        }));
-    }
-
-    for (case_index, case) in cases.iter().enumerate() {
-        let mut bindings = Vec::new();
-        match match_pattern(&case.pattern, &subject, &mut bindings) {
-            PatternMatch::Matched => {
-                let mut environment = environment.to_vec();
-                environment.extend(bindings);
-                return evaluate(&case.result, &environment);
-            }
-            PatternMatch::Mismatched => {}
-            PatternMatch::Blocked => {
-                return Ok(Value::Neutral(Neutral::Match {
-                    subject: Box::new(subject),
-                    cases: cases[case_index..].to_vec(),
-                    environment: environment.to_vec(),
-                }));
-            }
-        }
-    }
-    Err(EvaluationError::NoMatchingCase)
 }
 
 fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment) -> PatternMatch {
@@ -188,69 +252,110 @@ fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment)
 
 /// Reify a value under the given number of enclosing binders.
 pub fn read_back(value: &Value, depth: usize) -> Result<Term, EvaluationError> {
-    Ok(match value {
-        Value::Type => Term::Type,
-        Value::FunctionType {
-            parameter_type,
-            result,
-        } => Term::FunctionType {
-            parameter_type: Box::new(read_back(parameter_type, depth)?),
-            result: read_back_closure(result, depth)?,
-        },
-        Value::Function(closure) => Term::Function {
-            body: read_back_closure(closure, depth)?,
-        },
-        Value::Constructor { global, arguments } => {
-            read_back_application(Term::Global(global.clone()), arguments, depth)?
+    Definitions::default().read_back(value, depth)
+}
+
+impl Definitions {
+    pub fn read_back(&self, value: &Value, depth: usize) -> Result<Term, EvaluationError> {
+        Ok(match value {
+            Value::Type => Term::Type,
+            Value::FunctionType {
+                parameter_type,
+                result,
+            } => Term::FunctionType {
+                parameter_type: Box::new(self.read_back(parameter_type, depth)?),
+                result: self.read_back_closure(result, depth)?,
+            },
+            Value::Function(closure) => Term::Function {
+                body: self.read_back_closure(closure, depth)?,
+            },
+            Value::Constructor { global, arguments } => {
+                self.read_back_application(Term::Global(global.clone()), arguments, depth)?
+            }
+            Value::Neutral(neutral) => self.read_back_neutral(neutral, depth)?,
+            Value::List(elements) => Term::List(self.read_back_values(elements, depth)?),
+            Value::Text(text) => Term::Text(text.clone()),
+            Value::Number(number) => Term::Number(*number),
+        })
+    }
+
+    fn read_back_closure(
+        &self,
+        closure: &Closure,
+        depth: usize,
+    ) -> Result<Box<Term>, EvaluationError> {
+        let value = self.instantiate(closure, fresh_local(depth))?;
+        self.read_back(&value, depth + 1).map(Box::new)
+    }
+
+    fn read_back_neutral(&self, neutral: &Neutral, depth: usize) -> Result<Term, EvaluationError> {
+        Ok(match neutral {
+            Neutral::Local(level) => Term::Local(Index(
+                reverse_position(depth, level.0).ok_or(EvaluationError::UnboundLevel(*level))?,
+            )),
+            Neutral::Global(global) => Term::Global(global.clone()),
+            Neutral::Apply {
+                function,
+                arguments,
+            } => self.read_back_application(
+                self.read_back_neutral(function, depth)?,
+                arguments,
+                depth,
+            )?,
+            Neutral::Match {
+                subject,
+                cases,
+                environment,
+            } => Term::Match {
+                subject: Box::new(self.read_back(subject, depth)?),
+                cases: cases
+                    .iter()
+                    .map(|case| self.read_back_case(case, environment, depth))
+                    .collect::<Result<_, _>>()?,
+            },
+        })
+    }
+
+    fn read_back_case(
+        &self,
+        case: &Case,
+        environment: &[Value],
+        depth: usize,
+    ) -> Result<Case, EvaluationError> {
+        let mut environment = environment.to_vec();
+        let mut result_depth = depth;
+        bind_pattern_locals(&case.pattern, &mut environment, &mut result_depth);
+        Ok(Case {
+            pattern: case.pattern.clone(),
+            result: self.read_back(&self.evaluate(&case.result, &environment)?, result_depth)?,
+        })
+    }
+
+    fn read_back_application(
+        &self,
+        function: Term,
+        arguments: &[Value],
+        depth: usize,
+    ) -> Result<Term, EvaluationError> {
+        if arguments.is_empty() {
+            return Ok(function);
         }
-        Value::Neutral(neutral) => read_back_neutral(neutral, depth)?,
-        Value::List(elements) => Term::List(read_back_values(elements, depth)?),
-        Value::Text(text) => Term::Text(text.clone()),
-        Value::Number(number) => Term::Number(*number),
-    })
-}
+        Ok(Term::Apply {
+            function: Box::new(function),
+            arguments: self.read_back_values(arguments, depth)?,
+        })
+    }
 
-fn read_back_closure(closure: &Closure, depth: usize) -> Result<Box<Term>, EvaluationError> {
-    let value = closure.instantiate(fresh_local(depth))?;
-    read_back(&value, depth + 1).map(Box::new)
-}
-
-fn read_back_neutral(neutral: &Neutral, depth: usize) -> Result<Term, EvaluationError> {
-    Ok(match neutral {
-        Neutral::Local(level) => Term::Local(Index(
-            reverse_position(depth, level.0).ok_or(EvaluationError::UnboundLevel(*level))?,
-        )),
-        Neutral::Global(global) => Term::Global(global.clone()),
-        Neutral::Apply {
-            function,
-            arguments,
-        } => read_back_application(read_back_neutral(function, depth)?, arguments, depth)?,
-        Neutral::Match {
-            subject,
-            cases,
-            environment,
-        } => Term::Match {
-            subject: Box::new(read_back(subject, depth)?),
-            cases: cases
-                .iter()
-                .map(|case| read_back_case(case, environment, depth))
-                .collect::<Result<_, _>>()?,
-        },
-    })
-}
-
-fn read_back_case(
-    case: &Case,
-    environment: &[Value],
-    depth: usize,
-) -> Result<Case, EvaluationError> {
-    let mut environment = environment.to_vec();
-    let mut result_depth = depth;
-    bind_pattern_locals(&case.pattern, &mut environment, &mut result_depth);
-    Ok(Case {
-        pattern: case.pattern.clone(),
-        result: read_back(&evaluate(&case.result, &environment)?, result_depth)?,
-    })
+    fn read_back_values(
+        &self,
+        values: &[Value],
+        depth: usize,
+    ) -> Result<Vec<Term>, EvaluationError> {
+        values
+            .iter()
+            .map(|value| self.read_back(value, depth))
+            .collect()
+    }
 }
 
 fn bind_pattern_locals(pattern: &Pattern, environment: &mut Environment, depth: &mut usize) {
@@ -265,24 +370,6 @@ fn bind_pattern_locals(pattern: &Pattern, environment: &mut Environment, depth: 
             }
         }
     }
-}
-
-fn read_back_application(
-    function: Term,
-    arguments: &[Value],
-    depth: usize,
-) -> Result<Term, EvaluationError> {
-    if arguments.is_empty() {
-        return Ok(function);
-    }
-    Ok(Term::Apply {
-        function: Box::new(function),
-        arguments: read_back_values(arguments, depth)?,
-    })
-}
-
-fn read_back_values(values: &[Value], depth: usize) -> Result<Vec<Term>, EvaluationError> {
-    values.iter().map(|value| read_back(value, depth)).collect()
 }
 
 pub(super) fn reverse_position(length: usize, position: usize) -> Option<usize> {

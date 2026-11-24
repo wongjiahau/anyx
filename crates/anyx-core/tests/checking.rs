@@ -41,14 +41,17 @@ fn rejects_using_a_value_where_a_type_is_required() {
 }
 
 #[test]
-fn checks_mutual_recursion_with_dependent_signatures() {
+fn rejects_mutual_recursion_without_descent() {
     let document = kernel_document(
         "FUNCTION first (element: Type) value (value: element) RETURNS element
            IS (second (element) value (value)),
          FUNCTION second (element: Type) value (value: element) RETURNS element
            IS (first (element) value (value)),",
     );
-    assert!(TypeChecker::default().check_functions(&document).is_ok());
+    assert!(matches!(
+        TypeChecker::default().check_functions(&document),
+        Err(DeclarationCheckingError::NonTerminatingFunctions(_))
+    ));
 }
 
 #[test]
@@ -392,7 +395,7 @@ fn rejects_impossible_indexed_patterns_and_reports_reachable_missing_patterns() 
             CheckingError::RedundantCase(2),
         ),
         (
-            "opaque of (zero)",
+            "opaque of (number)",
             "WHEN empty of (item) THEN zero",
             CheckingError::NonExhaustiveMatch {
                 pattern: "prepend (field1) length (field2) value (field3) tail (field4)".into(),
@@ -401,14 +404,17 @@ fn rejects_impossible_indexed_patterns_and_reports_reachable_missing_patterns() 
     ] {
         let document = kernel_document(&format!(
             "{MATCH_DATA}{VECTOR_DATA}
-             FUNCTION opaque of (number: Natural) RETURNS Natural IS number,
-             FUNCTION inspect (vector: Vector of (Natural) length ({indices}))
+             FUNCTION opaque of (number: Natural) RETURNS Natural IS (MATCH number WITH [
+                 WHEN zero THEN zero,
+                 WHEN successor of (previous) THEN (opaque of (previous)),
+             ]),
+             FUNCTION inspect (number: Natural) vector (vector: Vector of (Natural) length ({indices}))
                  RETURNS Natural IS (MATCH vector WITH [{cases}]),"
         ));
         assert_eq!(
             TypeChecker::default().check_document(&document).err(),
             Some(DeclarationCheckingError::Body {
-                name: "inspect _".into(),
+                name: "inspect _ vector _".into(),
                 error: expected,
             })
         );
@@ -469,4 +475,80 @@ fn confines_index_refinements_to_the_matching_branch() {
             error: CheckingError::TypeMismatch,
         })
     );
+}
+
+#[test]
+fn proves_adding_zero_on_the_right_by_induction() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}
+         DATA (left: Natural) equals (right: Natural) RETURNS Type WITH [
+             reflexivity of (number: Natural) RETURNS ((number) equals (number)),
+         ],
+         FUNCTION adding zero to (number: Natural)
+             RETURNS ((number . plus : zero) equals (number))
+             IS (MATCH number WITH [
+                 WHEN zero THEN (reflexivity of (zero)),
+                 WHEN successor of (previous) THEN
+                     (successor preserves equality from (previous . plus : zero)
+                         to (previous) by (adding zero to (previous))),
+             ]),
+         FUNCTION successor preserves equality from (left: Natural) to (right: Natural)
+             by (proof: (left) equals (right))
+             RETURNS ((successor of (left)) equals (successor of (right)))
+             IS (MATCH proof WITH [
+                 WHEN reflexivity of (number) THEN (reflexivity of (successor of (number))),
+             ]),
+         FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural
+             IS (MATCH left WITH [
+                 WHEN zero THEN right,
+                 WHEN successor of (previous) THEN (successor of ((previous) plus (right))),
+             ]),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn checks_mutual_structural_recursion() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}
+         FUNCTION even (number: Natural) RETURNS Boolean IS (MATCH number WITH [
+             WHEN zero THEN true,
+             WHEN successor of (previous) THEN (odd (previous)),
+         ]),
+         FUNCTION odd (number: Natural) RETURNS Boolean IS (MATCH number WITH [
+             WHEN zero THEN false,
+             WHEN successor of (previous) THEN (even (previous)),
+         ]),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn rejects_recursion_on_an_unrelated_constructor_field() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}
+         FUNCTION recurse (first: Natural) with (second: Natural) RETURNS Natural
+             IS (MATCH second WITH [
+                 WHEN zero THEN zero,
+                 WHEN successor of (previous) THEN (recurse (previous) with (second)),
+             ]),"
+    ));
+    assert!(matches!(
+        TypeChecker::default().check_document(&document),
+        Err(DeclarationCheckingError::NonTerminatingFunctions(_))
+    ));
+}
+
+#[test]
+fn rejects_negative_data_hidden_behind_a_transparent_function() {
+    let document = kernel_document(
+        "FUNCTION alias RETURNS Type IS Recursive,
+         DATA Recursive RETURNS Type WITH [
+             wrap (field: (value: alias) RETURNS Type) RETURNS Recursive,
+         ],",
+    );
+    assert!(matches!(
+        TypeChecker::default().check_document(&document),
+        Err(DeclarationCheckingError::NonPositiveOccurrence { .. })
+    ));
 }

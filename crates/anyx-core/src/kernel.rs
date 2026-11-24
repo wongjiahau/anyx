@@ -7,6 +7,7 @@ mod checking;
 pub use checking::{CheckingError, DeclarationCheckingError, FunctionCheckingError, TypeChecker};
 mod data_checking;
 mod evaluation;
+mod termination;
 pub use evaluation::{EvaluationError, convertible, evaluate, normalize, read_back};
 
 /// Distance from the innermost binder, which has index zero.

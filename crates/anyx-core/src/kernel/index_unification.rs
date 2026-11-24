@@ -1,6 +1,6 @@
 //! First-order index equations established by constructor patterns.
 
-use super::super::{Global, Index, Level, Neutral, Pattern, Term, Value, evaluate, read_back};
+use super::super::{Global, Index, Level, Neutral, Pattern, Term, Value};
 use super::{CheckingError, GlobalKind, Scope};
 
 pub(super) fn data_application(value: &Value) -> Option<(&Global, &[Value])> {
@@ -27,7 +27,10 @@ impl Scope<'_> {
             return Ok(value.clone());
         }
         let depth = self.refinements.len();
-        Ok(evaluate(&read_back(value, depth)?, &self.refinements)?)
+        Ok(self.definitions.evaluate(
+            &self.definitions.read_back(value, depth)?,
+            &self.refinements,
+        )?)
     }
 
     fn solve_local(&mut self, level: Level, value: Value) -> Result<(), CheckingError> {
@@ -35,7 +38,13 @@ impl Scope<'_> {
             .map(super::fresh_local)
             .collect();
         replacement[level.0] = value;
-        let replace = |value: &Value| evaluate(&read_back(value, replacement.len())?, &replacement);
+        let definitions = self.definitions;
+        let replace = |value: &Value| {
+            definitions.evaluate(
+                &definitions.read_back(value, replacement.len())?,
+                &replacement,
+            )
+        };
         for value in self.refinements.iter_mut().chain(&mut self.environment) {
             *value = replace(value)?;
         }
@@ -56,8 +65,8 @@ impl Scope<'_> {
         while let Some((left, right)) = pending.pop() {
             let left = self.refine(&left)?;
             let right = self.refine(&right)?;
-            let left_term = read_back(&left, depth)?;
-            let right_term = read_back(&right, depth)?;
+            let left_term = self.definitions.read_back(&left, depth)?;
+            let right_term = self.definitions.read_back(&right, depth)?;
             if left_term == right_term {
                 continue;
             }

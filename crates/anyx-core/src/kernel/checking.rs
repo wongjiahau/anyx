@@ -7,10 +7,10 @@ mod match_checking;
 use match_checking::DataFamilies;
 
 use super::data_checking::check_data_declarations;
-use super::evaluation::{fresh_local, reverse_position};
+use super::evaluation::{Definitions, fresh_local, reverse_position};
+use super::termination::check_termination;
 use super::{
     Declaration, Document, Environment, EvaluationError, Global, Index, Signature, Term, Value,
-    evaluate, read_back,
 };
 use crate::lowering::GlobalKind;
 use std::collections::HashMap;
@@ -106,6 +106,7 @@ impl From<EvaluationError> for CheckingError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclarationCheckingError {
     DuplicateGlobal(String),
+    NonTerminatingFunctions(Vec<String>),
     Signature { name: String, error: CheckingError },
     Body { name: String, error: CheckingError },
     DataMustReturnType(String),
@@ -116,6 +117,11 @@ pub enum DeclarationCheckingError {
 impl fmt::Display for DeclarationCheckingError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NonTerminatingFunctions(names) => write!(
+                formatter,
+                "cannot establish structural termination for `{}`",
+                names.join("`, `")
+            ),
             Self::DuplicateGlobal(name) => write!(formatter, "duplicate global `{name}`"),
             Self::Signature { name, error } => {
                 write!(formatter, "signature of `{name}`: {error}")
@@ -154,8 +160,9 @@ pub type FunctionCheckingError = DeclarationCheckingError;
 /// Checks core terms using closed global types.
 #[derive(Clone, Default)]
 pub struct TypeChecker {
-    globals: HashMap<String, (Global, Value)>,
+    globals: HashMap<String, (Global, Term)>,
     data_families: DataFamilies,
+    definitions: Definitions,
 }
 
 impl TypeChecker {
@@ -165,9 +172,9 @@ impl TypeChecker {
         global: Global,
         global_type: &Term,
     ) -> Result<Self, CheckingError> {
-        let global_type = evaluate(global_type, &[])?;
+        self.definitions.evaluate(global_type, &[])?;
         self.globals
-            .insert(global.name.clone(), (global, global_type));
+            .insert(global.name.clone(), (global, global_type.clone()));
         Ok(self)
     }
 
@@ -250,20 +257,30 @@ impl TypeChecker {
                 })?;
         }
 
-        for (signature, body) in functions {
-            let mut closed_body = body.clone();
-            for _ in &signature.parameter_types {
-                closed_body = Term::Function {
-                    body: Box::new(closed_body),
+        for group in check_termination(&functions)? {
+            let scope = self.scope();
+            for (signature, body) in &group.functions {
+                let mut closed_body = (*body).clone();
+                for _ in &signature.parameter_types {
+                    closed_body = Term::Function {
+                        body: Box::new(closed_body),
+                    };
+                }
+                let (_, expected) = &self.globals[&signature.name];
+                let check_body = || {
+                    let expected = self.definitions.evaluate(expected, &[])?;
+                    scope.check_value(&closed_body, &expected)
                 };
-            }
-            let (_, expected) = &self.globals[&signature.name];
-            scope.check_value(&closed_body, expected).map_err(|error| {
-                DeclarationCheckingError::Body {
+                check_body().map_err(|error| DeclarationCheckingError::Body {
                     name: signature.name.clone(),
                     error,
-                }
-            })?;
+                })?;
+            }
+            for (signature, body) in &group.functions {
+                self.definitions
+                    .0
+                    .insert(signature.name.clone(), group.definition(signature, body));
+            }
         }
 
         Ok(self)
@@ -273,17 +290,20 @@ impl TypeChecker {
     pub fn check(&self, term: &Term, expected: &Term) -> Result<(), CheckingError> {
         let scope = self.scope();
         scope.check_value(expected, &Value::Type)?;
-        scope.check_value(term, &evaluate(expected, &[])?)
+        scope.check_value(term, &self.definitions.evaluate(expected, &[])?)
     }
 
     /// Synthesize the type of a closed expression from explicit type information.
     pub fn synthesize(&self, term: &Term) -> Result<Term, CheckingError> {
-        Ok(read_back(&self.scope().synthesize_value(term)?, 0)?)
+        Ok(self
+            .definitions
+            .read_back(&self.scope().synthesize_value(term)?, 0)?)
     }
 
     fn scope(&self) -> Scope<'_> {
         Scope {
             globals: &self.globals,
+            definitions: &self.definitions,
             data_families: &self.data_families,
             local_types: Vec::new(),
             environment: Vec::new(),
@@ -306,7 +326,8 @@ fn closed_function_type(signature: &Signature) -> Term {
 
 #[derive(Clone)]
 struct Scope<'globals> {
-    globals: &'globals HashMap<String, (Global, Value)>,
+    globals: &'globals HashMap<String, (Global, Term)>,
+    definitions: &'globals Definitions,
     data_families: &'globals DataFamilies,
     local_types: Vec<Value>,
     environment: Environment,
@@ -350,7 +371,7 @@ impl Scope<'_> {
                 return Err(CheckingError::ExpectedFunctionType);
             };
             let (scope, parameter) = self.under_parameter(parameter_type.as_ref().clone());
-            return scope.check_value(body, &result.instantiate(parameter)?);
+            return scope.check_value(body, &self.definitions.instantiate(result, parameter)?);
         }
 
         if let Term::Match { subject, cases } = term {
@@ -359,7 +380,9 @@ impl Scope<'_> {
 
         let actual = self.synthesize_value(term)?;
         let depth = self.refinements.len();
-        if read_back(&actual, depth)? == read_back(&expected, depth)? {
+        if self.definitions.read_back(&actual, depth)?
+            == self.definitions.read_back(&expected, depth)?
+        {
             Ok(())
         } else {
             Err(CheckingError::TypeMismatch)
@@ -381,14 +404,17 @@ impl Scope<'_> {
                 if registered != global {
                     return Err(CheckingError::UnknownGlobal(global.clone()));
                 }
-                Ok(global_type.clone())
+                Ok(self.definitions.evaluate(global_type, &[])?)
             }
             Term::FunctionType {
                 parameter_type,
                 result,
             } => {
                 self.check_value(parameter_type, &Value::Type)?;
-                let (scope, _) = self.under_parameter(evaluate(parameter_type, &self.environment)?);
+                let (scope, _) = self.under_parameter(
+                    self.definitions
+                        .evaluate(parameter_type, &self.environment)?,
+                );
                 scope.check_value(result, &Value::Type)?;
                 Ok(Value::Type)
             }
@@ -407,7 +433,10 @@ impl Scope<'_> {
                         return Err(CheckingError::ExpectedFunctionType);
                     };
                     self.check_value(argument, &parameter_type)?;
-                    function_type = result.instantiate(evaluate(argument, &self.environment)?)?;
+                    function_type = self.definitions.instantiate(
+                        &result,
+                        self.definitions.evaluate(argument, &self.environment)?,
+                    )?;
                 }
                 Ok(function_type)
             }

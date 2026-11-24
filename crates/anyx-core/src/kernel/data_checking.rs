@@ -5,10 +5,45 @@ use crate::lowering::GlobalKind;
 use std::collections::{HashMap, HashSet};
 
 pub(super) fn check_data_declarations<'document>(
-    declarations: impl Iterator<Item = &'document Declaration>,
+    declarations: impl Iterator<Item = &'document Declaration> + Clone,
 ) -> Result<(), DeclarationCheckingError> {
     let mut dependencies = HashMap::<&str, Vec<&str>>::new();
     let mut forbidden_occurrences = Vec::new();
+
+    let function_bodies: HashMap<_, _> = declarations
+        .clone()
+        .filter_map(|declaration| match declaration {
+            Declaration::Function { signature, body } => Some((signature.name.as_str(), body)),
+            Declaration::Data { .. } => None,
+        })
+        .collect();
+    let visit_references = |term, positive, visit: &mut dyn FnMut(&'document str, bool)| {
+        let mut pending = Vec::new();
+        visit_global_references(
+            term,
+            positive,
+            &mut |reference, positive| match reference.kind {
+                GlobalKind::Data => visit(&reference.name, positive),
+                GlobalKind::Function => pending.push(reference.name.as_str()),
+                GlobalKind::Constructor => {}
+            },
+        );
+
+        // A transparent function can hide a recursive occurrence in a field
+        // type. Its applications have no established positivity.
+        let mut visited = HashSet::new();
+        while let Some(function) = pending.pop() {
+            if visited.insert(function)
+                && let Some(body) = function_bodies.get(function)
+            {
+                visit_global_references(body, false, &mut |reference, _| match reference.kind {
+                    GlobalKind::Data => visit(&reference.name, false),
+                    GlobalKind::Function => pending.push(reference.name.as_str()),
+                    GlobalKind::Constructor => {}
+                });
+            }
+        }
+    };
 
     for declaration in declarations {
         let Declaration::Data {
@@ -24,7 +59,7 @@ pub(super) fn check_data_declarations<'document>(
         }
         let referenced_data = dependencies.entry(data).or_default();
         for parameter_type in &signature.parameter_types {
-            visit_data_references(parameter_type, false, &mut |reference, _| {
+            visit_references(parameter_type, false, &mut |reference, _| {
                 referenced_data.push(reference);
                 forbidden_occurrences.push((data, data, reference));
             });
@@ -57,9 +92,9 @@ pub(super) fn check_data_declarations<'document>(
                 }
             };
             for parameter_type in &constructor.parameter_types {
-                visit_data_references(parameter_type, true, &mut record_reference);
+                visit_references(parameter_type, true, &mut record_reference);
             }
-            visit_data_references(&constructor.result, true, &mut record_reference);
+            visit_references(&constructor.result, true, &mut record_reference);
         }
     }
 
@@ -85,44 +120,41 @@ pub(super) fn check_data_declarations<'document>(
     Ok(())
 }
 
-fn visit_data_references<'term>(
+fn visit_global_references<'term>(
     term: &'term Term,
     positive: bool,
-    visit: &mut impl FnMut(&'term str, bool),
+    visit: &mut impl FnMut(&'term Global, bool),
 ) {
     match term {
-        Term::Global(Global {
-            name,
-            kind: GlobalKind::Data,
-        }) => visit(name, positive),
+        Term::Global(global) => visit(global, positive),
         Term::FunctionType {
             parameter_type,
             result,
         } => {
-            visit_data_references(parameter_type, false, visit);
-            visit_data_references(result, positive, visit);
+            visit_global_references(parameter_type, false, visit);
+            visit_global_references(result, positive, visit);
         }
         Term::Apply {
             function,
             arguments,
         } => {
-            visit_data_references(function, positive, visit);
+            visit_global_references(function, positive, visit);
             for argument in arguments {
-                visit_data_references(argument, false, visit);
+                visit_global_references(argument, false, visit);
             }
         }
-        Term::Function { body } => visit_data_references(body, false, visit),
+        Term::Function { body } => visit_global_references(body, false, visit),
         Term::Match { subject, cases } => {
-            visit_data_references(subject, false, visit);
+            visit_global_references(subject, false, visit);
             for case in cases {
-                visit_data_references(&case.result, false, visit);
+                visit_global_references(&case.result, false, visit);
             }
         }
         Term::List(elements) => {
             for element in elements {
-                visit_data_references(element, false, visit);
+                visit_global_references(element, false, visit);
             }
         }
-        Term::Type | Term::Local(_) | Term::Global(_) | Term::Text(_) | Term::Number(_) => {}
+        Term::Type | Term::Local(_) | Term::Text(_) | Term::Number(_) => {}
     }
 }

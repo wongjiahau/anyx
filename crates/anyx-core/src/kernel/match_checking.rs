@@ -1,6 +1,6 @@
 //! Check constructor patterns and coverage at the subject's indices.
 
-use super::super::{Case, Neutral, Pattern, Signature, Term, Value, evaluate};
+use super::super::{Case, Neutral, Pattern, Signature, Term, Value};
 use super::index_unification::data_application;
 use super::{CheckingError, Scope};
 use std::collections::HashMap;
@@ -60,8 +60,7 @@ impl Scope<'_> {
         expected: &Value,
     ) -> Result<(), CheckingError> {
         let subject_type = self.synthesize_value(subject)?;
-        let (family, _) = self
-            .data_families
+        self.data_families
             .family(&subject_type)
             .ok_or(CheckingError::MatchNeedsData)?;
         let mut coverage = self.clone();
@@ -73,10 +72,9 @@ impl Scope<'_> {
         let mut earlier = Vec::new();
         for (position, case) in cases.iter().enumerate() {
             let mut scope = self.clone();
-            let subject_value = if family.arity != 0
-                && matches!(subject, Term::Local(_))
+            let subject_value = if matches!(subject, Term::Local(_))
                 && let value @ Value::Neutral(Neutral::Local(_)) =
-                    evaluate(subject, &self.environment)?
+                    self.definitions.evaluate(subject, &self.environment)?
             {
                 value
             } else {
@@ -153,7 +151,8 @@ impl Scope<'_> {
     ) -> Result<Option<Vec<Column>>, CheckingError> {
         let subject_type = self.refine(&column.value_type)?;
         let (family, indices) = data_application(&subject_type).expect("known data family");
-        let (global, mut constructor_type) = self.globals[&constructor.name].clone();
+        let (global, constructor_type) = &self.globals[&constructor.name];
+        let mut constructor_type = self.definitions.evaluate(constructor_type, &[])?;
         let mut fields = Vec::new();
         for _ in 0..constructor.arity {
             let Value::FunctionType {
@@ -164,7 +163,7 @@ impl Scope<'_> {
                 return Err(CheckingError::ExpectedFunctionType);
             };
             let value = self.fresh_value();
-            constructor_type = result.instantiate(value.clone())?;
+            constructor_type = self.definitions.instantiate(&result, value.clone())?;
             fields.push(Column {
                 value,
                 value_type: *parameter_type,
@@ -179,7 +178,7 @@ impl Scope<'_> {
             || !self.unify_indices(
                 std::slice::from_ref(&column.value),
                 &[Value::Constructor {
-                    global,
+                    global: global.clone(),
                     arguments: fields.iter().map(|field| field.value.clone()).collect(),
                 }],
             )?
