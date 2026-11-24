@@ -129,6 +129,14 @@ fn evaluate_match(
     cases: &[Case],
     environment: &[Value],
 ) -> Result<Value, EvaluationError> {
+    if cases.is_empty() && matches!(subject, Value::Neutral(_)) {
+        return Ok(Value::Neutral(Neutral::Match {
+            subject: Box::new(subject),
+            cases: Vec::new(),
+            environment: Environment::new(),
+        }));
+    }
+
     for (case_index, case) in cases.iter().enumerate() {
         let mut bindings = Vec::new();
         match match_pattern(&case.pattern, &subject, &mut bindings) {

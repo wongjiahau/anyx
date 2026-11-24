@@ -452,7 +452,7 @@ fn decode_expression_match(node: &Node) -> Result<Expression, DecodeError> {
 
 fn decode_expression_match_cases(node: &Node) -> Result<Spanned<Vec<Case>>, DecodeError> {
     let mut elements = support::square_bracket(node)?;
-    let value = elements.one_or_more(decode_case, "a case")?;
+    let value = elements.zero_or_more(decode_case);
     elements.finish()?;
     Ok(Spanned {
         value,

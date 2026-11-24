@@ -186,3 +186,103 @@ fn kernel_document(source: &str) -> Document {
     let lowered = lower_document(&parsed.document.unwrap()).unwrap();
     Document::try_from(&lowered).unwrap()
 }
+
+const MATCH_DATA: &str = "
+    DATA Natural RETURNS Type WITH [
+        zero RETURNS Natural,
+        successor of (previous: Natural) RETURNS Natural,
+    ],
+    DATA Boolean RETURNS Type WITH [false RETURNS Boolean, true RETURNS Boolean],
+    DATA Empty RETURNS Type WITH [],
+    DATA Package RETURNS Type WITH [
+        pack (element: Type) value (value: element) RETURNS Package,
+    ],
+    DATA Indexed by (index: Natural) RETURNS Type WITH [],
+";
+
+#[test]
+fn checks_nested_patterns_and_dependent_fields() {
+    let document = kernel_document(&format!(
+        "FUNCTION inspect (number: Natural) RETURNS Natural IS (MATCH number WITH [
+            WHEN zero THEN zero,
+            WHEN successor of (zero) THEN zero,
+            WHEN successor of (successor of (previous)) THEN previous,
+        ]),
+        FUNCTION consume (package: Package) RETURNS Natural IS (MATCH package WITH [
+            WHEN pack (element) value (value) THEN (use (element) value (value)),
+        ]),
+        FUNCTION use (element: Type) value (value: element) RETURNS Natural IS zero,
+        {MATCH_DATA}"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn checks_an_empty_match_and_normalizes_it_under_a_binder() {
+    let document = kernel_document(&format!(
+        "FUNCTION eliminate (impossible: Empty) RETURNS Type IS (MATCH impossible WITH []),
+         {MATCH_DATA}"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+    let Declaration::Function { body, .. } = &document.declarations[0] else {
+        panic!("expected a function declaration");
+    };
+    let function = Term::Function {
+        body: Box::new(body.clone()),
+    };
+    assert_eq!(
+        anyx_core::kernel::normalize(&function, 0),
+        Ok(function.clone())
+    );
+}
+
+#[test]
+fn rejects_invalid_plain_data_matches() {
+    for (subject_type, cases, expected) in [
+        (
+            "Natural",
+            "WHEN successor of (zero) THEN zero, WHEN zero THEN zero",
+            CheckingError::NonExhaustiveMatch,
+        ),
+        (
+            "Natural",
+            "WHEN zero THEN zero, WHEN successor of (previous) THEN previous, WHEN rest THEN rest",
+            CheckingError::RedundantCase(3),
+        ),
+        (
+            "Natural",
+            "WHEN successor of (previous) THEN previous, WHEN successor of (zero) THEN zero",
+            CheckingError::RedundantCase(2),
+        ),
+        (
+            "Natural",
+            "WHEN false THEN zero",
+            CheckingError::WrongPatternConstructor("false".into()),
+        ),
+        (
+            "Natural",
+            "WHEN zero THEN Type, WHEN successor of (previous) THEN previous",
+            CheckingError::TypeMismatch,
+        ),
+        (
+            "Empty",
+            "WHEN impossible THEN zero",
+            CheckingError::RedundantCase(1),
+        ),
+        ("Type", "", CheckingError::MatchNeedsPlainData),
+        ("Indexed by (zero)", "", CheckingError::MatchNeedsPlainData),
+    ] {
+        let document = kernel_document(&format!(
+            "{MATCH_DATA}
+             FUNCTION inspect (subject: {subject_type}) RETURNS Natural
+                 IS (MATCH subject WITH [{cases}]),"
+        ));
+        assert_eq!(
+            TypeChecker::default().check_document(&document).err(),
+            Some(DeclarationCheckingError::Body {
+                name: "inspect _".into(),
+                error: expected
+            })
+        );
+    }
+}

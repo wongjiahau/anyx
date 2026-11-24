@@ -1,5 +1,9 @@
 //! Bidirectional checking for core expressions.
 
+#[path = "match_checking.rs"]
+mod match_checking;
+use match_checking::PlainData;
+
 use super::data_checking::check_data_declarations;
 use super::evaluation::{fresh_local, reverse_position};
 use super::{
@@ -18,6 +22,16 @@ pub enum CheckingError {
     ExpectedFunctionType,
     TypeMismatch,
     UnsupportedTerm,
+    MatchNeedsExpectedType,
+    MatchNeedsPlainData,
+    WrongPatternConstructor(String),
+    WrongPatternArgumentCount {
+        constructor: String,
+        expected: usize,
+        actual: usize,
+    },
+    RedundantCase(usize),
+    NonExhaustiveMatch,
     Evaluation(EvaluationError),
 }
 
@@ -36,10 +50,30 @@ impl fmt::Display for CheckingError {
             ),
             Self::ExpectedFunctionType => write!(formatter, "expected a function type"),
             Self::TypeMismatch => write!(formatter, "expression does not have the expected type"),
-            Self::UnsupportedTerm => write!(
+            Self::UnsupportedTerm => write!(formatter, "checking literals is not yet supported"),
+            Self::MatchNeedsExpectedType => {
+                write!(formatter, "MATCH needs an expected result type")
+            }
+            Self::MatchNeedsPlainData => write!(
                 formatter,
-                "checking matches and literals is not yet supported"
+                "MATCH and constructor patterns need a declared data type without parameters"
             ),
+            Self::WrongPatternConstructor(name) => write!(
+                formatter,
+                "constructor `{name}` does not belong to the pattern's data type"
+            ),
+            Self::WrongPatternArgumentCount {
+                constructor,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "constructor pattern `{constructor}` has {actual} arguments, expected {expected}"
+            ),
+            Self::RedundantCase(position) => {
+                write!(formatter, "MATCH case {position} is redundant")
+            }
+            Self::NonExhaustiveMatch => write!(formatter, "MATCH is not exhaustive"),
             Self::Evaluation(error) => error.fmt(formatter),
         }
     }
@@ -105,6 +139,7 @@ pub type FunctionCheckingError = DeclarationCheckingError;
 #[derive(Clone, Default)]
 pub struct TypeChecker {
     globals: HashMap<String, (Global, Value)>,
+    plain_data: PlainData,
 }
 
 impl TypeChecker {
@@ -156,6 +191,9 @@ impl TypeChecker {
                     constructors,
                 } => {
                     signatures.push((signature, GlobalKind::Data));
+                    if signature.parameter_types.is_empty() {
+                        self.plain_data.register(signature, constructors);
+                    }
                     signatures.extend(
                         constructors
                             .iter()
@@ -232,6 +270,7 @@ impl TypeChecker {
     fn scope(&self) -> Scope<'_> {
         Scope {
             globals: &self.globals,
+            plain_data: &self.plain_data,
             local_types: Vec::new(),
             environment: Vec::new(),
         }
@@ -252,6 +291,7 @@ fn closed_function_type(signature: &Signature) -> Term {
 #[derive(Clone)]
 struct Scope<'globals> {
     globals: &'globals HashMap<String, (Global, Value)>,
+    plain_data: &'globals PlainData,
     local_types: Vec<Value>,
     environment: Environment,
 }
@@ -259,10 +299,15 @@ struct Scope<'globals> {
 impl Scope<'_> {
     fn under_parameter(&self, parameter_type: Value) -> (Self, Value) {
         let mut scope = self.clone();
-        let parameter = fresh_local(self.environment.len());
-        scope.local_types.push(parameter_type);
-        scope.environment.push(parameter.clone());
+        let parameter = scope.push_parameter(parameter_type);
         (scope, parameter)
+    }
+
+    fn push_parameter(&mut self, parameter_type: Value) -> Value {
+        let parameter = fresh_local(self.environment.len());
+        self.local_types.push(parameter_type);
+        self.environment.push(parameter.clone());
+        parameter
     }
 
     fn check_value(&self, term: &Term, expected: &Value) -> Result<(), CheckingError> {
@@ -276,6 +321,10 @@ impl Scope<'_> {
             };
             let (scope, parameter) = self.under_parameter(parameter_type.as_ref().clone());
             return scope.check_value(body, &result.instantiate(parameter)?);
+        }
+
+        if let Term::Match { subject, cases } = term {
+            return self.check_match(subject, cases, expected);
         }
 
         let actual = self.synthesize_value(term)?;
@@ -332,9 +381,8 @@ impl Scope<'_> {
                 }
                 Ok(function_type)
             }
-            Term::Match { .. } | Term::List(_) | Term::Text(_) | Term::Number(_) => {
-                Err(CheckingError::UnsupportedTerm)
-            }
+            Term::Match { .. } => Err(CheckingError::MatchNeedsExpectedType),
+            Term::List(_) | Term::Text(_) | Term::Number(_) => Err(CheckingError::UnsupportedTerm),
         }
     }
 }

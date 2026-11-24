@@ -73,7 +73,12 @@ inference. Macros and effects come later.
      parameter types because those positions have no established positivity.
    - Check cycles among data dependencies so mutually recursive declarations
      obey the same positivity rule as direct recursion.
-9. `MATCH` on plain data, with exhaustiveness and redundancy checks.
+9. `MATCH` on plain data, with exhaustiveness and redundancy checks. (done)
+   - Match declared data types without parameters because indexed families need item 10.
+   - Check each branch against the expected result type from the enclosing expression so no branch has to supply a result type.
+   - Check constructor fields in written order so later field types can refer to earlier pattern values.
+   - Check coverage over constructor trees because this detects overlap in nested patterns without trying to prove whether field types are inhabited.
+   - Allow an empty case list for data without constructors because there are no constructor cases to write.
 10. `MATCH` on indexed families such as `Vector`, with index unification.
 11. Termination: structural recursion only, at first.
 

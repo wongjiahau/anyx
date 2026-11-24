@@ -46,7 +46,7 @@ expression: ONE OF [
   function type: ANYFIX CALL [parameter, WORD "RETURNS", result: expression],
   match: ANYFIX CALL [
     WORD "MATCH", subject: expression,
-    WORD "WITH", cases: SQUARE BRACKET: ONE OR MORE: case,
+    WORD "WITH", cases: SQUARE BRACKET: ZERO OR MORE: case,
   ],
   ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
   call: ANYFIX CALL [
