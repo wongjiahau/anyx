@@ -277,11 +277,11 @@ fn read_back_values(values: &[Value], depth: usize) -> Result<Vec<Term>, Evaluat
     values.iter().map(|value| read_back(value, depth)).collect()
 }
 
-fn reverse_position(length: usize, position: usize) -> Option<usize> {
+pub(super) fn reverse_position(length: usize, position: usize) -> Option<usize> {
     length.checked_sub(1)?.checked_sub(position)
 }
 
-fn fresh_local(depth: usize) -> Value {
+pub(super) fn fresh_local(depth: usize) -> Value {
     Value::Neutral(Neutral::Local(Level(depth)))
 }
 

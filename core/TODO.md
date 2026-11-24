@@ -52,8 +52,11 @@ inference. Macros and effects come later.
    - Compare beta-normal forms structurally, using decoded text and a single
      application spine per head, so source spelling and call grouping do not
      affect conversion. Leave type-directed eta rules for the type checker.
-6. Bidirectional checking of `Type`, function types, holes, calls and names.
+6. Bidirectional checking of `Type`, function types, holes, calls and names. (done)
    `Type` is in `Type` for now: a known inconsistency.
+   - Supply closed global types to the checker because declaration checking starts in item 7.
+   - Check hole-created functions against an expected function type because their parameter types must come from written annotations.
+   - Compare types by beta normalization because it reuses the kernel's existing conversion rule.
 7. `FUNCTION` declarations, including recursion between them.
 8. `DATA` declarations: constructors must return their own type, and strict
    positivity holds.

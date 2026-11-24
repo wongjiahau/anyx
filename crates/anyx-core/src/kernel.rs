@@ -3,6 +3,8 @@
 use crate::lowering::{self, BindingIdentifier, GlobalKind};
 use std::fmt;
 
+mod checking;
+pub use checking::{CheckingError, TypeChecker};
 mod evaluation;
 pub use evaluation::{EvaluationError, convertible, evaluate, normalize, read_back};
 
