@@ -1,13 +1,19 @@
-//! Check plain-data patterns and their structural coverage.
+//! Check constructor patterns and coverage at the subject's indices.
 
-use super::super::{Case, Global, Neutral, Pattern, Signature, Term, Value};
-use super::{CheckingError, GlobalKind, Scope};
+use super::super::{Case, Neutral, Pattern, Signature, Term, Value, evaluate};
+use super::index_unification::data_application;
+use super::{CheckingError, Scope};
 use std::collections::HashMap;
 
 #[derive(Clone, Default)]
-pub(super) struct PlainData {
-    families: HashMap<String, Vec<Constructor>>,
-    owners: HashMap<String, String>,
+pub(super) struct DataFamilies {
+    families: HashMap<String, Family>,
+}
+
+#[derive(Clone)]
+struct Family {
+    arity: usize,
+    constructors: Vec<Constructor>,
 }
 
 #[derive(Clone)]
@@ -16,34 +22,171 @@ struct Constructor {
     arity: usize,
 }
 
-impl PlainData {
+impl DataFamilies {
     pub(super) fn register(&mut self, family: &Signature, constructors: &[Signature]) {
         self.families.insert(
             family.name.clone(),
-            constructors
-                .iter()
-                .map(|constructor| {
-                    self.owners
-                        .insert(constructor.name.clone(), family.name.clone());
-                    Constructor {
+            Family {
+                arity: family.parameter_types.len(),
+                constructors: constructors
+                    .iter()
+                    .map(|constructor| Constructor {
                         name: constructor.name.clone(),
                         arity: constructor.parameter_types.len(),
-                    }
-                })
-                .collect(),
+                    })
+                    .collect(),
+            },
         );
     }
 
-    fn constructors(&self, data_type: &Value) -> Result<&[Constructor], CheckingError> {
-        if let Value::Neutral(Neutral::Global(Global {
-            name,
-            kind: GlobalKind::Data,
-        })) = data_type
-            && let Some(constructors) = self.families.get(name)
-        {
-            return Ok(constructors);
+    fn family<'value>(&self, data_type: &'value Value) -> Option<(&Family, &'value [Value])> {
+        let (global, indices) = data_application(data_type)?;
+        let family = self.families.get(&global.name)?;
+        (indices.len() == family.arity).then_some((family, indices))
+    }
+}
+
+#[derive(Clone)]
+struct Column {
+    value: Value,
+    value_type: Value,
+}
+
+impl Scope<'_> {
+    pub(super) fn check_match(
+        &self,
+        subject: &Term,
+        cases: &[Case],
+        expected: &Value,
+    ) -> Result<(), CheckingError> {
+        let subject_type = self.synthesize_value(subject)?;
+        let (family, _) = self
+            .data_families
+            .family(&subject_type)
+            .ok_or(CheckingError::MatchNeedsData)?;
+        let mut coverage = self.clone();
+        let column = Column {
+            value: coverage.fresh_value(),
+            value_type: subject_type.clone(),
+        };
+        let columns = [column];
+        let mut earlier = Vec::new();
+        for (position, case) in cases.iter().enumerate() {
+            let mut scope = self.clone();
+            let subject_value = if family.arity != 0
+                && matches!(subject, Term::Local(_))
+                && let value @ Value::Neutral(Neutral::Local(_)) =
+                    evaluate(subject, &self.environment)?
+            {
+                value
+            } else {
+                scope.fresh_value()
+            };
+            scope.check_pattern(
+                &case.pattern,
+                &Column {
+                    value: subject_value,
+                    value_type: subject_type.clone(),
+                },
+            )?;
+            let row = vec![&case.pattern];
+            if coverage
+                .uncovered(&earlier, &row, &columns, true)?
+                .is_none()
+            {
+                return Err(CheckingError::RedundantCase(position + 1));
+            }
+            scope.check_value(&case.result, expected)?;
+            earlier.push(row);
         }
-        Err(CheckingError::MatchNeedsPlainData)
+
+        if let Some(mut uncovered) =
+            coverage.uncovered(&earlier, &[&Pattern::Binding], &columns, true)?
+        {
+            let mut binding_names = (1..)
+                .map(|number| format!("field{number}"))
+                .filter(|name| !self.globals.contains_key(name));
+            let pattern = format_pattern(&uncovered.remove(0), &mut binding_names);
+            return Err(CheckingError::NonExhaustiveMatch { pattern });
+        }
+        Ok(())
+    }
+
+    fn check_pattern(&mut self, pattern: &Pattern, column: &Column) -> Result<(), CheckingError> {
+        let value_type = self.refine(&column.value_type)?;
+        let Pattern::Constructor { name, arguments } = pattern else {
+            self.bind_parameter(value_type, self.refine(&column.value)?);
+            return Ok(());
+        };
+        let (family, _) = self
+            .data_families
+            .family(&value_type)
+            .ok_or(CheckingError::MatchNeedsData)?;
+        let constructor = family
+            .constructors
+            .iter()
+            .find(|constructor| constructor.name == *name)
+            .ok_or_else(|| CheckingError::WrongPatternConstructor(name.clone()))?;
+        if arguments.len() != constructor.arity {
+            return Err(CheckingError::WrongPatternArgumentCount {
+                constructor: name.clone(),
+                expected: constructor.arity,
+                actual: arguments.len(),
+            });
+        }
+
+        let fields = self
+            .open_constructor(column, constructor)?
+            .ok_or_else(|| CheckingError::ImpossiblePattern(name.clone()))?;
+        for (argument, field) in arguments.iter().zip(&fields) {
+            self.check_pattern(argument, field)?;
+        }
+        Ok(())
+    }
+
+    // Introduce all fields before checking nested patterns so the result
+    // indices can determine the types of those fields.
+    fn open_constructor(
+        &mut self,
+        column: &Column,
+        constructor: &Constructor,
+    ) -> Result<Option<Vec<Column>>, CheckingError> {
+        let subject_type = self.refine(&column.value_type)?;
+        let (family, indices) = data_application(&subject_type).expect("known data family");
+        let (global, mut constructor_type) = self.globals[&constructor.name].clone();
+        let mut fields = Vec::new();
+        for _ in 0..constructor.arity {
+            let Value::FunctionType {
+                parameter_type,
+                result,
+            } = constructor_type
+            else {
+                return Err(CheckingError::ExpectedFunctionType);
+            };
+            let value = self.fresh_value();
+            constructor_type = result.instantiate(value.clone())?;
+            fields.push(Column {
+                value,
+                value_type: *parameter_type,
+            });
+        }
+        let (result_family, result_indices) =
+            data_application(&constructor_type).ok_or(CheckingError::TypeMismatch)?;
+        if result_family != family || result_indices.len() != indices.len() {
+            return Err(CheckingError::TypeMismatch);
+        }
+        if !self.unify_indices(indices, result_indices)?
+            || !self.unify_indices(
+                std::slice::from_ref(&column.value),
+                &[Value::Constructor {
+                    global,
+                    arguments: fields.iter().map(|field| field.value.clone()).collect(),
+                }],
+            )?
+        {
+            return Ok(None);
+        }
+        Ok(Some(fields))
     }
 
     // Find a row matched by the candidate and by none of the earlier rows.
@@ -51,13 +194,36 @@ impl PlainData {
         &self,
         earlier: &[Vec<&Pattern>],
         candidate: &[&Pattern],
-        known_constructors: Option<&[Constructor]>,
-    ) -> Option<Vec<Pattern>> {
+        columns: &[Column],
+        match_subject: bool,
+    ) -> Result<Option<Vec<Pattern>>, CheckingError> {
         let Some((first, remaining)) = candidate.split_first() else {
-            return earlier.is_empty().then(Vec::new);
+            return Ok(earlier.is_empty().then(Vec::new));
         };
+        let column = &columns[0];
+        let value_type = self.refine(&column.value_type)?;
+        let family = self.data_families.family(&value_type);
+
         if let Pattern::Constructor { name, arguments } = first {
-            return self.uncovered_constructor(earlier, remaining, name, arguments.iter());
+            // The branch checker has already validated the pattern's family
+            // and arity. Earlier column refinements may have changed its type.
+            let Some((family, _)) = family else {
+                return Ok(None);
+            };
+            let Some(constructor) = family
+                .constructors
+                .iter()
+                .find(|constructor| constructor.name == *name)
+            else {
+                return Ok(None);
+            };
+            return self.uncovered_constructor(
+                earlier,
+                remaining,
+                columns,
+                constructor,
+                arguments.iter(),
+            );
         }
 
         let heads: Vec<_> = earlier
@@ -67,66 +233,98 @@ impl PlainData {
                 Pattern::Binding => None,
             })
             .collect();
-        let constructors = known_constructors.or_else(|| {
-            heads
-                .first()
-                .map(|head| self.families[&self.owners[*head]].as_slice())
-        });
-        let missing_constructor = if let Some(constructors) = constructors {
-            let missing = constructors
+        if (match_subject || !heads.is_empty())
+            && let Some((family, _)) = family
+        {
+            // Try unmentioned constructors first to keep missing patterns short.
+            for constructor in family
+                .constructors
                 .iter()
-                .find(|constructor| !heads.contains(&&constructor.name));
-            if missing.is_none() {
-                return constructors.iter().find_map(|constructor| {
-                    self.uncovered_constructor(
-                        earlier,
-                        remaining,
-                        &constructor.name,
-                        std::iter::repeat_n(&Pattern::Binding, constructor.arity),
-                    )
-                });
+                .filter(|constructor| !heads.contains(&&constructor.name))
+                .chain(
+                    family
+                        .constructors
+                        .iter()
+                        .filter(|constructor| heads.contains(&&constructor.name)),
+                )
+            {
+                if let Some(witness) = self.uncovered_constructor(
+                    earlier,
+                    remaining,
+                    columns,
+                    constructor,
+                    std::iter::repeat_n(&Pattern::Binding, constructor.arity),
+                )? {
+                    return Ok(Some(witness));
+                }
             }
-            missing
-        } else {
-            None
-        };
+            return Ok(None);
+        }
 
-        // An unmentioned constructor can only match a binding in this column.
+        if let Some((family, _)) = family
+            && family.arity != 0
+        {
+            // An uninspected indexed field can be empty by index conflict.
+            // Stop at its immediate constructors to bound the search.
+            let mut possible = false;
+            for constructor in &family.constructors {
+                if self
+                    .clone()
+                    .open_constructor(column, constructor)?
+                    .is_some()
+                {
+                    possible = true;
+                    break;
+                }
+            }
+            if !possible {
+                return Ok(None);
+            }
+        }
+
+        // Columns with only bindings need no further constructor inspection.
         let defaults: Vec<_> = earlier
             .iter()
             .filter(|row| matches!(row[0], Pattern::Binding))
             .map(|row| row[1..].to_vec())
             .collect();
-        let mut uncovered = self.uncovered(&defaults, remaining, None)?;
-        let first =
-            missing_constructor.map_or(Pattern::Binding, |constructor| Pattern::Constructor {
-                name: constructor.name.clone(),
-                arguments: vec![Pattern::Binding; constructor.arity],
-            });
-        uncovered.insert(0, first);
-        Some(uncovered)
+        Ok(self
+            .uncovered(&defaults, remaining, &columns[1..], false)?
+            .map(|mut witness| {
+                witness.insert(0, Pattern::Binding);
+                witness
+            }))
     }
 
     fn uncovered_constructor<'pattern>(
         &self,
         earlier: &[Vec<&Pattern>],
         remaining: &[&'pattern Pattern],
-        name: &str,
-        arguments: impl ExactSizeIterator<Item = &'pattern Pattern>,
-    ) -> Option<Vec<Pattern>> {
-        let arity = arguments.len();
-        let specialized = specialize(earlier, name, arity);
+        columns: &[Column],
+        constructor: &Constructor,
+        arguments: impl Iterator<Item = &'pattern Pattern>,
+    ) -> Result<Option<Vec<Pattern>>, CheckingError> {
+        let mut scope = self.clone();
+        let Some(mut specialized_columns) = scope.open_constructor(&columns[0], constructor)?
+        else {
+            return Ok(None);
+        };
+        specialized_columns.extend_from_slice(&columns[1..]);
+        let specialized = specialize(earlier, &constructor.name, constructor.arity);
         let candidate: Vec<_> = arguments.chain(remaining.iter().copied()).collect();
-        let mut uncovered = self.uncovered(&specialized, &candidate, None)?;
-        let arguments = uncovered.drain(..arity).collect();
-        uncovered.insert(
-            0,
-            Pattern::Constructor {
-                name: name.into(),
-                arguments,
-            },
-        );
-        Some(uncovered)
+        Ok(scope
+            .uncovered(&specialized, &candidate, &specialized_columns, false)?
+            .map(|mut witness| {
+                let arguments = witness.drain(..constructor.arity).collect();
+                witness.insert(
+                    0,
+                    Pattern::Constructor {
+                        name: constructor.name.clone(),
+                        arguments,
+                    },
+                );
+                witness
+            }))
     }
 }
 
@@ -147,86 +345,6 @@ fn specialize<'pattern>(
             Some(fields.into_iter().chain(row[1..].iter().copied()).collect())
         })
         .collect()
-}
-
-impl Scope<'_> {
-    pub(super) fn check_match(
-        &self,
-        subject: &Term,
-        cases: &[Case],
-        expected: &Value,
-    ) -> Result<(), CheckingError> {
-        let subject_type = self.synthesize_value(subject)?;
-        let constructors = self.plain_data.constructors(&subject_type)?;
-        let mut earlier = Vec::new();
-        for (position, case) in cases.iter().enumerate() {
-            let mut scope = self.clone();
-            scope.check_pattern(&case.pattern, &subject_type)?;
-            let row = vec![&case.pattern];
-            if self
-                .plain_data
-                .uncovered(&earlier, &row, Some(constructors))
-                .is_none()
-            {
-                return Err(CheckingError::RedundantCase(position + 1));
-            }
-            scope.check_value(&case.result, expected)?;
-            earlier.push(row);
-        }
-
-        if let Some(mut uncovered) =
-            self.plain_data
-                .uncovered(&earlier, &[&Pattern::Binding], Some(constructors))
-        {
-            let mut binding_names = (1..)
-                .map(|number| format!("field{number}"))
-                .filter(|name| !self.globals.contains_key(name));
-            let pattern = format_pattern(&uncovered.remove(0), &mut binding_names);
-            return Err(CheckingError::NonExhaustiveMatch { pattern });
-        }
-        Ok(())
-    }
-
-    fn check_pattern(
-        &mut self,
-        pattern: &Pattern,
-        expected: &Value,
-    ) -> Result<Value, CheckingError> {
-        let Pattern::Constructor { name, arguments } = pattern else {
-            return Ok(self.push_parameter(expected.clone()));
-        };
-        let constructors = self.plain_data.constructors(expected)?;
-        let constructor = constructors
-            .iter()
-            .find(|constructor| constructor.name == *name)
-            .ok_or_else(|| CheckingError::WrongPatternConstructor(name.clone()))?;
-        if arguments.len() != constructor.arity {
-            return Err(CheckingError::WrongPatternArgumentCount {
-                constructor: name.clone(),
-                expected: constructor.arity,
-                actual: arguments.len(),
-            });
-        }
-
-        let (global, mut constructor_type) = self.globals[name].clone();
-        let mut fields = Vec::new();
-        for argument in arguments {
-            let Value::FunctionType {
-                parameter_type,
-                result,
-            } = constructor_type
-            else {
-                return Err(CheckingError::ExpectedFunctionType);
-            };
-            let field = self.check_pattern(argument, &parameter_type)?;
-            constructor_type = result.instantiate(field.clone())?;
-            fields.push(field);
-        }
-        Ok(Value::Constructor {
-            global,
-            arguments: fields,
-        })
-    }
 }
 
 fn format_pattern(pattern: &Pattern, binding_names: &mut impl Iterator<Item = String>) -> String {

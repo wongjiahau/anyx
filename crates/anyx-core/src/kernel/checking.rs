@@ -1,8 +1,10 @@
 //! Bidirectional checking for core expressions.
 
+#[path = "index_unification.rs"]
+mod index_unification;
 #[path = "match_checking.rs"]
 mod match_checking;
-use match_checking::PlainData;
+use match_checking::DataFamilies;
 
 use super::data_checking::check_data_declarations;
 use super::evaluation::{fresh_local, reverse_position};
@@ -23,7 +25,8 @@ pub enum CheckingError {
     TypeMismatch,
     UnsupportedTerm,
     MatchNeedsExpectedType,
-    MatchNeedsPlainData,
+    MatchNeedsData,
+    ImpossiblePattern(String),
     WrongPatternConstructor(String),
     WrongPatternArgumentCount {
         constructor: String,
@@ -56,10 +59,16 @@ impl fmt::Display for CheckingError {
             Self::MatchNeedsExpectedType => {
                 write!(formatter, "MATCH needs an expected result type")
             }
-            Self::MatchNeedsPlainData => write!(
+            Self::MatchNeedsData => write!(
                 formatter,
-                "MATCH and constructor patterns need a declared data type without parameters"
+                "MATCH and constructor patterns need a fully applied declared data type"
             ),
+            Self::ImpossiblePattern(name) => {
+                write!(
+                    formatter,
+                    "constructor pattern `{name}` has incompatible indices"
+                )
+            }
             Self::WrongPatternConstructor(name) => write!(
                 formatter,
                 "constructor `{name}` does not belong to the pattern's data type"
@@ -146,7 +155,7 @@ pub type FunctionCheckingError = DeclarationCheckingError;
 #[derive(Clone, Default)]
 pub struct TypeChecker {
     globals: HashMap<String, (Global, Value)>,
-    plain_data: PlainData,
+    data_families: DataFamilies,
 }
 
 impl TypeChecker {
@@ -198,9 +207,7 @@ impl TypeChecker {
                     constructors,
                 } => {
                     signatures.push((signature, GlobalKind::Data));
-                    if signature.parameter_types.is_empty() {
-                        self.plain_data.register(signature, constructors);
-                    }
+                    self.data_families.register(signature, constructors);
                     signatures.extend(
                         constructors
                             .iter()
@@ -277,9 +284,11 @@ impl TypeChecker {
     fn scope(&self) -> Scope<'_> {
         Scope {
             globals: &self.globals,
-            plain_data: &self.plain_data,
+            data_families: &self.data_families,
             local_types: Vec::new(),
             environment: Vec::new(),
+            refinements: Vec::new(),
+            blocked_indices: Vec::new(),
         }
     }
 }
@@ -298,9 +307,12 @@ fn closed_function_type(signature: &Signature) -> Term {
 #[derive(Clone)]
 struct Scope<'globals> {
     globals: &'globals HashMap<String, (Global, Value)>,
-    plain_data: &'globals PlainData,
+    data_families: &'globals DataFamilies,
     local_types: Vec<Value>,
     environment: Environment,
+    // Semantic levels include constructor fields that have no source binder.
+    refinements: Environment,
+    blocked_indices: Vec<(Value, Value)>,
 }
 
 impl Scope<'_> {
@@ -311,18 +323,29 @@ impl Scope<'_> {
     }
 
     fn push_parameter(&mut self, parameter_type: Value) -> Value {
-        let parameter = fresh_local(self.environment.len());
-        self.local_types.push(parameter_type);
-        self.environment.push(parameter.clone());
+        let parameter = self.fresh_value();
+        self.bind_parameter(parameter_type, parameter.clone());
         parameter
     }
 
+    fn fresh_value(&mut self) -> Value {
+        let value = fresh_local(self.refinements.len());
+        self.refinements.push(value.clone());
+        value
+    }
+
+    fn bind_parameter(&mut self, parameter_type: Value, value: Value) {
+        self.local_types.push(parameter_type);
+        self.environment.push(value);
+    }
+
     fn check_value(&self, term: &Term, expected: &Value) -> Result<(), CheckingError> {
+        let expected = self.refine(expected)?;
         if let Term::Function { body } = term {
             let Value::FunctionType {
                 parameter_type,
                 result,
-            } = expected
+            } = &expected
             else {
                 return Err(CheckingError::ExpectedFunctionType);
             };
@@ -331,12 +354,12 @@ impl Scope<'_> {
         }
 
         if let Term::Match { subject, cases } = term {
-            return self.check_match(subject, cases, expected);
+            return self.check_match(subject, cases, &expected);
         }
 
         let actual = self.synthesize_value(term)?;
-        let depth = self.environment.len();
-        if read_back(&actual, depth)? == read_back(expected, depth)? {
+        let depth = self.refinements.len();
+        if read_back(&actual, depth)? == read_back(&expected, depth)? {
             Ok(())
         } else {
             Err(CheckingError::TypeMismatch)
@@ -349,7 +372,7 @@ impl Scope<'_> {
             Term::Local(index) => {
                 let position = reverse_position(self.local_types.len(), index.0)
                     .ok_or(CheckingError::UnboundLocal(*index))?;
-                Ok(self.local_types[position].clone())
+                self.refine(&self.local_types[position])
             }
             Term::Global(global) => {
                 let Some((registered, global_type)) = self.globals.get(&global.name) else {

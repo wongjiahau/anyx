@@ -80,7 +80,11 @@ inference. Macros and effects come later.
    - Check coverage over constructor trees because this detects overlap in nested patterns without trying to prove whether field types are inhabited.
    - Allow an empty case list for data without constructors because there are no constructor cases to write.
    - Report one missing pattern with fresh names for unconstrained fields so it can be pasted into a case.
-10. `MATCH` on indexed families such as `Vector`, with index unification.
+10. `MATCH` on indexed families such as `Vector`, with index unification. (done)
+    - Unify constructor result indices before checking nested fields, and keep refinements local to each case so dependent field and result types use the equations established by that pattern.
+    - Unify local values and injective data and constructor heads, keeping blocked equations possible for coverage because opaque calls cannot establish impossibility.
+    - Refine a local indexed subject to its matched constructor so a written return type can depend on the subject.
+    - Inspect immediate constructors of untested indexed fields because index contradictions can prove those fields empty without an unbounded search for inhabitants.
 11. Termination: structural recursion only, at first.
 
 ## Usable

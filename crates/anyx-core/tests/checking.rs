@@ -90,19 +90,12 @@ fn rejects_a_body_that_disagrees_with_its_declared_type() {
 
 #[test]
 fn checks_data_families_and_exposes_constructors_to_functions() {
-    let document = kernel_document(
+    let document = kernel_document(&format!(
         "FUNCTION singleton (item: Type) value (value: item)
            RETURNS (Vector of (item) length (successor of (zero)))
            IS (prepend (item) length (zero) value (value) tail (empty of (item))),
-         DATA Vector of (item: Type) length (length: Natural) RETURNS Type WITH [
-           empty of (item: Type) RETURNS (Vector of (item) length (zero)),
-           prepend (item: Type) length (length: Natural) value (value: item)
-             tail (tail: Vector of (item) length (length))
-             RETURNS (Vector of (item) length (successor of (length))),
-         ],
-         DATA Natural RETURNS Type WITH [zero RETURNS Natural,
-           successor of (previous: Natural) RETURNS Natural],",
-    );
+         {VECTOR_DATA}{MATCH_DATA}",
+    ));
     TypeChecker::default().check_document(&document).unwrap();
 }
 
@@ -271,8 +264,7 @@ fn rejects_invalid_plain_data_matches() {
             "WHEN impossible THEN zero",
             CheckingError::RedundantCase(1),
         ),
-        ("Type", "", CheckingError::MatchNeedsPlainData),
-        ("Indexed by (zero)", "", CheckingError::MatchNeedsPlainData),
+        ("Type", "", CheckingError::MatchNeedsData),
     ] {
         let document = kernel_document(&format!(
             "{MATCH_DATA}
@@ -334,4 +326,147 @@ fn reports_a_missing_nested_pattern_that_can_be_added_as_a_case() {
             .check_document(&kernel_document(&completed))
             .unwrap();
     }
+}
+
+const VECTOR_DATA: &str = "
+    DATA Vector of (item: Type) length (length: Natural) RETURNS Type WITH [
+        empty of (item: Type) RETURNS (Vector of (item) length (zero)),
+        prepend (item: Type) length (length: Natural) value (value: item)
+            tail (tail: Vector of (item) length (length))
+            RETURNS (Vector of (item) length (successor of (length))),
+    ],
+";
+
+#[test]
+fn checks_indexed_matches_and_refines_the_branch_result_type() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}{VECTOR_DATA}
+         FUNCTION copy (element: Type) length (size: Natural)
+             vector (vector: Vector of (element) length (size))
+             RETURNS (Vector of (element) length (size))
+             IS (MATCH vector WITH [
+                 WHEN empty of (item) THEN (empty of (element)),
+                 WHEN prepend (item) length (length) value (value) tail (tail)
+                     THEN (prepend (element) length (length) value (value) tail (tail)),
+             ]),
+         FUNCTION tail of (element: Type) length (size: Natural)
+             vector (vector: Vector of (element) length (successor of (size)))
+             RETURNS (Vector of (element) length (size))
+             IS (MATCH vector WITH [
+                 WHEN prepend (item) length (length) value (value) tail (tail) THEN tail,
+             ]),
+         FUNCTION first of a pair (vector: Vector of (Natural) length (successor of (zero)))
+             RETURNS Natural IS (MATCH vector WITH [
+                 WHEN prepend (item) length (length) value (zero) tail (empty of (tail item))
+                     THEN zero,
+                 WHEN prepend (item) length (length) value (successor of (previous))
+                     tail (empty of (tail item)) THEN previous,
+             ]),
+         FUNCTION inspect empty (vector: Vector of (Natural) length (zero))
+             RETURNS (MATCH vector WITH [WHEN empty of (item) THEN Natural])
+             IS (MATCH vector WITH [WHEN empty of (item) THEN zero]),
+         FUNCTION eliminate indexed (impossible: Indexed by (zero)) RETURNS Type
+             IS (MATCH impossible WITH []),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn rejects_impossible_indexed_patterns_and_reports_reachable_missing_patterns() {
+    for (indices, cases, expected) in [
+        (
+            "successor of (zero)",
+            "WHEN empty of (item) THEN zero",
+            CheckingError::ImpossiblePattern("empty of _".into()),
+        ),
+        (
+            "successor of (zero)",
+            "",
+            CheckingError::NonExhaustiveMatch {
+                pattern: "prepend (field1) length (field2) value (field3) tail (field4)".into(),
+            },
+        ),
+        (
+            "zero",
+            "WHEN empty of (item) THEN zero, WHEN other THEN zero",
+            CheckingError::RedundantCase(2),
+        ),
+        (
+            "opaque of (zero)",
+            "WHEN empty of (item) THEN zero",
+            CheckingError::NonExhaustiveMatch {
+                pattern: "prepend (field1) length (field2) value (field3) tail (field4)".into(),
+            },
+        ),
+    ] {
+        let document = kernel_document(&format!(
+            "{MATCH_DATA}{VECTOR_DATA}
+             FUNCTION opaque of (number: Natural) RETURNS Natural IS number,
+             FUNCTION inspect (vector: Vector of (Natural) length ({indices}))
+                 RETURNS Natural IS (MATCH vector WITH [{cases}]),"
+        ));
+        assert_eq!(
+            TypeChecker::default().check_document(&document).err(),
+            Some(DeclarationCheckingError::Body {
+                name: "inspect _".into(),
+                error: expected,
+            })
+        );
+    }
+}
+
+#[test]
+fn rejects_conflicting_indices_for_a_repeated_constructor_field() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}
+         DATA Equal (left: Natural) to (right: Natural) RETURNS Type WITH [
+             equal at (number: Natural) RETURNS (Equal (number) to (number)),
+         ],
+         FUNCTION eliminate (impossible: Equal (zero) to (successor of (zero)))
+             RETURNS Natural IS (MATCH impossible WITH []),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn excludes_constructors_with_an_impossible_indexed_field() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}{VECTOR_DATA}
+         DATA At zero (index: Natural) RETURNS Type WITH [
+             at zero RETURNS (At zero (zero)),
+         ],
+         DATA Wrapper RETURNS Type WITH [
+             wrap (field: At zero (successor of (zero))) RETURNS Wrapper,
+         ],
+         FUNCTION eliminate wrapper (value: Wrapper) RETURNS Natural
+             IS (MATCH value WITH []),
+         DATA Equal (left: Natural) to (right: Natural) RETURNS Type WITH [
+             equal at (number: Natural) RETURNS (Equal (number) to (number)),
+         ],
+         FUNCTION eliminate cycle (number: Natural)
+             proof (impossible: Equal (number) to (successor of (number)))
+             RETURNS Natural IS (MATCH impossible WITH []),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn confines_index_refinements_to_the_matching_branch() {
+    let document = kernel_document(&format!(
+        "{MATCH_DATA}{VECTOR_DATA}
+         FUNCTION invalid (size: Natural) vector (vector: Vector of (Natural) length (size))
+             RETURNS (Vector of (Natural) length (size))
+             IS (MATCH vector WITH [
+                 WHEN empty of (item) THEN (empty of (item)),
+                 WHEN prepend (item) length (length) value (value) tail (tail)
+                     THEN (empty of (item)),
+             ]),"
+    ));
+    assert_eq!(
+        TypeChecker::default().check_document(&document).err(),
+        Some(DeclarationCheckingError::Body {
+            name: "invalid _ vector _".into(),
+            error: CheckingError::TypeMismatch,
+        })
+    );
 }
