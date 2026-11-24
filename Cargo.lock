@@ -22,6 +22,14 @@ name = "anyx"
 version = "0.1.0"
 
 [[package]]
+name = "anyx-core"
+version = "0.1.0"
+dependencies = [
+ "anyx",
+ "regex",
+]
+
+[[package]]
 name = "anyx-fd"
 version = "0.1.0"
 dependencies = [

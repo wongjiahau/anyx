@@ -9,8 +9,9 @@ inference. Macros and effects come later.
 
 1. Remove `MACRO`, `QUOTE`, `UNQUOTE`, the macro-use catch-all and `GIVEN` (done)
    from `core.grammar.anyx`. That also removes both generator warnings.
-2. Create a `crates/anyx-core` crate whose parser is generated from that
+2. Create a `crates/anyx-core` crate whose parser is generated from that (done)
    grammar, as the other crates do.
+   - Check in the generated parser and expose it as `anyx_core::parser` so callers can use the typed tree directly and builds need no generator.
 
 ## Front end
 
