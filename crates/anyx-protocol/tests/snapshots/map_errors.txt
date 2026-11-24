@@ -2,7 +2,7 @@ count { counts [1, 2] }
 => 1:16: in `tally` of `count _`: in `counts`: found a list `[…]`; expected a map of Integer, as in `{ "key" … }`
 
 count { counts { hymn 3 } }
-=> 1:18: in `tally` of `count _`: in `counts`: found the call `hymn _`; expected a map entry, a string key and its value, as in `"key": …`
+=> 1:18: in `tally` of `count _`: in `counts`: found the call `hymn _`; expected a map entry, a string key and its value, as in `"key" ⁽…`
 
 count { counts { "hymn" 3, "hymn" 4 } }
 => 1:28: in `tally` of `count _`: in `counts`: found the key `"hymn"` twice; expected each key once
@@ -11,7 +11,7 @@ count { counts { "hymn" "three" } }
 => 1:25: in `tally` of `count _`: in `counts`: in `"hymn"`: found a string; expected a whole number, as in `3`
 
 count { counts { "hymn" } }
-=> 1:18: in `tally` of `count _`: in `counts`: found a string; expected a map entry, a string key and its value, as in `"key": …`
+=> 1:18: in `tally` of `count _`: in `counts`: found a string; expected a map entry, a string key and its value, as in `"key" ⁽…`
 
 wait { "tea" 5 minutes }
-=> 1:8: in `waits` of `wait _`: found the call `_ _ minutes`; expected a map entry, a string key and its value, as in `"key": …`
+=> 1:8: in `waits` of `wait _`: found the call `_ _ minutes`; expected a map entry, a string key and its value, as in `"key" ⁽…`

@@ -10,26 +10,26 @@ never describes characters or precedence. It describes shapes of the tree:
 which calls, words, strings, numbers and brackets may stand where.
 
 ```text
-## JSON, as an anyx grammar.
+## JSON values written in anyx.
 
-ENTRY: value,
+ENTRY ⁽value,
 
-value: ONE OF [
+value ⁽ONE OF [
   object,
   array,
-  string: STRING,
-  number: NUMBER,
+  string ⁽STRING,
+  number ⁽NUMBER,
   WORD "null",
   WORD "true",
   WORD "false",
 ],
 
-object: CURLY BRACE: ZERO OR MORE: member,
+object ⁽CURLY BRACE ⁽ZERO OR MORE ⁽member,
 
-## `"key": value` is the call `_ _` of the key and the value.
-member: ANYFIX CALL [key: STRING, value],
+## `"key" ⁽value` is the call `_ _` of the key and the value.
+member ⁽ANYFIX CALL [key ⁽STRING, value],
 
-array: SQUARE BRACKET: ZERO OR MORE: value,
+array ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽value,
 ```
 
 ## The grammar language
@@ -51,14 +51,14 @@ matches several nodes in a row.
 A grammar is `ENTRY` first, then its rules, separated by commas.
 
 ```text
-ENTRY: value,                       ## the document is one value
-ENTRY [header, ZERO OR MORE: rule], ## the document is a header, then rules
+ENTRY ⁽value,                       ## the document is one value
+ENTRY [header, ZERO OR MORE ⁽rule], ## the document is a header, then rules
 ```
 
 `ENTRY` describes the document's top-level sequence: the elements between
-its commas. `ENTRY: x` is short for `ENTRY [x]`.
+its commas. `ENTRY ⁽x` is short for `ENTRY [x]`.
 
-`name: pattern` at the top level defines a rule. A rule's name is one or more
+`name ⁽pattern` at the top level defines a rule. A rule's name is one or more
 lowercase words (letters and digits, starting with a letter): `value`,
 `key value`, `utf8 text`.
 
@@ -70,7 +70,7 @@ A `#` line string just above a rule, a field or a choice documents it. A
 ```text
 ## Sizes are checked in Rust as well.
 # The size of the text, in points.
-size: NUMBER [AT LEAST 1],
+size ⁽NUMBER [AT LEAST 1],
 ```
 
 The documentation becomes the `///` of the generated type, variant or field,
@@ -86,28 +86,28 @@ A bare lowercase name is a reference to the rule of that name: `value`,
 ### `ONE OF [...]`
 
 ```text
-value: ONE OF [object, array, string: STRING, WORD "null"],
+value ⁽ONE OF [object, array, string ⁽STRING, WORD "null"],
 ```
 
 The choices are tried in the order written, and the first one that matches
 wins. The generator warns whenever two choices can match the same input,
 since the later one then never sees it, unless the later one matches
 everything the earlier one does: a fallback after the cases it catches,
-such as `[minus: ANYFIX CALL [WORD "-", n: NUMBER], other: ANYFIX CALL]`.
+such as `[minus ⁽ANYFIX CALL [WORD "-", n ⁽NUMBER], other ⁽ANYFIX CALL]`.
 
 ### `ZERO OR MORE:`, `ONE OR MORE:`, `OPTIONAL:`, `EACH:`
 
 ```text
-ZERO OR MORE: member
-ONE OR MORE: digit
-OPTIONAL: label
-EACH: setting
+ZERO OR MORE ⁽member
+ONE OR MORE ⁽digit
+OPTIONAL ⁽label
+EACH ⁽setting
 ```
 
 A repetition is written as a prefix, and stands where a sequence of nodes is
 described: in `ENTRY`, in a bracket, among the parts of an
 `ANYFIX CALL [...]`, or after `ARGUMENTS:`. It takes as many nodes as
-match, and never gives one back: in `[ZERO OR MORE: STRING, STRING]` the
+match, and never gives one back: in `[ZERO OR MORE ⁽STRING, STRING]` the
 repetition takes every string, so the last `STRING` never matches.
 
 `EACH:` is for lists where one mistake should not hide the rest, such as
@@ -118,16 +118,16 @@ after it still decode. So `EACH` comes last in its list, and the list it is
 in matches whatever its elements are.
 
 ```text
-section: ANYFIX CALL [WORD "server", settings: CURLY BRACE: EACH: setting],
+section ⁽ANYFIX CALL [WORD "server", settings ⁽CURLY BRACE ⁽EACH ⁽setting],
 ```
 
 ### `ANY ORDER [...]`
 
 ```text
-ENTRY: ANY ORDER [
-  package: package section,
-  dependency: ZERO OR MORE: dependency section,
-  license: OPTIONAL: license section,
+ENTRY ⁽ANY ORDER [
+  package ⁽package section,
+  dependency ⁽ZERO OR MORE ⁽dependency section,
+  license ⁽OPTIONAL ⁽license section,
 ],
 ```
 
@@ -147,14 +147,14 @@ named, none is an unnamed `WORD`, none is `EACH`, and none is called
 ### `CURLY BRACE`, `SQUARE BRACKET`, `PARENTHESIS`, `BRACKET`
 
 ```text
-CURLY BRACE: ZERO OR MORE: member    ## { ... }: any number of members
-SQUARE BRACKET [x: NUMBER, y: NUMBER] ## [1, 2]: exactly these, in order
+CURLY BRACE ⁽ZERO OR MORE ⁽member    ## { ... }: any number of members
+SQUARE BRACKET [x ⁽NUMBER, y ⁽NUMBER] ## [1, 2]: exactly these, in order
 PARENTHESIS []                        ## (): nothing inside
-BRACKET "[|>" [item: NUMBER]           ## [|> 1 <|]: one number
+BRACKET "[|>" [item ⁽NUMBER]           ## [|> 1 <|]: one number
 ```
 
 After the bracket's name comes what it holds: `[elements]` in order,
-`: ANY ORDER [elements]` in any order, or `: element` as a short form of a
+`⁽ANY ORDER [elements]` in any order, or `⁽element` as a short form of a
 list of one. In a grammar, `[...]` is
 always a list of the grammar language, never a bracket of your language.
 
@@ -176,9 +176,9 @@ in one of two ways.
 The parts of one call, in order:
 
 ```text
-ANYFIX CALL [WORD "IF", condition: expression, WORD "THEN", then: expression]
-ANYFIX CALL [key: STRING, value]      ## the call `_ _`
-ANYFIX CALL [WORD "print", ZERO OR MORE: expression]
+ANYFIX CALL [WORD "IF", condition ⁽expression, WORD "THEN", then ⁽expression]
+ANYFIX CALL [key ⁽STRING, value]      ## the call `_ _`
+ANYFIX CALL [WORD "print", ZERO OR MORE ⁽expression]
 ```
 
 A `WORD` part is one of the call's name words. Every other part fills the
@@ -193,8 +193,8 @@ wherever `WORD` can be, and, alone in a `ONE OF`, is the choice named after
 its words (`WORDS "sans serif"` is `sans serif`):
 
 ```text
-setting: ONE OF [
-  max size: ANYFIX CALL [key: WORDS "max size", size: NUMBER],
+setting ⁽ONE OF [
+  max size ⁽ANYFIX CALL [key ⁽WORDS "max size", size ⁽NUMBER],
   WORDS "sans serif",
 ]
 ```
@@ -204,8 +204,8 @@ or more of them, and decodes to their text joined by spaces. It lets a
 language's users name things with words of their own:
 
 ```text
-## `max size: 10`, or `"The limit." max size: 10`
-setting: ANYFIX CALL [doc: OPTIONAL: STRING, name: WORDS [NO KEYWORD], value: NUMBER],
+## `max size ⁽10`, or `"The limit." max size ⁽10`
+setting ⁽ANYFIX CALL [doc ⁽OPTIONAL ⁽STRING, name ⁽WORDS [NO KEYWORD], value ⁽NUMBER],
 ```
 
 Its conditions apply to that text, as with `NAME`. A `WORDS` must have a
@@ -219,24 +219,24 @@ NOTHING` and `METHOD _ RETURNS _` are two calls. Rather than write one
 `ANYFIX CALL` for each, a call's parts may hold groups:
 
 ```text
-method: ANYFIX CALL [
-  doc: OPTIONAL: STRING,
+method ⁽ANYFIX CALL [
+  doc ⁽OPTIONAL ⁽STRING,
   WORD "METHOD", shape,
-  WORD "RETURNS", returns: ONE OF [value: type, nothing: WORD "NOTHING"],
-  errors: OPTIONAL [WORD "ERRORS", error list],
-  effect: OPTIONAL: ONE OF [read only: WORDS "READ ONLY", idempotent: WORD "IDEMPOTENT"],
-  public: OPTIONAL: WORD "PUBLIC",
+  WORD "RETURNS", returns ⁽ONE OF [value ⁽type, nothing ⁽WORD "NOTHING"],
+  errors ⁽OPTIONAL [WORD "ERRORS", error list],
+  effect ⁽OPTIONAL ⁽ONE OF [read only ⁽WORDS "READ ONLY", idempotent ⁽WORD "IDEMPOTENT"],
+  public ⁽OPTIONAL ⁽WORD "PUBLIC",
 ]
 ```
 
-- `name: OPTIONAL [parts]` is parts that are there together or not at all.
+- `name ⁽OPTIONAL [parts]` is parts that are there together or not at all.
   It starts with a `WORD`, which tells whether it is there. `OPTIONAL [x]`
-  of one slot is `OPTIONAL: x`.
-- `name: OPTIONAL: WORD "PUBLIC"` (or `WORDS "READ ONLY"`) is a word that
+  of one slot is `OPTIONAL ⁽x`.
+- `name ⁽OPTIONAL ⁽WORD "PUBLIC"` (or `WORDS "READ ONLY"`) is a word that
   may be missing.
-- `name: ONE OF [...]` with a `WORD` or `WORDS "..."` among its choices is
+- `name ⁽ONE OF [...]` with a `WORD` or `WORDS "..."` among its choices is
   a choice between name words, and at most one slot. Each choice is one
-  part. `OPTIONAL: ONE OF [...]` may also be none of them.
+  part. `OPTIONAL ⁽ONE OF [...]` may also be none of them.
 
 The decoder reads a call with groups from left to right, and takes a group
 whenever its first word is next. So the groups of a call, and the choices
@@ -256,8 +256,8 @@ Or conditions on any call:
 
 ```text
 ANYFIX CALL [NAME [STARTS WITH "get "]]                 ## by its name
-ANYFIX CALL [ARGUMENTS: ZERO OR MORE: expression]       ## with typed arguments
-ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: expression]
+ANYFIX CALL [ARGUMENTS ⁽ZERO OR MORE ⁽expression]       ## with typed arguments
+ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽expression]
 ANYFIX CALL [NO ARGUMENTS]                              ## words alone: `sans serif`
 ```
 
@@ -267,7 +267,7 @@ Without parts, the AST keeps the call's name text, with `_` for each slot:
 - `NAME [conditions]` puts conditions on that name text: the string
   conditions, and `NO KEYWORD`, which holds when no word of the name is all
   caps.
-- `ARGUMENTS: pattern` describes the arguments. Without it, they stay raw
+- `ARGUMENTS ⁽pattern` describes the arguments. Without it, they stay raw
   `anyx::Node`s.
 - `NO ARGUMENTS` takes only a call with none, which is one or more words
   with no `_` in its name. Unlike a regex on the name, it needs no `regex`
@@ -282,9 +282,9 @@ function lays the call out:
 
 ```text
 ANYFIX CALL [
-  WORD "IF", condition: expression,
-  WORD "THEN", then: expression,
-  WORD "ELSE", else: expression,
+  WORD "IF", condition ⁽expression,
+  WORD "THEN", then ⁽expression,
+  WORD "ELSE", else ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "ELSE"]
 ```
 
@@ -345,13 +345,13 @@ string and a raw `"""…"""` string. `LINE STRING` matches only a `#` line
 string, so a grammar can ask for documentation the way it is written:
 
 ```anyx
-method: ANYFIX CALL [doc: OPTIONAL: LINE STRING, WORD "METHOD", name: WORDS],
+method ⁽ANYFIX CALL [doc ⁽OPTIONAL ⁽LINE STRING, WORD "METHOD", name ⁽WORDS],
 ```
 
 It takes the same conditions as `STRING`, and decodes to the same value.
 Another kind of string is an error that names its kind:
 ``found the quoted string "Moves a file."; expected a `#` line string``.
-Among the parts of a call, such a string in the slot of an `OPTIONAL: LINE
+Among the parts of a call, such a string in the slot of an `OPTIONAL ⁽LINE
 STRING` gets this error too, and not one saying the call has another shape:
 its shape fits, and only the string is wrong.
 
@@ -388,7 +388,7 @@ grammar needs no `ONE OF` of its own to read a signed value.
 ### `UNDERSCORE`
 
 ```text
-term: ONE OF [subject: UNDERSCORE, integer: NUMBER, call: ANYFIX CALL [ARGUMENTS: ZERO OR MORE: term]],
+term ⁽ONE OF [subject ⁽UNDERSCORE, integer ⁽NUMBER, call ⁽ANYFIX CALL [ARGUMENTS ⁽ZERO OR MORE ⁽term]],
 ```
 
 `UNDERSCORE` matches the node `_`, which isn't a word: anyx reads a `_`
@@ -398,7 +398,7 @@ standing alone as a placeholder, as the value a predicate tests in
 ### `ANY NODE`
 
 ```text
-ANYFIX CALL [WORD "range", value: ANY NODE]
+ANYFIX CALL [WORD "range", value ⁽ANY NODE]
 ```
 
 `ANY NODE` matches any one node and keeps it as an `anyx::Node`,
@@ -408,20 +408,20 @@ everything, it belongs last in a `ONE OF`, as the fallback.
 
 ### Names
 
-`name: pattern` at the top level defines a rule. Inside a list it names a
+`name ⁽pattern` at the top level defines a rule. Inside a list it names a
 field of the surrounding call or bracket, or a choice of the surrounding
 `ONE OF`:
 
 ```text
-member: ANYFIX CALL [key: STRING, value],
-value: ONE OF [object, text: STRING, WORD "null"],
+member ⁽ANYFIX CALL [key ⁽STRING, value],
+value ⁽ONE OF [object, text ⁽STRING, WORD "null"],
 ```
 
 The name can be left out when it is obvious:
 
 - A rule reference is named after its rule: `value` above is the field
   `value`, and `object` is the choice `object`. So is a repetition of one:
-  `ZERO OR MORE: member` is the field `member`.
+  `ZERO OR MORE ⁽member` is the field `member`.
 - `WORD "null"` in a `ONE OF` is the choice `null`. Among the parts of an
   `ANYFIX CALL [...]` or the elements of a bracket, a `WORD` is only
   matched and makes no field.
@@ -452,8 +452,8 @@ Errors and warnings about the grammar go to the terminal, with the line
 they are about. An error stops the output; a warning does not:
 
 ```text
-grammar.grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
-  value: ONE OF [text: STRING, lsit],
+grammar.grammar.anyx:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit ⁽...`
+  value ⁽ONE OF [text ⁽STRING, lsit],
                                ^^^^
 ```
 
@@ -532,8 +532,8 @@ pub struct Array { pub value: Vec<Value>, pub span: Span }
 | a named `WORD` | `Span` |
 | `ANYFIX CALL [parts]` | a struct of its fields |
 | `OPTIONAL [WORD "ERRORS", error list]`, a group with one unnamed value | `Option<T>` of that value |
-| `OPTIONAL [WORD "AT", most: NUMBER, …]`, a group with named values | `Option` of a struct of them, with its `span` |
-| `OPTIONAL: WORD "PUBLIC"`, a group of words alone | `Option<Span>` |
+| `OPTIONAL [WORD "AT", most ⁽NUMBER, …]`, a group with named values | `Option` of a struct of them, with its `span` |
+| `OPTIONAL ⁽WORD "PUBLIC"`, a group of words alone | `Option<Span>` |
 | `ONE OF [...]` between groups of parts | an `enum`: a `Span` for a word, the value for the slot |
 | `ANYFIX CALL`, alone or with conditions | a struct of `name: CallName` and `arguments` |
 | a bracket that is a field or a choice, around one unnamed value | `Spanned<T>`: the value, and the bracket's span |
@@ -554,7 +554,7 @@ type that holds them. `INTEGER` alone is an `i64`, with only `AT LEAST 0` a
 **`ANYFIX CALL`** keeps the name as a `CallName`: its `text` with `_` for
 each argument, such as `move _ to _`, its `parts` (words with their spans,
 and slots), and the `span` of its words. `name.words()` gives the words
-without the slots. With `ARGUMENTS: pattern` its `arguments` are decoded:
+without the slots. With `ARGUMENTS ⁽pattern` its `arguments` are decoded:
 one value, or a `Vec` or `Option` for a repetition. Without it they stay
 `Vec<anyx::Node>`, for you to decode, and `name.flat_words(&arguments)`
 reads the whole call back as the words, numbers and strings written, in
@@ -577,8 +577,8 @@ by its full path (`std::string::String`, `anyx::Node`).
   since the later one then never gets it, except when the later one
   matches everything the earlier one does, which makes it a fallback.
 - The elements of a list are matched from left to right. A repetition takes
-  every node that fits and gives none back, so in `[ZERO OR MORE: value,
-  last: value]` nothing is left for `last`. `EACH` takes every node left,
+  every node that fits and gives none back, so in `[ZERO OR MORE ⁽value,
+  last ⁽value]` nothing is left for `last`. `EACH` takes every node left,
   whether it fits or not.
 - A call matches `ANYFIX CALL [parts]` only with exactly its words and
   arguments, and a bracket only when no element is left over.

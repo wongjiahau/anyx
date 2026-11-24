@@ -1,5 +1,5 @@
 # One problem in a note.
-PUBLIC TYPE ALIAS Diagnostic: { line (line: Integer), message (message: Text) },
+PUBLIC TYPE ALIAS Diagnostic ⁽{ line (line ⁽Integer), message (message ⁽Text) },
 
 PUBLIC TYPE ALIAS Common Errors [|
     # No note has this path.

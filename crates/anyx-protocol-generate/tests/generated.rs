@@ -141,12 +141,12 @@ fn error(source: &str) -> String {
 fn names_that_become_the_same_name_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, TYPE ALIAS Read Error: { a (a: Text) }, METHOD read (path: Text) RETURNS (text: Text) ERRORS [| `gone |]"
+            "PROTOCOL p VERSION 1, TYPE ALIAS Read Error ⁽{ a (a ⁽Text) }, METHOD read (path ⁽Text) RETURNS (text ⁽Text) ERRORS [| `gone |]"
         ),
         "found the errors of `read _`, which becomes the type `ReadError`, like the type `Read Error`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
-        error("PROTOCOL p VERSION 1, TYPE ALIAS Client: { a (a: Text) }"),
+        error("PROTOCOL p VERSION 1, TYPE ALIAS Client ⁽{ a (a ⁽Text) }"),
         "found the type `Client`, which becomes the type `Client`, like the generated `Client`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
@@ -155,7 +155,7 @@ fn names_that_become_the_same_name_are_rejected() {
     );
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, METHOD send (text: Text) RETURNS (sent: Boolean) ERRORS [| |]"
+            "PROTOCOL p VERSION 1, METHOD send (text ⁽Text) RETURNS (sent ⁽Boolean) ERRORS [| |]"
         ),
         "found `send _`, which becomes the method `send`, like the client's `send`; expected names that stay distinct in the generated code, so rename one"
     );
@@ -165,13 +165,13 @@ fn names_that_become_the_same_name_are_rejected() {
 fn generic_types_whose_words_are_the_same_are_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, TYPE ALIAS page of (Item: TYPE): { items (items: LIST: Item) }, TYPE ALIAS page (Item: TYPE) of: { item (item: Item) }"
+            "PROTOCOL p VERSION 1, TYPE ALIAS page of (Item ⁽TYPE) ⁽{ items (items ⁽LIST ⁽Item) }, TYPE ALIAS page (Item ⁽TYPE) of ⁽{ item (item ⁽Item) }"
         ),
         "found the type `page (Item) of`, which becomes the type `PageOf`, like the type `page of (Item)`; expected names that stay distinct in the generated code, so rename one"
     );
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, TYPE ALIAS Page: { a (a: Text) }, TYPE ALIAS page (Item: TYPE): { item (item: Item) }"
+            "PROTOCOL p VERSION 1, TYPE ALIAS Page ⁽{ a (a ⁽Text) }, TYPE ALIAS page (Item ⁽TYPE) ⁽{ item (item ⁽Item) }"
         ),
         "found the type `page (Item)`, which becomes the type `Page`, like the type `Page`; expected names that stay distinct in the generated code, so rename one"
     );
@@ -179,9 +179,10 @@ fn generic_types_whose_words_are_the_same_are_rejected() {
 
 #[test]
 fn a_keyword_becomes_a_raw_identifier() {
-    let schema =
-        Schema::parse("PROTOCOL p VERSION 1, TYPE ALIAS Box: { type (type: Text), loop (loop: Integer) }")
-            .unwrap();
+    let schema = Schema::parse(
+        "PROTOCOL p VERSION 1, TYPE ALIAS Box ⁽{ type (type ⁽Text), loop (loop ⁽Integer) }",
+    )
+    .unwrap();
     let code = anyx_protocol_generate::rust(&schema).unwrap();
     assert!(code.contains("pub r#type: String"), "{code}");
     assert!(code.contains("pub r#loop: i64"), "{code}");
@@ -226,7 +227,7 @@ fn the_typescript_client_of_overloads_is_up_to_date() {
 fn an_overload_whose_name_another_method_has_is_rejected() {
     assert_eq!(
         error(
-            "PROTOCOL p VERSION 1, METHOD tag (a: Text) RETURNS NOTHING ERRORS [| |], METHOD tag (a: Integer) RETURNS NOTHING ERRORS [| |], METHOD tag with text RETURNS NOTHING ERRORS [| |],"
+            "PROTOCOL p VERSION 1, METHOD tag (a ⁽Text) RETURNS NOTHING ERRORS [| |], METHOD tag (a ⁽Integer) RETURNS NOTHING ERRORS [| |], METHOD tag with text RETURNS NOTHING ERRORS [| |],"
         ),
         "found `tag with text`, which becomes the method `tag_with_text`, like `tag (Text)`; expected names that stay distinct in the generated code, so rename one"
     );
@@ -248,8 +249,8 @@ fn refined_types_are_generated_with_checked_constructors() {
 fn generic_symbol_words_generate_identifiers() {
     let schema = Schema::parse(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) ++: { item (item: Item) },
-        METHOD f (wrapped: Text++) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS (Item ⁽TYPE) ++ ⁽{ item (item ⁽Item) },
+        METHOD f (wrapped ⁽Text++) RETURNS NOTHING ERRORS [| |],",
     )
     .unwrap();
     let rust = anyx_protocol_generate::rust(&schema).unwrap();

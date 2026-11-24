@@ -12,58 +12,58 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (value: Text),
+NAMED TYPE File Id (value ⁽Text),
 
-NAMED TYPE Share Id (value: Text),
+NAMED TYPE Share Id (value ⁽Text),
 
-TYPE ALIAS Tags: LIST Text,
+TYPE ALIAS Tags ⁽LIST Text,
 
-TYPE ALIAS File Link: { share id (share id: Share Id), file id (file id: File Id), tags (tags: Tags) },
+TYPE ALIAS File Link ⁽{ share id (share id ⁽Share Id), file id (file id ⁽File Id), tags (tags ⁽Tags) },
 
 # A link someone may open.
-TYPE ALIAS Link: File Link,
+TYPE ALIAS Link ⁽File Link,
 
 TYPE ALIAS Access [| `read, `write |],
 
-TYPE ALIAS Level: Access,
+TYPE ALIAS Level ⁽Access,
 
-METHOD share (id: File Id) tagged (tags: Tags)
-    RETURNS (link: Link)
-    ERRORS [| `missing (id: File Id) |],
+METHOD share (id ⁽File Id) tagged (tags ⁽Tags)
+    RETURNS (link ⁽Link)
+    ERRORS [| `missing (id ⁽File Id) |],
 
-IDEMPOTENT METHOD revoke (id: Share Id) RETURNS NOTHING ERRORS [| |] UNDONE BY restore (id: Share Id),
+IDEMPOTENT METHOD revoke (id ⁽Share Id) RETURNS NOTHING ERRORS [| |] UNDONE BY restore (id ⁽Share Id),
 
 # Opens a revoked link again.
-IDEMPOTENT METHOD restore (id: Share Id) RETURNS NOTHING ERRORS [| |],
+IDEMPOTENT METHOD restore (id ⁽Share Id) RETURNS NOTHING ERRORS [| |],
 
-READ ONLY METHOD links RETURNS (ids: LIST: Share Id) ERRORS [| |],
+READ ONLY METHOD links RETURNS (ids ⁽LIST ⁽Share Id) ERRORS [| |],
 
-METHOD grant (level: Level) on (id: File Id) RETURNS (granted: Level) ERRORS [| |],
+METHOD grant (level ⁽Level) on (id ⁽File Id) RETURNS (granted ⁽Level) ERRORS [| |],
 
 # Lines of a file, counted from 1.
-NAMED TYPE Span from (start: Integer) to (end: Integer),
+NAMED TYPE Span from (start ⁽Integer) to (end ⁽Integer),
 
 # Everyone with the link.
 NAMED TYPE Everyone,
 
-METHOD show (span: Span from to) to (who: Everyone) RETURNS (shown: Span from to) ERRORS [| |],
+METHOD show (span ⁽Span from to) to (who ⁽Everyone) RETURNS (shown ⁽Span from to) ERRORS [| |],
 
 # When a link was last opened.
-TYPE ALIAS Opened At: Instant,
+TYPE ALIAS Opened At ⁽Instant,
 
-TYPE ALIAS Openings: MAP: Opened At,
+TYPE ALIAS Openings ⁽MAP ⁽Opened At,
 
-TYPE ALIAS Visit: { at (at: Opened At), by person (by person: Openings), label (label: Share Id) DEFAULT label (Share Id "none") },
+TYPE ALIAS Visit ⁽{ at (at ⁽Opened At), by person (by person ⁽Openings), label (label ⁽Share Id) DEFAULT label (Share Id "none") },
 
-READ ONLY METHOD visits RETURNS (visits: LIST: Visit) ERRORS [| |],
+READ ONLY METHOD visits RETURNS (visits ⁽LIST ⁽Visit) ERRORS [| |],
 
 # An identifier scoped to the item type.
-NAMED TYPE Id of (Item: TYPE) (value: Text),
+NAMED TYPE Id of (Item ⁽TYPE) (value ⁽Text),
 
 # A named wrapper whose value has the parameter's type.
-NAMED TYPE Wrapped (Item: TYPE) (item: Item),
+NAMED TYPE Wrapped (Item ⁽TYPE) (item ⁽Item),
 
-METHOD echo (id: Id of (File Id)) RETURNS (id: Id of (File Id)) ERRORS [| |],
+METHOD echo (id ⁽Id of (File Id)) RETURNS (id ⁽Id of (File Id)) ERRORS [| |],
 "#,
 }];
 
@@ -530,7 +530,7 @@ pub trait Server {
 
     /// `revoke _`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: Share Id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id ⁽Share Id)`.
     async fn revoke(&self, id: ShareId) -> Result<(), Self::Error>;
 
     /// Opens a revoked link again.
@@ -685,7 +685,7 @@ impl<T: Transport> Client<T> {
 
     /// `revoke _`, returning nothing.
     ///
-    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: Share Id)`.
+    /// Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id ⁽Share Id)`.
     pub async fn revoke(
         &self,
         id: ShareId,
@@ -787,11 +787,11 @@ pub const SHARE_TAGGED_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::
     undone_by: None,
 };
 
-/// What a call of `revoke _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id: Share Id)`.
+/// What a call of `revoke _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `restore (id ⁽Share Id)`.
 pub const REVOKE_EFFECTS: anyx_protocol::client::Effects = anyx_protocol::client::Effects {
     read_only: false,
     idempotent: true,
-    undone_by: Some("restore (id: Share Id)"),
+    undone_by: Some("restore (id ⁽Share Id)"),
 };
 
 /// What a call of `restore _` may do. Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response.

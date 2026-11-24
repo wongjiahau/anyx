@@ -119,12 +119,15 @@ impl Parser<'_> {
         Sequence { elements }
     }
 
-    /// Runs joined by `.` and `:`: `.` folds left within each `:`-separated
-    /// part, then `:` folds right over the parts.
+    /// Runs joined by `₎` and `⁽`: `₎` folds left within each `⁽`-separated
+    /// part, then `⁽` folds right over the parts.
     fn expression(&mut self) -> Expression {
         let mut runs = vec![self.run()];
         let mut operators = Vec::new();
-        while matches!(self.peek().kind, TokenKind::Dot | TokenKind::Colon) {
+        while matches!(
+            self.peek().kind,
+            TokenKind::LeftGroup | TokenKind::RightGroup
+        ) {
             operators.push(self.next());
             runs.push(self.run());
         }
@@ -135,25 +138,25 @@ impl Parser<'_> {
 
         let mut runs = runs.into_iter();
         let mut current = Expression::Run(runs.next().expect("at least one run"));
-        let mut colons: Vec<(Expression, Token)> = Vec::new();
+        let mut right_groups: Vec<(Expression, Token)> = Vec::new();
         for (operator, run) in operators.into_iter().zip(runs) {
             let right = Expression::Run(run);
-            if operator.kind == TokenKind::Dot {
-                current = Expression::Dot(Box::new(BinaryExpression {
+            if operator.kind == TokenKind::LeftGroup {
+                current = Expression::LeftGroup(Box::new(BinaryExpression {
                     left: current,
                     operator,
                     right,
                 }));
             } else {
-                colons.push((current, operator));
+                right_groups.push((current, operator));
                 current = right;
             }
         }
-        colons
+        right_groups
             .into_iter()
             .rev()
             .fold(current, |right, (left, operator)| {
-                Expression::Colon(Box::new(BinaryExpression {
+                Expression::RightGroup(Box::new(BinaryExpression {
                     left,
                     operator,
                     right,
@@ -189,14 +192,14 @@ impl Parser<'_> {
         }
     }
 
-    /// A run that receives a value (right of `.`, or left of `:` when no `.`
+    /// A run that receives a value (right of `₎`, or left of `⁽` when no `₎`
     /// precedes it) takes it at one `_`; a second `_` has nowhere to go.
     fn report_extra_underscores(&mut self, runs: &[Run], operators: &[Token]) {
         for (index, run) in runs.iter().enumerate() {
-            let receives = (index > 0 && operators[index - 1].kind == TokenKind::Dot)
+            let receives = (index > 0 && operators[index - 1].kind == TokenKind::LeftGroup)
                 || (index < operators.len()
-                    && operators[index].kind == TokenKind::Colon
-                    && (index == 0 || operators[index - 1].kind == TokenKind::Colon));
+                    && operators[index].kind == TokenKind::RightGroup
+                    && (index == 0 || operators[index - 1].kind == TokenKind::RightGroup));
             if !receives {
                 continue;
             }

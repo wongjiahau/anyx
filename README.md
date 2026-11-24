@@ -11,7 +11,7 @@ Deciding what a word means is the consumer's job.
 [resh](https://github.com/wongjiahau/resh) is the first consumer, but this
 crate knows nothing about it.
 
-`.`, `:` and `_` are syntactic sugar, like `'` in Lisp: `'x` is read as
+`₎`, `⁽` and `_` are syntactic sugar, like `'` in Lisp: `'x` is read as
 `(quote x)` before any evaluator sees it. They fill a slot of a call while
 parsing, so the consumer never sees them (see [Sugar](#sugar)).
 
@@ -26,7 +26,7 @@ and `y` (see [Tree](#tree)).
 1. **The syntax has no meaning.** Tokens and operators only build tree
    structure. No word is special (`true` and `LET` mean nothing here). No
    evaluation, holes, namespaces or types. The one exception is the sugar of
-   `.`, `:` and a bare `_`, which is rewritten away and is meaning-free like
+   `₎`, `⁽` and a bare `_`, which is rewritten away and is meaning-free like
    Lisp's `'`.
 2. **Letter case only groups.** Words keep the text as written. An all-caps
    word is a *keyword*, which binds looser than other words so that a
@@ -37,9 +37,9 @@ and `y` (see [Tree](#tree)).
    (letters, digits, `_`) or all symbol characters. Switching kinds ends it, so
    `x+1` is three words. There's no kebab-case: multi-word names are runs, like
    `flat map`.
-4. **Exactly eleven special characters:** `, : . ( ) [ ] { } # "`. They never
+4. **Exactly eleven special characters:** `, ⁽ ₎ ( ) [ ] { } # "`. They never
    appear inside a word.
-5. **Exactly two operators:** `.` (left-assoc) binds tighter than `:`
+5. **Exactly two operators:** `₎` (left-assoc) binds tighter than `⁽`
    (right-assoc). Both take whole runs as operands, and both are sugar.
    Keywords and symbol words are not operators: they split a run into slots
    but have no precedence or associativity among themselves.
@@ -62,8 +62,8 @@ and `y` (see [Tree](#tree)).
 (* Structure *)
 document   = sequence ;
 sequence   = [ expr { "," expr } [ "," ] ] ;     (* top level and inside every bracket *)
-expr       = dotted [ ":" expr ] ;                (* ":" right-assoc, loosest *)
-dotted     = run { "." run } ;                    (* "." left-assoc *)
+expr       = left-grouped [ "⁽" expr ] ;                (* "⁽" right-assoc, loosest *)
+left-grouped = run { "₎" run } ;                    (* "₎" left-assoc *)
 run        = item { item } ;                      (* the anyx run *)
 item       = word | number | string
            | "(" sequence ")"
@@ -72,7 +72,7 @@ item       = word | number | string
            | custom-open sequence matching-custom-close ;
 
 (* Lexical *)
-special    = "," | ":" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "#" | '"' ;
+special    = "," | "⁽" | "₎" | "(" | ")" | "[" | "]" | "{" | "}" | "#" | '"' ;
 alnum      = letter | digit | "_" ;
 symbol     = ? any char that is not whitespace, special, or alnum ? ;
 word       = name | symbols ;
@@ -205,7 +205,7 @@ A line string is text to the end of the line, after a `#`:
 # A record of where the server listens.
 server {
     # The port, from 1 to 65535.
-    port: 8080,  ## a comment: not part of the tree
+    port ⁽8080,  ## a comment: not part of the tree
 },
 ```
 
@@ -238,34 +238,40 @@ escapes. An offset inside an escape maps to the escape's start.
 
 ## Sugar
 
-`.` and `:` each hand their left value to the run on their other side, as an
+The half parentheses imply a matching parenthesis at the edge of the
+expression. `₎` closes a group starting at the left edge, and `⁽` opens
+a group ending at the right edge. For example, `A -> B₎ -> ⁽C -> D`
+groups like `(A -> B) -> (C -> D)`. Periods and colons are symbol
+characters outside numbers and strings.
+
+`₎` and `⁽` each hand their grouped value to the run on their other side, as an
 argument of the call that run becomes:
 
 - If that run has a bare `_` at its top level, the value fills that slot.
-- Otherwise a new slot goes at the front for `.` and at the end for `:`.
+- Otherwise a new slot goes at the front for `₎` and at the end for `⁽`.
 
 | Source | Same as |
 | --- | --- |
-| `x . y (z)` | `(x) y (z)` |
-| `x . y _` | `y (x)` |
-| `f : x` | `f (x)` |
-| `_ f : x` | `(x) f` |
+| `x₎ y (z)` | `(x) y (z)` |
+| `x₎ y _` | `y (x)` |
+| `f ⁽x` | `f (x)` |
+| `_ f ⁽x` | `(x) f` |
 
 A `_` inside brackets belongs to those brackets (as in Scala) and is not
 consumed. It reaches the consumer as an ordinary `Underscore`. A run that
 receives a value may hold at most one bare `_`; a second is `ExtraUnderscore`.
 
 This lets a consumer define infix operators as plain functions:
-`1 .+ 1 .+ 2` is `((1) + 1) + 2`, the call `_ + _` of `_ + _` and `2`. There
+`1₎ + 1₎ + 2` is `((1) + 1) + 2`, the call `_ + _` of `_ + _` and `2`. There
 is no precedence: operators apply left to right. Since negation binds
-hardest, infix minus needs a space before a digit: `1 .- 5` is the call
-`_ - _` of `1` and `5`, but `1 .-5` hands `1` to the number `-5`.
+hardest, infix minus needs a space before a digit: `1₎ - 5` is the call
+`_ - _` of `1` and `5`, but `1₎ -5` hands `1` to the number `-5`.
 
-A consumer should not do recursive descent parsing. `.` and `:` already
+A consumer should not do recursive descent parsing. `₎` and `⁽` already
 provide associative chaining, so the tree arrives fully grouped. The consumer
 walks it and matches each call's name against its own signatures. When
 designing its syntax, a consumer that wants associative chaining should express
-it with `.` (left-assoc) or `:` (right-assoc), not with operators or keywords
+it with `₎` (left-assoc) or `⁽` (right-assoc), not with operators or keywords
 of its own that would need precedence parsing. Keywords only fix where a run
 splits; they never nest one call in another.
 
@@ -282,7 +288,7 @@ Node = Number     (source text)
      | Parens     [Node]        // `()`, `(a, b)` or `(a,)`
      | Brackets   [Node]
      | Braces     [Node]
-     | Underscore               // a `_` that no `.` or `:` consumed
+     | Underscore               // a `_` that no `₎` or `⁽` consumed
      | Missing                  // only where an error left a hole
 
 NamePart = Word { text, span }
@@ -302,15 +308,15 @@ A run becomes a call in three steps:
    gather into one argument each. `my weight <= max (all) < 10` is the call
    `_ <= _ < _` of `my weight`, `max (all)` and `10`.
 3. **Words name the call.** Every name word becomes part of the name. Every
-   other item (number, string, bracket, `_`, or a value from `.` or `:`) fills
+   other item (number, string, bracket, `_`, or a value from `₎` or `⁽`) fills
    a slot. `list file in (dir)` is the call `list file in _` of `dir`, and
    `my weight` is the call `my weight` with no arguments.
 
 - Keywords, like symbol words, carry no precedence among themselves: every
   keyword in a run belongs to one call, so a consumer declares the whole
-  shape `IF _ THEN _ ELSE _`. A keyword form nested in another needs `:` or
+  shape `IF _ THEN _ ELSE _`. A keyword form nested in another needs `⁽` or
   parentheses, even as the last argument:
-  `LET s BE: IF a THEN b ELSE : IF c THEN d ELSE e`. Without the first `:`,
+  `LET s BE ⁽IF a THEN b ELSE ⁽IF c THEN d ELSE e`. Without the first `⁽`,
   the run is the one call `LET _ BE IF _ THEN _ ELSE _`.
 - A split leaves no slot where nothing stands: `x DONE` is `_ DONE`, and
   `FOR ALL [a]` is `FOR ALL _`.
@@ -343,16 +349,16 @@ has spaces. A call with no arguments is just its name.
 | `my weight <= average (all weights) < max (all weights)` | ``(`_ <= _ < _` `my weight` (`average _` `all weights`) (`max _` `all weights`))`` |
 | `IF x > 0 THEN x ELSE 0 - x` | ``(`IF _ THEN _ ELSE _` (`_ > _` x 0) x (`_ - _` 0 x))`` |
 | `LET s BE IF a THEN b ELSE c` | ``(`LET _ BE IF _ THEN _ ELSE _` s a b c)`` |
-| `LET s BE: IF a THEN b ELSE c` | ``(`LET _ BE _` s (`IF _ THEN _ ELSE _` a b c))`` |
+| `LET s BE ⁽IF a THEN b ELSE c` | ``(`LET _ BE _` s (`IF _ THEN _ ELSE _` a b c))`` |
 | `RETURNS T` | `` `RETURNS T` `` |
-| `a b . c d . e f` | ``(`_ e f` (`_ c d` `a b`))`` |
-| `a : b : c` | ``(`a _` (`b _` c))`` |
-| `k : x . f` | ``(`k _` (`_ f` x))`` |
-| `search { max depth : 3 }` | ``(`search _` Braces[(`max depth _` 3)])`` |
-| `x . y _` | ``(`y _` x)`` |
-| `_ f : x` | ``(`_ f` x)`` |
-| `x . f (_)` | ``(`_ f _` x Parens[_])`` |
-| `1 .+ 1 .+ 2` | ``(`_ + _` (`_ + _` 1 1) 2)`` |
+| `a b₎ c d₎ e f` | ``(`_ e f` (`_ c d` `a b`))`` |
+| `a ⁽b ⁽c` | ``(`a _` (`b _` c))`` |
+| `k ⁽x₎ f` | ``(`k _` (`_ f` x))`` |
+| `search { max depth ⁽3 }` | ``(`search _` Braces[(`max depth _` 3)])`` |
+| `x₎ y _` | ``(`y _` x)`` |
+| `_ f ⁽x` | ``(`_ f` x)`` |
+| `x₎ f (_)` | ``(`_ f _` x Parens[_])`` |
+| `1₎ + 1₎ + 2` | ``(`_ + _` (`_ + _` 1 1) 2)`` |
 | `-5` | `Number "-5"` |
 | `x-5` | ``(`x _` -5)`` |
 | `x - 5` | ``(`_ - _` x 5)`` |
@@ -361,11 +367,11 @@ has spaces. A call with no arguments is just its name.
 | `a->b` | ``(`_ -> _` a b)`` |
 | `null?` | ``(`_ ?` null)`` |
 | `f(x)` | ``(`f _` x)`` |
-| `1.to` | ``(`_ to` 1)`` |
-| `1.2.3` | ``(`_ _` 1.2 3)`` |
+| `1₎ to` | ``(`_ to` 1)`` |
+| `1.2.3` | ``(`_ . _` 1.2 3)`` |
 | `3days` | ``(`_ days` 3)`` |
-| `rg.search "TODO" in "src"` | ``(`_ search _ in _` rg "TODO" "src")`` |
-| `fd.(option) argument` | ``(`_ _ argument` fd option)`` |
+| `rg₎ search "TODO" in "src"` | ``(`_ search _ in _` rg "TODO" "src")`` |
+| `fd₎ (option) argument` | ``(`_ _ argument` fd option)`` |
 | `("rg", x)` | `Parens["rg", x]` |
 | `(x)` | `x` |
 | `()`, `[]`, `{}` | empty sequences |
@@ -393,16 +399,15 @@ found, what was expected, and the fix.
 | `UnclosedBracket` | `f (a` | The opener. The group ends at the end of input, or before a closer that matches an outer bracket (`[(a]`). |
 | `MismatchedBracket` | `(a]` | The closer, which still closes the group. The message names both brackets. |
 | `UnexpectedCloser` | `a)` | The closer, which is skipped. |
-| `EmptyOperand` | `a..b`, `. a`, `a :`, `: b`, `a::b` | The operator next to the missing run, which becomes `Missing`. |
+| `EmptyOperand` | `a₎₎ b`, `₎ a`, `a ⁽`, `⁽b`, `a ⁽⁽b` | The operator next to the missing run, which becomes `Missing`. |
 | `EmptyElement` | `a,,b`, `[, a]` | The comma with nothing before it. A trailing comma is fine. |
-| `ExtraUnderscore` | `x . f _ _`, `_ f _ : x` | The second bare `_` in a run that receives a value. It stays an `Underscore`. |
+| `ExtraUnderscore` | `x₎ f _ _`, `_ f _ ⁽x` | The second bare `_` in a run that receives a value. It stays an `Underscore`. |
 | `UnterminatedString` | `"abc`, a raw string with no closer | The string runs to the end of input, except an inline raw string stops at the end of its line. Its value is the content as written. |
 | `InvalidEscape` | `"\q"`, `"\u{110000}"`, `"\uD800"` | The escape, kept as written in the decoded value. |
 | `RawStringIndentation` | a content line indented less than the closing line | The line's indentation. The line keeps what follows the indentation it shares with the closing line. |
 | `TooDeep` | 1000 nested `(` | The first bracket deeper than `MAX_DEPTH` (256). It and its contents are skipped, so the stack never overflows. |
 
-The notation never reports semantic problems. An unknown word or a `:` in an
-odd place is the consumer's job.
+The notation never reports semantic problems. The consumer decides what unknown words mean.
 
 ## The grammar in anyx expressions
 
@@ -416,55 +421,55 @@ parse it.
 ```text
 ## Anyx expressions — described in anyx expressions.
 
-document : sequence,
+document ⁽sequence,
 
-sequence : [ expr { "," expr } [ "," ] ],
-expr     : dotted [ ":" expr ],
-dotted   : run { "." run },
-run      : item { item },
+sequence ⁽[ expr { "," expr } [ "," ] ],
+expr ⁽left grouped [ "⁽" expr ],
+left grouped ⁽run { "₎" run },
+run ⁽item { item },
 
-item     : word | number | string
+item ⁽word | number | string
          | "(" sequence ")"
          | "[" sequence "]"
          | "{" sequence "}"
          | custom open sequence matching custom close,
 
-special    : "," | ":" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "#" | "\"",
-alnum      : letter | digit | "_",
-symbol     : any char except (whitespace | special | alnum),
+special ⁽"," | "⁽" | "₎" | "(" | ")" | "[" | "]" | "{" | "}" | "#" | "\"",
+alnum ⁽letter | digit | "_",
+symbol ⁽any char except (whitespace | special | alnum),
 
-word       : name | symbols,
-name       : (letter | "_") { alnum },
-symbols    : symbol { symbol },
+word ⁽name | symbols,
+name ⁽(letter | "_") { alnum },
+symbols ⁽symbol { symbol },
 
-number     : ["-"] (based | decimal),
-decimal    : digits ["." digits] [exponent],
-exponent   : ("e" | "E") ["+" | "-"] digits,
-based      : "0" ( ("x" | "X") hex { ["_"] hex }
+number ⁽["-"] (based | decimal),
+decimal ⁽digits ["." digits] [exponent],
+exponent ⁽("e" | "E") ["+" | "-"] digits,
+based ⁽"0" ( ("x" | "X") hex { ["_"] hex }
                  | ("b" | "B") bit { ["_"] bit }
                  | ("o" | "O") octal { ["_"] octal } ),
-digits     : digit { ["_"] digit },
+digits ⁽digit { ["_"] digit },
 
-string     : quoted | raw | line,
-quoted     : "\"" { any char except ("\"" | "\\") | escape } "\"",
-escape     : "\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
+string ⁽quoted | raw | line,
+quoted ⁽"\"" { any char except ("\"" | "\\") | escape } "\"",
+escape ⁽"\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
                   | "u{" hex { hex } "}" | "u" hex hex hex hex),
-raw        : quotes (inline-content quotes | newline { line newline } indent quotes),
-quotes     : "\"\"\"" { "\"" },
-line       : "#" [" "] rest { newline indent "#" [" "] rest },
-rest       : { any char except newline },
+raw ⁽quotes (inline-content quotes | newline { line newline } indent quotes),
+quotes ⁽"\"\"\"" { "\"" },
+line ⁽"#" [" "] rest { newline indent "#" [" "] rest },
+rest ⁽{ any char except newline },
 
-comment    : "##" { any char except newline },
-whitespace : unicode whitespace,
+comment ⁽"##" { any char except newline },
+whitespace ⁽unicode whitespace,
 
-letter     : unicode letter,
-digit      : "0" to "9",
+letter ⁽unicode letter,
+digit ⁽"0" to "9",
 ```
 
 ## JSON
 
-Every JSON document is an anyx document. Objects are braces of `_ _`
-calls (`"key" : value` is the call `_ _` of the key and the value), arrays are
+Anyx can express JSON values. Objects are braces of `_ _`
+calls (`"key" ⁽value` is the call `_ _` of the key and the value), arrays are
 brackets, `true`, `false` and `null` are calls with no arguments, and
 numbers (negative ones included) are numbers. JSON's exponents (`1e-5`),
 escapes (`\/`, `\b`, `\f`, `\uXXXX` with surrogate pairs) and a leading byte
@@ -481,19 +486,19 @@ values is the consumer's job; `read` in that test shows how.
 The result has the same tree as the input and keeps every comment, and
 formatting it again changes nothing.
 
-- **Only redundant syntax goes.** A `.`, `:` or pair of grouping `( )` is
+- **Only redundant syntax goes.** A `₎`, `⁽` or pair of grouping `( )` is
   removed when the tree stays the same without it, and nothing is ever
-  rewritten into another form: `1 . f` becomes `1 f`, `f : [a]` becomes
-  `f [a]`, `f ((x))` becomes `f (x)` and `a .+ b .+ c` becomes `a + b .+ c`,
-  but `x . f`, `f : x` and `f (x)` stay, since `x f` and `f x` are other
+  rewritten into another form: `1₎ f` becomes `1 f`, `f ⁽[a]` becomes
+  `f [a]`, `f ((x))` becomes `f (x)` and `a₎ + b₎ + c` becomes `a + b₎ + c`,
+  but `x₎ f`, `f ⁽x` and `f (x)` stay, since `x f` and `f x` are other
   calls. `(x,)` keeps its comma and `(_)` its parens.
 - **Layout.** Lines aim for 100 columns, indented by 4 spaces. A bracket that
   doesn't fit puts each element on its own line and ends with a comma, and a
-  `.` chain that doesn't fit breaks before each `.`. Top-level elements get
+  `₎` chain that doesn't fit breaks after each `₎`. Top-level elements get
   a line each, with commas when there is more than one.
-- **Spacing.** One space between items. `:` hugs its left (`a: b`). `.` has a
-  space on both sides (`x . f`), except that it hugs a symbol word after it
-  (`1 .+ 2`). Braces and custom brackets pad their contents
+- **Spacing.** One space between items. `₎` attaches to the operand
+  before it (`x₎ f`). `⁽` attaches to the operand after it (`a ⁽b`). Braces
+  and custom brackets pad their contents
   (`{ a }`, `[| a |]`). Ordinary parens and square brackets add space
   where a symbol word might otherwise become part of a delimiter.
 - **Comments and blank lines.** A comment stays after the token it followed

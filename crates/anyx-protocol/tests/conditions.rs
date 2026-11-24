@@ -4,10 +4,10 @@ use anyx_protocol::{Outcome, Response, Schema, Value, decode_request, encode_res
 
 const SOURCE: &str = r#"
 PROTOCOL revisions VERSION 1,
-METHOD write (path: Text) at revision (revision: Integer) before (limit: Integer)
-    REQUIRES [0 < revision < limit, path . ends with ".txt"]
-    RETURNS (new revision: Integer)
-    ENSURES [new revision =: revision + 1]
+METHOD write (path ⁽Text) at revision (revision ⁽Integer) before (limit ⁽Integer)
+    REQUIRES [0 < revision < limit, path₎ ends with ".txt"]
+    RETURNS (new revision ⁽Integer)
+    ENSURES [new revision = ⁽revision + 1]
     ERRORS [| `conflict |]
     EXAMPLES [write "a.txt" at revision 2 before 4 RETURNS 3],
 METHOD ping RETURNS NOTHING ERRORS [| |],
@@ -21,7 +21,7 @@ fn preconditions_reject_the_entire_request() {
     assert_eq!((problem.line, problem.column), (2, 1));
     for text in [
         "write \"a.txt\" at revision 4 before 4",
-        "REQUIRES failed for `write (path: Text) at revision (revision: Integer) before (limit: Integer)`",
+        "REQUIRES failed for `write (path ⁽Text) at revision (revision ⁽Integer) before (limit ⁽Integer)`",
         "`revision` (Integer) = `4`",
         "`limit` (Integer) = `4`",
         "expected revision less than limit",
@@ -57,7 +57,7 @@ fn producer_checks_successful_results_against_their_own_arguments() {
     assert!(
         error
             .message
-            .contains("ENSURES [new revision =: revision + 1]")
+            .contains("ENSURES [new revision = ⁽revision + 1]")
     );
     assert_eq!(
         server::respond(&schema, &calls, outcomes.clone()),
@@ -82,7 +82,7 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
     let schema = common::schema(SOURCE);
     let guide = anyx_protocol::guide(&schema, "");
     assert!(guide.contains("REQUIRES [0 < revision < limit"));
-    assert!(guide.contains("ENSURES [new revision =: revision + 1]"));
+    assert!(guide.contains("ENSURES [new revision = ⁽revision + 1]"));
     assert!(guide.contains("the whole request gets `INVALID REQUEST`"));
     let formatted = anyx_protocol::format_schema(SOURCE).unwrap();
     assert!(formatted.contains("\n    REQUIRES"), "{formatted}");
@@ -94,7 +94,7 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
             "unknown value `new revision`",
         ),
         (
-            "new revision =: revision + 1",
+            "new revision = ⁽revision + 1",
             "old revision > 0",
             "unknown value `old revision`",
         ),
@@ -119,11 +119,11 @@ fn conditions_are_checked_in_the_schema_and_listed_in_the_guide() {
 #[test]
 fn arithmetic_uses_the_call_tree_from_anyx() {
     for expression in [
-        "new revision =: revision + 1 .+ 1",
+        "new revision = ⁽revision + 1₎ + 1",
         "new revision = ((revision + 1) + 1)",
     ] {
         let source = SOURCE
-            .replace("new revision =: revision + 1", expression)
+            .replace("new revision = ⁽revision + 1", expression)
             .replace("before 4 RETURNS 3]", "before 4 RETURNS 4]");
         let schema = common::schema(&source);
         let calls = decode_request(&schema, "write \"a.txt\" at revision 2 before 4").unwrap();
@@ -133,7 +133,7 @@ fn arithmetic_uses_the_call_tree_from_anyx() {
         );
     }
     let flat = SOURCE.replace(
-        "new revision =: revision + 1",
+        "new revision = ⁽revision + 1",
         "new revision = revision + 1",
     );
     let errors = common::diagnostics(&flat);
@@ -145,11 +145,11 @@ fn arithmetic_uses_the_call_tree_from_anyx() {
 fn lengths_and_float_arithmetic_use_the_refinement_rules() {
     let schema = common::schema(
         r#"
-        METHOD copy (source text: Text) into (target: Text)
-            REQUIRES [(source text . length) <= (target . length)]
+        METHOD copy (source text ⁽Text) into (target ⁽Text)
+            REQUIRES [(source text₎ length) <= (target₎ length)]
             RETURNS NOTHING
             ERRORS [| |],
-        METHOD double (input: Float) RETURNS (output: Float)
+        METHOD double (input ⁽Float) RETURNS (output ⁽Float)
             ENSURES [output = (input * 2.0)] ERRORS [| |],
     "#,
     );
@@ -166,13 +166,13 @@ fn lengths_and_float_arithmetic_use_the_refinement_rules() {
 fn prelude_boolean_functions_compose_with_typed_predicates() {
     let schema = common::schema(
         r#"
-        METHOD admit (start: Integer) before (end: Integer) when (enabled: Boolean)
-            REQUIRES [(start < end) and: enabled]
-            RETURNS (admitted: Boolean)
-            ENSURES [(not (not (admitted))) xor: `false]
+        METHOD admit (start ⁽Integer) before (end ⁽Integer) when (enabled ⁽Boolean)
+            REQUIRES [(start < end) and ⁽enabled]
+            RETURNS (admitted ⁽Boolean)
+            ENSURES [(not (not (admitted))) xor ⁽`false]
             ERRORS [| |],
-        METHOD match (text: Text) with (prefix: Text) or (allowed: Boolean)
-            REQUIRES [(text . starts with (prefix)) or: allowed]
+        METHOD match (text ⁽Text) with (prefix ⁽Text) or (allowed ⁽Boolean)
+            REQUIRES [(text₎ starts with (prefix)) or ⁽allowed]
             RETURNS NOTHING
             ERRORS [| |],
         "#,
@@ -197,19 +197,19 @@ fn prelude_boolean_functions_compose_with_typed_predicates() {
 fn list_tests_rule_out_repeats_and_contradicting_settings() {
     let schema = common::schema(
         r#"
-        TYPE ALIAS Setting [| `any case, `smart case, `hidden, `(encoding: Text) encoding |],
-        METHOD find (pattern: Text) with (settings: LIST Setting)
+        TYPE ALIAS Setting [| `any case, `smart case, `hidden, `(encoding ⁽Text) encoding |],
+        METHOD find (pattern ⁽Text) with (settings ⁽LIST Setting)
             REQUIRES [
-                settings . has no repeats,
-                settings . has at most one of [`any case, `smart case],
-                settings . has at most one of [`_ encoding],
+                settings₎ has no repeats,
+                settings₎ has at most one of [`any case, `smart case],
+                settings₎ has at most one of [`_ encoding],
             ]
             RETURNS NOTHING
             ERRORS [| |],
         "#,
     );
     for accepted in [
-        r#"find "a" with ([] AS: LIST Setting)"#,
+        r#"find "a" with ([] AS ⁽LIST Setting)"#,
         r#"find "a" with [`any case, `hidden]"#,
         r#"find "a" with [`"utf-8" encoding, `smart case]"#,
     ] {
@@ -240,23 +240,23 @@ fn list_tests_rule_out_repeats_and_contradicting_settings() {
 fn list_tests_name_variants_of_a_union_in_a_method_condition() {
     for (source, expected) in [
         (
-            "TYPE ALIAS Case [| `any case, `smart case |], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of [`exact case]] RETURNS NOTHING ERRORS [| |]",
+            "TYPE ALIAS Case [| `any case, `smart case |], METHOD f (cases ⁽LIST Case) REQUIRES [cases₎ has at most one of [`exact case]] RETURNS NOTHING ERRORS [| |]",
             "`exact case` is not a variant of Case",
         ),
         (
-            "METHOD f (names: LIST Text) REQUIRES [names . has at most one of [`a]] RETURNS NOTHING ERRORS [| |]",
+            "METHOD f (names ⁽LIST Text) REQUIRES [names₎ has at most one of [`a]] RETURNS NOTHING ERRORS [| |]",
             "tests a LIST of a union of variants",
         ),
         (
-            "METHOD f (name: Text) REQUIRES [name . has no repeats] RETURNS NOTHING ERRORS [| |]",
+            "METHOD f (name ⁽Text) REQUIRES [name₎ has no repeats] RETURNS NOTHING ERRORS [| |]",
             "`has no repeats` tests a LIST",
         ),
         (
-            "TYPE ALIAS Case [| `any case |], METHOD f (cases: LIST Case) REQUIRES [cases . has at most one of (any case)] RETURNS NOTHING ERRORS [| |]",
+            "TYPE ALIAS Case [| `any case |], METHOD f (cases ⁽LIST Case) REQUIRES [cases₎ has at most one of (any case)] RETURNS NOTHING ERRORS [| |]",
             "expected variants in square brackets",
         ),
         (
-            "TYPE ALIAS Names: LIST Text . WHERE [_ . has no repeats]",
+            "TYPE ALIAS Names ⁽LIST Text₎ WHERE [_₎ has no repeats]",
             "are for REQUIRES and ENSURES",
         ),
     ] {
@@ -273,11 +273,11 @@ fn conditions_require_a_declared_signature() {
         ("0 < value > 2", "unsupported predicate"),
     ] {
         let errors = common::diagnostics(&format!(
-            "METHOD check (value: Integer) REQUIRES [{condition}] RETURNS NOTHING ERRORS [| |]"
+            "METHOD check (value ⁽Integer) REQUIRES [{condition}] RETURNS NOTHING ERRORS [| |]"
         ));
         assert!(errors.contains(expected), "{errors}");
     }
-    let errors = common::diagnostics("FUNCTION (value: Integer) is valid RETURNS (holds: Boolean)");
+    let errors = common::diagnostics("FUNCTION (value ⁽Integer) is valid RETURNS (holds ⁽Boolean)");
     assert!(errors.contains("only the protocol prelude"), "{errors}");
 }
 

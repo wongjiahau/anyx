@@ -1,86 +1,86 @@
-## ENTRY: value, value: SQUARE BRACKET [x: OPTIONAL [WORD "A", STRING]]
-grammar:1:41: error: found `OPTIONAL [...]` outside the parts of a call; expected a group of parts only among the parts of an `ANYFIX CALL [...]`, since only a call has name words to leave out together; write `OPTIONAL: pattern` for one element that may be missing
-  ENTRY: value, value: SQUARE BRACKET [x: OPTIONAL [WORD "A", STRING]]
+## ENTRY ⁽value, value ⁽SQUARE BRACKET [x ⁽OPTIONAL [WORD "A", STRING]]
+grammar:1:41: error: found `OPTIONAL [...]` outside the parts of a call; expected a group of parts only among the parts of an `ANYFIX CALL [...]`, since only a call has name words to leave out together; write `OPTIONAL ⁽pattern` for one element that may be missing
+  ENTRY ⁽value, value ⁽SQUARE BRACKET [x ⁽OPTIONAL [WORD "A", STRING]]
                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", OPTIONAL [WORD "A", STRING]]
-grammar:1:45: error: found `OPTIONAL [WORD "A", STRING]` with no name; expected `name: pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name: OPTIONAL [WORD "A", STRING]`
-  ENTRY: value, value: ANYFIX CALL [WORD "F", OPTIONAL [WORD "A", STRING]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", OPTIONAL [WORD "A", STRING]]
+grammar:1:45: error: found `OPTIONAL [WORD "A", STRING]` with no name; expected `name ⁽pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name ⁽OPTIONAL [WORD "A", STRING]`
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", OPTIONAL [WORD "A", STRING]]
                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [STRING, WORD "A"]]
-grammar:1:45: error: found an optional group that starts with a slot; expected a `WORD` first, since that word tells whether the group is there; put the group's word first, or write the slot alone as `OPTIONAL: pattern`
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [STRING, WORD "A"]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [STRING, WORD "A"]]
+grammar:1:45: error: found an optional group that starts with a slot; expected a `WORD` first, since that word tells whether the group is there; put the group's word first, or write the slot alone as `OPTIONAL ⁽pattern`
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [STRING, WORD "A"]]
                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [WORD "A", STRING], WORD "A", y: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [WORD "A", STRING], WORD "A", y ⁽STRING]
 grammar:1:45: error: found an optional group starting with the word `A`, which may also come right after it; expected a first word that can't follow the group, since the decoder takes the group whenever its first word is next; give the group a word of its own
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [WORD "A", STRING], WORD "A", y: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [WORD "A", STRING], WORD "A", y ⁽STRING]
                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL: WORD "A", y: OPTIONAL: WORD "A"]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL ⁽WORD "A", y ⁽OPTIONAL ⁽WORD "A"]
 grammar:1:45: error: found an optional group starting with the word `A`, which may also come right after it; expected a first word that can't follow the group, since the decoder takes the group whenever its first word is next; give the group a word of its own
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL: WORD "A", y: OPTIONAL: WORD "A"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL ⁽WORD "A", y ⁽OPTIONAL ⁽WORD "A"]
                                               ^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: WORDS "A B"]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽WORDS "A B"]]
 grammar:1:69: error: found a second choice starting with the word `A`; expected each choice of a `ONE OF` between groups of parts to start with a word of its own, since that word tells which one is there; give this choice another word
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: WORDS "A B"]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽WORDS "A B"]]
                                                                       ^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: STRING, c: NUMBER]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽STRING, c ⁽NUMBER]]
 grammar:1:80: error: found a second choice that is a slot in a `ONE OF` between groups of parts; expected at most one, since the others are told apart by their word; make this choice a `WORD`, or join the slots into one `ONE OF` rule
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: STRING, c: NUMBER]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽STRING, c ⁽NUMBER]]
                                                                                  ^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: ZERO OR MORE: ONE OF [a: WORD "A", b: WORD "B"]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ZERO OR MORE ⁽ONE OF [a ⁽WORD "A", b ⁽WORD "B"]]
 grammar:1:45: error: found a repeated `ONE OF` between groups of parts; expected it once, or `OPTIONAL`, since each way of writing the call has its name words once; write one `ANYFIX CALL` per shape and join them with `ONE OF`
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: ZERO OR MORE: ONE OF [a: WORD "A", b: WORD "B"]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ZERO OR MORE ⁽ONE OF [a ⁽WORD "A", b ⁽WORD "B"]]
                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: OPTIONAL: STRING]]
-grammar:1:69: error: found a repetition as a choice of `ONE OF`; expected each choice to be one part, a `WORD` or a slot; make the whole `ONE OF` optional instead, as in `OPTIONAL: ONE OF [...]`
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: ONE OF [a: WORD "A", b: OPTIONAL: STRING]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽OPTIONAL ⁽STRING]]
+grammar:1:69: error: found a repetition as a choice of `ONE OF`; expected each choice to be one part, a `WORD` or a slot; make the whole `ONE OF` optional instead, as in `OPTIONAL ⁽ONE OF [...]`
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽ONE OF [a ⁽WORD "A", b ⁽OPTIONAL ⁽STRING]]
                                                                       ^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [WORD "A", y: WORDS, z: STRING]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [WORD "A", y ⁽WORDS, z ⁽STRING]]
 grammar:1:45: error: found `WORDS` in a group of parts; expected it only directly among the parts of the call, since the words it takes can't tell whether the group is there; move it out of the group
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [WORD "A", y: WORDS, z: STRING]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [WORD "A", y ⁽WORDS, z ⁽STRING]]
                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 grammar:1:68: error: found a name word right next to `WORDS`; expected a slot between them, since `WORDS` takes every name word in a row; put a slot between them, or write the words as one `WORDS`
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [WORD "A", y: WORDS, z: STRING]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [WORD "A", y ⁽WORDS, z ⁽STRING]]
                                                                      ^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [x: WORDS, y: OPTIONAL: WORD "A", z: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽WORDS, y ⁽OPTIONAL ⁽WORD "A", z ⁽STRING]
 grammar:1:45: error: found a name word right next to `WORDS`; expected a slot between them, since `WORDS` takes every name word in a row; put a slot between them, or write the words as one `WORDS`
-  ENTRY: value, value: ANYFIX CALL [x: WORDS, y: OPTIONAL: WORD "A", z: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽WORDS, y ⁽OPTIONAL ⁽WORD "A", z ⁽STRING]
                                               ^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", y: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD "A", y ⁽STRING]
 grammar:1:22: error: found a way to write this call, `_`, of one slot and no word; expected a `WORD`, or at least two parts, in each way, since one item alone is never a call; make a word of the call always there
-  ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", y: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD "A", y ⁽STRING]
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL: ONE OF [a: WORD "A", v: STRING], y: OPTIONAL: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL ⁽ONE OF [a ⁽WORD "A", v ⁽STRING], y ⁽OPTIONAL ⁽STRING]
 grammar:1:35: warning: found two ways to write this call that can match the same input, `F _ _?` and `F _?`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group
-  ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL: ONE OF [a: WORD "A", v: STRING], y: OPTIONAL: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL ⁽ONE OF [a ⁽WORD "A", v ⁽STRING], y ⁽OPTIONAL ⁽STRING]
                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD "X", b: STRING, y: OPTIONAL: WORD "X", c: ZERO OR MORE: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [a ⁽ZERO OR MORE ⁽STRING, x ⁽OPTIONAL ⁽WORD "X", b ⁽STRING, y ⁽OPTIONAL ⁽WORD "X", c ⁽ZERO OR MORE ⁽STRING]
 grammar:1:35: warning: found two ways to write this call that can match the same input, `_* X _ _*` and `_* _ X _*`; expected each input to fit one way, since the decoder takes the first; give a group a word of its own, or leave out a group
-  ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD "X", b: STRING, y: OPTIONAL: WORD "X", c: ZERO OR MORE: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [a ⁽ZERO OR MORE ⁽STRING, x ⁽OPTIONAL ⁽WORD "X", b ⁽STRING, y ⁽OPTIONAL ⁽WORD "X", c ⁽ZERO OR MORE ⁽STRING]
                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", WORD "B", y: STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD "A", WORD "B", y ⁽STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]
 grammar:1:128: error: found `BREAK BEFORE WORD "A"`, the call's first part; expected a later word, since a call can't break before it starts
-  ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD "A", WORD "B", y: STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD "A", WORD "B", y ⁽STRING] FORMAT [BREAK BEFORE WORD "B", BREAK BEFORE WORD "A"]
                                                                                                                                  ^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", x: OPTIONAL [y: STRING]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", x ⁽OPTIONAL [y ⁽STRING]]
 nothing to report
 
-## ENTRY: value, value: ANYFIX CALL [WORD "F", a: OPTIONAL: WORD "A", b: OPTIONAL: WORD "B", c: OPTIONAL: WORD "C", d: OPTIONAL: WORD "D", e: OPTIONAL: WORD "E", f: OPTIONAL: WORD "F", g: OPTIONAL: WORD "G", h: OPTIONAL: WORD "H", i: OPTIONAL: WORD "I", ]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", a ⁽OPTIONAL ⁽WORD "A", b ⁽OPTIONAL ⁽WORD "B", c ⁽OPTIONAL ⁽WORD "C", d ⁽OPTIONAL ⁽WORD "D", e ⁽OPTIONAL ⁽WORD "E", f ⁽OPTIONAL ⁽WORD "F", g ⁽OPTIONAL ⁽WORD "G", h ⁽OPTIONAL ⁽WORD "H", i ⁽OPTIONAL ⁽WORD "I", ]
 grammar:1:22: error: found a call with 512 ways of writing it; expected at most 256, since the generator lists every way to tell them apart; split the call into a `ONE OF` of calls, or make fewer of its parts optional
-  ENTRY: value, value: ANYFIX CALL [WORD "F", a: OPTIONAL: WORD "A", b: OPTIONAL: WORD "B", c: OPTIONAL: WORD "C", d: OPTIONAL: WORD "D", e: OPTIONAL: WORD "E", f: OPTIONAL: WORD "F", g: OPTIONAL: WORD "G", h: OPTIONAL: WORD "H", i: OPTIONAL: WORD "I", ]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "F", a ⁽OPTIONAL ⁽WORD "A", b ⁽OPTIONAL ⁽WORD "B", c ⁽OPTIONAL ⁽WORD "C", d ⁽OPTIONAL ⁽WORD "D", e ⁽OPTIONAL ⁽WORD "E", f ⁽OPTIONAL ⁽WORD "F", g ⁽OPTIONAL ⁽WORD "G", h ⁽OPTIONAL ⁽WORD "H", i ⁽OPTIONAL ⁽WORD "I", ]
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

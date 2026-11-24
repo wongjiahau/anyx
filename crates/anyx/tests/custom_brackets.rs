@@ -33,7 +33,7 @@ fn whitespace_distinguishes_custom_and_ordinary_brackets() {
         nodes("[<= 3 =>]")[0].kind,
         NodeKind::CustomBracket(..)
     ));
-    for opener in ["[", "[.", "[:", "[a", "[| ", "|]", "[||]"] {
+    for opener in ["[", "[₎", "[⁽", "[a", "[| ", "|]", "[||]"] {
         assert_eq!(CustomBracket::from_opener(opener), None, "{opener}");
     }
 }

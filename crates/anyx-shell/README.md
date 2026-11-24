@@ -47,7 +47,7 @@ available without a qualifier, including inside nested arguments.
 
 ```anyx
 USE ALL FROM boolean,
-`true .and (`false .and (`true)),
+`true₎ and (`false .and (`true)),
 boolean / not (`true),
 ```
 
@@ -151,7 +151,7 @@ line boundaries; Backspace/Delete edit text, and Ctrl-W/Ctrl-U/Ctrl-K delete a
 word, the prefix, or the suffix of the current line. Bracketed paste inserts
 text without submitting it. Alt-Enter inserts a newline explicitly.
 
-Open brackets, unfinished quoted/raw strings, and a trailing `:` or `.` continue
+Open brackets, unfinished quoted/raw strings, and a trailing `⁽` or `₎` continue
 input onto another line. Other invalid input is submitted for a diagnostic.
 Newlines alone do not separate commands: use commas to submit several calls
 in one document. Wrap a multiline argument in brackets or parentheses to keep
@@ -172,10 +172,10 @@ Enter each command at its own prompt:
 checked / limit 10
 checked / limit 29
 checked / limit 30
-checked / revision (1 AS: Revision)
-checked / revision (0 AS: Revision)
-checked / path ("a.poentaro" AS: Score Path)
-checked / path ("a.txt" AS: Score Path)
+checked / revision (1 AS ⁽Revision)
+checked / revision (0 AS ⁽Revision)
+checked / path ("a.poentaro" AS ⁽Score Path)
+checked / path ("a.txt" AS ⁽Score Path)
 checked / short "😀"
 checked / broken limit 10
 ```
@@ -186,7 +186,7 @@ bound, "less than 30". Revision `1` and the `.poentaro` path pass; revision
 deliberately returns `30`, producing `INTERNAL ERROR`.
 
 Inline refinements accept a literal of their base type and check the predicate
-without an `AS:` annotation. Named types still use `AS:` with their name. A
+without an `AS ⁽` annotation. Named types still use `AS ⁽` with their name. A
 call's result is another matter: `checked / short (example / text)` is
 rejected before anything runs, since a `Text` result doesn't promise the
 predicate. Declare the method to return the refined type instead.
@@ -224,7 +224,7 @@ becomes its argument. Expressions also work inside lists, record fields, map
 values, and choice arguments. Anyx's grouping sugar works too:
 
 ```anyx
-environment / set variable "COPY" to: environment / read variable "HOME"
+environment / set variable "COPY" to ⁽environment / read variable "HOME"
 ```
 
 The checker synthesizes argument types from the inside out, using each
@@ -232,7 +232,7 @@ nested method's declared return type. Those argument types select the enclosing
 overload; its expected result type never selects its own overload. All calls
 are checked before any tool runs, including calls nested in containers.
 Unambiguous literals infer their type as in protocol requests. Empty lists,
-ambiguous variants, and named types can use `AS: Type` annotations. A computed
+ambiguous variants, and named types can use `AS ⁽Type` annotations. A computed
 value keeps its declared type even when its runtime value is an empty list.
 An annotation must agree with a computed expression's type; it is not a cast.
 Record fields and choice slots check their contents against their declared types.

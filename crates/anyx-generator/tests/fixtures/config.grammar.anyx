@@ -1,29 +1,29 @@
 ## A config file: sections of settings.
 
-ENTRY [ZERO OR MORE: section],
+ENTRY [ZERO OR MORE ⁽section],
 
 ## `server { ... }` is the call `server _` of the braces. `EACH` decodes
 ## every setting on its own, so one mistake does not hide the others.
-section: ANYFIX CALL [
+section ⁽ANYFIX CALL [
   NAME [MATCHING REGEX "^[a-z][a-z0-9 ]* _$"],
-  ARGUMENTS: CURLY BRACE: EACH: setting,
+  ARGUMENTS ⁽CURLY BRACE ⁽EACH ⁽setting,
 ],
 
-setting: ONE OF [
-  ## `port: 8080` is the call `port _` of the value, and so is
-  ## `tls { ... }`. The key may be several words: `max depth: 3`.
-  pair: ANYFIX CALL [
+setting ⁽ONE OF [
+  ## `port ⁽8080` is the call `port _` of the value, and so is
+  ## `tls { ... }`. The key may be several words: `max depth ⁽3`.
+  pair ⁽ANYFIX CALL [
     NAME [MATCHING REGEX "^[a-z][a-z0-9 ]* _$"],
-    ARGUMENTS: value,
+    ARGUMENTS ⁽value,
   ],
   ## `verbose logging` alone is a flag: a call of only words.
-  flag: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9 ]*$"]],
+  flag ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9 ]*$"]],
 ],
 
-value: ONE OF [
-  text: STRING,
-  number: NUMBER,
-  list: SQUARE BRACKET: ZERO OR MORE: value,
-  custom list: BRACKET "[|>" [ZERO OR MORE: value],
-  section: CURLY BRACE: EACH: setting,
+value ⁽ONE OF [
+  text ⁽STRING,
+  number ⁽NUMBER,
+  list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽value,
+  custom list ⁽BRACKET "[|>" [ZERO OR MORE ⁽value],
+  section ⁽CURLY BRACE ⁽EACH ⁽setting,
 ],

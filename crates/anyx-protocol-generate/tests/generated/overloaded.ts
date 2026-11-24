@@ -112,7 +112,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       return output.join(" ") || "0 seconds";
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
-    case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)} ⁽${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
     case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return `\`${encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings)}`; }
     // The checker keeps a union's members apart, so a value fits one at most.
     case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
@@ -148,7 +148,7 @@ function heldSlots(names: string[] | undefined, values: unknown[]): unknown {
   return names ? Object.fromEntries(names.map((name, i) => [name, values[i]])) : values;
 }
 // A field as a reader writes it: the variant
-// alone, or the shape with the value in its slot, after a `:` when the slot
+// alone, or the shape with the value in its slot, after a `⁽` when the slot
 // is last. A `null` default is left out.
 function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings: Bindings): string[] {
   const present = Object.hasOwn(obj, f.name) && obj[f.name] !== undefined;
@@ -163,7 +163,7 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
     return [texts[0]];
   }
   const words = f.wire.split(" ");
-  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
+  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")} ⁽${texts[0]}`];
   let next = 0;
   return [words.map(w => w === "_" ? `(${texts[next++]})` : w).join(" ")];
 }
@@ -216,7 +216,7 @@ function encodeCall(method: MethodDescriptor, args: unknown[]): string {
     if (word !== "_") return word;
     const p = method.shape.params[i];
     const value = encodeValue(p.type, args[i++]);
-    return p.annotation ? `(${value} AS: ${p.annotation})` : `(${value})`;
+    return p.annotation ? `(${value} AS ⁽${p.annotation})` : `(${value})`;
   }).join(" ");
 }
 
@@ -319,7 +319,7 @@ function parseDocument(source: string): Syntax[] {
         const c = source[at];
         if (!c || c === "," || c === close) break;
         if (")]}".includes(c)) return fail("unexpected punctuation");
-        if (c === ":" || c === ".") { if (!run.length) return fail("missing operand"); runs.push(run); operators.push(c); run = []; at++; continue; }
+        if (c === "⁽" || c === "₎") { if (!run.length) return fail("missing operand"); runs.push(run); operators.push(c); run = []; at++; continue; }
         if (c === '"' || c === "#") { run.push(text()); continue; }
         if (c === "(" || c === "[" || c === "{") {
           at++;
@@ -331,7 +331,7 @@ function parseDocument(source: string): Syntax[] {
         const rest = source.slice(at);
         const number = rest.match(/^-?(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)/);
         if (number) { run.push({ tag: "number", text: number[0] }); at += number[0].length; continue; }
-        const word = rest.match(/^[\p{L}_][\p{L}\p{N}_]*/u) || rest.match(/^[^\s,:.()\[\]{}#"\p{L}\p{N}_]+/u);
+        const word = rest.match(/^[\p{L}_][\p{L}\p{N}_]*/u) || rest.match(/^[^\s,⁽₎()\[\]{}#"\p{L}\p{N}_]+/u);
         if (!word) return fail("invalid token");
         run.push({ tag: "word", text: word[0] }); at += word[0].length;
       }
@@ -345,7 +345,7 @@ function parseDocument(source: string): Syntax[] {
       };
       const groups: Syntax[][] = [runs[0]];
       for (let i = 0; i < operators.length; i++) {
-        if (operators[i] === ".") groups[groups.length - 1] = fill(runs[i + 1], syntaxRun(groups[groups.length - 1]), true);
+        if (operators[i] === "₎") groups[groups.length - 1] = fill(runs[i + 1], syntaxRun(groups[groups.length - 1]), true);
         else groups.push(runs[i + 1]);
       }
       let expression = syntaxRun(groups.pop()!);
@@ -633,7 +633,7 @@ export class Client {
    * Examples:
    *
    * ```anyx
-   * tag ids ([] AS: LIST: File Id) RETURNS 0
+   * tag ids ([] AS ⁽LIST ⁽File Id) RETURNS 0
    * ```
    */
   tagIds(ids: FileId[]): Promise<Outcome<bigint, TagIdsError>> {
@@ -650,12 +650,12 @@ export class Client {
     return this.call("scale (Integer)", [times]);
   }
 
-  /** Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path: Text)`. */
+  /** Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (path ⁽Text)`. */
   hideWithText(path: string): Promise<Outcome<void, never>> {
     return this.call("hide (Text)", [path]);
   }
 
-  /** Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id: File Id)`. */
+  /** Idempotent: calling it again with the same arguments changes nothing more, so it is safe to retry after a lost response. Undone by `show (id ⁽File Id)`. */
   hideWithFileId(id: FileId): Promise<Outcome<void, never>> {
     return this.call("hide (File Id)", [id]);
   }
@@ -708,8 +708,8 @@ export const EFFECTS: { readonly [method: string]: Effects } = {
   "tag ids _": { readOnly: false, idempotent: false, undoneBy: null },
   "scale (Float)": { readOnly: true, idempotent: true, undoneBy: null },
   "scale (Integer)": { readOnly: true, idempotent: true, undoneBy: null },
-  "hide (Text)": { readOnly: false, idempotent: true, undoneBy: "show (path: Text)" },
-  "hide (File Id)": { readOnly: false, idempotent: true, undoneBy: "show (id: File Id)" },
+  "hide (Text)": { readOnly: false, idempotent: true, undoneBy: "show (path ⁽Text)" },
+  "hide (File Id)": { readOnly: false, idempotent: true, undoneBy: "show (id ⁽File Id)" },
   "show (Text)": { readOnly: false, idempotent: true, undoneBy: null },
   "show (File Id)": { readOnly: false, idempotent: true, undoneBy: null },
   "paint _": { readOnly: false, idempotent: false, undoneBy: null },

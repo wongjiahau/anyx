@@ -182,7 +182,7 @@ function encodeValue(type: TypeDescriptor, value: unknown, bindings: Bindings = 
       return output.join(" ") || "0 seconds";
     } break;
     case "list": if (Array.isArray(value)) return `[${value.map(v => encodeValue(type.item!, v, bindings)).join(", ")}]`; break;
-    case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)}: ${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
+    case "map": { const obj = object(value); return `{ ${Object.entries(obj).map(([k, v]) => `${quoted(k)} ⁽${encodeValue(type.item!, v, bindings)}`).join(", ")} }`; }
     case "variant": { const obj = object(value); if (obj.kind !== type.shape!.kind) break; return `\`${encodeShape(type.shape!, type.shape!.params.map(p => obj[p.name]), bindings)}`; }
     // The checker keeps a union's members apart, so a value fits one at most.
     case "union": for (const member of type.args!) { try { return encodeValue(member, value, bindings); } catch { /* another member's */ } } break;
@@ -218,7 +218,7 @@ function heldSlots(names: string[] | undefined, values: unknown[]): unknown {
   return names ? Object.fromEntries(names.map((name, i) => [name, values[i]])) : values;
 }
 // A field as a reader writes it: the variant
-// alone, or the shape with the value in its slot, after a `:` when the slot
+// alone, or the shape with the value in its slot, after a `⁽` when the slot
 // is last. A `null` default is left out.
 function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings: Bindings): string[] {
   const present = Object.hasOwn(obj, f.name) && obj[f.name] !== undefined;
@@ -233,7 +233,7 @@ function encodeField(f: FieldDescriptor, obj: Record<string, unknown>, bindings:
     return [texts[0]];
   }
   const words = f.wire.split(" ");
-  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")}: ${texts[0]}`];
+  if (texts.length === 1 && words[words.length - 1] === "_" && words.indexOf("_") === words.length - 1) return [`${words.slice(0, -1).join(" ")} ⁽${texts[0]}`];
   let next = 0;
   return [words.map(w => w === "_" ? `(${texts[next++]})` : w).join(" ")];
 }
@@ -286,7 +286,7 @@ function encodeCall(method: MethodDescriptor, args: unknown[]): string {
     if (word !== "_") return word;
     const p = method.shape.params[i];
     const value = encodeValue(p.type, args[i++]);
-    return p.annotation ? `(${value} AS: ${p.annotation})` : `(${value})`;
+    return p.annotation ? `(${value} AS ⁽${p.annotation})` : `(${value})`;
   }).join(" ");
 }
 
@@ -389,7 +389,7 @@ function parseDocument(source: string): Syntax[] {
         const c = source[at];
         if (!c || c === "," || c === close) break;
         if (")]}".includes(c)) return fail("unexpected punctuation");
-        if (c === ":" || c === ".") { if (!run.length) return fail("missing operand"); runs.push(run); operators.push(c); run = []; at++; continue; }
+        if (c === "⁽" || c === "₎") { if (!run.length) return fail("missing operand"); runs.push(run); operators.push(c); run = []; at++; continue; }
         if (c === '"' || c === "#") { run.push(text()); continue; }
         if (c === "(" || c === "[" || c === "{") {
           at++;
@@ -401,7 +401,7 @@ function parseDocument(source: string): Syntax[] {
         const rest = source.slice(at);
         const number = rest.match(/^-?(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)/);
         if (number) { run.push({ tag: "number", text: number[0] }); at += number[0].length; continue; }
-        const word = rest.match(/^[\p{L}_][\p{L}\p{N}_]*/u) || rest.match(/^[^\s,:.()\[\]{}#"\p{L}\p{N}_]+/u);
+        const word = rest.match(/^[\p{L}_][\p{L}\p{N}_]*/u) || rest.match(/^[^\s,⁽₎()\[\]{}#"\p{L}\p{N}_]+/u);
         if (!word) return fail("invalid token");
         run.push({ tag: "word", text: word[0] }); at += word[0].length;
       }
@@ -415,7 +415,7 @@ function parseDocument(source: string): Syntax[] {
       };
       const groups: Syntax[][] = [runs[0]];
       for (let i = 0; i < operators.length; i++) {
-        if (operators[i] === ".") groups[groups.length - 1] = fill(runs[i + 1], syntaxRun(groups[groups.length - 1]), true);
+        if (operators[i] === "₎") groups[groups.length - 1] = fill(runs[i + 1], syntaxRun(groups[groups.length - 1]), true);
         else groups.push(runs[i + 1]);
       }
       let expression = syntaxRun(groups.pop()!);
@@ -606,7 +606,7 @@ const definitions: Definition[] = [{parameters:[],kind:'distinct', name:"Probabi
 {parameters:[],kind:'distinct', name:"Linear", shape:"Linear _", slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"0 < (_ * 2), (_ + 1) <= 30", words:"(_ * 2) greater than 0", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (0); const b = (n*(2)); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = (0n); const b = refinementInteger("*", n, (2n)); return a !== null && b !== null && a < b; } },{source:"0 < (_ * 2), (_ + 1) <= 30", words:"(_ + 1) at most 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (n+(1)); const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = refinementInteger("+", n, (1n)); const b = (30n); return a !== null && b !== null && a <= b; } }]}]},
 {parameters:[],kind:'distinct', name:"Wide", shape:"Wide _", slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"0 < ((_ * 9223372036854775807) * 9223372036854775807)", words:"((_ * 9223372036854775807) * 9223372036854775807) greater than 0", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (0); const b = ((n*(9223372036854775807))*(9223372036854775807)); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = (0n); const b = refinementInteger("*", refinementInteger("*", n, (9223372036854775807n)), (9223372036854775807n)); return a !== null && b !== null && a < b; } }]}]},
 {parameters:[],kind:'distinct', name:"Contains Zero", shape:"Contains Zero _", slots:[{k:'refined', item:{k:'text'}, checks:[{source:"_ contains \"\\u00001\"", words:"contains \"\\01\"", test:(value: unknown): boolean => { return typeof value === 'string' && value.includes("\u00001"); } }]}]},
-{parameters:[],kind:'distinct', name:"Outside Range", shape:"Outside Range _", slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"not: 1 <= _ <= 3", words:"not (at least 1 and at most 3)", test:(value: unknown): boolean => { const v0 = (() => { const v0 = (() => { if (typeof value === 'number') { const n = value; const a = (1); const b = n; return Number.isFinite(a) && Number.isFinite(b) ? a <= b : null; } if (typeof value !== 'bigint') return null; const n = value; const a = (1n); const b = n; return a !== null && b !== null ? a <= b : null; })(); if (v0 === null) return null; const v1 = (() => { if (typeof value === 'number') { const n = value; const a = n; const b = (3); return Number.isFinite(a) && Number.isFinite(b) ? a <= b : null; } if (typeof value !== 'bigint') return null; const n = value; const a = n; const b = (3n); return a !== null && b !== null ? a <= b : null; })(); if (v1 === null) return null; return v0 && v1; })(); if (v0 === null) return false; return !v0; } }]}]},
+{parameters:[],kind:'distinct', name:"Outside Range", shape:"Outside Range _", slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"not ⁽1 <= _ <= 3", words:"not (at least 1 and at most 3)", test:(value: unknown): boolean => { const v0 = (() => { const v0 = (() => { if (typeof value === 'number') { const n = value; const a = (1); const b = n; return Number.isFinite(a) && Number.isFinite(b) ? a <= b : null; } if (typeof value !== 'bigint') return null; const n = value; const a = (1n); const b = n; return a !== null && b !== null ? a <= b : null; })(); if (v0 === null) return null; const v1 = (() => { if (typeof value === 'number') { const n = value; const a = n; const b = (3); return Number.isFinite(a) && Number.isFinite(b) ? a <= b : null; } if (typeof value !== 'bigint') return null; const n = value; const a = n; const b = (3n); return a !== null && b !== null ? a <= b : null; })(); if (v1 === null) return null; return v0 && v1; })(); if (v0 === null) return false; return !v0; } }]}]},
 {parameters:[],kind:'distinct', name:"True Only", shape:"True Only _", slots:[{k:'refined', item:{k:'named', index:12, args:[]}, checks:[{source:"_ and (`true)", words:"(_ is true) and (`true)", test:(value: unknown): boolean => { const v0 = (() => { const kind = value !== null && typeof value === 'object' ? (value as {kind?: unknown}).kind : undefined; return kind === 'true' ? true : kind === 'false' ? false : null; })(); if (v0 === null) return false; const v1 = (() => { return true; })(); if (v1 === null) return false; return v0 && v1; } }]}]},
 {parameters:[],kind:'distinct', name:"Names", shape:"Names _", slots:[{k:'refined', item:{k:'list', item:{k:'text'}}, checks:[{source:"1 <= (_ length) <= 3", words:"length at least 1", test:(value: unknown): boolean => { const n = typeof value === 'string' ? BigInt(Array.from(value).length) : value instanceof Uint8Array || Array.isArray(value) ? BigInt(value.length) : value !== null && typeof value === 'object' ? BigInt(Object.keys(value).length) : null; if (n === null) return false; const a = (1n); const b = n; return a !== null && b !== null && a <= b; } },{source:"1 <= (_ length) <= 3", words:"length at most 3", test:(value: unknown): boolean => { const n = typeof value === 'string' ? BigInt(Array.from(value).length) : value instanceof Uint8Array || Array.isArray(value) ? BigInt(value.length) : value !== null && typeof value === 'object' ? BigInt(Object.keys(value).length) : null; if (n === null) return false; const a = n; const b = (3n); return a !== null && b !== null && a <= b; } }]}]},
 {parameters:[],kind:'record', fields:[{wire:"path _", form:"shape", name:"path", type:{k:'named', index:1, args:[]}, slots:[{k:'named', index:1, args:[]}]},{wire:"revision _", form:"shape", name:"revision", type:{k:'refined', item:{k:'integer'}, checks:[{source:"1 <= _", words:"at least 1", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (1); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (1n); const b = n; return a !== null && b !== null && a <= b; } }]}, slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"1 <= _", words:"at least 1", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (1); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (1n); const b = n; return a !== null && b !== null && a <= b; } }]}]},{wire:"limit _", form:"shape", name:"limit", type:{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}, slots:[{k:'refined', item:{k:'integer'}, checks:[{source:"10 <= _ < 30", words:"at least 10", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = (10); const b = n; return Number.isFinite(a) && Number.isFinite(b) && a <= b; } if (typeof value !== 'bigint') return false; const n = value; const a = (10n); const b = n; return a !== null && b !== null && a <= b; } },{source:"10 <= _ < 30", words:"less than 30", test:(value: unknown): boolean => { if (typeof value === 'number') { const n = value; const a = n; const b = (30); return Number.isFinite(a) && Number.isFinite(b) && a < b; } if (typeof value !== 'bigint') return false; const n = value; const a = n; const b = (30n); return a !== null && b !== null && a < b; } }]}], defaultValue:()=>(10n)}]},

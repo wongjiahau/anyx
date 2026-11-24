@@ -87,7 +87,7 @@ fn each_outcome_reads_as_json() {
 #[test]
 fn bytes_are_base64_in_json() {
     let schema = common::schema(
-        "PROTOCOL a VERSION 1, METHOD upload (file: Bytes) RETURNS (file: Bytes) ERRORS [| |],",
+        "PROTOCOL a VERSION 1, METHOD upload (file ⁽Bytes) RETURNS (file ⁽Bytes) ERRORS [| |],",
     );
     let request = encode_request_json(&schema, "upload _", r#"["TVRoZA=="]"#).unwrap();
     assert_eq!(request, "upload (\"TVRoZA==\" AS Bytes)\n");
@@ -113,7 +113,7 @@ fn nothing_returned_is_a_value_without_a_value_in_json() {
 #[test]
 fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
     let schema = common::schema(
-        "PROTOCOL a VERSION 1, METHOD wait (duration: Duration) from (start: Instant) RETURNS (end: Instant) ERRORS [| |],",
+        "PROTOCOL a VERSION 1, METHOD wait (duration ⁽Duration) from (start ⁽Instant) RETURNS (end ⁽Instant) ERRORS [| |],",
     );
     let request = encode_request_json(
         &schema,
@@ -161,8 +161,8 @@ fn an_instant_is_text_and_a_duration_milliseconds_in_json() {
 fn a_field_left_out_of_json_takes_its_default() {
     let schema = common::schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Search: { query (query: Text), limit (limit: Integer) DEFAULT limit 50 },
-        METHOD find (search: Search) RETURNS (count: Integer) ERRORS [| |],",
+        TYPE ALIAS Search ⁽{ query (query ⁽Text), limit (limit ⁽Integer) DEFAULT limit 50 },
+        METHOD find (search ⁽Search) RETURNS (count ⁽Integer) ERRORS [| |],",
     );
     let request = encode_request_json(&schema, "find _", r#"[{"query": "ode"}]"#).unwrap();
     assert_eq!(request, "find { query \"ode\", limit 50 }\n");
@@ -172,7 +172,7 @@ fn a_field_left_out_of_json_takes_its_default() {
 fn a_map_is_an_object_whose_keys_stay_as_written() {
     let schema = common::schema(
         "PROTOCOL a VERSION 1,
-        METHOD count (counts: MAP Integer) RETURNS (waits: MAP Duration) ERRORS [| |],",
+        METHOD count (counts ⁽MAP Integer) RETURNS (waits ⁽MAP Duration) ERRORS [| |],",
     );
     let request =
         encode_request_json(&schema, "count _", r#"[{"hymn": 3, "old ode": 1, "": 0}]"#).unwrap();
@@ -182,7 +182,7 @@ fn a_map_is_an_object_whose_keys_stay_as_written() {
         r#"[{"arguments":[{"":0,"hymn":3,"old ode":1}],"method":"count _"}]"#
     );
     assert_eq!(
-        decode_response_json(&schema, "count _", "RETURNS { \"tea\": 5 minutes }").unwrap(),
+        decode_response_json(&schema, "count _", "RETURNS { \"tea\" ⁽5 minutes }").unwrap(),
         r#"{"kind":"value","value":{"tea":300000}}"#
     );
     assert_eq!(

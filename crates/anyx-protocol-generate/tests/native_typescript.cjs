@@ -62,8 +62,8 @@ const reminder = {note: 'tea', at, times: 9007199254740993n, seen: {}};
   const invalid = await rejected.batch(c => [c.count({}), c.count({})]);
   assert.deepEqual(invalid.map(x => [x.kind, x.line, x.column, x.message]), [['invalidRequest',1,2,'bad'], ['invalidRequest',1,2,'bad']]);
   for (const [response, expected] of [
-    ['RETURNS: "hello"', 'hello'],
-    ['"hello" . RETURNS _', 'hello'],
+    ['RETURNS ⁽"hello"', 'hello'],
+    ['"hello"₎ RETURNS _', 'hello'],
     ['RETURNS "\\u0041\\uD83D\\uDE00"', 'A😀'],
     ['RETURNS """\nhello\nworld\n"""', 'hello\nworld'],
   ]) { try { assert.equal((await new Client(async () => response).schema()).value, expected); } catch (error) { throw new Error(`response ${JSON.stringify(response)}: ${error}`); } }

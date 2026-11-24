@@ -70,7 +70,7 @@ impl Interpreter {
                 }
                 run
             }
-            Expression::Dot(binary) | Expression::Colon(binary) => {
+            Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
                 let info = self.expression_info(source, &binary.right, offset);
                 if !info.is_empty() {
                     return info;
@@ -82,7 +82,7 @@ impl Interpreter {
                 fn first_run(expression: &Expression) -> &anyx::Run {
                     match expression {
                         Expression::Run(run) => run,
-                        Expression::Dot(binary) | Expression::Colon(binary) => {
+                        Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
                             first_run(&binary.left)
                         }
                     }

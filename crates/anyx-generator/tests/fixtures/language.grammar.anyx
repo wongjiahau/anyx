@@ -1,34 +1,34 @@
 ## A small language of keywords, with calls of the user's own.
 
-ENTRY [ZERO OR MORE: statement],
+ENTRY [ZERO OR MORE ⁽statement],
 
-statement: ONE OF [
-  let: ANYFIX CALL [WORD "LET", binding],
-  return: ANYFIX CALL [WORD "RETURN", OPTIONAL: expression],
+statement ⁽ONE OF [
+  let ⁽ANYFIX CALL [WORD "LET", binding],
+  return ⁽ANYFIX CALL [WORD "RETURN", OPTIONAL ⁽expression],
   expression,
 ],
 
 ## `total = 1` is the call `_ = _` of the name and the value.
-binding: ANYFIX CALL [name: ANY WORD [NAME], WORD "=", value: expression],
+binding ⁽ANYFIX CALL [name ⁽ANY WORD [NAME], WORD "=", value ⁽expression],
 
-expression: ONE OF [
+expression ⁽ONE OF [
   ## A long one starts `THEN` and `ELSE` on lines of their own.
-  if: ANYFIX CALL [
-    WORD "IF", condition: expression,
-    WORD "THEN", then: expression,
-    WORD "ELSE", else: expression,
+  if ⁽ANYFIX CALL [
+    WORD "IF", condition ⁽expression,
+    WORD "THEN", then ⁽expression,
+    WORD "ELSE", else ⁽expression,
   ] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "ELSE"],
-  not: ANYFIX CALL [WORD "NOT", expression],
-  less: ANYFIX CALL [left: expression, WORD "<", right: expression],
-  sum: ANYFIX CALL [left: expression, WORD "+", right: expression],
-  variable: ANY WORD [NAME],
-  number: NUMBER,
-  text: STRING,
-  block: CURLY BRACE: ZERO OR MORE: statement,
+  not ⁽ANYFIX CALL [WORD "NOT", expression],
+  less ⁽ANYFIX CALL [left ⁽expression, WORD "<", right ⁽expression],
+  sum ⁽ANYFIX CALL [left ⁽expression, WORD "+", right ⁽expression],
+  variable ⁽ANY WORD [NAME],
+  number ⁽NUMBER,
+  text ⁽STRING,
+  block ⁽CURLY BRACE ⁽ZERO OR MORE ⁽statement,
   ## Any other call that starts with a name and takes arguments is the
   ## user's own: `print _`, `move _ to _`.
-  call: ANYFIX CALL [
+  call ⁽ANYFIX CALL [
     NAME [MATCHING REGEX "^[a-z].* _"],
-    ARGUMENTS: ONE OR MORE: expression,
+    ARGUMENTS ⁽ONE OR MORE ⁽expression,
   ],
 ],

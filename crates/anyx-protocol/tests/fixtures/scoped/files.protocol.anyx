@@ -1,6 +1,6 @@
 USE "./common.protocol.anyx",
 
-TYPE ALIAS File: { path (path: Text), revision (revision: Integer), content (content: Text) },
+TYPE ALIAS File ⁽{ path (path ⁽Text), revision (revision ⁽Integer), content (content ⁽Text) },
 
 PUBLIC TYPE ALIAS File Errors [|
     # The note is in the trash.
@@ -8,21 +8,21 @@ PUBLIC TYPE ALIAS File Errors [|
     Common Errors,
 |],
 
-READ ONLY METHOD list RETURNS (paths: LIST Text) ERRORS [| |],
+READ ONLY METHOD list RETURNS (paths ⁽LIST Text) ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
+READ ONLY METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| File Errors |],
 
 # Saves the note, if it is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (warnings: LIST Diagnostic)
+METHOD write (path ⁽Text) at revision (revision ⁽Integer) content (content ⁽Text)
+    RETURNS (warnings ⁽LIST Diagnostic)
     ERRORS [|
         # The note has errors, so nothing was saved.
-        `rejected (diagnostics: LIST Diagnostic),
+        `rejected (diagnostics ⁽LIST Diagnostic),
         File Errors,
     |],
 
 # Moves the note to the trash.
-IDEMPOTENT METHOD trash (path: Text) RETURNS NOTHING ERRORS [| File Errors |],
+IDEMPOTENT METHOD trash (path ⁽Text) RETURNS NOTHING ERRORS [| File Errors |],
 
 # Forgets every note in the trash.
 METHOD empty trash RETURNS NOTHING ERRORS [| |],

@@ -48,14 +48,14 @@ fn unexpected_closer() {
 
 #[test]
 fn empty_operand_needs_a_run_on_both_sides() {
-    assert_eq!(errors("a. .b"), [(ErrorCode::EmptyOperand, 1, 2)]);
-    assert_eq!(errors(". a"), [(ErrorCode::EmptyOperand, 0, 1)]);
-    assert_eq!(errors("a :"), [(ErrorCode::EmptyOperand, 2, 3)]);
-    assert_eq!(errors(": b"), [(ErrorCode::EmptyOperand, 0, 1)]);
-    assert_eq!(errors("a: :b"), [(ErrorCode::EmptyOperand, 1, 2)]);
-    assert_eq!(errors("(a .)"), [(ErrorCode::EmptyOperand, 3, 4)]);
-    assert_eq!(tree_despite_errors("a :"), "(`a _` Missing)");
-    assert_eq!(tree_despite_errors(". a"), "(`_ a` Missing)");
+    assert_eq!(errors("a₎"), [(ErrorCode::EmptyOperand, 1, 4)]);
+    assert_eq!(errors("₎ a"), [(ErrorCode::EmptyOperand, 0, 3)]);
+    assert_eq!(errors("a ⁽"), [(ErrorCode::EmptyOperand, 2, 5)]);
+    assert_eq!(errors("⁽b"), [(ErrorCode::EmptyOperand, 0, 3)]);
+    assert_eq!(errors("a ⁽⁽b"), [(ErrorCode::EmptyOperand, 2, 5)]);
+    assert_eq!(errors("(a₎)"), [(ErrorCode::EmptyOperand, 2, 5)]);
+    assert_eq!(tree_despite_errors("a ⁽"), "(`a _` Missing)");
+    assert_eq!(tree_despite_errors("₎ a"), "(`_ a` Missing)");
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn too_deep_caps_nesting_instead_of_overflowing() {
 
 #[test]
 fn recovery_reports_every_error() {
-    let source = "f (a,, b] . : \"\\q\" c) ,\n{ x : \"open";
+    let source = "f (a,, b]₎ ⁽\"\\q\" c) ,\n{ x ⁽\"open";
     let codes: Vec<_> = errors(source).iter().map(|error| error.0).collect();
     assert_eq!(
         codes,
@@ -171,7 +171,7 @@ fn recovery_reports_every_error() {
 
 #[test]
 fn messages_are_one_line_with_what_was_found_and_expected() {
-    let source = "f (a,, b] . : \"\\q\" c) ,\n{ x : \"open";
+    let source = "f (a,, b]₎ ⁽\"\\q\" c) ,\n{ x ⁽\"open";
     for message in messages(source) {
         assert!(!message.contains('\n'), "{message}");
         assert!(message.starts_with("found "), "{message}");
@@ -192,10 +192,10 @@ fn render_gives_file_line_column_and_a_caret() {
 
 #[test]
 fn extra_underscore_in_a_receiving_run() {
-    assert_eq!(errors("x . f _ _"), [(ErrorCode::ExtraUnderscore, 8, 9)]);
-    assert_eq!(errors("_ f _ : x"), [(ErrorCode::ExtraUnderscore, 4, 5)]);
-    assert_eq!(errors("x . f _ (_)"), []);
+    assert_eq!(errors("x₎ f _ _"), [(ErrorCode::ExtraUnderscore, 9, 10)]);
+    assert_eq!(errors("_ f _ ⁽x"), [(ErrorCode::ExtraUnderscore, 4, 5)]);
+    assert_eq!(errors("x₎ f _ (_)"), []);
     // Not receiving a value, so `_` is an ordinary word here.
     assert_eq!(errors("_ _"), []);
-    assert_eq!(errors("_ _ . f"), []);
+    assert_eq!(errors("_ _₎ f"), []);
 }

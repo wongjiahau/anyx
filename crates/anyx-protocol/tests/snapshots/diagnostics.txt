@@ -1,19 +1,19 @@
 == an unknown type
-PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [| |],
+PROTOCOL a VERSION 1, METHOD f (x ⁽thing) RETURNS (y ⁽Text) ERRORS [| |],
 schema:1:36: found `thing`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `thing`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, METHOD f (x: thing) RETURNS (y: Text) ERRORS [| |],
+  PROTOCOL a VERSION 1, METHOD f (x ⁽thing) RETURNS (y ⁽Text) ERRORS [| |],
                                      ^^^^^
 
 == a built-in type under its old all-caps name
-PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text) ERRORS [| |],
+PROTOCOL a VERSION 1, METHOD f (x ⁽INTEGER) RETURNS (y ⁽Text) ERRORS [| |],
 schema:1:36: found `INTEGER`; expected `Integer`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, METHOD f (x: INTEGER) RETURNS (y: Text) ERRORS [| |],
+  PROTOCOL a VERSION 1, METHOD f (x ⁽INTEGER) RETURNS (y ⁽Text) ERRORS [| |],
                                      ^^^^^^^
 
 == an old all-caps name inside a list
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags (tags: LIST: TEXT) },
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ tags (tags ⁽LIST ⁽TEXT) },
 schema:1:63: found `TEXT`; expected `Text`, its name since the built-in types are declared in the prelude: type names are written in Title Case, and all-caps words belong to the schema language
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { tags (tags: LIST: TEXT) },
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ tags (tags ⁽LIST ⁽TEXT) },
                                                                 ^^^^
 
 == INTRINSIC in a schema
@@ -23,21 +23,21 @@ schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, whi
                         ^^^^^^^^^
 
 == INTRINSIC on a record in a schema
-PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a: Text) },
+PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a ⁽Text) },
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a: Text) },
+  PROTOCOL a VERSION 1, INTRINSIC TYPE Example { a (a ⁽Text) },
                         ^^^^^^^^^
 
 == INTRINSIC on a method
-PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text) ERRORS [| |],
+PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y ⁽Text) ERRORS [| |],
 schema:1:23: found `INTRINSIC` in a schema; expected it only in the prelude, which declares the built-in types, since the implementation supplies what an `INTRINSIC` declaration means; remove it
-  PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y: Text) ERRORS [| |],
+  PROTOCOL a VERSION 1, INTRINSIC METHOD f RETURNS (y ⁽Text) ERRORS [| |],
                         ^^^^^^^^^
 
 == a type named like a built-in one
-PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a (a: Text) },
+PROTOCOL a VERSION 1, TYPE ALIAS Integer ⁽{ a (a ⁽Text) },
 schema:1:34: found a type named `Integer`, which the prelude already declares as a built-in type; expected a name of its own, since the prelude's types are visible in every file; rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Integer: { a (a: Text) },
+  PROTOCOL a VERSION 1, TYPE ALIAS Integer ⁽{ a (a ⁽Text) },
                                    ^^^^^^^
 
 == a type alias without a type
@@ -48,7 +48,7 @@ schema:1:39: found the end of the call; expected an alias part
 
 == an unnamed return
 PROTOCOL a VERSION 1, METHOD f RETURNS (Text) ERRORS [| |],
-schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name: Type)`, such as `RETURNS (new revision: Integer)`, since the name says what the value is
+schema:1:45: found a `RETURNS` without a name; expected `RETURNS (name ⁽Type)`, such as `RETURNS (new revision ⁽Integer)`, since the name says what the value is
   PROTOCOL a VERSION 1, METHOD f RETURNS (Text) ERRORS [| |],
                                               ^
 
@@ -59,144 +59,144 @@ schema:1:64: found the number `3`; expected the call `… _`, `[...]` or the end
                                                                  ^
 
 == a type defined twice
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text) }, TYPE ALIAS Example [| `b |],
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (a ⁽Text) }, TYPE ALIAS Example [| `b |],
 schema:1:71: duplicate declaration `Example` in `schema.protocol.anyx` and `schema.protocol.anyx`; every type must have a unique name in the protocol
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text) }, TYPE ALIAS Example [| `b |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (a ⁽Text) }, TYPE ALIAS Example [| `b |],
                                                                         ^^^^^^^
 
 == a field twice
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text), a (a: Integer) },
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (a ⁽Text), a (a ⁽Integer) },
 schema:1:58: found a second field named `a`; expected each field once; rename or remove one of them
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (a: Text), a (a: Integer) },
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (a ⁽Text), a (a ⁽Integer) },
                                                            ^
 
 == a variant twice
-PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b: Text) |],
+PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b ⁽Text) |],
 schema:1:50: found a second variant named `a`; expected each variant's words once; rename or remove one of them
-  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b: Text) |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `a, `a (b ⁽Text) |],
                                                    ^
 
 == a parameter twice
-PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text) ERRORS [| |],
+PROTOCOL a VERSION 1, METHOD f (x ⁽Text) g (x ⁽Text) RETURNS (y ⁽Text) ERRORS [| |],
 schema:1:45: found a second parameter named `x`; expected each parameter once; rename one of them
-  PROTOCOL a VERSION 1, METHOD f (x: Text) g (x: Text) RETURNS (y: Text) ERRORS [| |],
+  PROTOCOL a VERSION 1, METHOD f (x ⁽Text) g (x ⁽Text) RETURNS (y ⁽Text) ERRORS [| |],
                                               ^
 
 == a method twice
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| |], METHOD f RETURNS (z: Text) ERRORS [| |],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| |], METHOD f RETURNS (z ⁽Text) ERRORS [| |],
 schema:1:71: found overlapping methods `f` and `f` written as `f`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| |], METHOD f RETURNS (z: Text) ERRORS [| |],
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| |], METHOD f RETURNS (z ⁽Text) ERRORS [| |],
                                                                         ^
 
 == overloads on lists
-PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
-schema:1:119: found overlapping methods `tag (names: LIST Text)` and `tag (ids: LIST Id)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
-  PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
+PROTOCOL a VERSION 1, NAMED TYPE Id (value ⁽Text), METHOD tag (names ⁽LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids ⁽LIST ⁽Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other ⁽LIST Text) RETURNS NOTHING ERRORS [| |],
+schema:1:119: found overlapping methods `tag (names ⁽LIST Text)` and `tag (ids ⁽LIST Id)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
+  PROTOCOL a VERSION 1, NAMED TYPE Id (value ⁽Text), METHOD tag (names ⁽LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids ⁽LIST ⁽Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other ⁽LIST Text) RETURNS NOTHING ERRORS [| |],
                                                                                                                         ^^^
-schema:1:176: found overlapping methods `tag (names: LIST Text)` and `tag (other: LIST Text)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
-  PROTOCOL a VERSION 1, NAMED TYPE Id (value: Text), METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids: LIST: Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other: LIST Text) RETURNS NOTHING ERRORS [| |],
+schema:1:176: found overlapping methods `tag (names ⁽LIST Text)` and `tag (other ⁽LIST Text)` written as `tag _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
+  PROTOCOL a VERSION 1, NAMED TYPE Id (value ⁽Text), METHOD tag (names ⁽LIST Text) RETURNS NOTHING ERRORS [| |], METHOD tag (ids ⁽LIST ⁽Id) RETURNS NOTHING ERRORS [| |], METHOD tag (other ⁽LIST Text) RETURNS NOTHING ERRORS [| |],
                                                                                                                                                                                  ^^^
 
 == overloads that differ only in what they return
-PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [| |], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [| |],
-schema:1:93: found overlapping methods `scale (by: Float)` and `scale (by: Float)` written as `scale _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
-  PROTOCOL a VERSION 1, METHOD scale (by: Float) RETURNS (scaled: Float) ERRORS [| |], METHOD scale (by: Float) RETURNS (scaled: Integer) ERRORS [| |],
+PROTOCOL a VERSION 1, METHOD scale (by ⁽Float) RETURNS (scaled ⁽Float) ERRORS [| |], METHOD scale (by ⁽Float) RETURNS (scaled ⁽Integer) ERRORS [| |],
+schema:1:93: found overlapping methods `scale (by ⁽Float)` and `scale (by ⁽Float)` written as `scale _`; expected at least one parameter position to accept disjoint types; rename one method or change its parameter types
+  PROTOCOL a VERSION 1, METHOD scale (by ⁽Float) RETURNS (scaled ⁽Float) ERRORS [| |], METHOD scale (by ⁽Float) RETURNS (scaled ⁽Integer) ERRORS [| |],
                                                                                               ^^^^^
 
 == a type holding itself
-PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node) }, TYPE ALIAS Tree: { children (children: LIST: Tree) },
+PROTOCOL a VERSION 1, TYPE ALIAS Node ⁽{ next (next ⁽Node) }, TYPE ALIAS Tree ⁽{ children (children ⁽LIST ⁽Tree) },
 schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node) }, TYPE ALIAS Tree: { children (children: LIST: Tree) },
+  PROTOCOL a VERSION 1, TYPE ALIAS Node ⁽{ next (next ⁽Node) }, TYPE ALIAS Tree ⁽{ children (children ⁽LIST ⁽Tree) },
                                    ^^^^
 
 == a type holding itself through an optional field
-PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children (children: MAP: Tree) },
+PROTOCOL a VERSION 1, TYPE ALIAS Node ⁽{ next (next ⁽Node?) DEFAULT next (`null) }, TYPE ALIAS Tree ⁽{ children (children ⁽MAP ⁽Tree) },
 schema:1:34: found the type `Node` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Node: { next (next: Node?) DEFAULT next (`null) }, TYPE ALIAS Tree: { children (children: MAP: Tree) },
+  PROTOCOL a VERSION 1, TYPE ALIAS Node ⁽{ next (next ⁽Node?) DEFAULT next (`null) }, TYPE ALIAS Tree ⁽{ children (children ⁽MAP ⁽Tree) },
                                    ^^^^
 
 == a map default that is not a map
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (MAP ⁽Integer) DEFAULT a [] },
 schema:1:48: found the call `MAP _`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a (MAP: Integer) DEFAULT a [] },
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a (MAP ⁽Integer) DEFAULT a [] },
                                                  ^^^^^^^^^^^^
 
 == a cycle through a union of variants
-PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+PROTOCOL a VERSION 1, TYPE ALIAS Alpha ⁽{ b (b ⁽Beta) }, TYPE ALIAS Beta [| `has (a ⁽Alpha), `none |],
 schema:1:34: found the type `Alpha` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha ⁽{ b (b ⁽Beta) }, TYPE ALIAS Beta [| `has (a ⁽Alpha), `none |],
                                    ^^^^^
 schema:1:69: found the type `Beta` holding itself; expected a type that holds itself to do so through a `LIST` or a `MAP`, so that its values end; make the field a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Alpha: { b (b: Beta) }, TYPE ALIAS Beta [| `has (a: Alpha), `none |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Alpha ⁽{ b (b ⁽Beta) }, TYPE ALIAS Beta [| `has (a ⁽Alpha), `none |],
                                                                       ^^^^
 
 == names that are not lowercase ASCII
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ Path ⁽Text, café ⁽Text },
 schema:1:51: found the word `Text`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { Path: Text, café: Text },
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ Path ⁽Text, café ⁽Text },
                                                     ^^^^
 
 == a parameter named kind
-PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind: Text) |],
+PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind ⁽Text) |],
 schema:1:49: found a parameter named `kind`; expected another name, since a variant's JSON form keeps its name in `kind`; rename it
-  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind: Text) |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (kind ⁽Text) |],
                                                   ^^^^
 
 == a keyword in a name
-PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
+PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a Text b ⁽Text },
 schema:1:55: found the word `Text`; expected a `#` line string, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the call
-  PROTOCOL a VERSION 1, TYPE ALIAS Example: { a Text b: Text },
+  PROTOCOL a VERSION 1, TYPE ALIAS Example ⁽{ a Text b ⁽Text },
                                                         ^^^^
 
 == a method without errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text),
 schema:1:30: found a method without `ERRORS`; expected its errors after what it returns, as in `` ERRORS [| `missing |] ``, or `ERRORS [| |]` when it can't fail, so that a reader sees that its errors were declared up front
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text),
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text),
                                ^
 
 == an unknown alias among errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Gone |],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| Gone |],
 schema:1:60: found `Gone`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Gone`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Gone |],
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| Gone |],
                                                              ^^^^
 
 == a type among errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Integer, [| `a, `b |] |],
-schema:1:60: found `Integer` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Integer, [| `a, `b |] |],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| Integer, [| `a, `b |] |],
+schema:1:60: found `Integer` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| Integer, [| `a, `b |] |],
                                                              ^^^^^^^
-schema:1:69: found `[| `a, `b |]` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| Integer, [| `a, `b |] |],
+schema:1:69: found `[| `a, `b |]` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| Integer, [| `a, `b |] |],
                                                                       ^^^^^^^^^^^^
 
 == an alias of other types among errors
-PROTOCOL a VERSION 1, TYPE ALIAS Maybe [| Text, `none |], METHOD f RETURNS (y: Text) ERRORS [| Maybe |],
-schema:1:96: found `Maybe` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
-  PROTOCOL a VERSION 1, TYPE ALIAS Maybe [| Text, `none |], METHOD f RETURNS (y: Text) ERRORS [| Maybe |],
+PROTOCOL a VERSION 1, TYPE ALIAS Maybe [| Text, `none |], METHOD f RETURNS (y ⁽Text) ERRORS [| Maybe |],
+schema:1:96: found `Maybe` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Maybe [| Text, `none |], METHOD f RETURNS (y ⁽Text) ERRORS [| Maybe |],
                                                                                                  ^^^^^
 
 == aliases including each other
-PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],
+PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y ⁽Text) ERRORS [| Read Errors |],
 schema:1:34: found the type alias `Read Errors` standing for a type that leads back to it; expected an alias of a type that doesn't, since an alias is only another name for its type; to hold values of its own kind, use a record alias or a `NAMED TYPE` that holds them through a `LIST`
-  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y ⁽Text) ERRORS [| Read Errors |],
                                    ^^^^^^^^^^^
-schema:1:154: found `Read Errors` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
-  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y: Text) ERRORS [| Read Errors |],
+schema:1:154: found `Read Errors` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Read Errors [| `a, Write Errors |], TYPE ALIAS Write Errors [| `b, Read Errors |], METHOD f RETURNS (y ⁽Text) ERRORS [| Read Errors |],
                                                                                                                                                            ^^^^^^^^^^^
 
 == an error listed twice through an alias
-PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `gone |], METHOD f RETURNS (y: Text) ERRORS [| Shared, Shared |],
+PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `gone |], METHOD f RETURNS (y ⁽Text) ERRORS [| Shared, Shared |],
 schema:1:88: found `` `gone `` as a value of both `Shared` and `Shared` in `[| Shared, Shared |]`; expected each member of a union written in forms of its own, since a value's form alone tells its member; leave one of them out, or give it a shape of its own
-  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `gone |], METHOD f RETURNS (y: Text) ERRORS [| Shared, Shared |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `gone |], METHOD f RETURNS (y ⁽Text) ERRORS [| Shared, Shared |],
                                                                                          ^^^^^^^^^^^^^^^^^^^^
 
 == an alias including an unknown alias
-PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],
+PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y ⁽Text) ERRORS [| Shared |],
 schema:1:48: found `Lost`, which is not a type of this schema; expected a built-in type (`Text`, `Bytes`, `Integer`, `Float`, `Instant`, `Duration`), `LIST: type`, `MAP: type`, or a `NAMED TYPE` or `TYPE ALIAS` defined here; define `Lost`, or fix the name; import the declaration directly with `USE` if it is in another file
-  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y ⁽Text) ERRORS [| Shared |],
                                                  ^^^^
-schema:1:94: found `Shared` among a method's errors; expected a variant, such as `` `conflict at (revision: Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
-  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y: Text) ERRORS [| Shared |],
+schema:1:94: found `Shared` among a method's errors; expected a variant, such as `` `conflict at (revision ⁽Integer) ``, or an alias of a union of variants, since an error says by its words what went wrong
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a, Lost |], METHOD f RETURNS (y ⁽Text) ERRORS [| Shared |],
                                                                                                ^^^^^^
 
 == a group of errors
@@ -212,33 +212,33 @@ schema:1:23: found an `ERRORS` group; expected `` TYPE ALIAS File Errors [| `mis
                         ^^^^^^^^^^^^^^^^^^
 
 == a name before a method's errors
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [| `gone |],
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS mine [| `gone |],
 schema:1:57: found the call `mine _`; expected `[| ... |]`
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS mine [| `gone |],
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS mine [| `gone |],
                                                           ^^^^^^^^^^^^^^^^
 
 == an operator after a method's errors
-PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a |], METHOD f RETURNS (y: Text) ERRORS [| `b |] + Shared,
+PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a |], METHOD f RETURNS (y ⁽Text) ERRORS [| `b |] + Shared,
 schema:1:85: found the call `_ + _`; expected `[| ... |]`
-  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a |], METHOD f RETURNS (y: Text) ERRORS [| `b |] + Shared,
+  PROTOCOL a VERSION 1, TYPE ALIAS Shared [| `a |], METHOD f RETURNS (y ⁽Text) ERRORS [| `b |] + Shared,
                                                                                       ^^^^^^^^^^^^^^^^^
 
 == an error defined on its own
 PROTOCOL a VERSION 1, ERROR `gone,
-schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path: Text) RETURNS (file: File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``
+schema:1:23: found an `ERROR` on its own; expected each error in the brackets of the method that has it, `` METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| `missing |] ``, or of an alias of a union of variants that methods share by naming it there: `` TYPE ALIAS File Errors [| `trashed, `missing |] ``
   PROTOCOL a VERSION 1, ERROR `gone,
                         ^^^^^
 
 == a string inside an error
-PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| `gone (a: Text) # doc
+PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| `gone (a ⁽Text) # doc
 |],
 schema:1:76: found the string "doc"; expected the call `… _`, `[...]` or the end of the call
-  PROTOCOL a VERSION 1, METHOD f RETURNS (y: Text) ERRORS [| `gone (a: Text) # doc
+  PROTOCOL a VERSION 1, METHOD f RETURNS (y ⁽Text) ERRORS [| `gone (a ⁽Text) # doc
                                                                              ^^^^^
 
 == a string inside a variant
-PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (a: Text) # doc
+PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (a ⁽Text) # doc
 |],
 schema:1:58: found the string "doc"; expected the call `… _`, `[...]` or the end of the call
-  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (a: Text) # doc
+  PROTOCOL a VERSION 1, TYPE ALIAS Example [| `y (a ⁽Text) # doc
                                                            ^^^^^

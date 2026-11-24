@@ -6,24 +6,24 @@ use anyx::{NamePart, NodeKind};
 use common::{nodes, tree};
 
 #[test]
-fn dot_is_left_associative_over_runs() {
-    assert_eq!(tree("a b . c d . e f"), "(`_ e f` (`_ c d` `a b`))");
+fn left_group_is_left_associative_over_runs() {
+    assert_eq!(tree("a b₎ c d₎ e f"), "(`_ e f` (`_ c d` `a b`))");
 }
 
 #[test]
-fn colon_is_right_associative() {
-    assert_eq!(tree("a : b : c"), "(`a _` (`b _` c))");
+fn right_group_is_right_associative() {
+    assert_eq!(tree("a ⁽b ⁽c"), "(`a _` (`b _` c))");
 }
 
 #[test]
-fn dot_binds_tighter_than_colon() {
-    assert_eq!(tree("k : x . f"), "(`k _` (`_ f` x))");
+fn left_group_binds_tighter_than_right_group() {
+    assert_eq!(tree("k ⁽x₎ f"), "(`k _` (`_ f` x))");
 }
 
 #[test]
-fn colon_inside_braces() {
+fn right_group_inside_braces() {
     assert_eq!(
-        tree("search { max depth : 3 }"),
+        tree("search { max depth ⁽3 }"),
         "(`search _` Braces[(`max depth _` 3)])"
     );
 }
@@ -44,8 +44,8 @@ fn negation_binds_hardest() {
     assert_eq!(tree("[1, -2]"), "Brackets[1, -2]");
     assert_eq!(tree("a<-5"), "(`_ < _` a -5)");
     assert_eq!(tree("--5"), "(`- _` -5)");
-    assert_eq!(tree("1 .-5"), "(`_ _` 1 -5)");
-    assert_eq!(tree("1 .- 5"), "(`_ - _` 1 5)");
+    assert_eq!(tree("1₎ -5"), "(`_ _` 1 -5)");
+    assert_eq!(tree("1₎ - 5"), "(`_ - _` 1 5)");
 }
 
 #[test]
@@ -61,8 +61,8 @@ fn call_with_parens() {
 }
 
 #[test]
-fn dot_after_number_without_digit_is_an_operator() {
-    let nodes = nodes("1.to");
+fn left_group_after_a_number() {
+    let nodes = nodes("1₎ to");
     let NodeKind::Call(call) = &nodes[0].kind else {
         panic!("expected a call, got {nodes:?}")
     };
@@ -72,16 +72,16 @@ fn dot_after_number_without_digit_is_an_operator() {
 
 #[test]
 fn a_number_has_at_most_one_fraction() {
-    assert_eq!(tree("1.2.3"), "(`_ _` 1.2 3)");
+    assert_eq!(tree("1.2.3"), "(`_ . _` 1.2 3)");
 }
 
 #[test]
-fn dot_takes_the_whole_run_on_its_right() {
+fn left_group_takes_the_whole_run_on_its_right() {
     assert_eq!(
-        tree(r#"rg.search "TODO" in "src""#),
+        tree(r#"rg₎ search "TODO" in "src""#),
         r#"(`_ search _ in _` rg "TODO" "src")"#
     );
-    assert_eq!(tree("fd.(option) argument"), "(`_ _ argument` fd option)");
+    assert_eq!(tree("fd₎ (option) argument"), "(`_ _ argument` fd option)");
 }
 
 #[test]
@@ -105,18 +105,18 @@ fn trailing_comma_is_allowed() {
 
 #[test]
 fn newlines_are_plain_whitespace() {
-    assert_eq!(tree("a\nb\n. c\n:\nd"), "(`_ c _` `a b` d)");
+    assert_eq!(tree("a\nb₎\n c ⁽d"), "(`_ c _` `a b` d)");
 }
 
 #[test]
-fn semicolon_is_an_ordinary_word() {
+fn semiright_group_is_an_ordinary_word() {
     assert_eq!(tree("a; b"), "(`_ ; _` a b)");
 }
 
 #[test]
 fn spans_cover_each_node() {
-    let nodes = nodes("f (a, b) . g");
-    assert_eq!(nodes[0].span, anyx::Span::new(0, 12));
+    let nodes = nodes("f (a, b)₎ g");
+    assert_eq!(nodes[0].span, anyx::Span::new(0, 13));
     let NodeKind::Call(call) = &nodes[0].kind else {
         unreachable!()
     };
@@ -124,7 +124,7 @@ fn spans_cover_each_node() {
     let NamePart::Word { span, .. } = &call.name[1] else {
         unreachable!()
     };
-    assert_eq!(*span, anyx::Span::new(11, 12));
+    assert_eq!(*span, anyx::Span::new(12, 13));
 }
 
 #[test]
@@ -136,9 +136,9 @@ fn spans_cover_parens_that_only_group() {
     // The grouped node is the inner one, but a run holding it covers the parens.
     assert_eq!(text("(y)"), "y");
     assert_eq!(text("f (y)"), "f (y)");
-    assert_eq!(text("x . f (y)"), "x . f (y)");
-    assert_eq!(text("a : (b)"), "a : (b)");
-    assert_eq!(text("(a) . f"), "(a) . f");
+    assert_eq!(text("x₎ f (y)"), "x₎ f (y)");
+    assert_eq!(text("a ⁽(b)"), "a ⁽(b)");
+    assert_eq!(text("(a)₎ f"), "(a)₎ f");
     assert_eq!(text("(a) < b"), "(a) < b");
     assert_eq!(text("IF (a) THEN b"), "IF (a) THEN b");
     let nodes = nodes("IF (a) b THEN c");
@@ -167,34 +167,34 @@ fn line_column_is_one_based_and_counts_characters() {
 }
 
 #[test]
-fn dot_puts_the_value_at_an_underscore() {
-    assert_eq!(tree("x . y _"), "(`y _` x)");
-    assert_eq!(tree("x . y _ z"), "(`y _ z` x)");
-    assert_eq!(tree("x . y (z)"), "(`_ y _` x z)");
+fn left_group_puts_the_value_at_an_underscore() {
+    assert_eq!(tree("x₎ y _"), "(`y _` x)");
+    assert_eq!(tree("x₎ y _ z"), "(`y _ z` x)");
+    assert_eq!(tree("x₎ y (z)"), "(`_ y _` x z)");
 }
 
 #[test]
-fn colon_puts_the_value_at_an_underscore() {
-    assert_eq!(tree("f : x"), "(`f _` x)");
-    assert_eq!(tree("_ f : x"), "(`_ f` x)");
-    assert_eq!(tree("f _ g : x"), "(`f _ g` x)");
+fn right_group_puts_the_value_at_an_underscore() {
+    assert_eq!(tree("f ⁽x"), "(`f _` x)");
+    assert_eq!(tree("_ f ⁽x"), "(`_ f` x)");
+    assert_eq!(tree("f _ g ⁽x"), "(`f _ g` x)");
 }
 
 #[test]
 fn underscore_inside_brackets_belongs_to_the_brackets() {
-    assert_eq!(tree("x . f (_)"), "(`_ f _` x Parens[_])");
-    assert_eq!(tree("x . f [_]"), "(`_ f _` x Brackets[_])");
+    assert_eq!(tree("x₎ f (_)"), "(`_ f _` x Parens[_])");
+    assert_eq!(tree("x₎ f [_]"), "(`_ f _` x Brackets[_])");
     assert_eq!(tree("_"), "_");
 }
 
 #[test]
 fn user_defined_infix_operators() {
-    assert_eq!(tree("1 .+ 1 .+ 2"), "(`_ + _` (`_ + _` 1 1) 2)");
+    assert_eq!(tree("1₎ + 1₎ + 2"), "(`_ + _` (`_ + _` 1 1) 2)");
 }
 
 #[test]
-fn dot_takes_the_underscore_before_colon_can() {
-    assert_eq!(tree("x . y _ : z"), "(`y _ _` x z)");
+fn left_group_takes_the_underscore_before_right_group_can() {
+    assert_eq!(tree("x₎ y _ ⁽z"), "(`y _ _` x z)");
 }
 
 #[test]
@@ -205,7 +205,7 @@ fn symbol_words_bind_looser_than_the_rest_of_the_run() {
         "(`_ <= _ < _` `my weight` (`average _` `all weights`) (`max _` `all weights`))"
     );
     assert_eq!(tree("a + - b"), "(`_ + - _` a b)");
-    assert_eq!(tree("x . _ + 1"), "(`_ + _` x 1)");
+    assert_eq!(tree("x₎ _ + 1"), "(`_ + _` x 1)");
 }
 
 #[test]
@@ -225,17 +225,17 @@ fn keywords_bind_looser_than_symbol_words() {
 }
 
 #[test]
-fn keyword_forms_are_flat_and_nest_through_colon() {
+fn keyword_forms_are_flat_and_nest_through_right_group() {
     assert_eq!(
         tree("LET s BE IF a THEN b ELSE c"),
         "(`LET _ BE IF _ THEN _ ELSE _` s a b c)"
     );
     assert_eq!(
-        tree("LET s BE: IF a THEN b ELSE : IF c THEN d ELSE e"),
+        tree("LET s BE ⁽IF a THEN b ELSE ⁽IF c THEN d ELSE e"),
         "(`LET _ BE _` s (`IF _ THEN _ ELSE _` a b (`IF _ THEN _ ELSE _` c d e)))"
     );
     assert_eq!(
-        tree("x . IF _ THEN a ELSE b"),
+        tree("x₎ IF _ THEN a ELSE b"),
         "(`IF _ THEN _ ELSE _` x a b)"
     );
 }
@@ -280,4 +280,28 @@ fn name_text_separates_words_with_spaces() {
     };
     // `x_` is one word, so it can't be mistaken for `x` then a slot.
     assert_eq!(call.name_text(), "x_ _");
+}
+
+#[test]
+fn half_parentheses_match_full_parentheses() {
+    for (source, explicit) in [
+        ("a + b₎ + c₎ + d", "((a + b) + c) + d"),
+        (
+            "IF p THEN x ELSE ⁽IF q THEN y ELSE ⁽z",
+            "IF p THEN x ELSE (IF q THEN y ELSE z)",
+        ),
+        ("A -> ⁽B -> ⁽C -> D", "A -> (B -> (C -> D))"),
+        ("A -> B₎ -> ⁽C -> D", "(A -> B) -> (C -> D)"),
+        (
+            "new revision = ⁽revision + x₎ + 1",
+            "new revision = ((revision + x) + 1)",
+        ),
+        ("1 :: ⁽2 :: ⁽3 :: nil", "1 :: (2 :: (3 :: nil))"),
+        (
+            "xs |> map f₎ |> filter p₎ |> sum",
+            "((xs |> map f) |> filter p) |> sum",
+        ),
+    ] {
+        assert_eq!(tree(source), tree(explicit), "{source}");
+    }
 }

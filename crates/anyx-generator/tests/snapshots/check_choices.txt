@@ -1,176 +1,176 @@
-## ENTRY: value, value: ONE OF [a: STRING, b: STRING "x"]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽STRING "x"]
 grammar:1:41: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: STRING, b: STRING "x"]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽STRING "x"]
                                           ^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: STRING "x", b: STRING "y"]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING "x", b ⁽STRING "y"]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: STRING [STARTS WITH "x"], b: STRING [ENDS WITH "y"]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING [STARTS WITH "x"], b ⁽STRING [ENDS WITH "y"]]
 grammar:1:59: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: STRING [STARTS WITH "x"], b: STRING [ENDS WITH "y"]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING [STARTS WITH "x"], b ⁽STRING [ENDS WITH "y"]]
                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: STRING [STARTS WITH "x"], b: STRING [STARTS WITH "y"]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING [STARTS WITH "x"], b ⁽STRING [STARTS WITH "y"]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: LINE STRING, b: STRING]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING, b ⁽STRING]
 grammar:1:46: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: LINE STRING, b: STRING]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING, b ⁽STRING]
                                                ^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: STRING, b: LINE STRING "x"]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽LINE STRING "x"]
 grammar:1:41: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: STRING, b: LINE STRING "x"]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽LINE STRING "x"]
                                           ^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: STRING [STARTS WITH "y"]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING [STARTS WITH "x"], b ⁽STRING [STARTS WITH "y"]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: LINE STRING [ENDS WITH "y"]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING [STARTS WITH "x"], b ⁽LINE STRING [ENDS WITH "y"]]
 grammar:1:64: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH "x"], b: LINE STRING [ENDS WITH "y"]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING [STARTS WITH "x"], b ⁽LINE STRING [ENDS WITH "y"]]
                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: LINE STRING "x", b: LINE STRING "y"]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING "x", b ⁽LINE STRING "y"]
 nothing to report
 
-## ENTRY: value, value: ONE OF [small: NUMBER [INTEGER, AT MOST 255], big: NUMBER]
+## ENTRY ⁽value, value ⁽ONE OF [small ⁽NUMBER [INTEGER, AT MOST 255], big ⁽NUMBER]
 grammar:1:68: warning: found the choices `small` and `big` able to match the same input; expected at most one choice to fit any input, since `small` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [small: NUMBER [INTEGER, AT MOST 255], big: NUMBER]
+  ENTRY ⁽value, value ⁽ONE OF [small ⁽NUMBER [INTEGER, AT MOST 255], big ⁽NUMBER]
                                                                      ^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: NUMBER [AT MOST 1], b: NUMBER [AT LEAST 2]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽NUMBER [AT MOST 1], b ⁽NUMBER [AT LEAST 2]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [call: ANYFIX CALL, WORD "null"]
+## ENTRY ⁽value, value ⁽ONE OF [call ⁽ANYFIX CALL, WORD "null"]
 grammar:1:49: warning: found the choices `call` and `null` able to match the same input; expected at most one choice to fit any input, since `call` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [call: ANYFIX CALL, WORD "null"]
+  ENTRY ⁽value, value ⁽ONE OF [call ⁽ANYFIX CALL, WORD "null"]
                                                   ^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [WORD "null", call: ANYFIX CALL [ARGUMENTS: ONE OR MORE: value]]
+## ENTRY ⁽value, value ⁽ONE OF [WORD "null", call ⁽ANYFIX CALL [ARGUMENTS ⁽ONE OR MORE ⁽value]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "f", x: STRING], b: ANYFIX CALL [WORD "f", ZERO OR MORE: value]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "f", x ⁽STRING], b ⁽ANYFIX CALL [WORD "f", ZERO OR MORE ⁽value]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "f", x: STRING], b: ANYFIX CALL [WORD "f", ZERO OR MORE: text]], text: STRING
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "f", x ⁽STRING], b ⁽ANYFIX CALL [WORD "f", ZERO OR MORE ⁽text]], text ⁽STRING
 grammar:1:68: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "f", x: STRING], b: ANYFIX CALL [WORD "f", ZERO OR MORE: text]], text: STRING
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "f", x ⁽STRING], b ⁽ANYFIX CALL [WORD "f", ZERO OR MORE ⁽text]], text ⁽STRING
                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: SQUARE BRACKET [ZERO OR MORE: STRING], b: SQUARE BRACKET [ZERO OR MORE: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [ZERO OR MORE ⁽STRING], b ⁽SQUARE BRACKET [ZERO OR MORE ⁽NUMBER]]
 grammar:1:72: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: SQUARE BRACKET [ZERO OR MORE: STRING], b: SQUARE BRACKET [ZERO OR MORE: NUMBER]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [ZERO OR MORE ⁽STRING], b ⁽SQUARE BRACKET [ZERO OR MORE ⁽NUMBER]]
                                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: SQUARE BRACKET [ONE OR MORE: STRING], b: SQUARE BRACKET [ONE OR MORE: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [ONE OR MORE ⁽STRING], b ⁽SQUARE BRACKET [ONE OR MORE ⁽NUMBER]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: SQUARE BRACKET [EACH: STRING], b: SQUARE BRACKET [ONE OR MORE: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [EACH ⁽STRING], b ⁽SQUARE BRACKET [ONE OR MORE ⁽NUMBER]]
 grammar:1:64: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: SQUARE BRACKET [EACH: STRING], b: SQUARE BRACKET [ONE OR MORE: NUMBER]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [EACH ⁽STRING], b ⁽SQUARE BRACKET [ONE OR MORE ⁽NUMBER]]
                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [STARTS WITH "get "]], b: ANYFIX CALL [WORD "set", value]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [STARTS WITH "get "]], b ⁽ANYFIX CALL [WORD "set", value]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [STARTS WITH "get "]], b: ANYFIX CALL [WORD "get", value]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [STARTS WITH "get "]], b ⁽ANYFIX CALL [WORD "get", value]]
 grammar:1:74: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [STARTS WITH "get "]], b: ANYFIX CALL [WORD "get", value]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [STARTS WITH "get "]], b ⁽ANYFIX CALL [WORD "get", value]]
                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: ANY WORD [NAME], b: ANY WORD [KEYWORD], WORD "IF"]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANY WORD [NAME], b ⁽ANY WORD [KEYWORD], WORD "IF"]
 grammar:1:73: warning: found the choices `b` and `if` able to match the same input; expected at most one choice to fit any input, since `b` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANY WORD [NAME], b: ANY WORD [KEYWORD], WORD "IF"]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANY WORD [NAME], b ⁽ANY WORD [KEYWORD], WORD "IF"]
                                                                           ^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+ _$"]], b: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+$"]]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+ _$"]], b ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+$"]]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+"]], b: ANYFIX CALL [NAME [MATCHING REGEX "[a-z]+$"]]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+"]], b ⁽ANYFIX CALL [NAME [MATCHING REGEX "[a-z]+$"]]]
 grammar:1:80: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+"]], b: ANYFIX CALL [NAME [MATCHING REGEX "[a-z]+$"]]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+"]], b ⁽ANYFIX CALL [NAME [MATCHING REGEX "[a-z]+$"]]]
                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [null: WORD "null", minus: ANYFIX CALL [WORD "-", n: NUMBER], words: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+$"]], other: ANYFIX CALL]
+## ENTRY ⁽value, value ⁽ONE OF [null ⁽WORD "null", minus ⁽ANYFIX CALL [WORD "-", n ⁽NUMBER], words ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z]+$"]], other ⁽ANYFIX CALL]
 nothing to report
 
-## ENTRY: value, value: ONE OF [field: ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: STRING], other: ANYFIX CALL [NAME [ENDS WITH " _"]]]
+## ENTRY ⁽value, value ⁽ONE OF [field ⁽ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽STRING], other ⁽ANYFIX CALL [NAME [ENDS WITH " _"]]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "f", x: ZERO OR MORE: STRING], other: ANYFIX CALL [NAME [STARTS WITH "f"]]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "f", x ⁽ZERO OR MORE ⁽STRING], other ⁽ANYFIX CALL [NAME [STARTS WITH "f"]]]
 grammar:1:82: warning: found the choices `a` and `other` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "f", x: ZERO OR MORE: STRING], other: ANYFIX CALL [NAME [STARTS WITH "f"]]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "f", x ⁽ZERO OR MORE ⁽STRING], other ⁽ANYFIX CALL [NAME [STARTS WITH "f"]]]
                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [other: ANYFIX CALL, null: WORD "null"]
+## ENTRY ⁽value, value ⁽ONE OF [other ⁽ANYFIX CALL, null ⁽WORD "null"]
 grammar:1:50: warning: found the choices `other` and `null` able to match the same input; expected at most one choice to fit any input, since `other` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [other: ANYFIX CALL, null: WORD "null"]
+  ENTRY ⁽value, value ⁽ONE OF [other ⁽ANYFIX CALL, null ⁽WORD "null"]
                                                    ^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [words: ANYFIX CALL [NO ARGUMENTS], field: ANYFIX CALL [NAME [ENDS WITH " _"]]]
+## ENTRY ⁽value, value ⁽ONE OF [words ⁽ANYFIX CALL [NO ARGUMENTS], field ⁽ANYFIX CALL [NAME [ENDS WITH " _"]]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [words: ANYFIX CALL [NO ARGUMENTS], null: WORD "null"]
+## ENTRY ⁽value, value ⁽ONE OF [words ⁽ANYFIX CALL [NO ARGUMENTS], null ⁽WORD "null"]
 grammar:1:65: warning: found the choices `words` and `null` able to match the same input; expected at most one choice to fit any input, since `words` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [words: ANYFIX CALL [NO ARGUMENTS], null: WORD "null"]
+  ENTRY ⁽value, value ⁽ONE OF [words ⁽ANYFIX CALL [NO ARGUMENTS], null ⁽WORD "null"]
                                                                   ^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [null: WORD "null", words: ANYFIX CALL [NO ARGUMENTS]]
+## ENTRY ⁽value, value ⁽ONE OF [null ⁽WORD "null", words ⁽ANYFIX CALL [NO ARGUMENTS]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [any: ANY NODE, text: STRING]
+## ENTRY ⁽value, value ⁽ONE OF [any ⁽ANY NODE, text ⁽STRING]
 grammar:1:45: warning: found the choices `any` and `text` able to match the same input; expected at most one choice to fit any input, since `any` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [any: ANY NODE, text: STRING]
+  ENTRY ⁽value, value ⁽ONE OF [any ⁽ANY NODE, text ⁽STRING]
                                               ^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [text: STRING, list: SQUARE BRACKET [ZERO OR MORE: value], any: ANY NODE]
+## ENTRY ⁽value, value ⁽ONE OF [text ⁽STRING, list ⁽SQUARE BRACKET [ZERO OR MORE ⁽value], any ⁽ANY NODE]
 nothing to report
 
-## ENTRY: value, value: ONE OF [integer: integer, other: ANYFIX CALL], integer: ONE OF [number: NUMBER, minus: ANYFIX CALL [WORD "-", n: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [integer ⁽integer, other ⁽ANYFIX CALL], integer ⁽ONE OF [number ⁽NUMBER, minus ⁽ANYFIX CALL [WORD "-", n ⁽NUMBER]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], minus: ANYFIX CALL [WORD "-", n: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], minus ⁽ANYFIX CALL [WORD "-", n ⁽NUMBER]]
 grammar:1:55: warning: found the choices `signed` and `minus` able to match the same input; expected at most one choice to fit any input, since `signed` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], minus: ANYFIX CALL [WORD "-", n: NUMBER]]
+  ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], minus ⁽ANYFIX CALL [WORD "-", n ⁽NUMBER]]
                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], other: ANYFIX CALL]
+## ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], other ⁽ANYFIX CALL]
 nothing to report
 
-## ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], words: ANYFIX CALL [NO ARGUMENTS]]
+## ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], words ⁽ANYFIX CALL [NO ARGUMENTS]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "IF", x: STRING], b: ANYFIX CALL [name: WORDS [NO KEYWORD], x: STRING]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "IF", x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽STRING]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "IF", x: STRING], b: ANYFIX CALL [name: WORDS, x: STRING]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "IF", x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING]]
 grammar:1:69: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD "IF", x: STRING], b: ANYFIX CALL [name: WORDS, x: STRING]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD "IF", x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING]]
                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [name: WORDS [NO KEYWORD], x: STRING], b: ANYFIX CALL [name: WORDS [NO KEYWORD], x: NUMBER]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽NUMBER]]
 nothing to report
 
-## ENTRY: value, value: ONE OF [a: ANYFIX CALL [name: WORDS, x: STRING], b: ANYFIX CALL [NAME [NO KEYWORD]]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING], b ⁽ANYFIX CALL [NAME [NO KEYWORD]]]
 grammar:1:71: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: ANYFIX CALL [name: WORDS, x: STRING], b: ANYFIX CALL [NAME [NO KEYWORD]]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING], b ⁽ANYFIX CALL [NAME [NO KEYWORD]]]
                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [a: WORD "null", b: ANYFIX CALL [name: WORDS, x: OPTIONAL: STRING]]
+## ENTRY ⁽value, value ⁽ONE OF [a ⁽WORD "null", b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽OPTIONAL ⁽STRING]]
 grammar:1:46: warning: found the choices `a` and `b` able to match the same input; expected at most one choice to fit any input, since `a` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [a: WORD "null", b: ANYFIX CALL [name: WORDS, x: OPTIONAL: STRING]]
+  ENTRY ⁽value, value ⁽ONE OF [a ⁽WORD "null", b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽OPTIONAL ⁽STRING]]
                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [size: ANYFIX CALL [key: WORDS "max size", x], field: ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: x]], x: ONE OF [s: STRING, n: NUMBER]
+## ENTRY ⁽value, value ⁽ONE OF [size ⁽ANYFIX CALL [key ⁽WORDS "max size", x], field ⁽ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽x]], x ⁽ONE OF [s ⁽STRING, n ⁽NUMBER]
 nothing to report
 
-## ENTRY: value, value: ONE OF [size: ANYFIX CALL [key: WORDS "max size", x: ZERO OR MORE: STRING], field: ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: STRING]]
+## ENTRY ⁽value, value ⁽ONE OF [size ⁽ANYFIX CALL [key ⁽WORDS "max size", x ⁽ZERO OR MORE ⁽STRING], field ⁽ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽STRING]]
 grammar:1:98: warning: found the choices `size` and `field` able to match the same input; expected at most one choice to fit any input, since `size` comes first and always wins it; make one of them more specific, or put the more specific one first
-  ENTRY: value, value: ONE OF [size: ANYFIX CALL [key: WORDS "max size", x: ZERO OR MORE: STRING], field: ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: STRING]]
+  ENTRY ⁽value, value ⁽ONE OF [size ⁽ANYFIX CALL [key ⁽WORDS "max size", x ⁽ZERO OR MORE ⁽STRING], field ⁽ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽STRING]]
                                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [pair: ANYFIX CALL [x: STRING, WORD "to", y: STRING], field: ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS: ZERO OR MORE: STRING]]
+## ENTRY ⁽value, value ⁽ONE OF [pair ⁽ANYFIX CALL [x ⁽STRING, WORD "to", y ⁽STRING], field ⁽ANYFIX CALL [NAME [ENDS WITH " _"], ARGUMENTS ⁽ZERO OR MORE ⁽STRING]]
 nothing to report
 

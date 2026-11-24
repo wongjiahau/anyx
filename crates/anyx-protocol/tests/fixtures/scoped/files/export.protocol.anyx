@@ -2,13 +2,13 @@ USE "../common.protocol.anyx",
 USE "../files.protocol.anyx",
 
 # A page of a note, with what is wrong on it.
-TYPE ALIAS Page: { html (html: Text), problem (problem: Diagnostic?) DEFAULT problem (`null) },
+TYPE ALIAS Page ⁽{ html (html ⁽Text), problem (problem ⁽Diagnostic?) DEFAULT problem (`null) },
 
-METHOD html (path: Text) RETURNS (pages: LIST Page) ERRORS [| File Errors |],
+METHOD html (path ⁽Text) RETURNS (pages ⁽LIST Page) ERRORS [| File Errors |],
 
-METHOD pdf (path: Text) RETURNS (pdf: Bytes)
+METHOD pdf (path ⁽Text) RETURNS (pdf ⁽Bytes)
     ERRORS [|
         # The note has errors, so it can't be exported.
-        `unreadable (diagnostics: LIST Diagnostic),
+        `unreadable (diagnostics ⁽LIST Diagnostic),
         File Errors,
     |],

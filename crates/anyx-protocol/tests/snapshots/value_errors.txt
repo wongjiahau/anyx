@@ -1,28 +1,28 @@
-apply { mode: `dim }
+apply { mode ⁽`dim }
 => 1:15: in `options` of `apply _`: in `mode`: found the variant `` `dim ``; expected a variant of `Mode`: `` `dark ``, `` `light ``, `` `custom hue _ ``, `` `_ dimmed ``
 
-apply { strict: `true }
+apply { strict ⁽`true }
 => 1:7: in `options` of `apply _`: found no `mode`; expected every field without a `DEFAULT`
 
-apply { mode: `dark, mode: `dark }
+apply { mode ⁽`dark, mode ⁽`dark }
 => 1:22: in `options` of `apply _`: found the field `mode` twice; expected each field once
 
-apply { mode: `dark, colour: `dark }
+apply { mode ⁽`dark, colour ⁽`dark }
 => 1:22: in `options` of `apply _`: found the call `colour _`; expected a field: `mode …`, `strict …`
 
-apply { mode: `custom hue }
+apply { mode ⁽`custom hue }
 => 1:15: in `options` of `apply _`: in `mode`: found the variant `` `custom hue ``; expected a variant of `Mode`: `` `dark ``, `` `light ``, `` `custom hue _ ``, `` `_ dimmed ``
 
-apply { mode: `dark hue 1 }
+apply { mode ⁽`dark hue 1 }
 => 1:15: in `options` of `apply _`: in `mode`: found the variant `` `dark hue _ ``; expected a variant of `Mode`: `` `dark ``, `` `light ``, `` `custom hue _ ``, `` `_ dimmed ``
 
-apply { mode: `custom hue "red" }
+apply { mode ⁽`custom hue "red" }
 => 1:27: in `options` of `apply _`: in `mode`: in `hue` of `custom hue _`: found a string; expected a Float, as in `1.5`
 
 apply { mode `dark }
 => 1:9: in `options` of `apply _`: found the call `` _ ` _ ``; expected a field: `mode …`, `strict …`
 
-apply { mode: `dark, strict: `yes }
+apply { mode ⁽`dark, strict ⁽`yes }
 => 1:30: in `options` of `apply _`: in `strict`: found the variant `` `yes ``; expected a variant of `Boolean`: `` `false ``, `` `true ``
 
 set dark strict (`true)

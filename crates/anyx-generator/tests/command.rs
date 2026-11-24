@@ -47,7 +47,7 @@ fn unformatted_output_is_the_same_code() {
 fn errors_show_the_line_and_stop_the_output() {
     let path = grammar_file(
         "unknown.grammar.anyx",
-        "ENTRY: value,\nvalue: ONE OF [text: STRING, lsit],\nlist: SQUARE BRACKET: ZERO OR MORE: value",
+        "ENTRY ⁽value,\nvalue ⁽ONE OF [text ⁽STRING, lsit],\nlist ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽value",
     );
     let output = run(&[&path]);
     assert_eq!(output.status.code(), Some(1));
@@ -55,8 +55,8 @@ fn errors_show_the_line_and_stop_the_output() {
     assert_eq!(
         text(&output.stderr),
         format!(
-            "{path}:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit: ...`
-  value: ONE OF [text: STRING, lsit],
+            "{path}:2:30: error: found a reference to `lsit`, which is not a rule; expected the name of a rule of this grammar; write `list`, or define `lsit ⁽...`
+  value ⁽ONE OF [text ⁽STRING, lsit],
                                ^^^^
 
 "
@@ -68,7 +68,7 @@ fn errors_show_the_line_and_stop_the_output() {
 fn warnings_are_shown_and_the_parser_is_still_printed() {
     let path = grammar_file(
         "competing.grammar.anyx",
-        "ENTRY: value,\nvalue: ONE OF [any: STRING, empty: STRING \"\"]",
+        "ENTRY ⁽value,\nvalue ⁽ONE OF [any ⁽STRING, empty ⁽STRING \"\"]",
     );
     let output = run(&[&path]);
     assert!(output.status.success());
@@ -77,7 +77,7 @@ fn warnings_are_shown_and_the_parser_is_still_printed() {
         text(&output.stderr),
         format!(
             "{path}:2:29: warning: found the choices `any` and `empty` able to match the same input; expected at most one choice to fit any input, since `any` comes first and always wins it; make one of them more specific, or put the more specific one first
-  value: ONE OF [any: STRING, empty: STRING \"\"]
+  value ⁽ONE OF [any ⁽STRING, empty ⁽STRING \"\"]
                               ^^^^^^^^^^^^^^^^
 
 "
@@ -89,7 +89,7 @@ fn warnings_are_shown_and_the_parser_is_still_printed() {
 fn the_tree_of_a_source_shows_how_it_is_grouped() {
     let path = grammar_file(
         "source.anyx",
-        "server { port: 8080, verbose logging },\nLET x = (1 + 2)",
+        "server { port ⁽8080, verbose logging },\nLET x = (1 + 2)",
     );
     let output = run(&["--tree", &path]);
     assert!(output.status.success());
@@ -130,7 +130,7 @@ fn generation_requires_the_exact_grammar_suffix() {
         "input.GRAMMAR.anyx",
         "input.grammar.anyx.bak",
     ] {
-        let path = grammar_file(name, "ENTRY: STRING");
+        let path = grammar_file(name, "ENTRY ⁽STRING");
         let output = run(&["--unformatted", &path]);
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());

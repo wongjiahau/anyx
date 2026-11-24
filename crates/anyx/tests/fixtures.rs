@@ -16,7 +16,7 @@ fn grammar_parses_as_one_rule_per_element() {
     assert_eq!(show(&nodes[0]), "(`document _` sequence)");
     assert_eq!(
         show(&nodes[2]),
-        r#"(`expr _` (`dotted _` Brackets[(`_ expr` ":")]))"#
+        r#"(`expr _` (`left grouped _` Brackets[(`_ expr` "⁽")]))"#
     );
 }
 

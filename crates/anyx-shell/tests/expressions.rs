@@ -21,21 +21,21 @@ fn interpreter() -> (Interpreter, Rc<RefCell<Vec<String>>>) {
             Example {
                 schema: Schema::parse(
                     "PROTOCOL example VERSION 1,
-            TYPE ALIAS Envelope: { items (items: LIST Text) },
-            TYPE ALIAS Message [| `message (text: Text) |],
-            METHOD text RETURNS (value: Text) ERRORS [| |],
-            METHOD integer RETURNS (value: Integer) ERRORS [| |],
-            METHOD names RETURNS (names: LIST Text) ERRORS [| |],
-            METHOD handle (value: Text) RETURNS (handled: Text) ERRORS [| |],
-            METHOD handle (value: Integer) RETURNS (handled: Text) ERRORS [| |],
-            METHOD handle (value: LIST Text) RETURNS (handled: Text) ERRORS [| |],
-            METHOD envelope (value: Envelope) RETURNS (value: Envelope) ERRORS [| |],
-            METHOD mapping (value: MAP Text) RETURNS (value: MAP Text) ERRORS [| |],
-            METHOD message (value: Message) RETURNS (value: Message) ERRORS [| |],
-            METHOD pair (left: Text) with (right: Text) RETURNS (pair: LIST Text) ERRORS [| |],
-            TYPE ALIAS Depth: Integer WHERE [0 <= _],
-            METHOD depth RETURNS (depth: Depth) ERRORS [| |],
-            METHOD dig (depth: Depth) RETURNS (depth: Depth) ERRORS [| |],
+            TYPE ALIAS Envelope ⁽{ items (items ⁽LIST Text) },
+            TYPE ALIAS Message [| `message (text ⁽Text) |],
+            METHOD text RETURNS (value ⁽Text) ERRORS [| |],
+            METHOD integer RETURNS (value ⁽Integer) ERRORS [| |],
+            METHOD names RETURNS (names ⁽LIST Text) ERRORS [| |],
+            METHOD handle (value ⁽Text) RETURNS (handled ⁽Text) ERRORS [| |],
+            METHOD handle (value ⁽Integer) RETURNS (handled ⁽Text) ERRORS [| |],
+            METHOD handle (value ⁽LIST Text) RETURNS (handled ⁽Text) ERRORS [| |],
+            METHOD envelope (value ⁽Envelope) RETURNS (value ⁽Envelope) ERRORS [| |],
+            METHOD mapping (value ⁽MAP Text) RETURNS (value ⁽MAP Text) ERRORS [| |],
+            METHOD message (value ⁽Message) RETURNS (value ⁽Message) ERRORS [| |],
+            METHOD pair (left ⁽Text) with (right ⁽Text) RETURNS (pair ⁽LIST Text) ERRORS [| |],
+            TYPE ALIAS Depth ⁽Integer WHERE [0 <= _],
+            METHOD depth RETURNS (depth ⁽Depth) ERRORS [| |],
+            METHOD dig (depth ⁽Depth) RETURNS (depth ⁽Depth) ERRORS [| |],
             METHOD finish RETURNS NOTHING ERRORS [| |]",
                 )
                 .unwrap(),
@@ -98,11 +98,11 @@ fn declared_return_types_disambiguate_overloads_even_for_empty_lists() {
         *calls.borrow(),
         [
             "text",
-            "handle (value: Text)",
+            "handle (value ⁽Text)",
             "integer",
-            "handle (value: Integer)",
+            "handle (value ⁽Integer)",
             "names",
-            "handle (value: LIST Text)"
+            "handle (value ⁽LIST Text)"
         ]
     );
 }
@@ -115,7 +115,7 @@ fn argument_types_are_checked_before_any_calls_run() {
         "example / text, environment / read variable (missing / text)",
         "example / text, environment / read variable (example / finish)",
         "example / text, environment / read variable (example / unknown)",
-        "example / text, environment / read variable ((example / integer) AS: Text)",
+        "example / text, environment / read variable ((example / integer) AS ⁽Text)",
         "example / text, environment / read variable (example / pair (example / text) with (example / text))",
     ] {
         assert!(interpreter.execute(source).is_err(), "{source}");
@@ -159,8 +159,8 @@ fn arguments_run_left_to_right_before_the_parent() {
         [
             "text",
             "integer",
-            "handle (value: Integer)",
-            "pair (left: Text) with (right: Text)"
+            "handle (value ⁽Integer)",
+            "pair (left ⁽Text) with (right ⁽Text)"
         ]
     );
     assert_eq!(
@@ -191,15 +191,15 @@ fn expressions_work_in_lists_records_maps_and_choice_arguments() {
     let (mut interpreter, _) = interpreter();
     for source in [
         "example / handle [(example / text)]",
-        "example / envelope { items: [(example / text), (example / text)] }",
-        "example / mapping { \"key\": (example / text) }",
+        "example / envelope { items ⁽[(example / text), (example / text)] }",
+        "example / mapping { \"key\" ⁽(example / text) }",
         "example / message (`message (example / text))",
-        "example / handle ((example / names) AS: LIST Text)",
+        "example / handle ((example / names) AS ⁽LIST Text)",
     ] {
         let execution = interpreter
             .execute(source)
             .unwrap_or_else(|error| panic!("{source}: {error}"));
-        assert!(execution.error.is_none(), "{source}: {:?}", execution.error);
+        assert!(execution.error.is_none(), "{source} ⁽{:?}", execution.error);
         assert_eq!(execution.values.len(), 1);
         assert!(anyx::parse(&execution.output).errors.is_empty());
     }
@@ -209,11 +209,11 @@ fn expressions_work_in_lists_records_maps_and_choice_arguments() {
 fn anyx_sugar_groups_argument_expressions() {
     let (mut interpreter, _) = interpreter();
     let execution = interpreter
-        .execute("example / handle: example / text")
+        .execute("example / handle ⁽example / text")
         .unwrap();
     assert_eq!(execution.values, vec![Value::Text("Text".into())]);
     let execution = interpreter
-        .execute("example / message: `message: example / text")
+        .execute("example / message ⁽`message ⁽example / text")
         .unwrap();
     assert!(execution.error.is_none());
     assert_eq!(
@@ -239,10 +239,10 @@ impl Tool for Identity {
 fn named_result_types_keep_their_identity_across_protocols() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("source", Identity(Schema::parse(
-        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL source VERSION 1, NAMED TYPE Identifier (value ⁽Text), METHOD identity (value ⁽Identifier) RETURNS (value ⁽Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     interpreter.register("target", Identity(Schema::parse(
-        "PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { count (count: Integer) }, NAMED TYPE Identifier (value: Text), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL target VERSION 1, TYPE ALIAS Earlier ⁽{ count (count ⁽Integer) }, NAMED TYPE Identifier (value ⁽Text), METHOD identity (value ⁽Identifier) RETURNS (value ⁽Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("target / identity (source / identity (Identifier \"example\"))")
@@ -261,7 +261,7 @@ fn named_result_types_keep_their_identity_across_protocols() {
             .is_err()
     );
     interpreter.register("different", Identity(Schema::parse(
-        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (value: Integer), METHOD identity (value: Identifier) RETURNS (value: Identifier) ERRORS [| |]"
+        "PROTOCOL different VERSION 1, NAMED TYPE Identifier (value ⁽Integer), METHOD identity (value ⁽Identifier) RETURNS (value ⁽Identifier) ERRORS [| |]"
     ).unwrap())).unwrap();
     assert!(
         interpreter
@@ -284,10 +284,10 @@ fn nested_diagnostics_point_to_the_original_document() {
 fn generic_records_and_defaults_can_contain_computed_fields() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("generic", Identity(Schema::parse(
-        "PROTOCOL generic VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value (value: Item), count (count: Integer) DEFAULT count 7 }, METHOD identity (value: Box of (Text)) RETURNS (value: Box of (Text)) ERRORS [| |]"
+        "PROTOCOL generic VERSION 1, TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ value (value ⁽Item), count (count ⁽Integer) DEFAULT count 7 }, METHOD identity (value ⁽Box of (Text)) RETURNS (value ⁽Box of (Text)) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
-        .execute("generic / identity ({ value: (example / text) } AS: Box of (Text))")
+        .execute("generic / identity ({ value ⁽(example / text) } AS ⁽Box of (Text))")
         .unwrap();
     assert!(execution.error.is_none());
     let Value::Record(record) = &execution.values[0] else {
@@ -301,7 +301,7 @@ fn generic_records_and_defaults_can_contain_computed_fields() {
 fn a_field_with_several_slots_takes_a_computed_value_in_each() {
     let (mut interpreter, _) = interpreter();
     interpreter.register("range", Identity(Schema::parse(
-        "PROTOCOL range VERSION 1, TYPE ALIAS Span: { between (label: Text) and (start: Integer) or (end: Integer?) }, METHOD identity (value: Span) RETURNS (value: Span) ERRORS [| |]"
+        "PROTOCOL range VERSION 1, TYPE ALIAS Span ⁽{ between (label ⁽Text) and (start ⁽Integer) or (end ⁽Integer?) }, METHOD identity (value ⁽Span) RETURNS (value ⁽Span) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("range / identity { between (example / text) and 2 or 3 }")
@@ -332,7 +332,7 @@ fn a_field_with_several_slots_takes_a_computed_value_in_each() {
 fn invalid_nested_tool_output_prevents_the_parent_from_running() {
     let (mut interpreter, calls) = interpreter();
     interpreter.register("broken", Identity(Schema::parse(
-        "PROTOCOL broken VERSION 1, METHOD identity (value: Text) RETURNS (value: Integer) ERRORS [| |]"
+        "PROTOCOL broken VERSION 1, METHOD identity (value ⁽Text) RETURNS (value ⁽Integer) ERRORS [| |]"
     ).unwrap())).unwrap();
     let execution = interpreter
         .execute("example / handle (broken / identity \"wrong\"), example / text")
@@ -359,14 +359,14 @@ fn argument_failure_keeps_effects_of_preceding_arguments() {
 #[test]
 fn refined_values_cross_protocols_checked_by_each() {
     let (mut interpreter, _) = interpreter();
-    interpreter.register("source",Identity(Schema::parse("PROTOCOL source VERSION 1, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
-    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, TYPE ALIAS Earlier: { value (value: Text) }, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [0 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
+    interpreter.register("source",Identity(Schema::parse("PROTOCOL source VERSION 1, TYPE ALIAS Count ⁽Integer, TYPE ALIAS Positive ⁽Count₎ WHERE [0 < _], METHOD identity (value ⁽Positive) RETURNS (value ⁽Positive) ERRORS [| |]").unwrap())).unwrap();
+    interpreter.register("target",Identity(Schema::parse("PROTOCOL target VERSION 1, TYPE ALIAS Earlier ⁽{ value (value ⁽Text) }, TYPE ALIAS Count ⁽Integer, TYPE ALIAS Positive ⁽Count₎ WHERE [0 < _], METHOD identity (value ⁽Positive) RETURNS (value ⁽Positive) ERRORS [| |]").unwrap())).unwrap();
     let result = interpreter
         .execute("target / identity (source / identity 1)")
         .unwrap();
     assert!(result.error.is_none());
     assert_eq!(result.values, vec![Value::Integer(1)]);
-    interpreter.register("different",Identity(Schema::parse("PROTOCOL different VERSION 1, TYPE ALIAS Count: Integer, TYPE ALIAS Positive: Count . WHERE [10 < _], METHOD identity (value: Positive) RETURNS (value: Positive) ERRORS [| |]").unwrap())).unwrap();
+    interpreter.register("different",Identity(Schema::parse("PROTOCOL different VERSION 1, TYPE ALIAS Count ⁽Integer, TYPE ALIAS Positive ⁽Count₎ WHERE [10 < _], METHOD identity (value ⁽Positive) RETURNS (value ⁽Positive) ERRORS [| |]").unwrap())).unwrap();
     assert!(
         interpreter
             .execute("different / identity (source / identity 1)")
@@ -389,7 +389,7 @@ fn inline_refinement_literals_are_checked_before_any_tool_runs() {
         "checked / limit 10",
     ] {
         let result = interpreter.execute(request).unwrap();
-        assert!(result.error.is_none(), "{request}: {result:?}");
+        assert!(result.error.is_none(), "{request} ⁽{result:?}");
     }
     let error = interpreter
         .execute("example / text,\nchecked / short (\"hello\")")
@@ -447,8 +447,8 @@ fn refinement_overloads_resolve_using_base_types() {
             Identity(
                 Schema::parse(
                     r#"PROTOCOL checked VERSION 1,
-METHOD use (value: Text . WHERE [1 <= (_ length)]) RETURNS (value: Text) ERRORS [| |],
-METHOD use (value: Integer . WHERE [0 < _]) RETURNS (value: Integer) ERRORS [| |],
+METHOD use (value ⁽Text₎ WHERE [1 <= (_ length)]) RETURNS (value ⁽Text) ERRORS [| |],
+METHOD use (value ⁽Integer₎ WHERE [0 < _]) RETURNS (value ⁽Integer) ERRORS [| |],
 "#,
                 )
                 .unwrap(),
@@ -469,8 +469,8 @@ fn a_scoped_call_reads_inline_record_arguments_in_context() {
     register_example(
         &mut interpreter,
         "inline",
-        "METHOD search (filter: { limit (limit: Integer) DEFAULT limit 3 })
-            RETURNS (result: { limit (limit: Integer) }) ERRORS [| |],",
+        "METHOD search (filter ⁽{ limit (limit ⁽Integer) DEFAULT limit 3 })
+            RETURNS (result ⁽{ limit (limit ⁽Integer) }) ERRORS [| |],",
     );
     let execution = interpreter.execute("inline / search {}").unwrap();
     assert!(execution.error.is_none());
@@ -538,12 +538,12 @@ fn opened_calls_use_argument_and_expected_return_types() {
     register_example(
         &mut interpreter,
         "first",
-        "METHOD pick (x: Text) RETURNS (value: Text) ERRORS [| |], METHOD text RETURNS (value: Text) ERRORS [| |]",
+        "METHOD pick (x ⁽Text) RETURNS (value ⁽Text) ERRORS [| |], METHOD text RETURNS (value ⁽Text) ERRORS [| |]",
     );
     register_example(
         &mut interpreter,
         "second",
-        "METHOD pick (x: Integer) RETURNS (value: Integer) ERRORS [| |], METHOD text RETURNS (value: Integer) ERRORS [| |]",
+        "METHOD pick (x ⁽Integer) RETURNS (value ⁽Integer) ERRORS [| |], METHOD text RETURNS (value ⁽Integer) ERRORS [| |]",
     );
     interpreter
         .execute("USE ALL FROM first, USE ALL FROM second")
@@ -575,10 +575,10 @@ fn opened_mixfix_calls_follow_anyx_grouping() {
         .register("boolean", anyx_shell::boolean::Boolean)
         .unwrap();
     let execution = interpreter
-        .execute("USE ALL FROM boolean, `true .and (`false .and (`true))")
+        .execute("USE ALL FROM boolean, `true₎ and (`false₎ and (`true))")
         .unwrap();
     assert_eq!(execution.output, "`false\n");
-    let source = "`true .an";
+    let source = "`true₎ an";
     assert!(
         interpreter
             .completions(source, source.len())
@@ -601,7 +601,7 @@ fn completion_suggests_opened_methods_and_qualifies_collisions() {
     register_example(
         &mut interpreter,
         "other",
-        "METHOD text RETURNS (value: Text) ERRORS [| |]",
+        "METHOD text RETURNS (value ⁽Text) ERRORS [| |]",
     );
     let source = "USE ALL FROM example, example / handle (te";
     let completions = interpreter.completions(source, source.len());
@@ -635,10 +635,10 @@ fn scoped_overloads_resolve_variants_with_disjoint_slots() {
     let (mut interpreter, _) = interpreter();
     let schema = Schema::parse(
         "PROTOCOL example VERSION 1,
-TYPE ALIAS Label [| `item (value: Text) |],
-TYPE ALIAS Count [| `item (value: Integer) |],
-METHOD use (label: Label) RETURNS (value: Label) ERRORS [| |],
-METHOD use (count: Count) RETURNS (value: Count) ERRORS [| |],",
+TYPE ALIAS Label [| `item (value ⁽Text) |],
+TYPE ALIAS Count [| `item (value ⁽Integer) |],
+METHOD use (label ⁽Label) RETURNS (value ⁽Label) ERRORS [| |],
+METHOD use (count ⁽Count) RETURNS (value ⁽Count) ERRORS [| |],",
     )
     .unwrap();
     interpreter.register("choice", Identity(schema)).unwrap();

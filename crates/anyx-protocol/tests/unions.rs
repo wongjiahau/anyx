@@ -19,9 +19,9 @@ fn mixed() -> (anyx_protocol::Schema, Type) {
     let schema = schema(
         "PROTOCOL p VERSION 1,
         TYPE ALIAS Shade [| `dark, `light |],
-        TYPE ALIAS Mixed [| Integer, Text, Shade, `none, `custom hue (hue: Float), (Integer) Pair |],
-        TYPE ALIAS (Item: TYPE) Pair: LIST Item,
-        METHOD f (x: Mixed) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS Mixed [| Integer, Text, Shade, `none, `custom hue (hue ⁽Float), (Integer) Pair |],
+        TYPE ALIAS (Item ⁽TYPE) Pair ⁽LIST Item,
+        METHOD f (x ⁽Mixed) RETURNS NOTHING ERRORS [| |],",
     );
     let r#type = schema.method("f _").unwrap().shape.parameters[0]
         .r#type
@@ -86,8 +86,8 @@ fn json_writes_a_member_as_that_member_does() {
 fn a_nullable_value_is_null_or_a_value_of_its_item() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS Limits: { max depth (depth: Integer?) DEFAULT max depth (`null) },
-        METHOD f (limits: Limits) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS Limits ⁽{ max depth (depth ⁽Integer?) DEFAULT max depth (`null) },
+        METHOD f (limits ⁽Limits) RETURNS NOTHING ERRORS [| |],",
     );
     let limits = Type::Named(limits_index(&schema));
     let read = |source: &str| decode_value(&schema, &limits, source).unwrap();
@@ -119,8 +119,8 @@ fn an_empty_union_and_nested_unions_are_allowed() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
         TYPE ALIAS Nothing [| |],
-        TYPE ALIAS Depth: Integer?,
-        METHOD f (x: [| Nothing, Depth, [| Text, `none |] |]) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS Depth ⁽Integer?,
+        METHOD f (x ⁽[| Nothing, Depth, [| Text, `none |] |]) RETURNS NOTHING ERRORS [| |],",
     );
     let r#type = &schema.method("f _").unwrap().shape.parameters[0].r#type;
     assert_eq!(r#type.members().len(), 4);
@@ -142,7 +142,7 @@ fn an_empty_union_and_nested_unions_are_allowed() {
 fn a_member_fits_where_its_union_is_expected() {
     let depth = Type::Integer;
     let schema =
-        schema("PROTOCOL p VERSION 1, METHOD f (x: Integer?) RETURNS NOTHING ERRORS [| |],");
+        schema("PROTOCOL p VERSION 1, METHOD f (x ⁽Integer?) RETURNS NOTHING ERRORS [| |],");
     let null = match &schema.method("f _").unwrap().shape.parameters[0].r#type {
         Type::Union(members) => members[1].clone(),
         _ => panic!("`Integer?` is a union"),
@@ -164,15 +164,15 @@ fn mistakes_in_unions_are_diagnosed() {
         ),
         (
             "two members written alike only in JSON",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row: { a (a: Text) }, TYPE ALIAS Texts: MAP Text, TYPE ALIAS Rows [| Row, Texts |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Waits [| Integer, Duration |], TYPE ALIAS Row ⁽{ a (a ⁽Text) }, TYPE ALIAS Texts ⁽MAP Text, TYPE ALIAS Rows [| Row, Texts |],",
         ),
         (
             "a nullable nullable, and a nullable choice with null",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Depth: Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x: Depth?) g (y: Gap?) RETURNS NOTHING ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Depth ⁽Integer?, TYPE ALIAS Gap [| `null, `some |], METHOD f (x ⁽Depth?) g (y ⁽Gap?) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "a repeat made by a generic type's argument",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item: TYPE): { value (value: Item?) }, METHOD f (x: Box of (Text?)) RETURNS NOTHING ERRORS [| |],",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Box of (Item ⁽TYPE) ⁽{ value (value ⁽Item?) }, METHOD f (x ⁽Box of (Text?)) RETURNS NOTHING ERRORS [| |],",
         ),
         (
             "a list or a map as a member",
@@ -193,8 +193,8 @@ fn mistakes_in_unions_are_diagnosed() {
 fn a_union_can_fill_a_symbol_alias_slot() {
     let schema = schema(
         "PROTOCOL p VERSION 1,
-        TYPE ALIAS (Item: TYPE) ++: [| Item, `extra |],
-        METHOD f (optional: [| `x |]?) (explicit: [| `x, `null |]) (extended: [| `x |]++) RETURNS NOTHING ERRORS [| |],",
+        TYPE ALIAS (Item ⁽TYPE) ++ ⁽[| Item, `extra |],
+        METHOD f (optional ⁽[| `x |]?) (explicit ⁽[| `x, `null |]) (extended ⁽[| `x |]++) RETURNS NOTHING ERRORS [| |],",
     );
     let parameters = &schema.method("f _ _ _").unwrap().shape.parameters;
     let optional = &parameters[0].r#type;
