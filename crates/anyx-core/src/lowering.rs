@@ -54,6 +54,7 @@ pub enum GlobalKind {
 #[derive(Debug, PartialEq)]
 pub enum Term {
     Type,
+    Kind,
     Local(BindingIdentifier),
     Global {
         name: String,
@@ -116,11 +117,13 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
     for declaration in &document.declaration {
         declarations.push(match declaration {
             parser::Declaration::Data(data) => {
-                let signature = resolver.signature(&data.head, &data.r#type)?;
+                let signature =
+                    resolver.declaration_signature(&data.head, &data.signature_result)?;
                 resolver.locals.clear();
                 let mut constructors = Vec::new();
                 for constructor in &data.constructors.value {
-                    constructors.push(resolver.signature(&constructor.head, &constructor.r#type)?);
+                    constructors
+                        .push(resolver.signature(&constructor.head, Some(&constructor.r#type))?);
                     resolver.locals.clear();
                 }
                 Declaration::Data {
@@ -129,7 +132,8 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 }
             }
             parser::Declaration::Function(function) => {
-                let signature = resolver.signature(&function.head, &function.result)?;
+                let signature =
+                    resolver.declaration_signature(&function.head, &function.signature_result)?;
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
                 Declaration::Function { signature, body }
@@ -202,10 +206,24 @@ impl<'source> Resolver<'source> {
         Ok(())
     }
 
+    fn declaration_signature(
+        &mut self,
+        head: &'source parser::Head,
+        result: &'source parser::SignatureResult,
+    ) -> Result<Signature, LoweringError> {
+        self.signature(
+            head,
+            match result {
+                parser::SignatureResult::Kind(_) => None,
+                parser::SignatureResult::Expression(expression) => Some(expression),
+            },
+        )
+    }
+
     fn signature(
         &mut self,
         head: &'source parser::Head,
-        result: &'source parser::Expression,
+        result: Option<&'source parser::Expression>,
     ) -> Result<Signature, LoweringError> {
         let (name, parameters) = head_parts(head);
         let mut lowered_parameters = Vec::new();
@@ -215,7 +233,10 @@ impl<'source> Resolver<'source> {
         Ok(Signature {
             name: name.text.clone(),
             parameters: lowered_parameters,
-            result: self.term(result)?,
+            result: match result {
+                Some(expression) => self.term(expression)?,
+                None => Term::Kind,
+            },
         })
     }
 
@@ -267,6 +288,12 @@ impl<'source> Resolver<'source> {
     fn reference(&self, name: &parser::CallName) -> Result<Term, LoweringError> {
         if name.text == "Type" {
             return Ok(Term::Type);
+        }
+        if name.text == "Kind" {
+            return Err(LoweringError {
+                span: name.span,
+                message: "`Kind` is only allowed as a declaration result".to_owned(),
+            });
         }
         if let Some((_, identifier)) = self
             .locals
@@ -404,10 +431,10 @@ impl<'source> Resolver<'source> {
 }
 
 fn check_binder_name(name: &str, span: Span) -> Result<(), LoweringError> {
-    if name == "Type" {
+    if matches!(name, "Type" | "Kind") {
         return Err(LoweringError {
             span,
-            message: "`Type` is reserved".to_owned(),
+            message: format!("`{name}` is reserved"),
         });
     }
     Ok(())

@@ -1,4 +1,4 @@
-## The core has Type, dependent function types with RETURNS, holes as
+## The core has Type and Kind, dependent function types with RETURNS, holes as
 ## anonymous functions, calls, FUNCTION, DATA and MATCH.
 
 ## A file is its declarations, separated by commas.
@@ -12,7 +12,7 @@ declaration: ONE OF [
 ## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`.
 data: ANYFIX CALL [
   WORD "DATA", head,
-  WORD "RETURNS", type: expression,
+  WORD "RETURNS", signature result,
   WORD "WITH", constructors: SQUARE BRACKET: ZERO OR MORE: constructor,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
@@ -25,9 +25,11 @@ constructor: ANYFIX CALL [
 ## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS: ...`.
 function: ANYFIX CALL [
   WORD "FUNCTION", head,
-  WORD "RETURNS", result: expression,
+  WORD "RETURNS", signature result,
   WORD "IS", body: expression,
 ] FORMAT [BREAK BEFORE WORD "IS"],
+
+signature result: ONE OF [WORD "Kind", expression],
 
 ## What is declared: a name, with a typed parameter in each slot.
 head: ONE OF [

@@ -23,6 +23,8 @@ pub enum CheckingError {
     FunctionNeedsExpectedType,
     ExpectedFunctionType,
     TypeMismatch,
+    KindHasNoType,
+    ConstructorFieldMustBeInType,
     UnsupportedTerm,
     MatchNeedsExpectedType,
     MatchNeedsData,
@@ -55,6 +57,11 @@ impl fmt::Display for CheckingError {
             ),
             Self::ExpectedFunctionType => write!(formatter, "expected a function type"),
             Self::TypeMismatch => write!(formatter, "expression does not have the expected type"),
+            Self::KindHasNoType => write!(formatter, "Kind has no type"),
+            Self::ConstructorFieldMustBeInType => write!(
+                formatter,
+                "a constructor field of data returning Type must be in Type"
+            ),
             Self::UnsupportedTerm => write!(formatter, "checking literals is not yet supported"),
             Self::MatchNeedsExpectedType => {
                 write!(formatter, "MATCH needs an expected result type")
@@ -109,7 +116,7 @@ pub enum DeclarationCheckingError {
     NonTerminatingFunctions(Vec<String>),
     Signature { name: String, error: CheckingError },
     Body { name: String, error: CheckingError },
-    DataMustReturnType(String),
+    DataMustReturnUniverse(String),
     ConstructorMustReturnData { constructor: String, data: String },
     NonPositiveOccurrence { declaration: String, data: String },
 }
@@ -127,8 +134,11 @@ impl fmt::Display for DeclarationCheckingError {
                 write!(formatter, "signature of `{name}`: {error}")
             }
             Self::Body { name, error } => write!(formatter, "body of `{name}`: {error}"),
-            Self::DataMustReturnType(name) => {
-                write!(formatter, "data declaration `{name}` must return Type")
+            Self::DataMustReturnUniverse(name) => {
+                write!(
+                    formatter,
+                    "data declaration `{name}` must return Type or Kind"
+                )
             }
             Self::ConstructorMustReturnData { constructor, data } => {
                 write!(
@@ -206,28 +216,26 @@ impl TypeChecker {
         for declaration in declarations.clone() {
             match declaration {
                 Declaration::Function { signature, body } => {
-                    signatures.push((signature, GlobalKind::Function));
+                    signatures.push((signature, GlobalKind::Function, false));
                     functions.push((signature, body));
                 }
                 Declaration::Data {
                     signature,
                     constructors,
                 } => {
-                    signatures.push((signature, GlobalKind::Data));
+                    signatures.push((signature, GlobalKind::Data, false));
                     self.data_families.register(signature, constructors);
-                    signatures.extend(
-                        constructors
-                            .iter()
-                            .map(|constructor| (constructor, GlobalKind::Constructor)),
-                    );
+                    signatures.extend(constructors.iter().map(|constructor| {
+                        (
+                            constructor,
+                            GlobalKind::Constructor,
+                            signature.result == Term::Type,
+                        )
+                    }));
                 }
             }
         }
-        let signatures: Vec<_> = signatures
-            .into_iter()
-            .map(|(signature, kind)| (signature, kind, closed_function_type(signature)))
-            .collect();
-        for (signature, kind, function_type) in &signatures {
+        for (signature, kind, _) in &signatures {
             if self.globals.contains_key(&signature.name) {
                 return Err(DeclarationCheckingError::DuplicateGlobal(
                     signature.name.clone(),
@@ -239,7 +247,7 @@ impl TypeChecker {
                         name: signature.name.clone(),
                         kind: *kind,
                     },
-                    function_type,
+                    &closed_function_type(signature),
                 )
                 .map_err(|error| DeclarationCheckingError::Signature {
                     name: signature.name.clone(),
@@ -248,9 +256,9 @@ impl TypeChecker {
         }
 
         let scope = self.scope();
-        for (signature, _, function_type) in &signatures {
+        for (signature, _, fields_must_be_in_type) in &signatures {
             scope
-                .check_value(function_type, &Value::Type)
+                .check_signature(signature, *fields_must_be_in_type)
                 .map_err(|error| DeclarationCheckingError::Signature {
                     name: signature.name.clone(),
                     error,
@@ -286,10 +294,15 @@ impl TypeChecker {
         Ok(self)
     }
 
+    /// Check that a closed annotation belongs to a universe.
+    pub fn check_type(&self, annotation: &Term) -> Result<(), CheckingError> {
+        self.scope().type_universe(annotation).map(|_| ())
+    }
+
     /// Check a closed expression against a closed type.
     pub fn check(&self, term: &Term, expected: &Term) -> Result<(), CheckingError> {
         let scope = self.scope();
-        scope.check_value(expected, &Value::Type)?;
+        scope.type_universe(expected)?;
         scope.check_value(term, &self.definitions.evaluate(expected, &[])?)
     }
 
@@ -366,6 +379,40 @@ impl Scope<'_> {
         self.environment.push(value);
     }
 
+    fn check_signature(
+        &self,
+        signature: &Signature,
+        fields_must_be_in_type: bool,
+    ) -> Result<(), CheckingError> {
+        let mut scope = self.clone();
+        for parameter_type in &signature.parameter_types {
+            let universe = scope.type_universe(parameter_type)?;
+            if fields_must_be_in_type && matches!(universe, Value::Kind) {
+                return Err(CheckingError::ConstructorFieldMustBeInType);
+            }
+            let parameter_type = scope
+                .definitions
+                .evaluate(parameter_type, &scope.environment)?;
+            scope.push_parameter(parameter_type);
+        }
+        if signature.result != Term::Kind {
+            scope.type_universe(&signature.result)?;
+        }
+        Ok(())
+    }
+
+    fn type_universe(&self, term: &Term) -> Result<Value, CheckingError> {
+        if let Term::Match { subject, cases } = term {
+            // An inline type-valued match has the same fixed universe as before.
+            self.check_match(subject, cases, &Value::Type)?;
+            return Ok(Value::Type);
+        }
+        match self.synthesize_value(term)? {
+            universe @ (Value::Type | Value::Kind) => Ok(universe),
+            _ => Err(CheckingError::TypeMismatch),
+        }
+    }
+
     fn check_value(&self, term: &Term, expected: &Value) -> Result<(), CheckingError> {
         let expected = self.refine(expected)?;
         if let Term::Function { body } = term {
@@ -397,7 +444,8 @@ impl Scope<'_> {
 
     fn synthesize_value(&self, term: &Term) -> Result<Value, CheckingError> {
         match term {
-            Term::Type => Ok(Value::Type),
+            Term::Type => Ok(Value::Kind),
+            Term::Kind => Err(CheckingError::KindHasNoType),
             Term::Local(index) => {
                 let position = reverse_position(self.local_types.len(), index.0)
                     .ok_or(CheckingError::UnboundLocal(*index))?;
@@ -416,13 +464,17 @@ impl Scope<'_> {
                 parameter_type,
                 result,
             } => {
-                self.check_value(parameter_type, &Value::Type)?;
+                let parameter_universe = self.type_universe(parameter_type)?;
                 let (scope, _) = self.under_parameter(
                     self.definitions
                         .evaluate(parameter_type, &self.environment)?,
                 );
-                scope.check_value(result, &Value::Type)?;
-                Ok(Value::Type)
+                let result_universe = scope.type_universe(result)?;
+                if matches!(parameter_universe, Value::Kind) {
+                    Ok(Value::Kind)
+                } else {
+                    Ok(result_universe)
+                }
             }
             Term::Function { .. } => Err(CheckingError::FunctionNeedsExpectedType),
             Term::Apply {

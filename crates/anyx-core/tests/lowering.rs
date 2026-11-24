@@ -180,3 +180,20 @@ fn rejects_invalid_names_at_the_offending_token() {
         assert_eq!(&source[error.span.start..error.span.end], token);
     }
 }
+
+#[test]
+fn rejects_kind_outside_a_declaration_result() {
+    for source in [
+        "FUNCTION example (item: Kind) RETURNS Type IS item",
+        "FUNCTION example RETURNS Kind IS Kind",
+        "FUNCTION example RETURNS ((item: Type) RETURNS Kind) IS Type",
+        "DATA Example RETURNS Kind WITH [example RETURNS Kind]",
+    ] {
+        let error = lower(source).unwrap_err();
+        assert_eq!(&source[error.span.start..error.span.end], "Kind");
+        assert_eq!(
+            error.message,
+            "`Kind` is only allowed as a declaration result"
+        );
+    }
+}

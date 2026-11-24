@@ -46,7 +46,7 @@ fn run(arguments: &[String]) -> Result<(), String> {
     if let Some((expression, expected)) = evaluation {
         let (expected_term, expected_span) = expression_term(&syntax, expected, "--type")?;
         checker
-            .check(&expected_term, &Term::Type)
+            .check_type(&expected_term)
             .map_err(|error| render(expected, "--type", expected_span, error))?;
         let (term, span) = expression_term(&syntax, expression, "--evaluate")?;
         checker

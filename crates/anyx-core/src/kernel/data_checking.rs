@@ -54,8 +54,10 @@ pub(super) fn check_data_declarations<'document>(
             continue;
         };
         let data = signature.name.as_str();
-        if signature.result != Term::Type {
-            return Err(DeclarationCheckingError::DataMustReturnType(data.into()));
+        if !matches!(signature.result, Term::Type | Term::Kind) {
+            return Err(DeclarationCheckingError::DataMustReturnUniverse(
+                data.into(),
+            ));
         }
         let referenced_data = dependencies.entry(data).or_default();
         for parameter_type in &signature.parameter_types {
@@ -155,6 +157,6 @@ fn visit_global_references<'term>(
                 visit_global_references(element, false, visit);
             }
         }
-        Term::Type | Term::Local(_) => {}
+        Term::Type | Term::Kind | Term::Local(_) => {}
     }
 }

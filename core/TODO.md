@@ -108,7 +108,7 @@ inference. Macros and effects come later.
 
 ## Universes
 
-15. Two levels: `Type: Kind`, replacing `Type` in `Type`.
+15. Two levels: `Type: Kind`, replacing `Type` in `Type`. (done)
     - `Kind` has no type: it may only be written as the result of a
       signature, never as a parameter's type or inside an expression.
     - A function type is in `Kind` when either side is, otherwise in `Type`:
@@ -121,6 +121,11 @@ inference. Macros and effects come later.
     - Tests: Girard's paradox is ruled out by rejecting a `Type` data type
       with a field `(item: Type)`, the same data accepted as `RETURNS Kind`,
       and a function that takes or returns a `Kind`-level type.
+
+    - Allow a literal `Kind` as the final result of a `DATA` or
+      `FUNCTION` declaration because `Kind` has no type of its own.
+    - Keep inline `MATCH` annotations checked in `Type` because a match
+      needs a fixed expected universe.
 
 ## Later
 

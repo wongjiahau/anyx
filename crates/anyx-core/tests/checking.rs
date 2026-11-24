@@ -11,12 +11,14 @@ use anyx_core::{
 fn checks_a_hole_against_a_dependent_function_type() {
     let document = kernel_document(
         "FUNCTION choose (element: Type) value (value: element) RETURNS element IS value,
-         FUNCTION choose a type RETURNS ((value: Type) RETURNS Type) IS (choose (Type) value _),",
+         FUNCTION choose a natural RETURNS ((value: Natural) RETURNS Natural)
+           IS (choose (Natural) value _),
+         DATA Natural RETURNS Type WITH [],",
     );
     let Declaration::Function { signature, body } = &document.declarations[1] else {
         panic!("expected a function declaration");
     };
-    let checker = TypeChecker::default().check_functions(&document).unwrap();
+    let checker = TypeChecker::default().check_document(&document).unwrap();
 
     assert_eq!(checker.check(body, &signature.result), Ok(()));
     assert_eq!(
@@ -58,9 +60,10 @@ fn rejects_mutual_recursion_without_descent() {
 fn checks_forward_references_in_signatures() {
     let document = kernel_document(
         "FUNCTION identity (value: element) RETURNS element IS value,
-         FUNCTION element RETURNS Type IS Type,",
+         FUNCTION element RETURNS Type IS Natural,
+         DATA Natural RETURNS Type WITH [],",
     );
-    assert!(TypeChecker::default().check_functions(&document).is_ok());
+    assert!(TypeChecker::default().check_document(&document).is_ok());
 }
 
 #[test]
@@ -118,7 +121,7 @@ fn rejects_invalid_data_and_constructor_results() {
     for (source, expected) in [
         (
             "DATA Wrong RETURNS Wrong WITH [],",
-            DeclarationCheckingError::DataMustReturnType("Wrong".into()),
+            DeclarationCheckingError::DataMustReturnUniverse("Wrong".into()),
         ),
         (
             "DATA First RETURNS Type WITH [wrong RETURNS Second],
@@ -190,7 +193,7 @@ const MATCH_DATA: &str = "
     ],
     DATA Boolean RETURNS Type WITH [false RETURNS Boolean, true RETURNS Boolean],
     DATA Empty RETURNS Type WITH [],
-    DATA Package RETURNS Type WITH [
+    DATA Package RETURNS Kind WITH [
         pack (element: Type) value (value: element) RETURNS Package,
     ],
     DATA Indexed by (index: Natural) RETURNS Type WITH [],
@@ -332,7 +335,7 @@ fn reports_a_missing_nested_pattern_that_can_be_added_as_a_case() {
 }
 
 const VECTOR_DATA: &str = "
-    DATA Vector of (item: Type) length (length: Natural) RETURNS Type WITH [
+    DATA Vector of (item: Type) length (length: Natural) RETURNS Kind WITH [
         empty of (item: Type) RETURNS (Vector of (item) length (zero)),
         prepend (item: Type) length (length: Natural) value (value: item)
             tail (tail: Vector of (item) length (length))
@@ -677,4 +680,77 @@ fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
         );
         assert!(error.to_string().starts_with(diagnostic), "{error}");
     }
+}
+
+#[test]
+fn separates_type_from_kind_and_checks_the_universe_of_both_function_type_parts() {
+    let document = kernel_document(
+        "DATA Natural RETURNS Type WITH [],
+         FUNCTION universe (number: Natural) RETURNS Kind IS Type,
+         FUNCTION small RETURNS Kind IS Type,
+         FUNCTION higher (item: small) RETURNS Kind IS small,",
+    );
+    let checker = TypeChecker::default().check_document(&document).unwrap();
+    let natural = Term::Global(anyx_core::kernel::Global {
+        name: "Natural".into(),
+        kind: anyx_core::lowering::GlobalKind::Data,
+    });
+
+    assert_eq!(checker.synthesize(&Term::Type), Ok(Term::Kind));
+    assert_eq!(
+        checker.synthesize(&Term::Kind),
+        Err(CheckingError::KindHasNoType)
+    );
+    assert_eq!(
+        checker.check(&Term::Type, &Term::Type),
+        Err(CheckingError::TypeMismatch)
+    );
+    for (parameter_type, result, universe) in [
+        (natural.clone(), natural.clone(), Term::Type),
+        (Term::Type, natural.clone(), Term::Kind),
+        (natural, Term::Type, Term::Kind),
+        (Term::Type, Term::Type, Term::Kind),
+    ] {
+        assert_eq!(
+            checker.synthesize(&Term::FunctionType {
+                parameter_type: Box::new(parameter_type),
+                result: Box::new(result),
+            }),
+            Ok(universe),
+        );
+    }
+}
+
+#[test]
+fn constructor_fields_must_fit_the_written_data_universe() {
+    for (declarations, annotation) in [
+        ("", "Type"),
+        ("DATA Large RETURNS Kind WITH [],", "Large"),
+        ("", "((input: Type) RETURNS Type)"),
+    ] {
+        let rejected = kernel_document(&format!(
+            "{declarations} DATA Package RETURNS Type WITH [pack (item: {annotation}) RETURNS Package],"
+        ));
+        assert_eq!(
+            TypeChecker::default().check_document(&rejected).err(),
+            Some(DeclarationCheckingError::Signature {
+                name: "pack _".into(),
+                error: CheckingError::ConstructorFieldMustBeInType,
+            }),
+        );
+        let accepted = kernel_document(&format!(
+            "{declarations} DATA Package RETURNS Kind WITH [pack (item: {annotation}) RETURNS Package],"
+        ));
+        TypeChecker::default().check_document(&accepted).unwrap();
+    }
+}
+
+#[test]
+fn takes_and_returns_a_kind_level_data_type() {
+    let document = kernel_document(
+        "DATA Package RETURNS Kind WITH [pack (item: Type) RETURNS Package],
+         FUNCTION keep (package: Package) RETURNS Package IS package,
+         FUNCTION package type RETURNS Kind IS Package,",
+    );
+    TypeChecker::default().check_document(&document).unwrap();
 }

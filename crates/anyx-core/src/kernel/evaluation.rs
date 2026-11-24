@@ -49,6 +49,7 @@ impl Definitions {
     pub fn evaluate(&self, term: &Term, environment: &[Value]) -> Result<Value, EvaluationError> {
         Ok(match term {
             Term::Type => Value::Type,
+            Term::Kind => Value::Kind,
             Term::Local(index) => {
                 let position = reverse_position(environment.len(), index.0)
                     .ok_or(EvaluationError::UnboundIndex(*index))?;
@@ -257,6 +258,7 @@ impl Definitions {
     pub fn read_back(&self, value: &Value, depth: usize) -> Result<Term, EvaluationError> {
         Ok(match value {
             Value::Type => Term::Type,
+            Value::Kind => Term::Kind,
             Value::FunctionType {
                 parameter_type,
                 result,

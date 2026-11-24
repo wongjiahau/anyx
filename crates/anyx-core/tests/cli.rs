@@ -80,3 +80,14 @@ fn reports_expression_and_annotation_errors_at_their_source() {
         );
     }
 }
+
+#[test]
+fn evaluates_a_type_with_an_explicit_type_annotation() {
+    let output = run_sample(&["--evaluate", "Natural", "--type", "Type"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("name: \"Natural\""));
+}

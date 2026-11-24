@@ -26,7 +26,7 @@ pub enum Declaration {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
     pub head: Head,
-    pub r#type: Expression,
+    pub signature_result: SignatureResult,
     pub constructors: Spanned<Vec<Constructor>>,
     pub span: Span,
 }
@@ -41,9 +41,15 @@ pub struct Constructor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub head: Head,
-    pub result: Expression,
+    pub signature_result: SignatureResult,
     pub body: Expression,
     pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SignatureResult {
+    Kind(Span),
+    Expression(Expression),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,6 +129,15 @@ impl Declaration {
     }
 }
 
+impl SignatureResult {
+    pub fn span(&self) -> Span {
+        match self {
+            SignatureResult::Kind(span) => *span,
+            SignatureResult::Expression(value) => value.span(),
+        }
+    }
+}
+
 impl Head {
     pub fn span(&self) -> Span {
         match self {
@@ -170,7 +185,7 @@ impl support::Errors for Declaration {
 impl support::Errors for Data {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.r#type, found);
+        support::Errors::errors(&self.signature_result, found);
         support::Errors::errors(&self.constructors, found);
     }
 }
@@ -185,8 +200,17 @@ impl support::Errors for Constructor {
 impl support::Errors for Function {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.result, found);
+        support::Errors::errors(&self.signature_result, found);
         support::Errors::errors(&self.body, found);
+    }
+}
+
+impl support::Errors for SignatureResult {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            SignatureResult::Kind(_) => {}
+            SignatureResult::Expression(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -293,9 +317,9 @@ pub fn decode_data(node: &Node) -> Result<Data, DecodeError> {
     let mut parts = support::call(node, "the call `DATA _ RETURNS _ WITH _`")?;
     let decoded = Data {
         head: parts.word("DATA")?.one(decode_head, "a head")?,
-        r#type: parts
+        signature_result: parts
             .word("RETURNS")?
-            .one(decode_expression, "an expression")?,
+            .one(decode_signature_result, "a signature result")?,
         constructors: parts
             .word("WITH")?
             .one(decode_data_constructors, "`[...]`")?,
@@ -332,14 +356,20 @@ pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
     let mut parts = support::call(node, "the call `FUNCTION _ RETURNS _ IS _`")?;
     let decoded = Function {
         head: parts.word("FUNCTION")?.one(decode_head, "a head")?,
-        result: parts
+        signature_result: parts
             .word("RETURNS")?
-            .one(decode_expression, "an expression")?,
+            .one(decode_signature_result, "a signature result")?,
         body: parts.word("IS")?.one(decode_expression, "an expression")?,
         span: node.span,
     };
     parts.finish()?;
     Ok(decoded)
+}
+
+pub fn decode_signature_result(node: &Node) -> Result<SignatureResult, DecodeError> {
+    support::word(node, "Kind")
+        .map(SignatureResult::Kind)
+        .or_else(|error| error.or(decode_expression(node).map(SignatureResult::Expression)))
 }
 
 pub fn decode_head(node: &Node) -> Result<Head, DecodeError> {

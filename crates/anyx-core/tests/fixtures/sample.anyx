@@ -9,7 +9,7 @@ FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural IS:
   ],
 FUNCTION successor function RETURNS ((number: Natural) RETURNS Natural) IS:
   successor of _,
-DATA Vector of (item: Type) length (length: Natural) RETURNS Type WITH [
+DATA Vector of (item: Type) length (length: Natural) RETURNS Kind WITH [
   empty of (item: Type) RETURNS Vector of (item) length (zero),
   prepend (item: Type) length (length: Natural) value (first: item)
     tail (rest: Vector of (item) length (length))

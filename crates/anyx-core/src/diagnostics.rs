@@ -17,17 +17,21 @@ impl DeclarationCheckingError {
                     {
                         return function.head.span();
                     }
-                    if let Some(span) = self.signature_span(&function.head, &function.result) {
+                    if let Some(span) =
+                        self.signature_span(&function.head, function.signature_result.span())
+                    {
                         return span;
                     }
                 }
                 parser::Declaration::Data(data) => {
-                    if let Some(span) = self.signature_span(&data.head, &data.r#type) {
+                    if let Some(span) =
+                        self.signature_span(&data.head, data.signature_result.span())
+                    {
                         return span;
                     }
                     for constructor in &data.constructors.value {
                         if let Some(span) =
-                            self.signature_span(&constructor.head, &constructor.r#type)
+                            self.signature_span(&constructor.head, constructor.r#type.span())
                         {
                             return span;
                         }
@@ -38,15 +42,15 @@ impl DeclarationCheckingError {
         document.span
     }
 
-    fn signature_span(&self, head: &parser::Head, result: &parser::Expression) -> Option<Span> {
+    fn signature_span(&self, head: &parser::Head, result: Span) -> Option<Span> {
         let (name, _) = head_parts(head);
         let (failed, span) = match self {
             Self::DuplicateGlobal(name) => (name, head.span()),
-            Self::Signature { name, .. } => (name, head.span().to(result.span())),
-            Self::DataMustReturnType(name) => (name, result.span()),
-            Self::ConstructorMustReturnData { constructor, .. } => (constructor, result.span()),
+            Self::Signature { name, .. } => (name, head.span().to(result)),
+            Self::DataMustReturnUniverse(name) => (name, result),
+            Self::ConstructorMustReturnData { constructor, .. } => (constructor, result),
             Self::NonPositiveOccurrence { declaration, .. } => {
-                (declaration, head.span().to(result.span()))
+                (declaration, head.span().to(result))
             }
             Self::Body { .. } | Self::NonTerminatingFunctions(_) => return None,
         };

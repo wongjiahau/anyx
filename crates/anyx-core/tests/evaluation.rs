@@ -55,7 +55,7 @@ fn evaluates_constructor_matches_from_source() {
         r#"
 DATA First RETURNS Type WITH [],
 DATA Second RETURNS Type WITH [],
-DATA Pair RETURNS Type WITH [pair (left: Type) with (right: Type) RETURNS Pair],
+DATA Pair RETURNS Kind WITH [pair (left: Type) with (right: Type) RETURNS Pair],
 FUNCTION choose RETURNS Type IS (MATCH (pair (First) with (Second)) WITH [
     WHEN pair (left) with (right) THEN left
 ]),

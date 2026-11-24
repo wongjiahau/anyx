@@ -8,7 +8,7 @@ use anyx_core::{
 fn indexes_parameters_patterns_and_holes_in_their_own_scopes() {
     let parsed = parse_document(
         "
-DATA Pair RETURNS Type WITH [pair (left: Type) with (right: Type) RETURNS Pair],
+DATA Pair RETURNS Kind WITH [pair (left: Type) with (right: Type) RETURNS Pair],
 FUNCTION in (element: Type) choose (value: element) RETURNS ((element: element) RETURNS element)
 IS (MATCH value WITH [
   WHEN pair (value) with (other) THEN (combine (value) with _ and (element)),

@@ -53,6 +53,7 @@ pub struct Signature {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
     Type,
+    Kind,
     Local(Index),
     Global(Global),
     FunctionType {
@@ -92,6 +93,7 @@ pub enum Pattern {
 #[derive(Clone, Debug)]
 pub enum Value {
     Type,
+    Kind,
     FunctionType {
         parameter_type: Box<Value>,
         result: Closure,
@@ -201,6 +203,7 @@ impl Scope {
     fn term(&mut self, term: &lowering::Term) -> Result<Term, UnboundLocal> {
         Ok(match term {
             lowering::Term::Type => Term::Type,
+            lowering::Term::Kind => Term::Kind,
             lowering::Term::Local(binding) => Term::Local(
                 self.bindings
                     .iter()

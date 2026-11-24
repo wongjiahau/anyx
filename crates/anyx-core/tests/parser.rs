@@ -1,4 +1,4 @@
-use anyx_core::parser::{Declaration, Expression, parse_document};
+use anyx_core::parser::{Declaration, Expression, SignatureResult, parse_document};
 
 #[test]
 fn parses_core_declarations() {
@@ -25,8 +25,8 @@ FUNCTION successor function RETURNS ((number: Natural) RETURNS Natural) IS (succ
     assert_eq!(natural.constructors.value.len(), 2);
     assert!(matches!(&predecessor.body, Expression::Match { cases, .. } if cases.value.len() == 2));
     assert!(matches!(
-        successor_function.result,
-        Expression::FunctionType { .. }
+        successor_function.signature_result,
+        SignatureResult::Expression(Expression::FunctionType { .. })
     ));
     assert!(
         matches!(&successor_function.body, Expression::Call { arguments, .. }
