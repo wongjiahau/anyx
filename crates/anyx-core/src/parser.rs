@@ -68,8 +68,14 @@ pub enum Head {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameter {
-    pub name: Spanned<String>,
+    pub binder: Binder,
     pub r#type: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Binder {
+    pub name: Spanned<String>,
     pub span: Span,
 }
 
@@ -235,8 +241,14 @@ impl support::Errors for Head {
 
 impl support::Errors for Parameter {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.name, found);
+        support::Errors::errors(&self.binder, found);
         support::Errors::errors(&self.r#type, found);
+    }
+}
+
+impl support::Errors for Binder {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.name, found);
     }
 }
 
@@ -410,15 +422,25 @@ fn decode_head_plain(node: &Node) -> Result<Head, DecodeError> {
 }
 
 pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {
-    let mut parts = support::call(node, "the call `… _`")?;
+    let mut parts = support::call(node, "the call `_ : _`")?;
     let decoded = Parameter {
+        binder: parts.one(decode_binder, "a binder")?,
+        r#type: parts.word(":")?.one(
+            |node| decode_expression(node).map(Box::new),
+            "an expression",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_binder(node: &Node) -> Result<Binder, DecodeError> {
+    let mut parts = support::call(node, "the call `…`")?;
+    let decoded = Binder {
         name: parts.words(
             |text| !text.split(' ').any(anyx::is_keyword),
             "words whose text has no keyword",
-        )?,
-        r#type: parts.one(
-            |node| decode_expression(node).map(Box::new),
-            "an expression",
         )?,
         span: node.span,
     };

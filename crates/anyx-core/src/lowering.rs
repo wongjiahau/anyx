@@ -277,8 +277,8 @@ impl<'source> Resolver<'source> {
         scope_start: usize,
     ) -> Result<Parameter, LoweringError> {
         let annotation = Box::new(self.term(&parameter.r#type)?);
-        let binding =
-            self.named_binding(&parameter.name.value, parameter.name.span, scope_start)?;
+        let name = &parameter.binder.name;
+        let binding = self.named_binding(&name.value, name.span, scope_start)?;
         Ok(Parameter {
             binding,
             annotation,

@@ -488,11 +488,11 @@ fn proves_adding_zero_on_the_right_by_induction() {
              reflexivity of (number: Natural) RETURNS ((number) equals (number)),
          ],
          FUNCTION adding zero to (number: Natural)
-             RETURNS ((number . plus : zero) equals (number))
+             RETURNS (((number) plus (zero)) equals (number))
              IS (MATCH number WITH [
                  WHEN zero THEN (reflexivity of (zero)),
                  WHEN successor of (previous) THEN
-                     (successor preserves equality from (previous . plus : zero)
+                     (successor preserves equality from ((previous) plus (zero))
                          to (previous) by (adding zero to (previous))),
              ]),
          FUNCTION successor preserves equality from (left: Natural) to (right: Natural)
@@ -547,7 +547,7 @@ fn rejects_negative_data_hidden_behind_a_transparent_function() {
     let document = kernel_document(
         "FUNCTION alias RETURNS Type IS Recursive,
          DATA Recursive RETURNS Type WITH [
-             wrap (field: (value: alias) RETURNS Type) RETURNS Recursive,
+             wrap (field: ⁽(value: alias) RETURNS Type) RETURNS Recursive,
          ],",
     );
     assert!(matches!(

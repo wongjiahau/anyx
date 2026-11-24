@@ -2,13 +2,13 @@ DATA Natural RETURNS Type WITH [
   zero RETURNS Natural,
   successor of (number: Natural) RETURNS Natural,
 ],
-FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural IS:
-  MATCH left WITH [
+FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural IS
+  ⁽MATCH left WITH [
     WHEN zero THEN right,
     WHEN successor of (previous) THEN successor of ((previous) plus (right)),
   ],
-FUNCTION successor function RETURNS ((number: Natural) RETURNS Natural) IS:
-  successor of _,
+FUNCTION successor function RETURNS ((number: Natural) RETURNS Natural) IS
+  ⁽successor of _,
 DATA Vector of (item: Type) length (length: Natural) RETURNS Kind WITH [
   empty of (item: Type) RETURNS Vector of (item) length (zero),
   prepend (item: Type) length (length: Natural) value (first: item)

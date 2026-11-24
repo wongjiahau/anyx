@@ -60,3 +60,13 @@ fn rejects_number_and_string_literals() {
         assert!(rendered.starts_with("sample.anyx:1:37:"), "{rendered}");
     }
 }
+
+#[test]
+fn requires_a_colon_between_the_binder_and_its_type() {
+    for parameter in ["(number ⁽Natural)", "(number + Natural)"] {
+        let source = format!("FUNCTION identity of {parameter} RETURNS Natural IS number");
+        let parsed = parse_document(&source);
+        assert!(parsed.syntax_errors.is_empty());
+        assert!(parsed.document.is_err(), "{source}");
+    }
+}

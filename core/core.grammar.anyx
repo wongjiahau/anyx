@@ -2,77 +2,79 @@
 ## anonymous functions, calls, FUNCTION, DATA and MATCH.
 
 ## A file is its declarations, separated by commas.
-ENTRY [ZERO OR MORE: declaration],
+ENTRY [ZERO OR MORE ⁽declaration],
 
-declaration: ONE OF [
+declaration ⁽ONE OF [
   data,
   function,
 ],
 
 ## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`.
-data: ANYFIX CALL [
+data ⁽ANYFIX CALL [
   WORD "DATA", head,
   WORD "RETURNS", signature result,
-  WORD "WITH", constructors: SQUARE BRACKET: ZERO OR MORE: constructor,
+  WORD "WITH", constructors ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽constructor,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
 ## `successor of (n: Natural) RETURNS Natural`.
-constructor: ANYFIX CALL [
+constructor ⁽ANYFIX CALL [
   head,
-  WORD "RETURNS", type: expression,
+  WORD "RETURNS", type ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "RETURNS"],
 
-## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS: ...`.
-function: ANYFIX CALL [
+## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS ⁽...`.
+function ⁽ANYFIX CALL [
   WORD "FUNCTION", head,
   WORD "RETURNS", signature result,
-  WORD "IS", body: expression,
+  WORD "IS", body ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "IS"],
 
-signature result: ONE OF [WORD "Kind", expression],
+signature result ⁽ONE OF [WORD "Kind", expression],
 
 ## What is declared: a name, with a typed parameter in each slot.
-head: ONE OF [
-  with parameters: ANYFIX CALL [
+head ⁽ONE OF [
+  with parameters ⁽ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "_"],
-    ARGUMENTS: ONE OR MORE: parameter,
+    ARGUMENTS ⁽ONE OR MORE ⁽parameter,
   ],
-  plain: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+  plain ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
 ],
 
-## `(n: Natural)` is the call `n _` of its type.
-parameter: ANYFIX CALL [name: WORDS [NO KEYWORD], type: expression],
+## `(n: Natural)` is the call `_ : _` with the binder and its type.
+parameter ⁽ANYFIX CALL [binder, WORD ":", type ⁽expression],
 
-expression: ONE OF [
+binder ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD]],
+
+expression ⁽ONE OF [
   ## `(n: Natural) RETURNS Vector of (item) length (n)`.
-  function type: ANYFIX CALL [parameter, WORD "RETURNS", result: expression],
-  match: ANYFIX CALL [
-    WORD "MATCH", subject: expression,
-    WORD "WITH", cases: SQUARE BRACKET: ZERO OR MORE: case,
+  function type ⁽ANYFIX CALL [parameter, WORD "RETURNS", result ⁽expression],
+  match ⁽ANYFIX CALL [
+    WORD "MATCH", subject ⁽expression,
+    WORD "WITH", cases ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽case,
   ],
   ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
-  call: ANYFIX CALL [
+  call ⁽ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "_"],
-    ARGUMENTS: ONE OR MORE: expression,
+    ARGUMENTS ⁽ONE OR MORE ⁽expression,
   ],
   ## A name alone: a variable, a constant, `Type`.
-  name: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+  name ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
   ## A hole: `(successor of _)` is a function.
-  hole: UNDERSCORE,
-  list: SQUARE BRACKET: ZERO OR MORE: expression,
+  hole ⁽UNDERSCORE,
+  list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽expression,
 ],
 
 ## `WHEN successor of (k) THEN ...`.
-case: ANYFIX CALL [
+case ⁽ANYFIX CALL [
   WORD "WHEN", pattern,
-  WORD "THEN", result: expression,
+  WORD "THEN", result ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "THEN"],
 
-pattern: ONE OF [
-  constructor: ANYFIX CALL [
+pattern ⁽ONE OF [
+  constructor ⁽ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "_"],
-    ARGUMENTS: ONE OR MORE: pattern,
+    ARGUMENTS ⁽ONE OR MORE ⁽pattern,
   ],
   ## A constructor of no arguments, or a variable.
-  name: ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+  name ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
 ],
