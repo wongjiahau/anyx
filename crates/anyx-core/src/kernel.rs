@@ -1,8 +1,10 @@
 //! Kernel terms and the values used to evaluate them.
 
 use crate::lowering::{self, BindingIdentifier, GlobalKind};
-use anyx::StringLiteral;
 use std::fmt;
+
+mod evaluation;
+pub use evaluation::{EvaluationError, convertible, evaluate, normalize, read_back};
 
 /// Distance from the innermost binder, which has index zero.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,7 +67,7 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
-    Text(StringLiteral),
+    Text(String),
     Number(f64),
 }
 
@@ -93,9 +95,13 @@ pub enum Value {
         result: Closure,
     },
     Function(Closure),
+    Constructor {
+        global: Global,
+        arguments: Vec<Value>,
+    },
     Neutral(Neutral),
     List(Vec<Value>),
-    Text(StringLiteral),
+    Text(String),
     Number(f64),
 }
 
@@ -119,7 +125,7 @@ pub enum Neutral {
         arguments: Vec<Value>,
     },
     Match {
-        subject: Box<Neutral>,
+        subject: Box<Value>,
         cases: Vec<Case>,
         environment: Environment,
     },
@@ -221,7 +227,7 @@ impl Scope {
                     .collect::<Result<_, _>>()?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
-            lowering::Term::Text(text) => Term::Text(text.clone()),
+            lowering::Term::Text(text) => Term::Text(text.value.clone()),
             lowering::Term::Number(number) => Term::Number(*number),
         })
     }

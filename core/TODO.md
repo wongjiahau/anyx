@@ -42,8 +42,16 @@ inference. Macros and effects come later.
    - Drop local binder names in kernel terms because indices carry their identity, and retain exact global names for lookup.
    - Give function values closures over ordered environments and represent blocked eliminations as neutral values so evaluation can retain their inputs.
    - Carry match and literal forms through to the kernel so conversion preserves the lowered tree.
-5. Evaluation, read-back and conversion checking, by normalisation by
-   evaluation.
+5. Evaluation, read-back and conversion checking, by normalisation by evaluation. (done)
+   - Keep global function bodies opaque until item 7 so normalization does
+     not evaluate unchecked recursive declarations.
+   - Reduce matches in case order and retain blocked matches with their
+     environments so read-back can normalize branches under fresh binders.
+   - Keep constructor names and arguments together in values so patterns can
+     inspect them without unfolding global definitions.
+   - Compare beta-normal forms structurally, using decoded text and a single
+     application spine per head, so source spelling and call grouping do not
+     affect conversion. Leave type-directed eta rules for the type checker.
 6. Bidirectional checking of `Type`, function types, holes, calls and names.
    `Type` is in `Type` for now: a known inconsistency.
 7. `FUNCTION` declarations, including recursion between them.
