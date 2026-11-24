@@ -62,8 +62,17 @@ inference. Macros and effects come later.
    - Check declaration bodies under their written parameters using the existing function checker so dependent binders keep their source order.
    - Keep function bodies opaque during conversion until termination checking is available so recursive calls cannot make type checking diverge.
    - Accept caller-supplied data and constructor types because checking `DATA` declarations belongs to item 8.
-8. `DATA` declarations: constructors must return their own type, and strict
+8. `DATA` declarations: constructors must return their own type, and strict (done)
    positivity holds.
+   - Register all written signatures before checking them so data, constructors,
+     and functions can refer to declarations in either order.
+   - Require data signatures to end in `Type` and constructor results to
+     name their fully applied data family so the target is explicit.
+   - Allow recursive families as field types or in function results, and
+     reject them in function domains, application arguments, and family
+     parameter types because those positions have no established positivity.
+   - Check cycles among data dependencies so mutually recursive declarations
+     obey the same positivity rule as direct recursion.
 9. `MATCH` on plain data, with exhaustiveness and redundancy checks.
 10. `MATCH` on indexed families such as `Vector`, with index unification.
 11. Termination: structural recursion only, at first.

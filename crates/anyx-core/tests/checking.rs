@@ -1,6 +1,7 @@
 use anyx_core::{
     kernel::{
-        CheckingError, Declaration, Document, FunctionCheckingError, Index, Term, TypeChecker,
+        CheckingError, Declaration, DeclarationCheckingError, Document, FunctionCheckingError,
+        Index, Term, TypeChecker,
     },
     lowering::lower_document,
     parser::parse_document,
@@ -85,6 +86,94 @@ fn rejects_a_body_that_disagrees_with_its_declared_type() {
             ..
         })
     ));
+}
+
+#[test]
+fn checks_data_families_and_exposes_constructors_to_functions() {
+    let document = kernel_document(
+        "FUNCTION singleton (item: Type) value (value: item)
+           RETURNS (Vector of (item) length (successor of (zero)))
+           IS (prepend (item) length (zero) value (value) tail (empty of (item))),
+         DATA Vector of (item: Type) length (length: Natural) RETURNS Type WITH [
+           empty of (item: Type) RETURNS (Vector of (item) length (zero)),
+           prepend (item: Type) length (length: Natural) value (value: item)
+             tail (tail: Vector of (item) length (length))
+             RETURNS (Vector of (item) length (successor of (length))),
+         ],
+         DATA Natural RETURNS Type WITH [zero RETURNS Natural,
+           successor of (previous: Natural) RETURNS Natural],",
+    );
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn accepts_positive_mutual_recursion_and_nonrecursive_function_domains() {
+    let document = kernel_document(
+        "DATA First RETURNS Type WITH [
+           first from (callback: ((input: Unrelated) RETURNS Second)) RETURNS First],
+         DATA Second RETURNS Type WITH [second from (previous: First) RETURNS Second],
+         DATA Unrelated RETURNS Type WITH [],",
+    );
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn rejects_invalid_data_and_constructor_results() {
+    for (source, expected) in [
+        (
+            "DATA Wrong RETURNS Wrong WITH [],",
+            DeclarationCheckingError::DataMustReturnType("Wrong".into()),
+        ),
+        (
+            "DATA First RETURNS Type WITH [wrong RETURNS Second],
+             DATA Second RETURNS Type WITH [],",
+            DeclarationCheckingError::ConstructorMustReturnData {
+                constructor: "wrong".into(),
+                data: "First".into(),
+            },
+        ),
+    ] {
+        assert_eq!(
+            TypeChecker::default()
+                .check_document(&kernel_document(source))
+                .err(),
+            Some(expected),
+        );
+    }
+}
+
+#[test]
+fn rejects_negative_and_nested_recursive_occurrences() {
+    for (source, reference) in [
+        (
+            "DATA First RETURNS Type WITH [
+               bad (callback: ((nested: ((input: First) RETURNS Type)) RETURNS Type))
+                 RETURNS First],",
+            "First",
+        ),
+        (
+            "DATA First RETURNS Type WITH [
+               bad (callback: ((input: Second) RETURNS Type)) RETURNS First],
+             DATA Second RETURNS Type WITH [second from (previous: First) RETURNS Second],",
+            "Second",
+        ),
+        (
+            "DATA Box of (item: Type) RETURNS Type WITH [],
+             DATA First RETURNS Type WITH [
+               bad (nested: Box of (First)) RETURNS First],",
+            "First",
+        ),
+    ] {
+        assert_eq!(
+            TypeChecker::default()
+                .check_document(&kernel_document(source))
+                .err(),
+            Some(DeclarationCheckingError::NonPositiveOccurrence {
+                declaration: "bad _".into(),
+                data: reference.into(),
+            }),
+        );
+    }
 }
 
 fn kernel_document(source: &str) -> Document {

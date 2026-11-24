@@ -1,5 +1,6 @@
 //! Bidirectional checking for core expressions.
 
+use super::data_checking::check_data_declarations;
 use super::evaluation::{fresh_local, reverse_position};
 use super::{
     Declaration, Document, Environment, EvaluationError, Global, Index, Signature, Term, Value,
@@ -53,13 +54,16 @@ impl From<EvaluationError> for CheckingError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FunctionCheckingError {
+pub enum DeclarationCheckingError {
     DuplicateGlobal(String),
     Signature { name: String, error: CheckingError },
     Body { name: String, error: CheckingError },
+    DataMustReturnType(String),
+    ConstructorMustReturnData { constructor: String, data: String },
+    NonPositiveOccurrence { declaration: String, data: String },
 }
 
-impl fmt::Display for FunctionCheckingError {
+impl fmt::Display for DeclarationCheckingError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateGlobal(name) => write!(formatter, "duplicate global `{name}`"),
@@ -67,18 +71,35 @@ impl fmt::Display for FunctionCheckingError {
                 write!(formatter, "signature of `{name}`: {error}")
             }
             Self::Body { name, error } => write!(formatter, "body of `{name}`: {error}"),
+            Self::DataMustReturnType(name) => {
+                write!(formatter, "data declaration `{name}` must return Type")
+            }
+            Self::ConstructorMustReturnData { constructor, data } => {
+                write!(
+                    formatter,
+                    "constructor `{constructor}` must return a fully applied `{data}`"
+                )
+            }
+            Self::NonPositiveOccurrence { declaration, data } => {
+                write!(
+                    formatter,
+                    "recursive occurrence of `{data}` in `{declaration}` is not strictly positive"
+                )
+            }
         }
     }
 }
 
-impl std::error::Error for FunctionCheckingError {
+impl std::error::Error for DeclarationCheckingError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Signature { error, .. } | Self::Body { error, .. } => Some(error),
-            Self::DuplicateGlobal(_) => None,
+            _ => None,
         }
     }
 }
+
+pub type FunctionCheckingError = DeclarationCheckingError;
 
 /// Checks core terms using closed global types.
 #[derive(Clone, Default)]
@@ -102,21 +123,54 @@ impl TypeChecker {
     /// Check every function in a document and make its signature available for
     /// subsequent expression checking. Data and constructor types can be supplied
     /// with `with_global_type`.
-    pub fn check_functions(mut self, document: &Document) -> Result<Self, FunctionCheckingError> {
-        let functions: Vec<_> = document
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Function { signature, body } => {
-                    Some((signature, closed_function_type(signature), body))
-                }
-                Declaration::Data { .. } => None,
-            })
-            .collect();
+    pub fn check_functions(self, document: &Document) -> Result<Self, FunctionCheckingError> {
+        self.check_declarations(
+            document
+                .declarations
+                .iter()
+                .filter(|declaration| matches!(declaration, Declaration::Function { .. })),
+        )
+    }
 
-        for (signature, function_type, _) in &functions {
+    /// Check all declarations, including data families and their constructors.
+    pub fn check_document(self, document: &Document) -> Result<Self, DeclarationCheckingError> {
+        self.check_declarations(document.declarations.iter())
+    }
+
+    fn check_declarations<'document>(
+        mut self,
+        declarations: impl Iterator<Item = &'document Declaration> + Clone,
+    ) -> Result<Self, DeclarationCheckingError> {
+        check_data_declarations(declarations.clone())?;
+
+        let mut signatures = Vec::new();
+        let mut functions = Vec::new();
+        for declaration in declarations.clone() {
+            match declaration {
+                Declaration::Function { signature, body } => {
+                    signatures.push((signature, GlobalKind::Function));
+                    functions.push((signature, body));
+                }
+                Declaration::Data {
+                    signature,
+                    constructors,
+                } => {
+                    signatures.push((signature, GlobalKind::Data));
+                    signatures.extend(
+                        constructors
+                            .iter()
+                            .map(|constructor| (constructor, GlobalKind::Constructor)),
+                    );
+                }
+            }
+        }
+        let signatures: Vec<_> = signatures
+            .into_iter()
+            .map(|(signature, kind)| (signature, kind, closed_function_type(signature)))
+            .collect();
+        for (signature, kind, function_type) in &signatures {
             if self.globals.contains_key(&signature.name) {
-                return Err(FunctionCheckingError::DuplicateGlobal(
+                return Err(DeclarationCheckingError::DuplicateGlobal(
                     signature.name.clone(),
                 ));
             }
@@ -124,27 +178,27 @@ impl TypeChecker {
                 .with_global_type(
                     Global {
                         name: signature.name.clone(),
-                        kind: GlobalKind::Function,
+                        kind: *kind,
                     },
                     function_type,
                 )
-                .map_err(|error| FunctionCheckingError::Signature {
+                .map_err(|error| DeclarationCheckingError::Signature {
                     name: signature.name.clone(),
                     error,
                 })?;
         }
 
         let scope = self.scope();
-        for (signature, function_type, _) in &functions {
+        for (signature, _, function_type) in &signatures {
             scope
                 .check_value(function_type, &Value::Type)
-                .map_err(|error| FunctionCheckingError::Signature {
+                .map_err(|error| DeclarationCheckingError::Signature {
                     name: signature.name.clone(),
                     error,
                 })?;
         }
 
-        for (signature, _, body) in functions {
+        for (signature, body) in functions {
             let mut closed_body = body.clone();
             for _ in &signature.parameter_types {
                 closed_body = Term::Function {
@@ -153,7 +207,7 @@ impl TypeChecker {
             }
             let (_, expected) = &self.globals[&signature.name];
             scope.check_value(&closed_body, expected).map_err(|error| {
-                FunctionCheckingError::Body {
+                DeclarationCheckingError::Body {
                     name: signature.name.clone(),
                     error,
                 }

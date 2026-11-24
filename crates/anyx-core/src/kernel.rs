@@ -4,7 +4,8 @@ use crate::lowering::{self, BindingIdentifier, GlobalKind};
 use std::fmt;
 
 mod checking;
-pub use checking::{CheckingError, FunctionCheckingError, TypeChecker};
+pub use checking::{CheckingError, DeclarationCheckingError, FunctionCheckingError, TypeChecker};
+mod data_checking;
 mod evaluation;
 pub use evaluation::{EvaluationError, convertible, evaluate, normalize, read_back};
 
