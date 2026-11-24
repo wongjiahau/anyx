@@ -94,8 +94,9 @@ inference. Macros and effects come later.
 
 ## Usable
 
-12. Literals: decide whether `NUMBER` and `STRING` stay, with built-in
+12. Literals: decide whether `NUMBER` and `STRING` stay, with built-in (done)
     `Natural` and `Text`, or wait for a prelude.
+    - Defer `NUMBER` and `STRING` to a prelude so the core needs no built-in `Natural` or `Text` types.
 13. Errors with source spans, and a CLI that checks a file and evaluates a
     chosen expression.
 14. Tests: the sample declarations as passing cases, and a failing case for

@@ -158,7 +158,7 @@ fn mentions_local(term: &Term, index: Index) -> bool {
         Term::List(elements) => elements
             .iter()
             .any(|element| mentions_local(element, index)),
-        Term::Type | Term::Global(_) | Term::Text(_) | Term::Number(_) => false,
+        Term::Type | Term::Global(_) => false,
     }
 }
 

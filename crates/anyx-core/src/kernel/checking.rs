@@ -441,7 +441,7 @@ impl Scope<'_> {
                 Ok(function_type)
             }
             Term::Match { .. } => Err(CheckingError::MatchNeedsExpectedType),
-            Term::List(_) | Term::Text(_) | Term::Number(_) => Err(CheckingError::UnsupportedTerm),
+            Term::List(_) => Err(CheckingError::UnsupportedTerm),
         }
     }
 }

@@ -50,14 +50,16 @@ fn conversion_ignores_neutral_application_grouping() {
 }
 
 #[test]
-fn evaluates_constructor_matches_from_source_and_compares_decoded_text() {
+fn evaluates_constructor_matches_from_source() {
     let parsed = parse_document(
         r#"
+DATA First RETURNS Type WITH [],
+DATA Second RETURNS Type WITH [],
 DATA Pair RETURNS Type WITH [pair (left: Type) with (right: Type) RETURNS Pair],
-FUNCTION choose RETURNS Type IS (MATCH (pair "first" with "second") WITH [
+FUNCTION choose RETURNS Type IS (MATCH (pair (First) with (Second)) WITH [
     WHEN pair (left) with (right) THEN left
 ]),
-FUNCTION expected RETURNS Type IS """first""",
+FUNCTION expected RETURNS Type IS First,
 "#,
     );
     assert!(
@@ -68,14 +70,20 @@ FUNCTION expected RETURNS Type IS """first""",
     let lowered = lower_document(&parsed.document.unwrap()).unwrap();
     let document = Document::try_from(&lowered).unwrap();
     let [
-        _,
+        ..,
         Declaration::Function { body, .. },
         Declaration::Function { body: expected, .. },
     ] = document.declarations.as_slice()
     else {
-        panic!("expected a data declaration and two functions");
+        panic!("expected two functions after the data declarations");
     };
-    assert_eq!(normalize(body, 0), Ok(Term::Text("first".into())));
+    assert_eq!(
+        normalize(body, 0),
+        Ok(Term::Global(Global {
+            name: "First".into(),
+            kind: GlobalKind::Data,
+        }))
+    );
     assert_eq!(convertible(body, expected, 0), Ok(true));
 }
 
@@ -138,22 +146,22 @@ fn blocks_on_nested_constructor_patterns_before_a_fallback() {
                         arguments: Vec::new(),
                     }],
                 },
-                result: Term::Number(0.0),
+                result: constructor("zero"),
             },
             Case {
                 pattern: Pattern::Binding,
-                result: Term::Number(1.0),
+                result: constructor("one"),
             },
         ],
     };
     assert_eq!(normalize(&term, 1), Ok(term.clone()));
     assert_eq!(
         normalize(&apply(function(term.clone()), vec![constructor("zero")]), 0),
-        Ok(Term::Number(0.0))
+        Ok(constructor("zero"))
     );
     assert_eq!(
         normalize(&apply(function(term), vec![constructor("one")]), 0),
-        Ok(Term::Number(1.0))
+        Ok(constructor("one"))
     );
 }
 

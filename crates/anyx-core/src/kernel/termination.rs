@@ -257,6 +257,6 @@ fn all_children<'term>(term: &'term Term, mut visit: impl FnMut(&'term Term) -> 
             visit(subject) && cases.iter().all(|case| visit(&case.result))
         }
         Term::List(elements) => elements.iter().all(visit),
-        Term::Type | Term::Local(_) | Term::Global(_) | Term::Text(_) | Term::Number(_) => true,
+        Term::Type | Term::Local(_) | Term::Global(_) => true,
     }
 }

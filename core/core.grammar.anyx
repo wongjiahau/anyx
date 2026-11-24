@@ -58,8 +58,6 @@ expression: ONE OF [
   ## A hole: `(successor of _)` is a function.
   hole: UNDERSCORE,
   list: SQUARE BRACKET: ZERO OR MORE: expression,
-  text: STRING,
-  number: NUMBER,
 ],
 
 ## `WHEN successor of (k) THEN ...`.

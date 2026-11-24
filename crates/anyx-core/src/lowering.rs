@@ -1,7 +1,7 @@
 //! Name resolution and lowering from the generated syntax tree.
 
 use crate::parser;
-use anyx::{Span, StringLiteral};
+use anyx::Span;
 use std::{collections::HashMap, fmt};
 
 #[derive(Debug, PartialEq)]
@@ -76,8 +76,6 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
-    Text(StringLiteral),
-    Number(f64),
 }
 
 #[derive(Debug, PartialEq)]
@@ -308,8 +306,6 @@ impl<'source> Resolver<'source> {
                     .map(|element| self.term(element))
                     .collect::<Result<_, _>>()?,
             ),
-            parser::Expression::Text(text) => Term::Text(text.value.clone()),
-            parser::Expression::Number(number) => Term::Number(number.value),
         })
     }
 

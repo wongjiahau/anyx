@@ -92,8 +92,6 @@ impl Definitions {
                     .map(|element| self.evaluate(element, environment))
                     .collect::<Result<_, _>>()?,
             ),
-            Term::Text(text) => Value::Text(text.clone()),
-            Term::Number(number) => Value::Number(*number),
         })
     }
 
@@ -274,8 +272,6 @@ impl Definitions {
             }
             Value::Neutral(neutral) => self.read_back_neutral(neutral, depth)?,
             Value::List(elements) => Term::List(self.read_back_values(elements, depth)?),
-            Value::Text(text) => Term::Text(text.clone()),
-            Value::Number(number) => Term::Number(*number),
         })
     }
 

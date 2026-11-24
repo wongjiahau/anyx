@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use anyx::{Node, Span, StringLiteral};
+use anyx::{Node, Span};
 pub use support::{CallName, DecodeError, Spanned};
 
 static REGEX_1: std::sync::LazyLock<regex::Regex> =
@@ -91,8 +91,6 @@ pub enum Expression {
     },
     Hole(Span),
     List(Spanned<Vec<Expression>>),
-    Text(Spanned<StringLiteral>),
-    Number(Spanned<f64>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -142,8 +140,6 @@ impl Expression {
             | Expression::Name { span, .. }
             | Expression::Hole(span) => *span,
             Expression::List(value) => value.span,
-            Expression::Text(value) => value.span,
-            Expression::Number(value) => value.span,
         }
     }
 }
@@ -247,8 +243,6 @@ impl support::Errors for Expression {
             }
             Expression::Hole(value) => support::Errors::errors(value, found),
             Expression::List(value) => support::Errors::errors(value, found),
-            Expression::Text(value) => support::Errors::errors(value, found),
-            Expression::Number(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -409,15 +403,6 @@ pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
         .or_else(|error| error.or(decode_expression_name(node)))
         .or_else(|error| error.or(support::underscore(node).map(Expression::Hole)))
         .or_else(|error| error.or(decode_expression_list(node).map(Expression::List)))
-        .or_else(|error| {
-            error.or(support::string(node, |_| true, "a string").map(Expression::Text))
-        })
-        .or_else(|error| {
-            error.or(
-                support::float(node, f64::NEG_INFINITY, f64::INFINITY, false, "a number")
-                    .map(Expression::Number),
-            )
-        })
 }
 
 fn decode_expression_function_type(node: &Node) -> Result<Expression, DecodeError> {

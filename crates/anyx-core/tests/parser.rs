@@ -48,3 +48,15 @@ fn reports_a_missing_function_body_at_the_end_of_the_declaration() {
     assert!(rendered.starts_with("sample.anyx:2:38:"), "{rendered}");
     assert!(rendered.contains("expected the word `IS`"), "{rendered}");
 }
+
+#[test]
+fn rejects_number_and_string_literals() {
+    for literal in ["1", "\"zero\""] {
+        let source = format!("FUNCTION example RETURNS Natural IS {literal}");
+        let parsed = parse_document(&source);
+        assert!(parsed.syntax_errors.is_empty());
+        let error = parsed.document.unwrap_err();
+        let rendered = error.render(&source, "sample.anyx");
+        assert!(rendered.starts_with("sample.anyx:1:37:"), "{rendered}");
+    }
+}

@@ -71,8 +71,6 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
-    Text(String),
-    Number(f64),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,8 +103,6 @@ pub enum Value {
     },
     Neutral(Neutral),
     List(Vec<Value>),
-    Text(String),
-    Number(f64),
 }
 
 #[derive(Clone, Debug)]
@@ -231,8 +227,6 @@ impl Scope {
                     .collect::<Result<_, _>>()?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
-            lowering::Term::Text(text) => Term::Text(text.value.clone()),
-            lowering::Term::Number(number) => Term::Number(*number),
         })
     }
 

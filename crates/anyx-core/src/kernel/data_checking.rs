@@ -155,6 +155,6 @@ fn visit_global_references<'term>(
                 visit_global_references(element, false, visit);
             }
         }
-        Term::Type | Term::Local(_) | Term::Text(_) | Term::Number(_) => {}
+        Term::Type | Term::Local(_) => {}
     }
 }
