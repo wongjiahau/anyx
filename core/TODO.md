@@ -57,7 +57,11 @@ inference. Macros and effects come later.
    - Supply closed global types to the checker because declaration checking starts in item 7.
    - Check hole-created functions against an expected function type because their parameter types must come from written annotations.
    - Compare types by beta normalization because it reuses the kernel's existing conversion rule.
-7. `FUNCTION` declarations, including recursion between them.
+7. `FUNCTION` declarations, including recursion between them. (done)
+   - Register all explicitly written function types, then check signatures before bodies so mutually recursive calls use their declared types in either order.
+   - Check declaration bodies under their written parameters using the existing function checker so dependent binders keep their source order.
+   - Keep function bodies opaque during conversion until termination checking is available so recursive calls cannot make type checking diverge.
+   - Accept caller-supplied data and constructor types because checking `DATA` declarations belongs to item 8.
 8. `DATA` declarations: constructors must return their own type, and strict
    positivity holds.
 9. `MATCH` on plain data, with exhaustiveness and redundancy checks.
