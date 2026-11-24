@@ -110,19 +110,7 @@ impl std::error::Error for LoweringError {}
 /// Resolve a single file. All its declaration heads are visible throughout it.
 pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringError> {
     let mut resolver = Resolver::default();
-    for declaration in &document.declaration {
-        match declaration {
-            parser::Declaration::Data(data) => {
-                resolver.register(&data.head, GlobalKind::Data)?;
-                for constructor in &data.constructors.value {
-                    resolver.register(&constructor.head, GlobalKind::Constructor)?;
-                }
-            }
-            parser::Declaration::Function(function) => {
-                resolver.register(&function.head, GlobalKind::Function)?;
-            }
-        }
-    }
+    resolver.register_document(document)?;
 
     let mut declarations = Vec::new();
     for declaration in &document.declaration {
@@ -151,7 +139,17 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
     Ok(Document { declarations })
 }
 
-fn head_parts(head: &parser::Head) -> (&parser::CallName, &[parser::Parameter]) {
+/// Resolve a closed expression in the namespace of a parsed document.
+pub fn lower_expression(
+    document: &parser::Document,
+    expression: &parser::Expression,
+) -> Result<Term, LoweringError> {
+    let mut resolver = Resolver::default();
+    resolver.register_document(document)?;
+    resolver.term(expression)
+}
+
+pub(crate) fn head_parts(head: &parser::Head) -> (&parser::CallName, &[parser::Parameter]) {
     match head {
         parser::Head::Plain { name, .. } => (name, &[]),
         parser::Head::WithParameters {
@@ -168,6 +166,26 @@ struct Resolver<'source> {
 }
 
 impl<'source> Resolver<'source> {
+    fn register_document(
+        &mut self,
+        document: &'source parser::Document,
+    ) -> Result<(), LoweringError> {
+        for declaration in &document.declaration {
+            match declaration {
+                parser::Declaration::Data(data) => {
+                    self.register(&data.head, GlobalKind::Data)?;
+                    for constructor in &data.constructors.value {
+                        self.register(&constructor.head, GlobalKind::Constructor)?;
+                    }
+                }
+                parser::Declaration::Function(function) => {
+                    self.register(&function.head, GlobalKind::Function)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn register(
         &mut self,
         head: &'source parser::Head,

@@ -300,6 +300,12 @@ impl TypeChecker {
             .read_back(&self.scope().synthesize_value(term)?, 0)?)
     }
 
+    /// Normalize a closed, checked term using the checked document's definitions.
+    pub fn normalize(&self, term: &Term) -> Result<Term, EvaluationError> {
+        let value = self.definitions.evaluate(term, &[])?;
+        self.definitions.read_back(&value, 0)
+    }
+
     fn scope(&self) -> Scope<'_> {
         Scope {
             globals: &self.globals,

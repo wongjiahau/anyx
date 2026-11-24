@@ -171,6 +171,14 @@ impl TryFrom<&lowering::Document> for Document {
     }
 }
 
+impl TryFrom<&lowering::Term> for Term {
+    type Error = UnboundLocal;
+
+    fn try_from(term: &lowering::Term) -> Result<Self, Self::Error> {
+        Scope::default().term(term)
+    }
+}
+
 #[derive(Default)]
 struct Scope {
     bindings: Vec<BindingIdentifier>,

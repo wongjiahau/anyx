@@ -97,8 +97,11 @@ inference. Macros and effects come later.
 12. Literals: decide whether `NUMBER` and `STRING` stay, with built-in (done)
     `Natural` and `Text`, or wait for a prelude.
     - Defer `NUMBER` and `STRING` to a prelude so the core needs no built-in `Natural` or `Text` types.
-13. Errors with source spans, and a CLI that checks a file and evaluates a
+13. Errors with source spans, and a CLI that checks a file and evaluates a (done)
     chosen expression.
+    - Locate checking errors at the enclosing signature or body, and termination errors at the first implicated head, because the generated tree already records these spans.
+    - Use `anyx-core FILE [--evaluate EXPRESSION --type TYPE]` because the expression and its expected type can be supplied explicitly and decoded with the existing grammar.
+    - Print the normalized kernel term because the core has no surface syntax for every normal form.
 14. Tests: the sample declarations as passing cases, and a failing case for
     each check.
 
