@@ -46,15 +46,18 @@ impl PlainData {
         Err(CheckingError::MatchNeedsPlainData)
     }
 
-    // Is there a constructor tree matched by this row but by none of the earlier rows?
-    fn useful(&self, earlier: &[Vec<&Pattern>], row: &[&Pattern]) -> bool {
-        let Some((first, remaining)) = row.split_first() else {
-            return earlier.is_empty();
+    // Find a row matched by the candidate and by none of the earlier rows.
+    fn uncovered(
+        &self,
+        earlier: &[Vec<&Pattern>],
+        candidate: &[&Pattern],
+        known_constructors: Option<&[Constructor]>,
+    ) -> Option<Vec<Pattern>> {
+        let Some((first, remaining)) = candidate.split_first() else {
+            return earlier.is_empty().then(Vec::new);
         };
         if let Pattern::Constructor { name, arguments } = first {
-            let specialized = specialize(earlier, name, arguments.len());
-            let row: Vec<_> = arguments.iter().chain(remaining.iter().copied()).collect();
-            return self.useful(&specialized, &row);
+            return self.uncovered_constructor(earlier, remaining, name, arguments.iter());
         }
 
         let heads: Vec<_> = earlier
@@ -64,21 +67,29 @@ impl PlainData {
                 Pattern::Binding => None,
             })
             .collect();
-        if let Some(head) = heads.first() {
-            let constructors = &self.families[&self.owners[*head]];
-            if constructors
+        let constructors = known_constructors.or_else(|| {
+            heads
+                .first()
+                .map(|head| self.families[&self.owners[*head]].as_slice())
+        });
+        let missing_constructor = if let Some(constructors) = constructors {
+            let missing = constructors
                 .iter()
-                .all(|constructor| heads.iter().any(|head| **head == constructor.name))
-            {
-                return constructors.iter().any(|constructor| {
-                    let specialized = specialize(earlier, &constructor.name, constructor.arity);
-                    let row: Vec<_> = std::iter::repeat_n(&Pattern::Binding, constructor.arity)
-                        .chain(remaining.iter().copied())
-                        .collect();
-                    self.useful(&specialized, &row)
+                .find(|constructor| !heads.contains(&&constructor.name));
+            if missing.is_none() {
+                return constructors.iter().find_map(|constructor| {
+                    self.uncovered_constructor(
+                        earlier,
+                        remaining,
+                        &constructor.name,
+                        std::iter::repeat_n(&Pattern::Binding, constructor.arity),
+                    )
                 });
             }
-        }
+            missing
+        } else {
+            None
+        };
 
         // An unmentioned constructor can only match a binding in this column.
         let defaults: Vec<_> = earlier
@@ -86,7 +97,36 @@ impl PlainData {
             .filter(|row| matches!(row[0], Pattern::Binding))
             .map(|row| row[1..].to_vec())
             .collect();
-        self.useful(&defaults, remaining)
+        let mut uncovered = self.uncovered(&defaults, remaining, None)?;
+        let first =
+            missing_constructor.map_or(Pattern::Binding, |constructor| Pattern::Constructor {
+                name: constructor.name.clone(),
+                arguments: vec![Pattern::Binding; constructor.arity],
+            });
+        uncovered.insert(0, first);
+        Some(uncovered)
+    }
+
+    fn uncovered_constructor<'pattern>(
+        &self,
+        earlier: &[Vec<&Pattern>],
+        remaining: &[&'pattern Pattern],
+        name: &str,
+        arguments: impl ExactSizeIterator<Item = &'pattern Pattern>,
+    ) -> Option<Vec<Pattern>> {
+        let arity = arguments.len();
+        let specialized = specialize(earlier, name, arity);
+        let candidate: Vec<_> = arguments.chain(remaining.iter().copied()).collect();
+        let mut uncovered = self.uncovered(&specialized, &candidate, None)?;
+        let arguments = uncovered.drain(..arity).collect();
+        uncovered.insert(
+            0,
+            Pattern::Constructor {
+                name: name.into(),
+                arguments,
+            },
+        );
+        Some(uncovered)
     }
 }
 
@@ -123,15 +163,26 @@ impl Scope<'_> {
             let mut scope = self.clone();
             scope.check_pattern(&case.pattern, &subject_type)?;
             let row = vec![&case.pattern];
-            if constructors.is_empty() || !self.plain_data.useful(&earlier, &row) {
+            if self
+                .plain_data
+                .uncovered(&earlier, &row, Some(constructors))
+                .is_none()
+            {
                 return Err(CheckingError::RedundantCase(position + 1));
             }
             scope.check_value(&case.result, expected)?;
             earlier.push(row);
         }
 
-        if !constructors.is_empty() && self.plain_data.useful(&earlier, &[&Pattern::Binding]) {
-            return Err(CheckingError::NonExhaustiveMatch);
+        if let Some(mut uncovered) =
+            self.plain_data
+                .uncovered(&earlier, &[&Pattern::Binding], Some(constructors))
+        {
+            let mut binding_names = (1..)
+                .map(|number| format!("field{number}"))
+                .filter(|name| !self.globals.contains_key(name));
+            let pattern = format_pattern(&uncovered.remove(0), &mut binding_names);
+            return Err(CheckingError::NonExhaustiveMatch { pattern });
         }
         Ok(())
     }
@@ -175,5 +226,26 @@ impl Scope<'_> {
             global,
             arguments: fields,
         })
+    }
+}
+
+fn format_pattern(pattern: &Pattern, binding_names: &mut impl Iterator<Item = String>) -> String {
+    match pattern {
+        Pattern::Binding => binding_names.next().expect("fresh pattern binding"),
+        Pattern::Constructor { name, arguments } => {
+            let mut arguments = arguments.iter();
+            // The canonical call name uses a standalone underscore for each argument slot.
+            name.split(' ')
+                .map(|part| {
+                    if part == "_" {
+                        let argument = arguments.next().expect("constructor pattern argument");
+                        format!("({})", format_pattern(argument, binding_names))
+                    } else {
+                        part.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
     }
 }

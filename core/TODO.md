@@ -79,6 +79,7 @@ inference. Macros and effects come later.
    - Check constructor fields in written order so later field types can refer to earlier pattern values.
    - Check coverage over constructor trees because this detects overlap in nested patterns without trying to prove whether field types are inhabited.
    - Allow an empty case list for data without constructors because there are no constructor cases to write.
+   - Report one missing pattern with fresh names for unconstrained fields so it can be pasted into a case.
 10. `MATCH` on indexed families such as `Vector`, with index unification.
 11. Termination: structural recursion only, at first.
 

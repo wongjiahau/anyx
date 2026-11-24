@@ -31,7 +31,9 @@ pub enum CheckingError {
         actual: usize,
     },
     RedundantCase(usize),
-    NonExhaustiveMatch,
+    NonExhaustiveMatch {
+        pattern: String,
+    },
     Evaluation(EvaluationError),
 }
 
@@ -73,7 +75,12 @@ impl fmt::Display for CheckingError {
             Self::RedundantCase(position) => {
                 write!(formatter, "MATCH case {position} is redundant")
             }
-            Self::NonExhaustiveMatch => write!(formatter, "MATCH is not exhaustive"),
+            Self::NonExhaustiveMatch { pattern } => {
+                write!(
+                    formatter,
+                    "MATCH is not exhaustive (missing case: {pattern})"
+                )
+            }
             Self::Evaluation(error) => error.fmt(formatter),
         }
     }

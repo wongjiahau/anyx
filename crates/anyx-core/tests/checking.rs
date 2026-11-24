@@ -242,7 +242,9 @@ fn rejects_invalid_plain_data_matches() {
         (
             "Natural",
             "WHEN successor of (zero) THEN zero, WHEN zero THEN zero",
-            CheckingError::NonExhaustiveMatch,
+            CheckingError::NonExhaustiveMatch {
+                pattern: "successor of (successor of (field1))".into(),
+            },
         ),
         (
             "Natural",
@@ -284,5 +286,52 @@ fn rejects_invalid_plain_data_matches() {
                 error: expected
             })
         );
+    }
+}
+
+#[test]
+fn reports_a_missing_nested_pattern_that_can_be_added_as_a_case() {
+    for (nested_case, missing_pattern) in [
+        (
+            "successor of (zero)",
+            "successor of (successor of (field2))",
+        ),
+        (
+            "successor of (successor of (previous))",
+            "successor of (zero)",
+        ),
+    ] {
+        let source = |added_case: &str| {
+            format!(
+                "{MATCH_DATA}
+                 DATA Other RETURNS Type WITH [field1 RETURNS Other],
+                 FUNCTION inspect (number: Natural) RETURNS Natural IS (MATCH number WITH [
+                     WHEN zero THEN zero,
+                     WHEN {nested_case} THEN zero,
+                     {added_case}
+                 ]),"
+            )
+        };
+        let error = TypeChecker::default()
+            .check_document(&kernel_document(&source("")))
+            .err()
+            .expect("missing case");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "body of `inspect _`: MATCH is not exhaustive (missing case: {missing_pattern})"
+            )
+        );
+        let DeclarationCheckingError::Body {
+            error: CheckingError::NonExhaustiveMatch { pattern },
+            ..
+        } = error
+        else {
+            panic!("expected a missing pattern");
+        };
+        let completed = source(&format!("WHEN {pattern} THEN zero,"));
+        TypeChecker::default()
+            .check_document(&kernel_document(&completed))
+            .unwrap();
     }
 }
