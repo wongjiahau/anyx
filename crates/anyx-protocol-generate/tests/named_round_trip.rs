@@ -143,7 +143,7 @@ fn named_types_cross_the_wire_with_their_names() {
         exchanged[0],
         (
             "share (File Id \"a\") tagged [\"hymn\"]\n".to_string(),
-            "RETURNS { share id: Share Id \"share of a\", file id: File Id \"a\", tags [\"hymn\"] }\n".to_string()
+            "RETURNS { share id ⁽Share Id \"share of a\", file id ⁽File Id \"a\", tags [\"hymn\"] }\n".to_string()
         )
     );
     assert_eq!(exchanged[1].1, "RETURNS `write\n");
@@ -181,7 +181,7 @@ fn a_record_with_a_named_default_crosses_the_wire() {
     assert_eq!(run(client.visits()), Ok(vec![visit()]));
     assert_eq!(
         client.transport.exchanged.borrow()[0].1,
-        "RETURNS [\n    {\n        at \"1970-01-01T00:00:01.000Z\",\n        by person { \"ann\" \"1970-01-01T00:00:01.000Z\" },\n        label: Share Id \"none\",\n    },\n]\n"
+        "RETURNS [\n    {\n        at \"1970-01-01T00:00:01.000Z\",\n        by person { \"ann\" \"1970-01-01T00:00:01.000Z\" },\n        label ⁽Share Id \"none\",\n    },\n]\n"
     );
 }
 
@@ -190,7 +190,7 @@ fn each_method_has_its_effects_as_a_constant() {
     let revoke = named::REVOKE_EFFECTS;
     assert!(!revoke.read_only);
     assert!(revoke.idempotent && revoke.may_retry());
-    assert_eq!(revoke.undone_by, Some("restore (id: Share Id)"));
+    assert_eq!(revoke.undone_by, Some("restore (id ⁽Share Id)"));
     assert!(named::LINKS_EFFECTS.read_only && named::LINKS_EFFECTS.may_retry());
     // No markers: the worst case, never retried on its own.
     let share = named::SHARE_TAGGED_EFFECTS;

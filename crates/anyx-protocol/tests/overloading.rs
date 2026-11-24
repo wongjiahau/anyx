@@ -1,5 +1,5 @@
 //! Methods of one shape with different parameter types, each call resolved
-//! by its arguments' types, and `value AS: type`, which states the type of
+//! by its arguments' types, and `value AS ⁽type`, which states the type of
 //! a value that has none of its own.
 
 mod common;
@@ -9,27 +9,27 @@ use anyx_protocol::{Call, Value, decode_request, encode_request};
 use common::schema;
 
 const TAGS: &str = "PROTOCOL a VERSION 1,
-NAMED TYPE File Id (value: Text),
+NAMED TYPE File Id (value ⁽Text),
 TYPE ALIAS Shade [| `dark, `light |],
 TYPE ALIAS Colour [| `blue, `red |],
 TYPE ALIAS Mood [| `calm, `wild |],
-TYPE ALIAS Point: { x (x: Integer), y (y: Integer) },
-TYPE ALIAS Size: { x (x: Integer), label (label: Text) DEFAULT label \"\" },
-TYPE ALIAS Width: { x (x: Integer) },
-METHOD tag (names: LIST Text) RETURNS NOTHING ERRORS [| |],
-METHOD tag ids (ids: LIST Integer) RETURNS NOTHING ERRORS [| |],
-METHOD open (path: Text) RETURNS NOTHING ERRORS [| |],
-METHOD open (id: File Id) RETURNS NOTHING ERRORS [| |],
-METHOD scale (factor: Float) RETURNS NOTHING ERRORS [| |],
-METHOD scale (times: Integer) RETURNS NOTHING ERRORS [| |],
-METHOD paint (shade: Shade) RETURNS NOTHING ERRORS [| |],
-METHOD paint (colour: Colour) RETURNS NOTHING ERRORS [| |],
-METHOD feel (mood: Mood) RETURNS NOTHING ERRORS [| |],
-METHOD move to (point: Point) RETURNS NOTHING ERRORS [| |],
-METHOD fit (size: Size) RETURNS NOTHING ERRORS [| |],
-METHOD show (shown: Boolean) RETURNS NOTHING ERRORS [| |],
-METHOD wait (length: Duration) RETURNS NOTHING ERRORS [| |],
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |],";
+TYPE ALIAS Point ⁽{ x (x ⁽Integer), y (y ⁽Integer) },
+TYPE ALIAS Size ⁽{ x (x ⁽Integer), label (label ⁽Text) DEFAULT label \"\" },
+TYPE ALIAS Width ⁽{ x (x ⁽Integer) },
+METHOD tag (names ⁽LIST Text) RETURNS NOTHING ERRORS [| |],
+METHOD tag ids (ids ⁽LIST Integer) RETURNS NOTHING ERRORS [| |],
+METHOD open (path ⁽Text) RETURNS NOTHING ERRORS [| |],
+METHOD open (id ⁽File Id) RETURNS NOTHING ERRORS [| |],
+METHOD scale (factor ⁽Float) RETURNS NOTHING ERRORS [| |],
+METHOD scale (times ⁽Integer) RETURNS NOTHING ERRORS [| |],
+METHOD paint (shade ⁽Shade) RETURNS NOTHING ERRORS [| |],
+METHOD paint (colour ⁽Colour) RETURNS NOTHING ERRORS [| |],
+METHOD feel (mood ⁽Mood) RETURNS NOTHING ERRORS [| |],
+METHOD move to (point ⁽Point) RETURNS NOTHING ERRORS [| |],
+METHOD fit (size ⁽Size) RETURNS NOTHING ERRORS [| |],
+METHOD show (shown ⁽Boolean) RETURNS NOTHING ERRORS [| |],
+METHOD wait (length ⁽Duration) RETURNS NOTHING ERRORS [| |],
+METHOD read (id ⁽File Id) RETURNS NOTHING ERRORS [| |],";
 
 fn text(value: &str) -> Value {
     Value::Text(value.to_string())
@@ -50,7 +50,7 @@ fn list(items: Vec<Value>) -> Value {
 /// arguments.
 fn calls(request: &str) -> Vec<(usize, Vec<Value>)> {
     decode_request(&schema(TAGS), request)
-        .unwrap_or_else(|problem| panic!("{request}: {problem}"))
+        .unwrap_or_else(|problem| panic!("{request} ⁽{problem}"))
         .into_iter()
         .map(|call| (call.method, call.arguments))
         .collect()
@@ -58,7 +58,7 @@ fn calls(request: &str) -> Vec<(usize, Vec<Value>)> {
 
 fn message(request: &str) -> String {
     decode_request(&schema(TAGS), request)
-        .map(|calls| panic!("{request}: expected a problem, read {calls:?}"))
+        .map(|calls| panic!("{request} ⁽expected a problem, read {calls:?}"))
         .unwrap_err()
         .message
 }
@@ -73,9 +73,9 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
         calls("tag ids [1, 2]"),
         [(1, vec![list(vec![Value::Integer(1), Value::Integer(2)])])]
     );
-    assert_eq!(calls("tag ([] AS: LIST Text)"), [(0, vec![list(vec![])])]);
+    assert_eq!(calls("tag ([] AS ⁽LIST Text)"), [(0, vec![list(vec![])])]);
     assert_eq!(
-        calls("tag ids ([] AS: LIST Integer)"),
+        calls("tag ids ([] AS ⁽LIST Integer)"),
         [(1, vec![list(vec![])])]
     );
     assert_eq!(calls("open \"a\""), [(2, vec![text("a")])]);
@@ -83,7 +83,7 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
     assert_eq!(
         calls("tag ([] AS (LIST Text))"),
         [(0, vec![list(vec![])])],
-        "`AS: x` is `AS (x)`"
+        "`AS ⁽x` is `AS (x)`"
     );
     assert_eq!(calls("scale 3.0"), [(4, vec![Value::Float(3.0)])]);
     assert_eq!(calls("scale 3"), [(5, vec![Value::Integer(3)])]);
@@ -96,7 +96,7 @@ fn a_call_resolves_to_the_overload_its_arguments_fit() {
 fn a_value_with_no_type_of_its_own_needs_an_annotation() {
     assert_eq!(
         message("tag []"),
-        "in `names` of `tag _`: `[]` has no type of its own; annotate it, as in `tag ([] AS: LIST Text)`"
+        "in `names` of `tag _`: `[]` has no type of its own; annotate it, as in `tag ([] AS ⁽LIST Text)`"
     );
     // Even when the method has no overloads, so that adding one never
     // breaks a call.
@@ -122,7 +122,7 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
     assert_eq!(calls("fit { x 1, label \"a\" }")[0].0, 10);
     assert_eq!(
         message("fit { x 1 }"),
-        "in `size` of `fit _`: `{ x 1 }` has no type of its own; annotate it, as in `fit ({ x 1 } AS: Size)`",
+        "in `size` of `fit _`: `{ x 1 }` has no type of its own; annotate it, as in `fit ({ x 1 } AS ⁽Size)`",
         "`size` and `width` both fit; `point` needs a `y`"
     );
     assert_eq!(
@@ -142,31 +142,31 @@ fn a_record_a_variant_a_boolean_and_a_duration_have_types_of_their_own() {
 fn a_call_no_overload_fits_lists_them() {
     assert_eq!(
         message("scale \"a\""),
-        "found `scale _` with an argument of the type `Text`; expected the types of one of its overloads: `scale (factor: Float)`, `scale (times: Integer)`; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`"
+        "found `scale _` with an argument of the type `Text`; expected the types of one of its overloads: `scale (factor ⁽Float)`, `scale (times ⁽Integer)`; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS ⁽Bytes)`"
     );
 }
 
 #[test]
 fn an_annotation_is_a_checked_claim() {
     assert_eq!(
-        message("tag ([1] AS: LIST Text)"),
+        message("tag ([1] AS ⁽LIST Text)"),
         "in `names` of `tag _`: found the number `1`; expected a string, as in `\"text\"`"
     );
     assert_eq!(
-        message("feel (`calm AS: Shade)"),
-        "in `mood` of `feel _`: found `AS: Shade`; expected `AS: Mood`, the type of `mood`"
+        message("feel (`calm AS ⁽Shade)"),
+        "in `mood` of `feel _`: found `AS ⁽Shade`; expected `AS ⁽Mood`, the type of `mood`"
     );
     assert_eq!(
-        message("feel (`calm AS: weather)"),
+        message("feel (`calm AS ⁽weather)"),
         "found `weather` after `AS`, which names no type in this protocol; expected a plain type name such as `Text` or `File Id`, or a generic type such as `LIST Text`"
     );
     assert_eq!(
-        message("tag ([] AS: LIST: TEXT)"),
+        message("tag ([] AS ⁽LIST ⁽TEXT)"),
         "found the word `TEXT`; expected the word `LIST`, `MAP`, the call `_ WHERE _` or a call whose name has no keyword; the built-in type `Text` is written in Title Case"
     );
     assert_eq!(
         message("tag [(\"a\" AS Text)]"),
-        "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it"
+        "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS ⁽LIST Text)`; a value inside another is read by the type around it"
     );
 }
 
@@ -208,7 +208,7 @@ fn a_request_states_the_types_it_depends_on() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "tag ([] AS: LIST Text),
+        "tag ([] AS ⁽LIST Text),
 tag ids [1],
 open (File Id \"a\"),
 scale 3.0,
@@ -223,11 +223,11 @@ feel (`calm),
 fn undone_by_names_one_overload() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-NAMED TYPE File Id (value: Text),
-METHOD hide (path: Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path: Text),
-METHOD hide (id: File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id: File Id),
-METHOD show (path: Text) RETURNS NOTHING ERRORS [| |],
-METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],",
+NAMED TYPE File Id (value ⁽Text),
+METHOD hide (path ⁽Text) RETURNS NOTHING ERRORS [| |] UNDONE BY show (path ⁽Text),
+METHOD hide (id ⁽File Id) RETURNS NOTHING ERRORS [| |] UNDONE BY show (id ⁽File Id),
+METHOD show (path ⁽Text) RETURNS NOTHING ERRORS [| |],
+METHOD show (id ⁽File Id) RETURNS NOTHING ERRORS [| |],",
     );
     assert_eq!(
         schema.methods[0].undone_by.as_ref().map(|undo| undo.method),
@@ -238,7 +238,7 @@ METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],",
         Some(Undo {
             method: 3,
             arguments: vec![0],
-            text: "show (id: File Id)".to_string(),
+            text: "show (id ⁽File Id)".to_string(),
         })
     );
 }
@@ -246,13 +246,13 @@ METHOD show (id: File Id) RETURNS NOTHING ERRORS [| |],",
 #[test]
 fn an_example_annotates_as_a_request_does() {
     let parsed = anyx_protocol::Schema::parse(
-        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text),
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value ⁽Text),
+METHOD read (id ⁽File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read (File Id \"a\") RETURNS NOTHING],",
     );
     assert!(parsed.is_ok(), "{parsed:?}");
     let unannotated = common::diagnostics(
-        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value: Text),
-METHOD read (id: File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read \"a\" RETURNS NOTHING],",
+        "PROTOCOL a VERSION 1, NAMED TYPE File Id (value ⁽Text),
+METHOD read (id ⁽File Id) RETURNS NOTHING ERRORS [| |] EXAMPLES [read \"a\" RETURNS NOTHING],",
     );
     assert!(
         unannotated.contains(
@@ -297,7 +297,7 @@ fn json_names_an_overload_with_its_parameters_types() {
     assert_eq!(
         decode_request_json(
             &schema,
-            "tag ids ([] AS: LIST Integer), read (File Id \"a\")"
+            "tag ids ([] AS ⁽LIST Integer), read (File Id \"a\")"
         )
         .unwrap(),
         r#"[{"arguments":[[]],"method":"tag ids _"},{"arguments":[{"FileId":"a"}],"method":"read _"}]"#
@@ -311,14 +311,14 @@ fn the_guide_lists_each_shape_s_overloads_together() {
         guide.contains(
             "One parameter position accepts disjoint types for each pair:
 
-- `open (path: Text)`, `open (id: File Id)`
-- `scale (factor: Float)`, `scale (times: Integer)`
-- `paint (shade: Shade)`, `paint (colour: Colour)`
+- `open (path ⁽Text)`, `open (id ⁽File Id)`
+- `scale (factor ⁽Float)`, `scale (times ⁽Integer)`
+- `paint (shade ⁽Shade)`, `paint (colour ⁽Colour)`
 "
         ),
         "{guide}"
     );
-    assert!(guide.contains("`tag ([] AS: LIST Text)`"), "{guide}");
+    assert!(guide.contains("`tag ([] AS ⁽LIST Text)`"), "{guide}");
 }
 
 #[test]
@@ -333,20 +333,20 @@ fn overloads_that_share_a_value_are_rejected() {
             "Colour",
         ),
         (
-            "TYPE ALIAS Crop: { width (width: Integer) }, TYPE ALIAS Pad: { width (width: Integer), fill (fill: Text) DEFAULT fill \"black\" },",
+            "TYPE ALIAS Crop ⁽{ width (width ⁽Integer) }, TYPE ALIAS Pad ⁽{ width (width ⁽Integer), fill (fill ⁽Text) DEFAULT fill \"black\" },",
             "Crop",
             "Pad",
         ),
         (
-            "TYPE ALIAS Alpha: { x (x: Text) DEFAULT x \"\" }, TYPE ALIAS Beta: { x (x: Integer) DEFAULT x 0 },",
+            "TYPE ALIAS Alpha ⁽{ x (x ⁽Text) DEFAULT x \"\" }, TYPE ALIAS Beta ⁽{ x (x ⁽Integer) DEFAULT x 0 },",
             "Alpha",
             "Beta",
         ),
     ] {
         let source = format!(
             "PROTOCOL a VERSION 1, {definitions}
-METHOD use (a: {a}) RETURNS NOTHING ERRORS [| |],
-METHOD use (b: {b}) RETURNS NOTHING ERRORS [| |],"
+METHOD use (a ⁽{a}) RETURNS NOTHING ERRORS [| |],
+METHOD use (b ⁽{b}) RETURNS NOTHING ERRORS [| |],"
         );
         let problem = common::diagnostics(&source);
         assert!(problem.contains("found overlapping methods"), "{problem}");
@@ -357,8 +357,8 @@ METHOD use (b: {b}) RETURNS NOTHING ERRORS [| |],"
 fn overloads_are_checked_in_every_optional_form() {
     let problem = common::diagnostics(
         "PROTOCOL a VERSION 1,
-METHOD find (name: Text) [in (paths: LIST Text) DEFAULT in [\".\"]] RETURNS NOTHING ERRORS [| |],
-METHOD find (name: Text) RETURNS NOTHING ERRORS [| |],",
+METHOD find (name ⁽Text) [in (paths ⁽LIST Text) DEFAULT in [\".\"]] RETURNS NOTHING ERRORS [| |],
+METHOD find (name ⁽Text) RETURNS NOTHING ERRORS [| |],",
     );
     assert!(problem.contains("written as `find _`"), "{problem}");
 }
@@ -367,20 +367,20 @@ METHOD find (name: Text) RETURNS NOTHING ERRORS [| |],",
 fn disjoint_records_and_variant_slots_select_an_overload_by_value() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-TYPE ALIAS Crop: { width (width: Integer) },
-TYPE ALIAS Pad: { width (width: Integer), fill (fill: Text) },
-TYPE ALIAS Marker: { width (width: Integer) },
-TYPE ALIAS Label: { width (width: Text) },
-TYPE ALIAS Text Option [| `item (value: Text) |],
-TYPE ALIAS Number Option [| `item (value: Integer) |],
-METHOD resize (crop: Crop) RETURNS NOTHING ERRORS [| |],
-METHOD resize (pad: Pad) RETURNS NOTHING ERRORS [| |],
-METHOD mark (number: Marker) RETURNS NOTHING ERRORS [| |],
-METHOD mark (label: Label) RETURNS NOTHING ERRORS [| |],
-METHOD select (text: Text Option) RETURNS NOTHING ERRORS [| |],
-METHOD select (number: Number Option) RETURNS NOTHING ERRORS [| |],
-METHOD tag (names: LIST Text) as (label: Text) RETURNS NOTHING ERRORS [| |],
-METHOD tag (ids: LIST Integer) as (code: Integer) RETURNS NOTHING ERRORS [| |],",
+TYPE ALIAS Crop ⁽{ width (width ⁽Integer) },
+TYPE ALIAS Pad ⁽{ width (width ⁽Integer), fill (fill ⁽Text) },
+TYPE ALIAS Marker ⁽{ width (width ⁽Integer) },
+TYPE ALIAS Label ⁽{ width (width ⁽Text) },
+TYPE ALIAS Text Option [| `item (value ⁽Text) |],
+TYPE ALIAS Number Option [| `item (value ⁽Integer) |],
+METHOD resize (crop ⁽Crop) RETURNS NOTHING ERRORS [| |],
+METHOD resize (pad ⁽Pad) RETURNS NOTHING ERRORS [| |],
+METHOD mark (number ⁽Marker) RETURNS NOTHING ERRORS [| |],
+METHOD mark (label ⁽Label) RETURNS NOTHING ERRORS [| |],
+METHOD select (text ⁽Text Option) RETURNS NOTHING ERRORS [| |],
+METHOD select (number ⁽Number Option) RETURNS NOTHING ERRORS [| |],
+METHOD tag (names ⁽LIST Text) as (label ⁽Text) RETURNS NOTHING ERRORS [| |],
+METHOD tag (ids ⁽LIST Integer) as (code ⁽Integer) RETURNS NOTHING ERRORS [| |],",
     );
     let calls = decode_request(
         &schema,

@@ -43,7 +43,7 @@ fn the_shipped_grammars_have_nothing_to_report() {
 fn syntax_errors_come_from_anyx() {
     assert_snapshot(
         "check_syntax.txt",
-        &reports(&["ENTRY: (", "ENTRY: value,, value: STRING"]),
+        &reports(&["ENTRY ⁽(", "ENTRY ⁽value,, value ⁽STRING"]),
     );
 }
 
@@ -52,11 +52,11 @@ fn rules_must_exist_once_and_be_used() {
     assert_snapshot(
         "check_rules.txt",
         &reports(&[
-            "ENTRY: valeu, value: STRING",
-            "ENTRY: thing, value: STRING",
-            "ENTRY: value, value: STRING, value: NUMBER",
-            "ENTRY: value, value: STRING, other: NUMBER",
-            "ENTRY: document, document: STRING",
+            "ENTRY ⁽valeu, value ⁽STRING",
+            "ENTRY ⁽thing, value ⁽STRING",
+            "ENTRY ⁽value, value ⁽STRING, value ⁽NUMBER",
+            "ENTRY ⁽value, value ⁽STRING, other ⁽NUMBER",
+            "ENTRY ⁽document, document ⁽STRING",
         ]),
     );
 }
@@ -66,13 +66,13 @@ fn fields_and_choices_need_names() {
     assert_snapshot(
         "check_names.txt",
         &reports(&[
-            "ENTRY: value, value: ONE OF [STRING, NUMBER]",
-            "ENTRY: value, value: ONE OF [a: STRING, a: NUMBER]",
-            "ENTRY: value, value: ONE OF [WORD \"-\", WORD \"null\", WORD \"IF\"]",
-            "ENTRY: value, value: SQUARE BRACKET [STRING, value, value]",
-            "ENTRY: value, value: CURLY BRACE [a: SQUARE BRACKET [STRING, NUMBER]]",
-            "ENTRY: value, value: CURLY BRACE [a: SQUARE BRACKET [STRING]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"a\", span: STRING, self: STRING]",
+            "ENTRY ⁽value, value ⁽ONE OF [STRING, NUMBER]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, a ⁽NUMBER]",
+            "ENTRY ⁽value, value ⁽ONE OF [WORD \"-\", WORD \"null\", WORD \"IF\"]",
+            "ENTRY ⁽value, value ⁽SQUARE BRACKET [STRING, value, value]",
+            "ENTRY ⁽value, value ⁽CURLY BRACE [a ⁽SQUARE BRACKET [STRING, NUMBER]]",
+            "ENTRY ⁽value, value ⁽CURLY BRACE [a ⁽SQUARE BRACKET [STRING]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"a\", span ⁽STRING, self ⁽STRING]",
         ]),
     );
 }
@@ -82,15 +82,15 @@ fn repetitions_belong_to_sequences() {
     assert_snapshot(
         "check_repetitions.txt",
         &reports(&[
-            "ENTRY: value, value: ZERO OR MORE: STRING",
-            "ENTRY: value, value: ONE OF [a: STRING, ZERO OR MORE: value]",
-            "ENTRY: value, value: SQUARE BRACKET [ZERO OR MORE: OPTIONAL: value]",
-            "ENTRY: value, value: ANYFIX CALL [OPTIONAL: WORD \"a\", x: STRING]",
-            "ENTRY [ZERO OR MORE: value], value: SQUARE BRACKET [text: OPTIONAL: STRING]",
-            "ENTRY: value, value: EACH: STRING",
-            "ENTRY [EACH: value, last: value], value: STRING",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"f\", items: EACH: STRING, WORD \"end\"]",
-            "ENTRY [EACH: value], value: SQUARE BRACKET [first: STRING, rest: EACH: NUMBER]",
+            "ENTRY ⁽value, value ⁽ZERO OR MORE ⁽STRING",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, ZERO OR MORE ⁽value]",
+            "ENTRY ⁽value, value ⁽SQUARE BRACKET [ZERO OR MORE ⁽OPTIONAL ⁽value]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [OPTIONAL ⁽WORD \"a\", x ⁽STRING]",
+            "ENTRY [ZERO OR MORE ⁽value], value ⁽SQUARE BRACKET [text ⁽OPTIONAL ⁽STRING]",
+            "ENTRY ⁽value, value ⁽EACH ⁽STRING",
+            "ENTRY [EACH ⁽value, last ⁽value], value ⁽STRING",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"f\", items ⁽EACH ⁽STRING, WORD \"end\"]",
+            "ENTRY [EACH ⁽value], value ⁽SQUARE BRACKET [first ⁽STRING, rest ⁽EACH ⁽NUMBER]",
         ]),
     );
 }
@@ -100,9 +100,9 @@ fn rules_must_not_recurse_without_matching() {
     assert_snapshot(
         "check_recursion.txt",
         &reports(&[
-            "ENTRY: value, value: value",
-            "ENTRY: a, a: b, b: ONE OF [x: STRING, a]",
-            "ENTRY: value, value: ONE OF [x: STRING, list: SQUARE BRACKET [ZERO OR MORE: value]]",
+            "ENTRY ⁽value, value ⁽value",
+            "ENTRY ⁽a, a ⁽b, b ⁽ONE OF [x ⁽STRING, a]",
+            "ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, list ⁽SQUARE BRACKET [ZERO OR MORE ⁽value]]",
         ]),
     );
 }
@@ -112,29 +112,29 @@ fn patterns_must_be_able_to_match() {
     assert_snapshot(
         "check_patterns.txt",
         &reports(&[
-            "ENTRY: value, value: STRING [MATCHING REGEX \"(\"]",
-            "ENTRY: value, value: NUMBER [AT LEAST 5, AT MOST 1]",
-            "ENTRY: value, value: NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]",
-            "ENTRY: value, value: NUMBER [INTEGER, INTEGER]",
-            "ENTRY: value, value: NUMBER [SIGNED, SIGNED]",
-            "ENTRY: value, value: WORD \"a b\"",
-            "ENTRY: value, value: WORD \"\"",
-            "ENTRY: value, value: ANY WORD [KEYWORD, SYMBOL]",
-            "ENTRY: value, value: ANYFIX CALL [x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [NAME [CONTAINS \"a\"], NAME [CONTAINS \"b\"]]",
-            "ENTRY: value, value: ANYFIX CALL [NO ARGUMENTS, ARGUMENTS: STRING]",
-            "ENTRY: value, value: ONE OF [x: STRING, group: PARENTHESIS: value]",
-            "ENTRY: value, value: ONE OF [x: STRING, pair: PARENTHESIS [value, other: value]]",
-            "ENTRY: value, value: WORDS",
-            "ENTRY: value, value: ANYFIX CALL [WORDS, x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [name: OPTIONAL: WORDS, x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [name: WORDS, WORD \"is\", x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"set\", name: WORDS, x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [name: WORDS [NO KEYWORD, STARTS WITH \"x\"], x: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [NAME [NO KEYWORD, ENDS WITH \" _\"]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"IF\", x: STRING, WORD \"THEN\", y: STRING] FORMAT [BREAK BEFORE WORD \"ELSE\"]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"IF\", x: STRING, WORD \"THEN\", y: STRING] FORMAT [BREAK BEFORE WORD \"IF\"]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"IF\", x: STRING, WORD \"THEN\", y: STRING] FORMAT [BREAK BEFORE WORD \"THEN\", BREAK BEFORE WORD \"THEN\"]",
+            "ENTRY ⁽value, value ⁽STRING [MATCHING REGEX \"(\"]",
+            "ENTRY ⁽value, value ⁽NUMBER [AT LEAST 5, AT MOST 1]",
+            "ENTRY ⁽value, value ⁽NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]",
+            "ENTRY ⁽value, value ⁽NUMBER [INTEGER, INTEGER]",
+            "ENTRY ⁽value, value ⁽NUMBER [SIGNED, SIGNED]",
+            "ENTRY ⁽value, value ⁽WORD \"a b\"",
+            "ENTRY ⁽value, value ⁽WORD \"\"",
+            "ENTRY ⁽value, value ⁽ANY WORD [KEYWORD, SYMBOL]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [NAME [CONTAINS \"a\"], NAME [CONTAINS \"b\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [NO ARGUMENTS, ARGUMENTS ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, group ⁽PARENTHESIS ⁽value]",
+            "ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, pair ⁽PARENTHESIS [value, other ⁽value]]",
+            "ENTRY ⁽value, value ⁽WORDS",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORDS, x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽OPTIONAL ⁽WORDS, x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽WORDS, WORD \"is\", x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"set\", name ⁽WORDS, x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD, STARTS WITH \"x\"], x ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [NAME [NO KEYWORD, ENDS WITH \" _\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"IF\", x ⁽STRING, WORD \"THEN\", y ⁽STRING] FORMAT [BREAK BEFORE WORD \"ELSE\"]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"IF\", x ⁽STRING, WORD \"THEN\", y ⁽STRING] FORMAT [BREAK BEFORE WORD \"IF\"]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"IF\", x ⁽STRING, WORD \"THEN\", y ⁽STRING] FORMAT [BREAK BEFORE WORD \"THEN\", BREAK BEFORE WORD \"THEN\"]",
         ]),
     );
 }
@@ -144,50 +144,50 @@ fn choices_that_compete_get_a_warning() {
     assert_snapshot(
         "check_choices.txt",
         &reports(&[
-            "ENTRY: value, value: ONE OF [a: STRING, b: STRING \"x\"]",
-            "ENTRY: value, value: ONE OF [a: STRING \"x\", b: STRING \"y\"]",
-            "ENTRY: value, value: ONE OF [a: STRING [STARTS WITH \"x\"], b: STRING [ENDS WITH \"y\"]]",
-            "ENTRY: value, value: ONE OF [a: STRING [STARTS WITH \"x\"], b: STRING [STARTS WITH \"y\"]]",
-            "ENTRY: value, value: ONE OF [a: LINE STRING, b: STRING]",
-            "ENTRY: value, value: ONE OF [a: STRING, b: LINE STRING \"x\"]",
-            "ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH \"x\"], b: STRING [STARTS WITH \"y\"]]",
-            "ENTRY: value, value: ONE OF [a: LINE STRING [STARTS WITH \"x\"], b: LINE STRING [ENDS WITH \"y\"]]",
-            "ENTRY: value, value: ONE OF [a: LINE STRING \"x\", b: LINE STRING \"y\"]",
-            "ENTRY: value, value: ONE OF [small: NUMBER [INTEGER, AT MOST 255], big: NUMBER]",
-            "ENTRY: value, value: ONE OF [a: NUMBER [AT MOST 1], b: NUMBER [AT LEAST 2]]",
-            "ENTRY: value, value: ONE OF [call: ANYFIX CALL, WORD \"null\"]",
-            "ENTRY: value, value: ONE OF [WORD \"null\", call: ANYFIX CALL [ARGUMENTS: ONE OR MORE: value]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD \"f\", x: STRING], b: ANYFIX CALL [WORD \"f\", ZERO OR MORE: value]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD \"f\", x: STRING], b: ANYFIX CALL [WORD \"f\", ZERO OR MORE: text]], text: STRING",
-            "ENTRY: value, value: ONE OF [a: SQUARE BRACKET [ZERO OR MORE: STRING], b: SQUARE BRACKET [ZERO OR MORE: NUMBER]]",
-            "ENTRY: value, value: ONE OF [a: SQUARE BRACKET [ONE OR MORE: STRING], b: SQUARE BRACKET [ONE OR MORE: NUMBER]]",
-            "ENTRY: value, value: ONE OF [a: SQUARE BRACKET [EACH: STRING], b: SQUARE BRACKET [ONE OR MORE: NUMBER]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [STARTS WITH \"get \"]], b: ANYFIX CALL [WORD \"set\", value]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [STARTS WITH \"get \"]], b: ANYFIX CALL [WORD \"get\", value]]",
-            "ENTRY: value, value: ONE OF [a: ANY WORD [NAME], b: ANY WORD [KEYWORD], WORD \"IF\"]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+ _$\"]], b: ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+$\"]]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+\"]], b: ANYFIX CALL [NAME [MATCHING REGEX \"[a-z]+$\"]]]",
-            "ENTRY: value, value: ONE OF [null: WORD \"null\", minus: ANYFIX CALL [WORD \"-\", n: NUMBER], words: ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+$\"]], other: ANYFIX CALL]",
-            "ENTRY: value, value: ONE OF [field: ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS: STRING], other: ANYFIX CALL [NAME [ENDS WITH \" _\"]]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD \"f\", x: ZERO OR MORE: STRING], other: ANYFIX CALL [NAME [STARTS WITH \"f\"]]]",
-            "ENTRY: value, value: ONE OF [other: ANYFIX CALL, null: WORD \"null\"]",
-            "ENTRY: value, value: ONE OF [words: ANYFIX CALL [NO ARGUMENTS], field: ANYFIX CALL [NAME [ENDS WITH \" _\"]]]",
-            "ENTRY: value, value: ONE OF [words: ANYFIX CALL [NO ARGUMENTS], null: WORD \"null\"]",
-            "ENTRY: value, value: ONE OF [null: WORD \"null\", words: ANYFIX CALL [NO ARGUMENTS]]",
-            "ENTRY: value, value: ONE OF [any: ANY NODE, text: STRING]",
-            "ENTRY: value, value: ONE OF [text: STRING, list: SQUARE BRACKET [ZERO OR MORE: value], any: ANY NODE]",
-            "ENTRY: value, value: ONE OF [integer: integer, other: ANYFIX CALL], integer: ONE OF [number: NUMBER, minus: ANYFIX CALL [WORD \"-\", n: NUMBER]]",
-            "ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], minus: ANYFIX CALL [WORD \"-\", n: NUMBER]]",
-            "ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], other: ANYFIX CALL]",
-            "ENTRY: value, value: ONE OF [signed: NUMBER [SIGNED], words: ANYFIX CALL [NO ARGUMENTS]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD \"IF\", x: STRING], b: ANYFIX CALL [name: WORDS [NO KEYWORD], x: STRING]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORD \"IF\", x: STRING], b: ANYFIX CALL [name: WORDS, x: STRING]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [name: WORDS [NO KEYWORD], x: STRING], b: ANYFIX CALL [name: WORDS [NO KEYWORD], x: NUMBER]]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [name: WORDS, x: STRING], b: ANYFIX CALL [NAME [NO KEYWORD]]]",
-            "ENTRY: value, value: ONE OF [a: WORD \"null\", b: ANYFIX CALL [name: WORDS, x: OPTIONAL: STRING]]",
-            "ENTRY: value, value: ONE OF [size: ANYFIX CALL [key: WORDS \"max size\", x], field: ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS: x]], x: ONE OF [s: STRING, n: NUMBER]",
-            "ENTRY: value, value: ONE OF [size: ANYFIX CALL [key: WORDS \"max size\", x: ZERO OR MORE: STRING], field: ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS: STRING]]",
-            "ENTRY: value, value: ONE OF [pair: ANYFIX CALL [x: STRING, WORD \"to\", y: STRING], field: ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS: ZERO OR MORE: STRING]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽STRING \"x\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING \"x\", b ⁽STRING \"y\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING [STARTS WITH \"x\"], b ⁽STRING [ENDS WITH \"y\"]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING [STARTS WITH \"x\"], b ⁽STRING [STARTS WITH \"y\"]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING, b ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽STRING, b ⁽LINE STRING \"x\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING [STARTS WITH \"x\"], b ⁽STRING [STARTS WITH \"y\"]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING [STARTS WITH \"x\"], b ⁽LINE STRING [ENDS WITH \"y\"]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽LINE STRING \"x\", b ⁽LINE STRING \"y\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [small ⁽NUMBER [INTEGER, AT MOST 255], big ⁽NUMBER]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽NUMBER [AT MOST 1], b ⁽NUMBER [AT LEAST 2]]",
+            "ENTRY ⁽value, value ⁽ONE OF [call ⁽ANYFIX CALL, WORD \"null\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [WORD \"null\", call ⁽ANYFIX CALL [ARGUMENTS ⁽ONE OR MORE ⁽value]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD \"f\", x ⁽STRING], b ⁽ANYFIX CALL [WORD \"f\", ZERO OR MORE ⁽value]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD \"f\", x ⁽STRING], b ⁽ANYFIX CALL [WORD \"f\", ZERO OR MORE ⁽text]], text ⁽STRING",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [ZERO OR MORE ⁽STRING], b ⁽SQUARE BRACKET [ZERO OR MORE ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [ONE OR MORE ⁽STRING], b ⁽SQUARE BRACKET [ONE OR MORE ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽SQUARE BRACKET [EACH ⁽STRING], b ⁽SQUARE BRACKET [ONE OR MORE ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [STARTS WITH \"get \"]], b ⁽ANYFIX CALL [WORD \"set\", value]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [STARTS WITH \"get \"]], b ⁽ANYFIX CALL [WORD \"get\", value]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANY WORD [NAME], b ⁽ANY WORD [KEYWORD], WORD \"IF\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+ _$\"]], b ⁽ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+$\"]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+\"]], b ⁽ANYFIX CALL [NAME [MATCHING REGEX \"[a-z]+$\"]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [null ⁽WORD \"null\", minus ⁽ANYFIX CALL [WORD \"-\", n ⁽NUMBER], words ⁽ANYFIX CALL [NAME [MATCHING REGEX \"^[a-z]+$\"]], other ⁽ANYFIX CALL]",
+            "ENTRY ⁽value, value ⁽ONE OF [field ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS ⁽STRING], other ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD \"f\", x ⁽ZERO OR MORE ⁽STRING], other ⁽ANYFIX CALL [NAME [STARTS WITH \"f\"]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [other ⁽ANYFIX CALL, null ⁽WORD \"null\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [words ⁽ANYFIX CALL [NO ARGUMENTS], field ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [words ⁽ANYFIX CALL [NO ARGUMENTS], null ⁽WORD \"null\"]",
+            "ENTRY ⁽value, value ⁽ONE OF [null ⁽WORD \"null\", words ⁽ANYFIX CALL [NO ARGUMENTS]]",
+            "ENTRY ⁽value, value ⁽ONE OF [any ⁽ANY NODE, text ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ONE OF [text ⁽STRING, list ⁽SQUARE BRACKET [ZERO OR MORE ⁽value], any ⁽ANY NODE]",
+            "ENTRY ⁽value, value ⁽ONE OF [integer ⁽integer, other ⁽ANYFIX CALL], integer ⁽ONE OF [number ⁽NUMBER, minus ⁽ANYFIX CALL [WORD \"-\", n ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], minus ⁽ANYFIX CALL [WORD \"-\", n ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], other ⁽ANYFIX CALL]",
+            "ENTRY ⁽value, value ⁽ONE OF [signed ⁽NUMBER [SIGNED], words ⁽ANYFIX CALL [NO ARGUMENTS]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD \"IF\", x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORD \"IF\", x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽STRING], b ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD], x ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [name ⁽WORDS, x ⁽STRING], b ⁽ANYFIX CALL [NAME [NO KEYWORD]]]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽WORD \"null\", b ⁽ANYFIX CALL [name ⁽WORDS, x ⁽OPTIONAL ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ONE OF [size ⁽ANYFIX CALL [key ⁽WORDS \"max size\", x], field ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS ⁽x]], x ⁽ONE OF [s ⁽STRING, n ⁽NUMBER]",
+            "ENTRY ⁽value, value ⁽ONE OF [size ⁽ANYFIX CALL [key ⁽WORDS \"max size\", x ⁽ZERO OR MORE ⁽STRING], field ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ONE OF [pair ⁽ANYFIX CALL [x ⁽STRING, WORD \"to\", y ⁽STRING], field ⁽ANYFIX CALL [NAME [ENDS WITH \" _\"], ARGUMENTS ⁽ZERO OR MORE ⁽STRING]]",
         ]),
     );
 }
@@ -197,12 +197,12 @@ fn any_order_takes_named_elements_that_compete_with_none() {
     assert_snapshot(
         "check_any_order.txt",
         &reports(&[
-            "ENTRY: ANY ORDER [WORD \"x\", n: NUMBER]",
-            "ENTRY: ANY ORDER [items: EACH: NUMBER]",
-            "ENTRY: ANY ORDER [errors: OPTIONAL: NUMBER]",
-            "ENTRY: ANY ORDER [name: OPTIONAL: STRING [MATCHING REGEX \"^a\"], text: ZERO OR MORE: STRING]",
-            "ENTRY: thing, thing: CURLY BRACE: ANY ORDER [text: STRING, name: STRING [MATCHING REGEX \"^a\"]]",
-            "ENTRY: ANY ORDER [count: NUMBER, label: OPTIONAL: STRING, tag: ZERO OR MORE: ANYFIX CALL [WORD \"tag\", value: STRING]]",
+            "ENTRY ⁽ANY ORDER [WORD \"x\", n ⁽NUMBER]",
+            "ENTRY ⁽ANY ORDER [items ⁽EACH ⁽NUMBER]",
+            "ENTRY ⁽ANY ORDER [errors ⁽OPTIONAL ⁽NUMBER]",
+            "ENTRY ⁽ANY ORDER [name ⁽OPTIONAL ⁽STRING [MATCHING REGEX \"^a\"], text ⁽ZERO OR MORE ⁽STRING]",
+            "ENTRY ⁽thing, thing ⁽CURLY BRACE ⁽ANY ORDER [text ⁽STRING, name ⁽STRING [MATCHING REGEX \"^a\"]]",
+            "ENTRY ⁽ANY ORDER [count ⁽NUMBER, label ⁽OPTIONAL ⁽STRING, tag ⁽ZERO OR MORE ⁽ANYFIX CALL [WORD \"tag\", value ⁽STRING]]",
         ]),
     );
 }
@@ -212,9 +212,9 @@ fn words_in_one_string_must_be_words() {
     assert_snapshot(
         "check_exact_words.txt",
         &reports(&[
-            "ENTRY: value, value: ANYFIX CALL [WORDS \"\", x: NUMBER]",
-            "ENTRY: value, value: ANYFIX CALL [WORDS \"max, size\", x: NUMBER]",
-            "ENTRY: value, value: ONE OF [a: ANYFIX CALL [WORDS \"max size\", x: NUMBER], b: ANYFIX CALL [WORD \"max\", WORD \"size\", y: NUMBER]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORDS \"\", x ⁽NUMBER]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORDS \"max, size\", x ⁽NUMBER]",
+            "ENTRY ⁽value, value ⁽ONE OF [a ⁽ANYFIX CALL [WORDS \"max size\", x ⁽NUMBER], b ⁽ANYFIX CALL [WORD \"max\", WORD \"size\", y ⁽NUMBER]]",
         ]),
     );
 }
@@ -225,31 +225,31 @@ fn groups_are_told_apart_by_their_first_word() {
         .map(|letter| {
             let letter = letter as char;
             format!(
-                "{}: OPTIONAL: WORD \"{letter}\", ",
+                "{} ⁽OPTIONAL ⁽WORD \"{letter}\", ",
                 letter.to_ascii_lowercase()
             )
         })
         .collect();
-    let too_many = format!("ENTRY: value, value: ANYFIX CALL [WORD \"F\", {nine_groups}]");
+    let too_many = format!("ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", {nine_groups}]");
     assert_snapshot(
         "check_groups.txt",
         &reports(&[
-            "ENTRY: value, value: SQUARE BRACKET [x: OPTIONAL [WORD \"A\", STRING]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", OPTIONAL [WORD \"A\", STRING]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [STRING, WORD \"A\"]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [WORD \"A\", STRING], WORD \"A\", y: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL: WORD \"A\", y: OPTIONAL: WORD \"A\"]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: WORDS \"A B\"]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: STRING, c: NUMBER]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ZERO OR MORE: ONE OF [a: WORD \"A\", b: WORD \"B\"]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: ONE OF [a: WORD \"A\", b: OPTIONAL: STRING]]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [WORD \"A\", y: WORDS, z: STRING]]",
-            "ENTRY: value, value: ANYFIX CALL [x: WORDS, y: OPTIONAL: WORD \"A\", z: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", y: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL: ONE OF [a: WORD \"A\", v: STRING], y: OPTIONAL: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [a: ZERO OR MORE: STRING, x: OPTIONAL: WORD \"X\", b: STRING, y: OPTIONAL: WORD \"X\", c: ZERO OR MORE: STRING]",
-            "ENTRY: value, value: ANYFIX CALL [x: OPTIONAL: WORD \"A\", WORD \"B\", y: STRING] FORMAT [BREAK BEFORE WORD \"B\", BREAK BEFORE WORD \"A\"]",
-            "ENTRY: value, value: ANYFIX CALL [WORD \"F\", x: OPTIONAL [y: STRING]]",
+            "ENTRY ⁽value, value ⁽SQUARE BRACKET [x ⁽OPTIONAL [WORD \"A\", STRING]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", OPTIONAL [WORD \"A\", STRING]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL [STRING, WORD \"A\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL [WORD \"A\", STRING], WORD \"A\", y ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL ⁽WORD \"A\", y ⁽OPTIONAL ⁽WORD \"A\"]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽ONE OF [a ⁽WORD \"A\", b ⁽WORDS \"A B\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽ONE OF [a ⁽WORD \"A\", b ⁽STRING, c ⁽NUMBER]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽ZERO OR MORE ⁽ONE OF [a ⁽WORD \"A\", b ⁽WORD \"B\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽ONE OF [a ⁽WORD \"A\", b ⁽OPTIONAL ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL [WORD \"A\", y ⁽WORDS, z ⁽STRING]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽WORDS, y ⁽OPTIONAL ⁽WORD \"A\", z ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD \"A\", y ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL ⁽ONE OF [a ⁽WORD \"A\", v ⁽STRING], y ⁽OPTIONAL ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [a ⁽ZERO OR MORE ⁽STRING, x ⁽OPTIONAL ⁽WORD \"X\", b ⁽STRING, y ⁽OPTIONAL ⁽WORD \"X\", c ⁽ZERO OR MORE ⁽STRING]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽OPTIONAL ⁽WORD \"A\", WORD \"B\", y ⁽STRING] FORMAT [BREAK BEFORE WORD \"B\", BREAK BEFORE WORD \"A\"]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"F\", x ⁽OPTIONAL [y ⁽STRING]]",
             &too_many,
         ]),
     );
@@ -257,8 +257,8 @@ fn groups_are_told_apart_by_their_first_word() {
 
 #[test]
 fn a_custom_bracket_pattern_requires_a_valid_opener() {
-    for opener in ["[", "|]", "[x", "[.", "[| "] {
-        let source = format!("ENTRY: value, value: BRACKET {opener:?} []");
+    for opener in ["[", "|]", "[x", "[₎", "[| "] {
+        let source = format!("ENTRY ⁽value, value ⁽BRACKET {opener:?} []");
         let diagnostic = report(&source);
         assert!(
             diagnostic.contains("expected a custom bracket opener"),

@@ -26,7 +26,7 @@ Seven classes of text get their own color:
 | Number | `number` | `42`, `-1.5`, `1_000`, `2.5e-3`, `0xFF` |
 | String | `string` | `"…"`, `"""` raw strings, `#` line strings |
 | Comment | `comment` | `## to the end of the line` |
-| Punctuation | `delimiter` | `,` `:` `.` `( ) [ ] { }` |
+| Punctuation | `delimiter` | `,` `⁽` `₎` `( ) [ ] { }` |
 
 `registerAnyx` defines the themes `anyx-light` and `anyx-dark`. To keep your
 own theme instead, spread `anyxLightThemeRules` or `anyxDarkThemeRules` into

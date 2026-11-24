@@ -1,5 +1,5 @@
-ENTRY [ZERO OR MORE: literal],
-literal: ONE OF [
-  integer: NUMBER [WRITTEN INTEGER],
-  float: NUMBER [WRITTEN FLOAT],
+ENTRY [ZERO OR MORE ⁽literal],
+literal ⁽ONE OF [
+  integer ⁽NUMBER [WRITTEN INTEGER],
+  float ⁽NUMBER [WRITTEN FLOAT],
 ],

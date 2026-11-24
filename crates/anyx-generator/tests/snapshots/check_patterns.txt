@@ -1,109 +1,109 @@
-## ENTRY: value, value: STRING [MATCHING REGEX "("]
+## ENTRY ⁽value, value ⁽STRING [MATCHING REGEX "("]
 grammar:1:45: error: found a regex that does not compile (error: unclosed group); expected the syntax of Rust's `regex` crate; fix the regex, writing each backslash twice
-  ENTRY: value, value: STRING [MATCHING REGEX "("]
+  ENTRY ⁽value, value ⁽STRING [MATCHING REGEX "("]
                                               ^^^
 
-## ENTRY: value, value: NUMBER [AT LEAST 5, AT MOST 1]
+## ENTRY ⁽value, value ⁽NUMBER [AT LEAST 5, AT MOST 1]
 grammar:1:22: error: found conditions that no number meets; expected `AT LEAST` to be no more than `AT MOST`, with an integer between them when `INTEGER` is given; fix the bounds
-  ENTRY: value, value: NUMBER [AT LEAST 5, AT MOST 1]
+  ENTRY ⁽value, value ⁽NUMBER [AT LEAST 5, AT MOST 1]
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]
+## ENTRY ⁽value, value ⁽NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]
 grammar:1:22: error: found conditions that no number meets; expected `AT LEAST` to be no more than `AT MOST`, with an integer between them when `INTEGER` is given; fix the bounds
-  ENTRY: value, value: NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]
+  ENTRY ⁽value, value ⁽NUMBER [INTEGER, AT LEAST 0.2, AT MOST 0.8]
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: NUMBER [INTEGER, INTEGER]
+## ENTRY ⁽value, value ⁽NUMBER [INTEGER, INTEGER]
 grammar:1:39: error: found a second `INTEGER`; expected each condition at most once; remove one of them
-  ENTRY: value, value: NUMBER [INTEGER, INTEGER]
+  ENTRY ⁽value, value ⁽NUMBER [INTEGER, INTEGER]
                                         ^^^^^^^
 
-## ENTRY: value, value: NUMBER [SIGNED, SIGNED]
+## ENTRY ⁽value, value ⁽NUMBER [SIGNED, SIGNED]
 grammar:1:38: error: found a second `SIGNED`; expected each condition at most once; remove one of them
-  ENTRY: value, value: NUMBER [SIGNED, SIGNED]
+  ENTRY ⁽value, value ⁽NUMBER [SIGNED, SIGNED]
                                        ^^^^^^
 
-## ENTRY: value, value: WORD "a b"
+## ENTRY ⁽value, value ⁽WORD "a b"
 grammar:1:27: error: found `WORD "a b"`, which is not one word; expected a single word, made of only name characters or only symbol characters; write one `WORD` for each word
-  ENTRY: value, value: WORD "a b"
+  ENTRY ⁽value, value ⁽WORD "a b"
                             ^^^^^
 
-## ENTRY: value, value: WORD ""
+## ENTRY ⁽value, value ⁽WORD ""
 grammar:1:27: error: found `WORD ""`, which is not one word; expected a single word, made of only name characters or only symbol characters; write one `WORD` for each word
-  ENTRY: value, value: WORD ""
+  ENTRY ⁽value, value ⁽WORD ""
                             ^^
 
-## ENTRY: value, value: ANY WORD [KEYWORD, SYMBOL]
+## ENTRY ⁽value, value ⁽ANY WORD [KEYWORD, SYMBOL]
 grammar:1:41: error: found a second kind of word; expected at most one of `KEYWORD`, `NAME` and `SYMBOL`, since a word is only one of them; use `ONE OF` to allow several kinds
-  ENTRY: value, value: ANY WORD [KEYWORD, SYMBOL]
+  ENTRY ⁽value, value ⁽ANY WORD [KEYWORD, SYMBOL]
                                           ^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽STRING]
 grammar:1:22: error: found a call of one slot and no word; expected a `WORD`, or at least two parts, since one item alone is never a call; write the part's pattern on its own
-  ENTRY: value, value: ANYFIX CALL [x: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [x ⁽STRING]
                        ^^^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [NAME [CONTAINS "a"], NAME [CONTAINS "b"]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [NAME [CONTAINS "a"], NAME [CONTAINS "b"]]
 grammar:1:56: error: found a second `NAME`; expected one `NAME [...]` holding every condition on the name; merge the two lists
-  ENTRY: value, value: ANYFIX CALL [NAME [CONTAINS "a"], NAME [CONTAINS "b"]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [NAME [CONTAINS "a"], NAME [CONTAINS "b"]]
                                                          ^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [NO ARGUMENTS, ARGUMENTS: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [NO ARGUMENTS, ARGUMENTS ⁽STRING]
 grammar:1:35: error: found both `ARGUMENTS` and `NO ARGUMENTS`; expected at most one of them; remove one
-  ENTRY: value, value: ANYFIX CALL [NO ARGUMENTS, ARGUMENTS: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [NO ARGUMENTS, ARGUMENTS ⁽STRING]
                                     ^^^^^^^^^^^^
 
-## ENTRY: value, value: ONE OF [x: STRING, group: PARENTHESIS: value]
+## ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, group ⁽PARENTHESIS ⁽value]
 grammar:1:61: warning: found a `PARENTHESIS` around exactly one element; expected none or several, since `(x)` only groups and is the same node as `x`, which leaves this matching `(x,)` alone; remove the `PARENTHESIS`, as anything may be written in parentheses already
-  ENTRY: value, value: ONE OF [x: STRING, group: PARENTHESIS: value]
+  ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, group ⁽PARENTHESIS ⁽value]
                                                               ^^^^^
 
-## ENTRY: value, value: ONE OF [x: STRING, pair: PARENTHESIS [value, other: value]]
+## ENTRY ⁽value, value ⁽ONE OF [x ⁽STRING, pair ⁽PARENTHESIS [value, other ⁽value]]
 nothing to report
 
-## ENTRY: value, value: WORDS
+## ENTRY ⁽value, value ⁽WORDS
 grammar:1:22: error: found `WORDS` outside the parts of a call; expected it only among the parts of an `ANYFIX CALL [...]`, since only a call has name words; put it in one, as in `ANYFIX CALL [name: WORDS, value]`
-  ENTRY: value, value: WORDS
+  ENTRY ⁽value, value ⁽WORDS
                        ^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORDS, x: STRING]
-grammar:1:35: error: found `WORDS` with no name; expected `name: pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name: WORDS`
-  ENTRY: value, value: ANYFIX CALL [WORDS, x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORDS, x ⁽STRING]
+grammar:1:35: error: found `WORDS` with no name; expected `name ⁽pattern`, since only a rule reference or a `WORD` can go unnamed here; add a name, as in `name ⁽WORDS`
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORDS, x ⁽STRING]
                                     ^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [name: OPTIONAL: WORDS, x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽OPTIONAL ⁽WORDS, x ⁽STRING]
 grammar:1:35: error: found a repeated `WORDS` among the parts of a call; expected each name word exactly once; write one `ANYFIX CALL` per shape and join them with `ONE OF`
-  ENTRY: value, value: ANYFIX CALL [name: OPTIONAL: WORDS, x: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽OPTIONAL ⁽WORDS, x ⁽STRING]
                                     ^^^^^^^^^^^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [name: WORDS, WORD "is", x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽WORDS, WORD "is", x ⁽STRING]
 grammar:1:48: error: found a name word right next to `WORDS`; expected a slot between them, since `WORDS` takes every name word in a row; put a slot between them, or write the words as one `WORDS`
-  ENTRY: value, value: ANYFIX CALL [name: WORDS, WORD "is", x: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽WORDS, WORD "is", x ⁽STRING]
                                                  ^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "set", name: WORDS, x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "set", name ⁽WORDS, x ⁽STRING]
 grammar:1:47: error: found a name word right next to `WORDS`; expected a slot between them, since `WORDS` takes every name word in a row; put a slot between them, or write the words as one `WORDS`
-  ENTRY: value, value: ANYFIX CALL [WORD "set", name: WORDS, x: STRING]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "set", name ⁽WORDS, x ⁽STRING]
                                                 ^^^^^^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [name: WORDS [NO KEYWORD, STARTS WITH "x"], x: STRING]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD, STARTS WITH "x"], x ⁽STRING]
 nothing to report
 
-## ENTRY: value, value: ANYFIX CALL [NAME [NO KEYWORD, ENDS WITH " _"]]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [NAME [NO KEYWORD, ENDS WITH " _"]]
 nothing to report
 
-## ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "ELSE"]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "ELSE"]
 grammar:1:107: error: found `BREAK BEFORE WORD "ELSE"`, which is not a word of the call; expected one of its `WORD` parts: "IF", "THEN"
-  ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "ELSE"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "ELSE"]
                                                                                                             ^^^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "IF"]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "IF"]
 grammar:1:107: error: found `BREAK BEFORE WORD "IF"`, the call's first part; expected a later word, since a call can't break before it starts
-  ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "IF"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "IF"]
                                                                                                             ^^^^
 
-## ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "THEN"]
+## ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "THEN"]
 grammar:1:133: error: found `BREAK BEFORE WORD "THEN"` twice; expected each word once
-  ENTRY: value, value: ANYFIX CALL [WORD "IF", x: STRING, WORD "THEN", y: STRING] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "THEN"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD "IF", x ⁽STRING, WORD "THEN", y ⁽STRING] FORMAT [BREAK BEFORE WORD "THEN", BREAK BEFORE WORD "THEN"]
                                                                                                                                       ^^^^^^
 

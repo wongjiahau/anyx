@@ -5,7 +5,7 @@ Send a request as the body of `POST https://example.com/agent`.
 ## Requests
 
 A request is a list of calls separated by commas. Each call is written in the
-shape of one of the methods below, with a value in each `(name: Type)` slot:
+shape of one of the methods below, with a value in each `(name ⁽Type)` slot:
 
     write "Hymns/a.poentaro" at revision 3 content "title \"Ode\""
 
@@ -30,8 +30,8 @@ safe to send without asking:
   and ask the person you work for when unsure.
 
 `UNDONE BY` after a method's results is the call that undoes it, with the
-method's own arguments in its slots: `UNDONE BY move (new path: Text) to
-(path: Text)` means that after `move "a" to "b"`, the call `move "b" to
+method's own arguments in its slots: `UNDONE BY move (new path ⁽Text) to
+(path ⁽Text)` means that after `move "a" to "b"`, the call `move "b" to
 "a"` takes it back. The state afterwards is equivalent, not always exactly
 the same. A method without `UNDONE BY` can't be undone by a call: its
 effect may be permanent, or it may have shown something to people outside
@@ -61,13 +61,13 @@ the account, such as by sending or sharing it.
   followed by its unit in the plural, the largest first, as in `90 seconds`
   or `1 hours 30 minutes`. The units are `days`, `hours`, `minutes`,
   `seconds` and `milliseconds`, and a unit left out counts 0.
-- `LIST: T` is `[a, b, c]`.
-- `MAP: T` is keys, each a string, with their values in braces:
+- `LIST ⁽T` is `[a, b, c]`.
+- `MAP ⁽T` is keys, each a string, with their values in braces:
   `{ "hymn" 3, "ode" 1 }`. Each key appears once. When a value is
-  words, put `:` after its key: `` { "hymn": `done } ``.
+  words, put `⁽` before its value: `` { "hymn" ⁽`done } ``.
 - A record is its fields in braces, each written in its declared shape with
   a value in each slot, in any order. Declare every slot as
-  `(name: Type)`. For example, `quiet from (start: Integer) to (end: Integer)`
+  `(name ⁽Type)`. For example, `quiet from (start ⁽Integer) to (end ⁽Integer)`
   is one field, written `{ quiet from 22 to 7 }`. Other record values include
   `{ path "a", revision 3 }`,
   `` { (`any) case, between 1 and 3 } ``. A value before a field's words
@@ -75,21 +75,21 @@ the account, such as by sending or sharing it.
   as its variant alone: `` { `by name, `hidden } ``. A field with a `DEFAULT` may
   be left out and then holds the entry after `DEFAULT`. When several fields
   share a default variant, leave those fields out to use it. When a value is words
-  and the slot is last, put `:` after the field's words:
-  `` { status: `done } ``, `{ timeout: 5 minutes }`.
+  and the slot is last, put `⁽` before the value:
+  `` { status ⁽`done } ``, `{ timeout ⁽5 minutes }`.
 - A union of variants, `` TYPE ALIAS Shade [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
 - A union is a value of one of its members, written as that member
   writes it. So a nullable `T?`, `` [| T, `null |] ``, is `` `null `` or a
-  value of `T`: `{ max depth 3 }`, `` { max depth: `null } ``.
+  value of `T`: `{ max depth 3 }`, `` { max depth ⁽`null } ``.
 - In a slot, a value written as words or a variant goes in parentheses so
   that it doesn't join the words around it: `` set (`true) ``,
   `` pick (`custom hue 0.5) ``, `wait (5 minutes)`.
 
-An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST Text)`. A value
+An argument whose type its value doesn't show is annotated with `AS ⁽` and
+its parameter's type, in parentheses: `tag ([] AS ⁽LIST Text)`. A value
 shows its type when it is a number, a string (`Text`), a duration, a list
 or map whose items show one type, a named type's value, written with its
 name, or a record or variant that only one type of the schema fits. `[]`,
@@ -110,22 +110,22 @@ TYPE ALIAS Boolean [| `false, `true |],
 # optional part, so `1 hours 30 minutes` leaves out the days, seconds and
 # milliseconds, which count 0.
 INTRINSIC FUNCTION
-    [(days: Integer) days DEFAULT 0 days]
-    [(hours: Integer) hours DEFAULT 0 hours]
-    [(minutes: Integer) minutes DEFAULT 0 minutes]
-    [(seconds: Integer) seconds DEFAULT 0 seconds]
-    [(milliseconds: Integer) milliseconds DEFAULT 0 milliseconds]
-    RETURNS (duration: Duration),
+    [(days ⁽Integer) days DEFAULT 0 days]
+    [(hours ⁽Integer) hours DEFAULT 0 hours]
+    [(minutes ⁽Integer) minutes DEFAULT 0 minutes]
+    [(seconds ⁽Integer) seconds DEFAULT 0 seconds]
+    [(milliseconds ⁽Integer) milliseconds DEFAULT 0 milliseconds]
+    RETURNS (duration ⁽Duration),
 
 # A nullable item: `` `null ``, or a value of the item written as it is,
 # as in `3` for `Integer?`.
-TYPE ALIAS (Item: TYPE) ? : [| Item, `null |],
+TYPE ALIAS (Item ⁽TYPE) ? ⁽[| Item, `null |],
 
 # A file of a schema, as the built-in `SCHEMA FILES` returns it: its path,
 # as the schema's `USE` lines reach it, and its source.
-TYPE ALIAS Schema File: {
-    path (path: Text),
-    source (source: Text),
+TYPE ALIAS Schema File ⁽{
+    path (path ⁽Text),
+    source (source ⁽Text),
 },
 ```
 
@@ -160,7 +160,7 @@ In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. Errors that methods
 share are an alias of a union of variants, such as `` TYPE ALIAS File
-Errors: [| `missing |] ``, named in each method's `ERRORS`.
+Errors ⁽[| `missing |] ``, named in each method's `ERRORS`.
 `EXAMPLES […]` after a method lists calls of it, each with its result side
 by side, as in `read "a" RETURNS …`, and a `#` line saying what it shows.
 A response writes the result alone.
@@ -179,20 +179,20 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path (path: Text),
-    revision (revision: Integer),
+    path (path ⁽Text),
+    revision (revision ⁽Integer),
 },
 
-TYPE ALIAS File { path (path: Text), revision (revision: Integer), content (content: Text) },
+TYPE ALIAS File { path (path ⁽Text), revision (revision ⁽Integer), content (content ⁽Text) },
 
 # One problem in a score.
 TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
-    line (line: Integer),
+    line (line ⁽Integer),
     # Counted from 1, in characters.
-    column (column: Integer),
-    code (code: Text),
-    message (message: Text),
+    column (column ⁽Integer),
+    code (code ⁽Text),
+    message (message ⁽Text),
 },
 
 TYPE ALIAS File Errors [|
@@ -205,23 +205,23 @@ TYPE ALIAS File Errors [|
 
 TYPE ALIAS Score Errors [|
     # The score doesn't parse. Nothing was saved.
-    `rejected (diagnostics: LIST Diagnostic),
+    `rejected (diagnostics ⁽LIST Diagnostic),
 |],
 
 # Every file this account owns.
 READ ONLY METHOD list files
-    RETURNS (files: LIST File Summary)
+    RETURNS (files ⁽LIST File Summary)
     ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
+READ ONLY METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| File Errors |],
 
 # Saves the score, if the file is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (new revision: Integer)
+METHOD write (path ⁽Text) at revision (revision ⁽Integer) content (content ⁽Text)
+    RETURNS (new revision ⁽Integer)
     ERRORS [|
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
-        `conflict at revision (revision: Integer) content (content: Text),
+        `conflict at revision (revision ⁽Integer) content (content ⁽Text),
         Score Errors,
         File Errors,
     |]
@@ -233,17 +233,17 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ],
 
 # Makes a new file, and its folders if they don't exist.
-METHOD create (path: Text) content (content: Text)
-    RETURNS (revision: Integer)
+METHOD create (path ⁽Text) content (content ⁽Text)
+    RETURNS (revision ⁽Integer)
     ERRORS [|
         # A file already has this path. Read it, or create under another path.
-        `already exists at revision (revision: Integer),
+        `already exists at revision (revision ⁽Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
-        `invalid path (message: Text),
+        `invalid path (message ⁽Text),
         Score Errors,
     |],
 
 # The score as a Standard MIDI File.
-READ ONLY METHOD export midi (path: Text)
-    RETURNS (midi: Bytes)
+READ ONLY METHOD export midi (path ⁽Text)
+    RETURNS (midi ⁽Bytes)
     ERRORS [| File Errors |],

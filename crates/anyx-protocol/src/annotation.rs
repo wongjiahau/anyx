@@ -1,5 +1,5 @@
 //! The types of a request's arguments: the type a value has of its own,
-//! from how it is written, and the type an annotation, `value AS: type`,
+//! from how it is written, and the type an annotation, `value AS ⁽type`,
 //! claims for it. A call resolves to the overload of its shape whose
 //! parameters have exactly those types.
 

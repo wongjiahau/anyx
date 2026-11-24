@@ -20,8 +20,8 @@ the tree from `SyntaxTree::nodes()` into that AST.
   - [x] `ONE OF [...]`: first match wins
   - [x] `ZERO OR MORE:`, `ONE OR MORE:`, `OPTIONAL:`
   - [x] `CURLY BRACE`, `SQUARE BRACKET`, `PARENTHESIS`, with `: pattern` or `[elements in order]`
-  - [x] `ANYFIX CALL [WORD "IF", condition: expression, ...]`
-  - [x] `ANYFIX CALL [NAME [...], ARGUMENTS: pattern]`
+  - [x] `ANYFIX CALL [WORD "IF", condition ⁽expression, ...]`
+  - [x] `ANYFIX CALL [NAME [...], ARGUMENTS ⁽pattern]`
   - [x] `WORD "x"`, `ANY WORD [KEYWORD | NAME | SYMBOL | string conditions]`
   - [x] `STRING`, `STRING "exact"`, `STRING [STARTS WITH, ENDS WITH, CONTAINS, MATCHING REGEX]`
   - [x] `NUMBER`, `NUMBER 2`, `NUMBER [INTEGER, AT LEAST n, AT MOST n]`
@@ -37,7 +37,7 @@ the tree from `SyntaxTree::nodes()` into that AST.
 ## 4. Checking a grammar
 
 - [x] Every referenced rule exists, and every rule is reachable from `ENTRY`
-- [x] Every built-in part has a name (`key: STRING`), and no two fields or choices share a name
+- [x] Every built-in part has a name (`key ⁽STRING`), and no two fields or choices share a name
 - [x] Names are valid as Rust identifiers once converted
 - [x] Warn when two `ONE OF` choices can match the same input
 - [x] Reject left recursion that can't terminate (a rule that only refers to itself)
@@ -45,7 +45,7 @@ the tree from `SyntaxTree::nodes()` into that AST.
 ## 5. Generating Rust
 
 - [x] Struct per sequence or call, enum per `ONE OF`, `Vec` for repetition, `Option` for `OPTIONAL`
-- [x] Spans everywhere: `span: Span` on structs, `span()` on enums, `Spanned<T>` for built-ins
+- [x] Spans everywhere: `span ⁽Span` on structs, `span()` on enums, `Spanned<T>` for built-ins
 - [x] `STRING` → `Spanned<String>`, keeping the `StringLiteral` pieces
 - [x] `NUMBER` → type chosen by its conditions (`u8`, `i64`, `f64`), with errors when out of range
 - [x] `ANYFIX CALL` without `ARGUMENTS` → raw `anyx::Node` arguments
@@ -128,8 +128,8 @@ calling it: `rg / search "TODO" in (fd / …)`.
 - [x] Check whether a condition accepts a choice's variants as constants,
       `REQUIRES [settings has at most one of [any case, smart case]]`;
       support it if not
-- [x] Prelude: `(items: LIST Type) has no repeats` and
-      `(items: LIST Type) has at most one of (choices: LIST Type)`, with
+- [x] Prelude: `(items ⁽LIST Type) has no repeats` and
+      `(items ⁽LIST Type) has at most one of (choices ⁽LIST Type)`, with
       tests and `PROTOCOL.md`
 - [x] A built-in call that returns the schema's files, since `SCHEMA`
       returns the guide; choose its name
@@ -144,7 +144,7 @@ calling it: `rg / search "TODO" in (fd / …)`.
         confused with "at least one", as in `any match of`, since it only
         follows `FUNCTION`.
       - Declared up front, not at their first use inside a parameter
-        (`(items: LIST: (item: Type))`), since one parameter can be used by
+        (`(items ⁽LIST ⁽(item ⁽Type))`), since one parameter can be used by
         several parameters.
       - A `Choice` marker beside `Type`, for a parameter that must be a
         `CHOICE`.
@@ -153,15 +153,15 @@ calling it: `rg / search "TODO" in (fd / …)`.
         and the special case for it in `refinement.rs` goes.
 
       ```anyx
-      FUNCTION FOR ANY [(item: Type)]
-          (items: LIST: item) has no repeats
+      FUNCTION FOR ANY [(item ⁽Type)]
+          (items ⁽LIST ⁽item) has no repeats
           RETURNS (holds: Boolean),
 
-      FUNCTION FOR ANY [(item: Choice)]
-          (items: LIST: item) has at most one of (variants: LIST: VARIANT OF item)
+      FUNCTION FOR ANY [(item ⁽Choice)]
+          (items ⁽LIST ⁽item) has at most one of (variants ⁽LIST ⁽VARIANT OF item)
           RETURNS (holds: Boolean),
 
-      FUNCTION FOR ANY [(item: Type)] (value: LIST: item) length RETURNS (size: Integer),
+      FUNCTION FOR ANY [(item ⁽Type)] (value ⁽LIST ⁽item) length RETURNS (size ⁽Integer),
       ```
 
 ### Records whose fields are anyfix shapes, and `@` fields
@@ -174,7 +174,7 @@ entry had to be `name value`, so a record couldn't read like
 
 Decided:
 - Every field is a shape whose slots hold types, and a value writes it as
-  declared, in any order. There is no separate "named" kind: `path: Text`
+  declared, in any order. There is no separate "named" kind: `path ⁽Text`
   is `path (Text)`, written `path "a"`. The field is named by its words
   (`at least (Size?) bytes` is `at least bytes`).
 
@@ -204,13 +204,13 @@ Decided:
   - `DEFAULT` takes the whole field, `_ DEFAULT _` at the root, and holds
     the entry the field takes when left out, written as a value writes it:
     `age (Integer) DEFAULT age 0`. A default is read as an entry of its
-    field, so one entry covers every slot. With a `:`, the field goes in
-    parentheses: `(age: Integer) DEFAULT age 0`.
+    field, so one entry covers every slot. With a `⁽`, the field goes in
+    parentheses: `(age ⁽Integer) DEFAULT age 0`.
   - A nullable value is written as its item, `max depth 3`, since `T?` is
     the union `UNION [T, null]` (#56).
   - A value before the words keeps its parentheses, `(any) case`: `any case`
     is one call. Readability over writability; the decoder hints at it.
-- `@(name: T)` is a field written as `@` and its value alone, `@by name`,
+- `@(name ⁽T)` is a field written as `@` and its value alone, `@by name`,
   for choices whose variants are self-describing phrases that share no word.
   `@` makes it distinct at the call site from a shaped field, and the
   declaration has the same syntax as the call site. A symbol, not a keyword,
@@ -238,9 +238,9 @@ Decided:
   uses them, but they still serve a method that takes a list.
 
 Tried and ruled out:
-- `UNNAMED name: T` as a keyword: heavy, and nothing marked the value at the
+- `UNNAMED name ⁽T` as a keyword: heavy, and nothing marked the value at the
   call site.
-- A parameter in a field's slot, `max depth (depth: Depth?)`: a lowercase
+- A parameter in a field's slot, `max depth (depth ⁽Depth?)`: a lowercase
   slot name is ambiguous with a generic's type parameter
   (`other: item of (Text)` read as a parameter). The words name the field,
   so the slot holds a type.

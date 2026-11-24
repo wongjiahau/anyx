@@ -91,7 +91,7 @@ mod tests {
         for source in [
             "environment / read variable (",
             "environment / read variable \"HOME",
-            "environment / read variable:",
+            "environment / read variable ⁽",
         ] {
             assert!(incomplete(source), "{source}");
         }

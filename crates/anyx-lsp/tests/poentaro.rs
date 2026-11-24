@@ -29,10 +29,10 @@ fn it_completes_the_words_the_grammar_allows_at_the_cursor() {
     assert_eq!(labels("|"), sections);
     assert_eq!(labels("metadata { title \"x\" },\n|"), sections);
     let kinds = ["notes", "chords", "percussion", "follow", "lyrics"];
-    assert_eq!(labels("parts [\"Melody\": |]"), kinds);
-    assert_eq!(labels("parts [\"Melody\": no|]"), kinds);
+    assert_eq!(labels("parts [\"Melody\" ⁽|]"), kinds);
+    assert_eq!(labels("parts [\"Melody\" ⁽no|]"), kinds);
     assert_eq!(
-        labels("parts [\"Melody\": notes { |}]"),
+        labels("parts [\"Melody\" ⁽notes { |}]"),
         ["instrument", "range", "sound", "volume", "octave"]
     );
 }
@@ -73,7 +73,7 @@ fn it_completes_metadata_preset_and_style_keys() {
 
 #[test]
 fn it_reports_every_mistake_in_a_list() {
-    let source = "parts [\"Melody\": nots, \"Bass\": chords, \"X\": foo],\nwhat";
+    let source = "parts [\"Melody\" ⁽nots, \"Bass\" ⁽chords, \"X\" ⁽foo],\nwhat";
     let found: Vec<&str> = Poentaro
         .check(source)
         .iter()
@@ -84,30 +84,30 @@ fn it_reports_every_mistake_in_a_list() {
 
 #[test]
 fn syntax_errors_come_from_anyx() {
-    let problems = Poentaro.check("parts [\"Melody\": notes");
+    let problems = Poentaro.check("parts [\"Melody\" ⁽notes");
     assert_eq!(problems.len(), 1);
     assert_eq!(problems[0].kind, anyx_lsp::ProblemKind::Syntax);
 }
 
 #[test]
 fn it_folds_brackets_and_strings_over_lines() {
-    let source = "metadata { title \"x\" },\nscore \"\"\"\n    1 2 3\n    \"\"\",\nparts [\n  \"M\": notes,\n]";
+    let source = "metadata { title \"x\" },\nscore \"\"\"\n    1 2 3\n    \"\"\",\nparts [\n  \"M\" ⁽notes,\n]";
     assert_eq!(anyx_lsp::folds(source).len(), 2);
 }
 
 #[test]
 fn it_completes_the_value_a_key_takes() {
-    assert_eq!(labels("metadata { hide resting parts : | }"), ["yes", "no"]);
+    assert_eq!(labels("metadata { hide resting parts ⁽| }"), ["yes", "no"]);
     assert_eq!(
-        labels("metadata { lyrics style : { bold : | } }"),
+        labels("metadata { lyrics style ⁽{ bold ⁽| } }"),
         ["yes", "no"]
     );
     assert_eq!(
-        labels("metadata { title style : { font family : | } }"),
+        labels("metadata { title style ⁽{ font family ⁽| } }"),
         ["serif", "sans serif", "monospace"]
     );
     assert_eq!(
-        labels("preset \"Solo\" { notation : | }"),
+        labels("preset \"Solo\" { notation ⁽| }"),
         [
             "numbered",
             "violin",
@@ -136,7 +136,7 @@ fn completions_carry_the_documentation_the_grammar_wrote_above_them() {
         Some("At most this many measures on one line.")
     );
     assert_eq!(
-        documentation("metadata { hide resting parts : | }", "no").as_deref(),
+        documentation("metadata { hide resting parts ⁽| }", "no").as_deref(),
         Some("Turn it off.")
     );
     // A `##` comment documents nothing.
@@ -153,11 +153,11 @@ fn a_wrong_value_is_a_problem_naming_the_values_there_are() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        messages("metadata { lyrics style : { bold : maybe } }"),
+        messages("metadata { lyrics style ⁽{ bold ⁽maybe } }"),
         ["found the word `maybe`; expected the word `yes` or `no`"]
     );
     assert_eq!(
-        messages("metadata { max measures per system : 0 }"),
+        messages("metadata { max measures per system ⁽0 }"),
         ["found the number `0`; expected an integer of at least 1"]
     );
 }
@@ -181,7 +181,7 @@ fn the_server_answers_each_message_with_the_messages_to_send_back() {
             "uri": "file:///a.poentaro",
             "languageId": "poentaro",
             "version": 1,
-            "text": "metadata { max measures per system : 0 }",
+            "text": "metadata { max measures per system ⁽0 }",
         } }),
     )));
     let [Message::Notification(diagnostics)] = &replies[..] else {

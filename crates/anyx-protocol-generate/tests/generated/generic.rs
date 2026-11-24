@@ -13,47 +13,47 @@ pub const SCHEMA_FILES: &[anyx_protocol::SchemaFile<'static>] = &[anyx_protocol:
 PROTOCOL shop VERSION 1,
 
 # A page of a long list, and where the next one starts.
-TYPE ALIAS Page of (Item: TYPE): {
-    items (items: LIST: Item),
-    next (next: Text?) DEFAULT next (`null),
+TYPE ALIAS Page of (Item ⁽TYPE) ⁽{
+    items (items ⁽LIST ⁽Item),
+    next (next ⁽Text?) DEFAULT next (`null),
     # How many there are in all.
-    total (total: Integer) DEFAULT total 0,
+    total (total ⁽Integer) DEFAULT total 0,
 },
 
 # What came of an attempt: `value` is a parameter whose name the generated
 # Rust code already uses.
-TYPE ALIAS (Value: TYPE) or (Problem: TYPE) [| `done (value: Value), `failed (problem: Problem) |],
+TYPE ALIAS (Value ⁽TYPE) or (Problem ⁽TYPE) [| `done (value ⁽Value), `failed (problem ⁽Problem) |],
 
 # A value and when it was taken, which holds an `Instant` whatever the value.
-TYPE ALIAS (Item: TYPE) dated: { item (item: Item), at (at: Instant) },
+TYPE ALIAS (Item ⁽TYPE) dated ⁽{ item (item ⁽Item), at (at ⁽Instant) },
 
 # Holds itself through a `LIST`, with its own parameter.
-TYPE ALIAS Tree of (Item: TYPE): { value (value: Item), children (children: LIST Tree of (Item)) },
+TYPE ALIAS Tree of (Item ⁽TYPE) ⁽{ value (value ⁽Item), children (children ⁽LIST Tree of (Item)) },
 
 # Keys and their values, in the same order: a slot between words.
-TYPE ALIAS Table from (Key: TYPE) to (Value: TYPE): { keys (keys: LIST: Key), values (values: LIST: Value) },
+TYPE ALIAS Table from (Key ⁽TYPE) to (Value ⁽TYPE) ⁽{ keys (keys ⁽LIST ⁽Key), values (values ⁽LIST ⁽Value) },
 
-TYPE ALIAS Payment: { amount (amount: Integer), at (at: Instant) },
+TYPE ALIAS Payment ⁽{ amount (amount ⁽Integer), at (at ⁽Instant) },
 
 TYPE ALIAS Decline [| `insufficient funds, `card expired |],
 
-TYPE ALIAS Payments: Page of (Payment),
+TYPE ALIAS Payments ⁽Page of (Payment),
 
-METHOD pay (amount: Integer) RETURNS (attempt: (Payment) or (Decline)) ERRORS [| |],
+METHOD pay (amount ⁽Integer) RETURNS (attempt ⁽(Payment) or (Decline)) ERRORS [| |],
 
-METHOD pay all (amounts: LIST Integer)
-    RETURNS (attempts: Page of ((Payment) or (Decline)))
+METHOD pay all (amounts ⁽LIST Integer)
+    RETURNS (attempts ⁽Page of ((Payment) or (Decline)))
     ERRORS [| |],
 
-METHOD payments RETURNS (payments: Payments) ERRORS [| |],
+METHOD payments RETURNS (payments ⁽Payments) ERRORS [| |],
 
-METHOD count (payments: Page of (Payment)) RETURNS (count: Integer) ERRORS [| |],
+METHOD count (payments ⁽Page of (Payment)) RETURNS (count ⁽Integer) ERRORS [| |],
 
-METHOD categories RETURNS (categories: Tree of (Text)) ERRORS [| |],
+METHOD categories RETURNS (categories ⁽Tree of (Text)) ERRORS [| |],
 
-METHOD latest RETURNS (latest: (Text) dated) ERRORS [| |],
+METHOD latest RETURNS (latest ⁽(Text) dated) ERRORS [| |],
 
-METHOD prices RETURNS (prices: Table from (Text) to (Integer)) ERRORS [| |],
+METHOD prices RETURNS (prices ⁽Table from (Text) to (Integer)) ERRORS [| |],
 "#,
 }];
 

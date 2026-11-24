@@ -22,20 +22,20 @@ PROTOCOL poentaro VERSION 1,
 # A file in the account's tree.
 TYPE ALIAS File Summary {
     # A slash path, such as `Hymns/hymn.poentaro`.
-    path (path: Text),
-    revision (revision: Integer),
+    path (path ⁽Text),
+    revision (revision ⁽Integer),
 },
 
-TYPE ALIAS File { path (path: Text), revision (revision: Integer), content (content: Text) },
+TYPE ALIAS File { path (path ⁽Text), revision (revision ⁽Integer), content (content ⁽Text) },
 
 # One problem in a score.
 TYPE ALIAS Diagnostic {
     # Counted from 1, in the content you sent.
-    line (line: Integer),
+    line (line ⁽Integer),
     # Counted from 1, in characters.
-    column (column: Integer),
-    code (code: Text),
-    message (message: Text),
+    column (column ⁽Integer),
+    code (code ⁽Text),
+    message (message ⁽Text),
 },
 
 TYPE ALIAS File Errors [|
@@ -48,23 +48,23 @@ TYPE ALIAS File Errors [|
 
 TYPE ALIAS Score Errors [|
     # The score doesn't parse. Nothing was saved.
-    `rejected (diagnostics: LIST Diagnostic),
+    `rejected (diagnostics ⁽LIST Diagnostic),
 |],
 
 # Every file this account owns.
 READ ONLY METHOD list files
-    RETURNS (files: LIST File Summary)
+    RETURNS (files ⁽LIST File Summary)
     ERRORS [| |],
 
-READ ONLY METHOD read (path: Text) RETURNS (file: File) ERRORS [| File Errors |],
+READ ONLY METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [| File Errors |],
 
 # Saves the score, if the file is still at `revision`.
-METHOD write (path: Text) at revision (revision: Integer) content (content: Text)
-    RETURNS (new revision: Integer)
+METHOD write (path ⁽Text) at revision (revision ⁽Integer) content (content ⁽Text)
+    RETURNS (new revision ⁽Integer)
     ERRORS [|
         # Someone saved first. Apply your change to `content`, then write at
         # `revision`.
-        `conflict at revision (revision: Integer) content (content: Text),
+        `conflict at revision (revision ⁽Integer) content (content ⁽Text),
         Score Errors,
         File Errors,
     |]
@@ -76,19 +76,19 @@ METHOD write (path: Text) at revision (revision: Integer) content (content: Text
     ],
 
 # Makes a new file, and its folders if they don't exist.
-METHOD create (path: Text) content (content: Text)
-    RETURNS (revision: Integer)
+METHOD create (path ⁽Text) content (content ⁽Text)
+    RETURNS (revision ⁽Integer)
     ERRORS [|
         # A file already has this path. Read it, or create under another path.
-        `already exists at revision (revision: Integer),
+        `already exists at revision (revision ⁽Integer),
         # The path isn't valid, such as an empty folder name or a `..`.
-        `invalid path (message: Text),
+        `invalid path (message ⁽Text),
         Score Errors,
     |],
 
 # The score as a Standard MIDI File.
-READ ONLY METHOD export midi (path: Text)
-    RETURNS (midi: Bytes)
+READ ONLY METHOD export midi (path ⁽Text)
+    RETURNS (midi ⁽Bytes)
     ERRORS [| File Errors |],
 "#,
 }];

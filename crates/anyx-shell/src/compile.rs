@@ -603,7 +603,7 @@ impl Compiler<'_> {
         if entries.is_empty() && expected.is_none() {
             return Err(self.error(
                 span,
-                "empty braces have no type of their own; annotate them with `AS: Type`",
+                "empty braces have no type of their own; annotate them with `AS ⁽Type`",
             ));
         }
         // Each entry is a map's key and value, or a record's entry: a call
@@ -684,7 +684,7 @@ impl Compiler<'_> {
             _ => {
                 return Err(self.error(
                     span,
-                    "record has no unambiguous type; annotate it with `AS: Type`",
+                    "record has no unambiguous type; annotate it with `AS ⁽Type`",
                 ));
             }
         };
@@ -822,7 +822,7 @@ impl Compiler<'_> {
 fn first_run(expression: &Expression) -> &anyx::Run {
     match expression {
         Expression::Run(run) => run,
-        Expression::Dot(binary) | Expression::Colon(binary) => first_run(&binary.left),
+        Expression::LeftGroup(binary) | Expression::RightGroup(binary) => first_run(&binary.left),
     }
 }
 

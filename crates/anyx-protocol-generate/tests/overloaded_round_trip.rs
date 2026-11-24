@@ -126,7 +126,7 @@ fn the_client_annotates_what_its_arguments_leave_open() {
     assert_eq!(
         *client.transport.requests.borrow(),
         [
-            "tag paths ([] AS: LIST Text)\n",
+            "tag paths ([] AS ⁽LIST Text)\n",
             "tag ids [File Id \"a\"]\n",
             "scale 3.0\n",
             "scale 3\n",
@@ -151,6 +151,6 @@ fn each_overload_has_its_effects() {
     assert!(scale.read_only && scale.may_retry());
     assert_eq!(
         overloaded::HIDE_WITH_FILE_ID_EFFECTS.undone_by,
-        Some("show (id: File Id)")
+        Some("show (id ⁽File Id)")
     );
 }

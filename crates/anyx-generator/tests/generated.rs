@@ -102,12 +102,12 @@ fn the_config_format_decodes() {
     use config::{Setting, Value};
 
     let source = "server {
-  host: \"localhost\",
-  port: 8080,
-  allowed origins: [\"a\", \"b\"],
-  pinned ports: [|> 8080, 8081 <|],
+  host ⁽\"localhost\",
+  port ⁽8080,
+  allowed origins ⁽[\"a\", \"b\"],
+  pinned ports ⁽[|> 8080, 8081 <|],
   verbose logging,
-  tls { certificate: \"cert.pem\" },
+  tls { certificate ⁽\"cert.pem\" },
 }";
     let document = config::decode_document(&parse(source)).unwrap();
     let [server] = &document.section[..] else {
@@ -162,7 +162,7 @@ fn a_custom_bracket_pattern_matches_only_its_named_opener() {
 
 #[test]
 fn each_keeps_a_setting_that_does_not_fit_as_its_error() {
-    let source = "server { port: 8080, \"oops\", tls { certificate: (1, 2) }, verbose logging }";
+    let source = "server { port ⁽8080, \"oops\", tls { certificate ⁽(1, 2) }, verbose logging }";
     let document = config::decode_document(&parse(source)).unwrap();
     let [server] = &document.section[..] else {
         panic!("{:?}", document.section);
@@ -182,7 +182,7 @@ fn each_keeps_a_setting_that_does_not_fit_as_its_error() {
         settings,
         [
             Ok("port _"),
-            Err("input:1:22: found the string \"oops\"; expected a call whose name matches the regex `^[a-z][a-z0-9 ]* _$` or a call whose name matches the regex `^[a-z][a-z0-9 ]*$`\n  server { port: 8080, \"oops\", tls { certificate: (1, 2) }, verbose logging }\n                       ^^^^^^".to_string()),
+            Err("input:1:22: found the string \"oops\"; expected a call whose name matches the regex `^[a-z][a-z0-9 ]* _$` or a call whose name matches the regex `^[a-z][a-z0-9 ]*$`\n  server { port ⁽8080, \"oops\", tls { certificate ⁽(1, 2) }, verbose logging }\n                       ^^^^^^".to_string()),
             Ok("tls _"),
             Ok("verbose logging"),
         ]
@@ -285,7 +285,7 @@ fn json_decodes_into_its_tree() {
     // Every part knows where it was written.
     let written = |span: anyx::Span| &source[span.start..span.end];
     assert_eq!(written(object.member[0].key.span), "\"name\"");
-    assert_eq!(written(object.member[0].span), "\"name\": \"resh\"");
+    assert_eq!(written(object.member[0].span), "\"name\" ⁽\"resh\"");
     assert_eq!(
         written(value("keywords").span()),
         "[\"shell\", \"cli\", \"language\"]"
@@ -539,9 +539,9 @@ fn json_errors_point_at_the_source() {
             "1 2",
             "nul",
             "[1, yes]",
-            "{\"a\": 1, b: 2}",
+            "{\"a\" ⁽1, b ⁽2}",
             "{\"a\" 1, 2}",
-            "{\"a\": [true, {\"b\": (1)}]}",
+            "{\"a\" ⁽[true, {\"b\" ⁽(1)}]}",
             "[1, f(2)]",
         ],
         |nodes| Ok(json::decode_document(nodes)?),
@@ -592,11 +592,11 @@ fn conditions_are_checked_where_the_value_is() {
             "(only, word)",
             "raw 1 2, rawer 1",
             "{ type, NOT_NULL, span }",
-            "SET: MAX 1",
-            "SET: 1 2",
-            "SET: x \"y\"",
-            "UNSET: OLD",
-            "UNSET: old (1)",
+            "SET ⁽MAX 1",
+            "SET ⁽1 2",
+            "SET ⁽x \"y\"",
+            "UNSET ⁽OLD",
+            "UNSET ⁽old (1)",
             "max sise 3 per page",
             "max size 3 per pages",
             "sans",
@@ -634,7 +634,7 @@ fn a_line_string_decodes_like_any_string() {
 #[test]
 fn words_decode_to_their_text_after_an_optional_leading_part() {
     let source =
-        "SET:\n  # The highest port.\n  max port 8080,\nSET: min port 1,\nUNSET: old thing";
+        "SET ⁽\n  # The highest port.\n  max port 8080,\nSET ⁽min port 1,\nUNSET ⁽old thing";
     let document = corners::decode_document(&parse(source)).unwrap();
     let [
         corners::Node::Set { field: first, .. },
@@ -782,16 +782,16 @@ fn parse_document_gives_the_syntax_errors_and_the_document() {
 
 #[test]
 fn line_strings_document_the_types_and_what_may_be_written() {
-    let source = "ENTRY: EACH: setting,
+    let source = "ENTRY ⁽EACH ⁽setting,
 # One thing to set.
-setting: ONE OF [
+setting ⁽ONE OF [
   # The size of the text,
   # in points.
-  size: ANYFIX CALL [WORDS \"size\", points: NUMBER],
+  size ⁽ANYFIX CALL [WORDS \"size\", points ⁽NUMBER],
   ## Only for whoever reads the grammar.
-  color: ANYFIX CALL [WORDS \"color\", name: STRING],
+  color ⁽ANYFIX CALL [WORDS \"color\", name ⁽STRING],
   # A switch.
-  flag: WORD \"flag\",
+  flag ⁽WORD \"flag\",
 ]";
     let generated = anyx_generator::generate(source).unwrap().code;
     assert!(
@@ -836,14 +836,14 @@ fn literal_spelling_classifies_numbers_without_rounding_their_text() {
         let nodes = anyx::parse(text).syntax.nodes();
         match literals::decode_literal(&nodes[0]).unwrap() {
             literals::Literal::Integer(value) => assert_eq!(value.value, text),
-            other => panic!("{text}: {other:?}"),
+            other => panic!("{text} ⁽{other:?}"),
         }
     }
     for text in ["3.0", "-1.5", "1e3", "3E0", "1e-3"] {
         let nodes = anyx::parse(text).syntax.nodes();
         match literals::decode_literal(&nodes[0]).unwrap() {
             literals::Literal::Float(value) => assert_eq!(value.value, text),
-            other => panic!("{text}: {other:?}"),
+            other => panic!("{text} ⁽{other:?}"),
         }
     }
 }

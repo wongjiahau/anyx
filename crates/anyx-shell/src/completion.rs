@@ -60,7 +60,7 @@ impl Completion {
 struct Frame<'a> {
     tokens: Vec<&'a Token>,
     start: Option<usize>,
-    dot: bool,
+    after_left_group: bool,
 }
 
 impl Interpreter {
@@ -120,10 +120,10 @@ impl Interpreter {
                     frames.pop();
                     frames.last_mut().unwrap().tokens.push(token);
                 }
-                TokenKind::Comma | TokenKind::Colon => *frame = Frame::default(),
-                TokenKind::Dot => {
+                TokenKind::Comma | TokenKind::RightGroup => *frame = Frame::default(),
+                TokenKind::LeftGroup => {
                     frame.tokens.clear();
-                    frame.dot = true;
+                    frame.after_left_group = true;
                 }
                 TokenKind::End => {}
                 _ => {
@@ -138,7 +138,7 @@ impl Interpreter {
             .first()
             .and_then(|token| self.tools.get_key_value(&token.text));
         let mut items = Vec::new();
-        if current.is_empty() && !frame.dot {
+        if current.is_empty() && !frame.after_left_group {
             items.extend(
                 self.tools
                     .keys()
@@ -232,7 +232,7 @@ impl Interpreter {
                 } else {
                     current.as_slice()
                 };
-                let implicit_slot = usize::from(frame.dot && !qualified);
+                let implicit_slot = usize::from(frame.after_left_group && !qualified);
                 if implicit_slot == 1 && parts.first() != Some(&"_") {
                     continue;
                 }
@@ -416,7 +416,7 @@ pub(crate) fn expression_tokens<'a>(expression: &'a Expression, tokens: &mut Vec
                 }
             }
         }
-        Expression::Dot(binary) | Expression::Colon(binary) => {
+        Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
             expression_tokens(&binary.left, tokens);
             tokens.push(&binary.operator);
             expression_tokens(&binary.right, tokens);

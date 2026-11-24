@@ -1,20 +1,20 @@
 ## Shell directive syntax. Call shapes come from the tool schemas.
-ENTRY [ONE OR MORE: directive],
-directive: ONE OF [opening, import],
+ENTRY [ONE OR MORE ⁽directive],
+directive ⁽ONE OF [opening, import],
 ## `USE ALL FROM fd`: call fd's methods without `fd /`.
-opening: ANYFIX CALL [
+opening ⁽ANYFIX CALL [
   WORD "USE",
   WORD "ALL",
   WORD "FROM",
-  scope: tool name,
+  scope ⁽tool name,
 ],
 ## `USE fd FROM COMMAND "anyx-fd"`: bring in the program as the tool `fd`.
 ## The program answers each request when run with `--anyx-protocol`.
-import: ANYFIX CALL [
+import ⁽ANYFIX CALL [
   WORD "USE",
-  scope: tool name,
+  scope ⁽tool name,
   WORD "FROM",
   WORD "COMMAND",
-  program: STRING,
+  program ⁽STRING,
 ],
-tool name: ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*$"]],
+tool name ⁽ANYFIX CALL [NAME [MATCHING REGEX "^[a-z][a-z0-9]*$"]],

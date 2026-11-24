@@ -26,7 +26,7 @@ pub fn guide(schema: &Schema, how_to_send: &str) -> String {
 {how_to_send}## Requests
 
 A request is a list of calls separated by commas. Each call is written in the
-shape of one of the methods below, with a value in each `(name: Type)` slot:
+shape of one of the methods below, with a value in each `(name ⁽Type)` slot:
 
     {example}
 {overloads}
@@ -51,8 +51,8 @@ safe to send without asking:
   and ask the person you work for when unsure.
 
 `UNDONE BY` after a method's results is the call that undoes it, with the
-method's own arguments in its slots: `UNDONE BY move (new path: Text) to
-(path: Text)` means that after `move \"a\" to \"b\"`, the call `move \"b\" to
+method's own arguments in its slots: `UNDONE BY move (new path ⁽Text) to
+(path ⁽Text)` means that after `move \"a\" to \"b\"`, the call `move \"b\" to
 \"a\"` takes it back. The state afterwards is equivalent, not always exactly
 the same. A method without `UNDONE BY` can't be undone by a call: its
 effect may be permanent, or it may have shown something to people outside
@@ -60,13 +60,13 @@ the account, such as by sending or sharing it.
 
 ## Values
 
-{built_in}- `LIST: T` is `[a, b, c]`.
-- `MAP: T` is keys, each a string, with their values in braces:
+{built_in}- `LIST ⁽T` is `[a, b, c]`.
+- `MAP ⁽T` is keys, each a string, with their values in braces:
   `{{ \"hymn\" 3, \"ode\" 1 }}`. Each key appears once. When a value is
-  words, put `:` after its key: `` {{ \"hymn\": `done }} ``.
+  words, put `⁽` before its value: `` {{ \"hymn\" ⁽`done }} ``.
 - A record is its fields in braces, each written in its declared shape with
   a value in each slot, in any order. Declare every slot as
-  `(name: Type)`. For example, `quiet from (start: Integer) to (end: Integer)`
+  `(name ⁽Type)`. For example, `quiet from (start ⁽Integer) to (end ⁽Integer)`
   is one field, written `{{ quiet from 22 to 7 }}`. Other record values include
   `{{ path \"a\", revision 3 }}`,
   `` {{ (`any) case, between 1 and 3 }} ``. A value before a field's words
@@ -74,21 +74,21 @@ the account, such as by sending or sharing it.
   as its variant alone: `` {{ `by name, `hidden }} ``. A field with a `DEFAULT` may
   be left out and then holds the entry after `DEFAULT`. When several fields
   share a default variant, leave those fields out to use it. When a value is words
-  and the slot is last, put `:` after the field's words:
-  `` {{ status: `done }} ``, `{{ timeout: 5 minutes }}`.
+  and the slot is last, put `⁽` before the value:
+  `` {{ status ⁽`done }} ``, `{{ timeout ⁽5 minutes }}`.
 - A union of variants, `` TYPE ALIAS Shade [| `dark, `light |] ``, is
   one of its variants, written as a backtick and the variant's shape
   with a value in each slot: `` `dark ``, `` `custom hue 0.5 ``. A call
   without the backtick is a function, such as a named type's constructor.
 - A union is a value of one of its members, written as that member
   writes it. So a nullable `T?`, `` [| T, `null |] ``, is `` `null `` or a
-  value of `T`: `{{ max depth 3 }}`, `` {{ max depth: `null }} ``.
+  value of `T`: `{{ max depth 3 }}`, `` {{ max depth ⁽`null }} ``.
 {generic_types}{named_types}- In a slot, a value written as words or a variant goes in parentheses so
   that it doesn't join the words around it: `` set (`true) ``,
   `` pick (`custom hue 0.5) ``, `wait (5 minutes)`.
 
-An argument whose type its value doesn't show is annotated with `AS:` and
-its parameter's type, in parentheses: `tag ([] AS: LIST Text)`. A value
+An argument whose type its value doesn't show is annotated with `AS ⁽` and
+its parameter's type, in parentheses: `tag ([] AS ⁽LIST Text)`. A value
 shows its type when it is a number, a string (`Text`), a duration, a list
 or map whose items show one type, a named type's value, written with its
 name, or a record or variant that only one type of the schema fits. `[]`,
@@ -128,7 +128,7 @@ In the schema, a `#` line before a definition says what it means. Types
 are named in Title Case, such as `File Summary`; other names are lowercase
 words; all-caps words belong to the schema language. Errors that methods
 share are an alias of a union of variants, such as `` TYPE ALIAS File
-Errors: [| `missing |] ``, named in each method's `ERRORS`.{examples}{imports}
+Errors ⁽[| `missing |] ``, named in each method's `ERRORS`.{examples}{imports}
 
 {source}
 ",
@@ -283,7 +283,7 @@ fn wrap(text: &str, indent: &str) -> String {
 }
 
 /// The rule for generic types, shown with the schema's first one: "`TYPE ALIAS
-/// page of (Item: TYPE): { … }`" or "`TYPE ALIAS (Value: TYPE) or (Problem:
+/// page of (Item ⁽TYPE) ⁽{ … }`" or "`TYPE ALIAS (Value ⁽TYPE) or (Problem ⁽
 /// TYPE) [| … |]`", then a use of it. Empty for a schema without any.
 fn generic_types(schema: &Schema) -> String {
     let Some(definition) = schema
@@ -295,13 +295,13 @@ fn generic_types(schema: &Schema) -> String {
     };
     let (keyword, body) = match definition.kind {
         TypeKind::Variants(_) => ("TYPE ALIAS", " [| … |]"),
-        TypeKind::Record(_) => ("TYPE ALIAS", ": { … }"),
+        TypeKind::Record(_) => ("TYPE ALIAS", " ⁽{ … }"),
         TypeKind::Distinct { .. } => return String::new(),
     };
     let declared: Vec<String> = definition
         .parameters
         .iter()
-        .map(|parameter| format!("{parameter}: TYPE"))
+        .map(|parameter| format!("{parameter} ⁽TYPE"))
         .collect();
     let arguments = vec!["Text".to_string(); definition.parameters.len()];
     format!(
@@ -406,7 +406,7 @@ fn sample_call(schema: &Schema, method: &Method) -> String {
             .iter()
             .map(|parameter| match always_annotated(&parameter.r#type) {
                 true => format!(
-                    "({} AS: {})",
+                    "({} AS ⁽{})",
                     sample(schema, &parameter.r#type),
                     schema.type_name(&parameter.r#type)
                 ),

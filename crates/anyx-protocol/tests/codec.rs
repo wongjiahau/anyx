@@ -157,10 +157,10 @@ fn an_invalid_request_reads_back() {
 
 const MODES: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Shade [| `dark, `light |],
-TYPE ALIAS Mode [| `dark, `light, `custom hue (hue: Float), `(base: Shade) dimmed |],
-TYPE ALIAS Options: { mode (mode: Mode), strict (strict: Boolean) DEFAULT strict (`false) },
-METHOD set (mode: Mode) strict (strict: Boolean) RETURNS (ok: Boolean) ERRORS [| |],
-METHOD apply (options: Options) RETURNS (modes: LIST: Mode) ERRORS [| |],";
+TYPE ALIAS Mode [| `dark, `light, `custom hue (hue ⁽Float), `(base ⁽Shade) dimmed |],
+TYPE ALIAS Options ⁽{ mode (mode ⁽Mode), strict (strict ⁽Boolean) DEFAULT strict (`false) },
+METHOD set (mode ⁽Mode) strict (strict ⁽Boolean) RETURNS (ok ⁽Boolean) ERRORS [| |],
+METHOD apply (options ⁽Options) RETURNS (modes ⁽LIST ⁽Mode) ERRORS [| |],";
 
 #[test]
 fn words_in_slots_go_in_parentheses() {
@@ -211,7 +211,7 @@ fn words_in_slots_go_in_parentheses() {
         "set (`dark AS Mode) strict (`true),
 set (`custom hue 0.5) strict (`false),
 set (`(`dark) dimmed) strict (`false),
-apply { mode: `(`light) dimmed, strict: `false },
+apply { mode ⁽`(`light) dimmed, strict ⁽`false },
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -237,7 +237,7 @@ fn text_that_a_raw_string_cannot_hold_is_quoted() {
 #[test]
 fn a_number_that_is_not_finite_has_no_form() {
     let schema =
-        schema("PROTOCOL a VERSION 1, METHOD f (x: Float) RETURNS (y: Float) ERRORS [| |],");
+        schema("PROTOCOL a VERSION 1, METHOD f (x ⁽Float) RETURNS (y ⁽Float) ERRORS [| |],");
     let calls = vec![Call {
         method: 0,
         arguments: vec![Value::Float(f64::NAN)],
@@ -281,15 +281,15 @@ fn mistakes_in_a_request_point_at_where_they_are() {
 fn mistakes_in_values_name_the_parameter_and_field() {
     let schema = schema(MODES);
     let cases = [
-        "apply { mode: `dim }",
-        "apply { strict: `true }",
-        "apply { mode: `dark, mode: `dark }",
-        "apply { mode: `dark, colour: `dark }",
-        "apply { mode: `custom hue }",
-        "apply { mode: `dark hue 1 }",
-        "apply { mode: `custom hue \"red\" }",
+        "apply { mode ⁽`dim }",
+        "apply { strict ⁽`true }",
+        "apply { mode ⁽`dark, mode ⁽`dark }",
+        "apply { mode ⁽`dark, colour ⁽`dark }",
+        "apply { mode ⁽`custom hue }",
+        "apply { mode ⁽`dark hue 1 }",
+        "apply { mode ⁽`custom hue \"red\" }",
         "apply { mode `dark }",
-        "apply { mode: `dark, strict: `yes }",
+        "apply { mode ⁽`dark, strict ⁽`yes }",
         "set dark strict (`true)",
     ];
     assert_snapshot(
@@ -324,8 +324,8 @@ fn mistakes_in_a_response_point_at_where_they_are() {
 }
 
 const ACCOUNTS: &str = "PROTOCOL a VERSION 1,
-METHOD change password from (old: Text) to (new: Text) RETURNS NOTHING ERRORS [| `wrong password |],
-METHOD tag (names: LIST Text) RETURNS (count: Integer) ERRORS [| |],";
+METHOD change password from (old ⁽Text) to (new ⁽Text) RETURNS NOTHING ERRORS [| `wrong password |],
+METHOD tag (names ⁽LIST Text) RETURNS (count ⁽Integer) ERRORS [| |],";
 
 #[test]
 fn a_response_answers_each_call_by_position_without_repeating_it() {
@@ -388,7 +388,7 @@ fn a_method_that_returns_nothing_answers_returns_nothing() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         METHOD sign out RETURNS NOTHING ERRORS [| |],
-        METHOD count RETURNS (count: Integer) ERRORS [| |],",
+        METHOD count RETURNS (count ⁽Integer) ERRORS [| |],",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -419,7 +419,7 @@ fn nothing_and_a_value_are_not_mixed_up() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
         METHOD sign out RETURNS NOTHING ERRORS [| |],
-        METHOD count RETURNS (count: Integer) ERRORS [| |],",
+        METHOD count RETURNS (count ⁽Integer) ERRORS [| |],",
     );
     let sign_out = method(&schema, "sign out");
     let count = method(&schema, "count");
@@ -450,11 +450,11 @@ fn nothing_and_a_value_are_not_mixed_up() {
 }
 
 const TIMERS: &str = "PROTOCOL a VERSION 1,
-TYPE ALIAS Timer: { at (at: Instant), every (every: Duration), pause (pause: Duration) DEFAULT pause (0 seconds) },
-METHOD wait (duration: Duration) until (instant: Instant) RETURNS (started: Instant) ERRORS [| |],
-METHOD set (timer: Timer) RETURNS (left: Duration) ERRORS [| |],
-METHOD list RETURNS (durations: LIST Duration) ERRORS [| |],
-METHOD snooze (duration: Duration?) RETURNS (left: Duration) ERRORS [| |],";
+TYPE ALIAS Timer ⁽{ at (at ⁽Instant), every (every ⁽Duration), pause (pause ⁽Duration) DEFAULT pause (0 seconds) },
+METHOD wait (duration ⁽Duration) until (instant ⁽Instant) RETURNS (started ⁽Instant) ERRORS [| |],
+METHOD set (timer ⁽Timer) RETURNS (left ⁽Duration) ERRORS [| |],
+METHOD list RETURNS (durations ⁽LIST Duration) ERRORS [| |],
+METHOD snooze (duration ⁽Duration?) RETURNS (left ⁽Duration) ERRORS [| |],";
 
 fn instant(text: &str) -> Value {
     let milliseconds = |at: &str| -> u64 {
@@ -493,7 +493,7 @@ fn instants_and_durations_read_back_as_written() {
     assert_eq!(
         request,
         "wait (5 minutes) until (\"2026-11-14T06:00:08.000Z\" AS Instant),
-set { at \"1970-01-01T00:00:00.250Z\", every: 1 hours 30 minutes, pause: 0 seconds },
+set { at \"1970-01-01T00:00:00.250Z\", every ⁽1 hours 30 minutes, pause ⁽0 seconds },
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -569,8 +569,8 @@ fn mistakes_in_instants_and_durations_say_how_to_write_them() {
 fn a_field_left_out_takes_its_default() {
     let schema = schema(
         "PROTOCOL a VERSION 1,
-        TYPE ALIAS Search: { query (query: Text), limit (limit: Integer) DEFAULT limit 50, note (note: Text) DEFAULT note \"\" },
-        METHOD find (search: Search) RETURNS (search: Search) ERRORS [| |],",
+        TYPE ALIAS Search ⁽{ query (query ⁽Text), limit (limit ⁽Integer) DEFAULT limit 50, note (note ⁽Text) DEFAULT note \"\" },
+        METHOD find (search ⁽Search) RETURNS (search ⁽Search) ERRORS [| |],",
     );
     let calls = decode_request(&schema, "find { query \"ode\" }").unwrap();
     let filled = record(&[
@@ -597,9 +597,9 @@ fn a_field_left_out_takes_its_default() {
 
 const COUNTS: &str = "PROTOCOL a VERSION 1,
 TYPE ALIAS Mood [| `calm, `wild |],
-TYPE ALIAS Tally: { counts (counts: MAP Integer), moods (moods: MAP Mood) DEFAULT moods {} },
-METHOD count (tally: Tally) RETURNS (counts: MAP Integer) ERRORS [| |],
-METHOD wait (waits: MAP Duration) RETURNS (moods: MAP: LIST: Mood) ERRORS [| |],";
+TYPE ALIAS Tally ⁽{ counts (counts ⁽MAP Integer), moods (moods ⁽MAP Mood) DEFAULT moods {} },
+METHOD count (tally ⁽Tally) RETURNS (counts ⁽MAP Integer) ERRORS [| |],
+METHOD wait (waits ⁽MAP Duration) RETURNS (moods ⁽MAP ⁽LIST ⁽Mood) ERRORS [| |],";
 
 fn map(entries: &[(&str, Value)]) -> Value {
     Value::Map(
@@ -642,9 +642,9 @@ fn maps_read_back_as_written() {
     let request = encode_request(&schema, &calls).unwrap();
     assert_eq!(
         request,
-        "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\": `wild, \"a \\\"b\\\"\": `calm } },
-wait { \"tea\": 5 minutes },
-wait ({} AS: MAP Duration),
+        "count { counts { \"hymn\" 3, \"ode\" 1 }, moods { \"\" ⁽`wild, \"a \\\"b\\\"\" ⁽`calm } },
+wait { \"tea\" ⁽5 minutes },
+wait ({} AS ⁽MAP Duration),
 "
     );
     assert_eq!(decode_request(&schema, &request).unwrap(), calls);
@@ -666,7 +666,7 @@ wait ({} AS: MAP Duration),
 #[test]
 fn a_map_field_left_out_takes_its_default() {
     let schema = schema(COUNTS);
-    let calls = decode_request(&schema, "count { counts { \"hymn\": 3 } }").unwrap();
+    let calls = decode_request(&schema, "count { counts { \"hymn\" ⁽3 } }").unwrap();
     assert_eq!(
         calls[0].arguments,
         [record(&[

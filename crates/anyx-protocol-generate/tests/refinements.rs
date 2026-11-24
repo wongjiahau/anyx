@@ -78,7 +78,7 @@ fn generated_server_rejects_the_whole_invalid_batch_before_running_any_call() {
         bad_return: false,
     };
     let request =
-        "write (Score Path \"a.poentaro\") at 1, limit (30 AS: (Integer) WHERE [10 <= _ < 30])";
+        "write (Score Path \"a.poentaro\") at 1, limit (30 AS ⁽(Integer) WHERE [10 <= _ < 30])";
     let response = run(refined::handle(&server, request, |e| match e {}));
     assert!(response.starts_with("INVALID REQUEST"), "{response}");
     assert_eq!(server.calls.get(), 0);
@@ -90,7 +90,7 @@ fn a_broken_returned_refinement_stops_the_generated_server() {
         bad_return: true,
     };
     let request =
-        "limit (10 AS: (Integer) WHERE [10 <= _ < 30]), write (Score Path \"a.poentaro\") at 1";
+        "limit (10 AS ⁽(Integer) WHERE [10 <= _ < 30]), write (Score Path \"a.poentaro\") at 1";
     let response = run(refined::handle(&server, request, |e| match e {}));
     assert_eq!(
         anyx_protocol::decode_response(refined::schema(), &[1, 0], &response).unwrap(),
@@ -175,7 +175,7 @@ fn native_typescript_checks_constructors_requests_and_responses() {
     assert!(!requests.is_empty());
     for request in requests {
         anyx_protocol::decode_request(&schema, &request)
-            .unwrap_or_else(|e| panic!("{request}: {e}"));
+            .unwrap_or_else(|e| panic!("{request} ⁽{e}"));
     }
     std::fs::remove_dir_all(dir).unwrap();
 }

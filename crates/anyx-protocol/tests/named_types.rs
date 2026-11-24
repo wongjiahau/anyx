@@ -11,13 +11,13 @@ use common::{assert_snapshot, diagnostics, parse_files, render, schema};
 const SHARING: &str = "PROTOCOL sharing VERSION 1,
 
 # Which file, among every account's.
-NAMED TYPE File Id (value: Text),
+NAMED TYPE File Id (value ⁽Text),
 
-TYPE ALIAS Tags: LIST Text,
+TYPE ALIAS Tags ⁽LIST Text,
 
-TYPE ALIAS File Link: { file id (file id: File Id), tags (tags: Tags) },
+TYPE ALIAS File Link ⁽{ file id (file id ⁽File Id), tags (tags ⁽Tags) },
 
-METHOD share (id: File Id) tagged (tags: Tags) RETURNS (link: File Link) ERRORS [| `missing (id: File Id) |],
+METHOD share (id ⁽File Id) tagged (tags ⁽Tags) RETURNS (link ⁽File Link) ERRORS [| `missing (id ⁽File Id) |],
 ";
 
 fn file_id(id: &str) -> Value {
@@ -87,10 +87,10 @@ fn a_named_value_is_written_with_its_name() {
 fn a_named_type_may_have_several_slots_none_or_a_slot_first() {
     let schema = schema(
         "PROTOCOL shapes VERSION 1,
-NAMED TYPE Range from (start: Integer) to (end: Integer),
+NAMED TYPE Range from (start ⁽Integer) to (end ⁽Integer),
 NAMED TYPE Unit,
-NAMED TYPE (value: [| `red, `blue |]) Color,
-METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS NOTHING ERRORS [| |],
+NAMED TYPE (value ⁽[| `red, `blue |]) Color,
+METHOD paint (range ⁽Range from to) with (color ⁽Color) and (unit ⁽Unit) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let call = Call {
@@ -125,9 +125,9 @@ METHOD paint (range: Range from to) with (color: Color) and (unit: Unit) RETURNS
 fn a_union_of_named_types_picks_its_member_by_name() {
     let schema = schema(
         "PROTOCOL sharing VERSION 1,
-NAMED TYPE File Id (value: Text),
-NAMED TYPE Share Id (value: Text),
-METHOD open (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
+NAMED TYPE File Id (value ⁽Text),
+NAMED TYPE Share Id (value ⁽Text),
+METHOD open (id ⁽[| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let share = Value::Variant {
@@ -185,11 +185,11 @@ fn a_named_value_is_under_its_tag_in_json() {
     );
     let shapes = self::schema(
         "PROTOCOL shapes VERSION 1,
-NAMED TYPE Range from (start: Integer) to (end: Integer),
+NAMED TYPE Range from (start ⁽Integer) to (end ⁽Integer),
 NAMED TYPE Unit,
-NAMED TYPE File Id (value: Text),
-NAMED TYPE Share Id (value: Text),
-METHOD mark (range: Range from to) and (unit: Unit) for (id: [| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
+NAMED TYPE File Id (value ⁽Text),
+NAMED TYPE Share Id (value ⁽Text),
+METHOD mark (range ⁽Range from to) and (unit ⁽Unit) for (id ⁽[| File Id, Share Id |]) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let method = "mark _ and _ for _";
@@ -218,10 +218,10 @@ fn named_types_require_unique_slot_names() {
     for (declaration, expected) in [
         (
             "NAMED TYPE File Id (Text)",
-            "found an unnamed slot; write `(name: Type)`",
+            "found an unnamed slot; write `(name ⁽Type)`",
         ),
         (
-            "NAMED TYPE Span from (edge: Integer) to (edge: Integer)",
+            "NAMED TYPE Span from (edge ⁽Integer) to (edge ⁽Integer)",
             "found a second slot named `edge`",
         ),
     ] {
@@ -258,11 +258,11 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         ),
         (
             "common.protocol.anyx",
-            "PUBLIC NAMED TYPE File Id (value: Text), NAMED TYPE Secret (value: Text),",
+            "PUBLIC NAMED TYPE File Id (value ⁽Text), NAMED TYPE Secret (value ⁽Text),",
         ),
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: File Id) RETURNS (text: Text) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", METHOD read (id ⁽File Id) RETURNS (text ⁽Text) ERRORS [| |],",
         ),
     ];
     let schema = parse_files(&files).unwrap_or_else(|found| panic!("{}", render(&files, &found)));
@@ -276,7 +276,7 @@ fn a_public_named_type_is_shared_by_a_direct_import() {
         files[1],
         (
             "files.protocol.anyx",
-            "USE \"./common.protocol.anyx\", METHOD read (id: Secret) RETURNS (text: Text) ERRORS [| |],",
+            "USE \"./common.protocol.anyx\", METHOD read (id ⁽Secret) RETURNS (text ⁽Text) ERRORS [| |],",
         ),
     ];
     let found = parse_files(&files).unwrap_err();
@@ -293,23 +293,23 @@ fn mistakes_in_named_types_are_diagnosed() {
     let cases = [
         (
             "a bare TYPE, which is neither an alias nor a named type",
-            "PROTOCOL a VERSION 1, TYPE File Id: Text,",
+            "PROTOCOL a VERSION 1, TYPE File Id ⁽Text,",
         ),
         (
             "a named type holding itself",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: Alpha),",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value ⁽Alpha),",
         ),
         (
             "a named type holding a record that holds it",
-            "PROTOCOL a VERSION 1, TYPE ALIAS Row: { x (x: Alpha) }, NAMED TYPE Alpha (value: Row),",
+            "PROTOCOL a VERSION 1, TYPE ALIAS Row ⁽{ x (x ⁽Alpha) }, NAMED TYPE Alpha (value ⁽Row),",
         ),
         (
             "a named type defined twice",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: Text), TYPE ALIAS Alpha: { b (b: Text) },",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value ⁽Text), TYPE ALIAS Alpha ⁽{ b (b ⁽Text) },",
         ),
         (
             "a named type over an unknown type",
-            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value: thing),",
+            "PROTOCOL a VERSION 1, NAMED TYPE Alpha (value ⁽thing),",
         ),
     ];
     let rendered: Vec<String> = cases
@@ -326,8 +326,8 @@ fn mistakes_in_named_types_are_diagnosed() {
 fn a_named_type_may_hold_itself_through_a_list() {
     let schema = schema(
         "PROTOCOL trees VERSION 1,
-NAMED TYPE Tree (value: LIST Tree),
-METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [| |],
+NAMED TYPE Tree (value ⁽LIST Tree),
+METHOD plant (tree ⁽Tree) RETURNS NOTHING ERRORS [| |],
 ",
     );
     let leaf = Value::Variant {
@@ -349,13 +349,13 @@ METHOD plant (tree: Tree) RETURNS NOTHING ERRORS [| |],
 fn generic_named_types_are_nominal_and_substitute_value_slots() {
     let schema = schema(
         "PROTOCOL generic VERSION 1,
-        NAMED TYPE Id of (Item: TYPE) (value: Text),
-        NAMED TYPE Wrapped (Item: TYPE) (item: Item),
-        TYPE ALIAS Positive: Integer . WHERE [0 < _],
-        METHOD order (id: Id of (Integer)) RETURNS NOTHING ERRORS [| |],
-        METHOD file (id: Id of (Text)) RETURNS NOTHING ERRORS [| |],
-        METHOD wrap (value: Wrapped (Integer)) RETURNS NOTHING ERRORS [| |],
-        METHOD positive (id: Id of (Positive)) RETURNS NOTHING ERRORS [| |],",
+        NAMED TYPE Id of (Item ⁽TYPE) (value ⁽Text),
+        NAMED TYPE Wrapped (Item ⁽TYPE) (item ⁽Item),
+        TYPE ALIAS Positive ⁽Integer₎ WHERE [0 < _],
+        METHOD order (id ⁽Id of (Integer)) RETURNS NOTHING ERRORS [| |],
+        METHOD file (id ⁽Id of (Text)) RETURNS NOTHING ERRORS [| |],
+        METHOD wrap (value ⁽Wrapped (Integer)) RETURNS NOTHING ERRORS [| |],
+        METHOD positive (id ⁽Id of (Positive)) RETURNS NOTHING ERRORS [| |],",
     );
     let order = &schema.methods[0].shape.parameters[0].r#type;
     let file = &schema.methods[1].shape.parameters[0].r#type;
@@ -366,22 +366,22 @@ fn generic_named_types_are_nominal_and_substitute_value_slots() {
     assert!(!schema.fits(positive, order));
     let calls = decode_request(
         &schema,
-        "order (Id of \"a\" AS: Id of (Integer)),
-         file (Id of \"a\" AS: Id of (Text)),
-         wrap (Wrapped 7 AS: Wrapped (Integer))",
+        "order (Id of \"a\" AS ⁽Id of (Integer)),
+         file (Id of \"a\" AS ⁽Id of (Text)),
+         wrap (Wrapped 7 AS ⁽Wrapped (Integer))",
     )
     .unwrap();
     assert_eq!(
         decode_request(&schema, &encode_request(&schema, &calls).unwrap()).unwrap(),
         calls
     );
-    assert!(decode_request(&schema, "wrap (Wrapped \"a\" AS: Wrapped (Integer))").is_err());
-    assert!(decode_request(&schema, "order (Id of \"a\" AS: Id of (Text))").is_err());
+    assert!(decode_request(&schema, "wrap (Wrapped \"a\" AS ⁽Wrapped (Integer))").is_err());
+    assert!(decode_request(&schema, "order (Id of \"a\" AS ⁽Id of (Text))").is_err());
     #[cfg(feature = "json")]
     {
         let json = anyx_protocol::json::decode_request_json(
             &schema,
-            "order (Id of \"a\" AS: Id of (Integer))",
+            "order (Id of \"a\" AS ⁽Id of (Integer))",
         )
         .unwrap();
         assert!(json.to_string().contains(r#""IdOf":"a""#), "{json}");

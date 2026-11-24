@@ -115,17 +115,17 @@ fn the_json_grammar_decodes() {
 
 #[test]
 fn every_node_has_its_span() {
-    let source = "ENTRY: OPTIONAL: size, size: NUMBER [INTEGER, AT LEAST 0x10]";
+    let source = "ENTRY ⁽OPTIONAL ⁽size, size ⁽NUMBER [INTEGER, AT LEAST 0x10]";
     let document = decode(source).unwrap();
     let text = |span: anyx::Span| &source[span.start..span.end];
     assert_eq!(text(document.span), source);
-    assert_eq!(text(document.entry.span), "ENTRY: OPTIONAL: size");
+    assert_eq!(text(document.entry.span), "ENTRY ⁽OPTIONAL ⁽size");
     let Contents::Element(Element::Pattern(Pattern::Repetition(optional))) =
         &document.entry.contents
     else {
         panic!("the entry is an optional");
     };
-    assert_eq!(text(optional.span()), "OPTIONAL: size");
+    assert_eq!(text(optional.span()), "OPTIONAL ⁽size");
     let Repetition::Optional { pattern, .. } = optional else {
         panic!("the entry is an optional");
     };
@@ -145,7 +145,7 @@ fn every_node_has_its_span() {
 
 #[test]
 fn strings_keep_their_decoded_value() {
-    let document = decode("ENTRY: value, value: STRING \"a\\n\"").unwrap();
+    let document = decode("ENTRY ⁽value, value ⁽STRING \"a\\n\"").unwrap();
     let Pattern::String(Text::Exact { text, .. }) = body(&document.rule[0]) else {
         panic!("value is an exact string");
     };
@@ -155,7 +155,7 @@ fn strings_keep_their_decoded_value() {
 #[test]
 fn line_string_is_one_keyword_apart_from_string() {
     let document = decode(
-        "ENTRY: [a, b, c, d], a: LINE STRING, b: LINE STRING \"x\", c: LINE STRING [STARTS WITH \"x\"], d: STRING",
+        "ENTRY ⁽[a, b, c, d], a ⁽LINE STRING, b ⁽LINE STRING \"x\", c ⁽LINE STRING [STARTS WITH \"x\"], d ⁽STRING",
     )
     .unwrap();
     let patterns: Vec<&Pattern> = document.rule.iter().map(body).collect();
@@ -173,7 +173,7 @@ fn line_string_is_one_keyword_apart_from_string() {
 
 #[test]
 fn a_line_string_above_a_rule_documents_it() {
-    let source = "ENTRY: size,\n# How big it is,\n# in points.\nsize: NUMBER,\n## Only for whoever reads the grammar.\nname: STRING";
+    let source = "ENTRY ⁽size,\n# How big it is,\n# in points.\nsize ⁽NUMBER,\n## Only for whoever reads the grammar.\nname ⁽STRING";
     let document = decode(source).unwrap();
     let Named::Documented {
         documentation,
@@ -196,21 +196,21 @@ fn a_line_string_above_a_rule_documents_it() {
 fn bad_grammars_say_what_was_found_and_what_was_expected() {
     let cases = [
         (
-            "ENTRY: value, value: ONE OFF [a, b]",
+            "ENTRY ⁽value, value ⁽ONE OFF [a, b]",
             "grammar:1:26: found the word `OFF`; expected the word `OF` or `OR`
-  ENTRY: value, value: ONE OFF [a, b]
+  ENTRY ⁽value, value ⁽ONE OFF [a, b]
                            ^^^",
         ),
         (
-            "ENTRY: value,\nvalue: STRING *",
+            "ENTRY ⁽value,\nvalue ⁽STRING *",
             "grammar:2:15: found the word `*`; expected a string or `[...]`
-  value: STRING *
+  value ⁽STRING *
                 ^",
         ),
         (
-            "value: STRING",
+            "value ⁽STRING",
             "grammar:1:1: found the word `value`; expected the word `ENTRY`
-  value: STRING
+  value ⁽STRING
   ^^^^^",
         ),
         (
@@ -220,63 +220,63 @@ fn bad_grammars_say_what_was_found_and_what_was_expected() {
   ^",
         ),
         (
-            "ENTRY: value, value: STRING [STARTS \"a\"]",
+            "ENTRY ⁽value, value ⁽STRING [STARTS \"a\"]",
             "grammar:1:37: found the string \"a\"; expected the word `WITH`
-  ENTRY: value, value: STRING [STARTS \"a\"]
+  ENTRY ⁽value, value ⁽STRING [STARTS \"a\"]
                                       ^^^",
         ),
         (
-            "ENTRY: value, value: NUMBER [INTEGER, AT LEAST \"a\"]",
+            "ENTRY ⁽value, value ⁽NUMBER [INTEGER, AT LEAST \"a\"]",
             "grammar:1:48: found the string \"a\"; expected a number
-  ENTRY: value, value: NUMBER [INTEGER, AT LEAST \"a\"]
+  ENTRY ⁽value, value ⁽NUMBER [INTEGER, AT LEAST \"a\"]
                                                  ^^^",
         ),
         (
-            "ENTRY: value, value: ONE OF []",
+            "ENTRY ⁽value, value ⁽ONE OF []",
             "grammar:1:30: found the closing `]`; expected an element
-  ENTRY: value, value: ONE OF []
+  ENTRY ⁽value, value ⁽ONE OF []
                                ^",
         ),
         (
-            "ENTRY: value, value: ANY WORD [KEYWORDS]",
+            "ENTRY ⁽value, value ⁽ANY WORD [KEYWORDS]",
             "grammar:1:32: found the word `KEYWORDS`; expected the word `KEYWORD`, `NAME`, `SYMBOL`, `STARTS`, `ENDS`, `CONTAINS` or `MATCHING`
-  ENTRY: value, value: ANY WORD [KEYWORDS]
+  ENTRY ⁽value, value ⁽ANY WORD [KEYWORDS]
                                  ^^^^^^^^",
         ),
         (
-            "ENTRY: value, value: WORD null",
+            "ENTRY ⁽value, value ⁽WORD null",
             "grammar:1:27: found the word `null`; expected a string
-  ENTRY: value, value: WORD null
+  ENTRY ⁽value, value ⁽WORD null
                             ^^^^",
         ),
         (
-            "ENTRY: value, value: ANYFIX CALL [NAME \"x\"]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [NAME \"x\"]",
             "grammar:1:40: found the string \"x\"; expected `[...]`
-  ENTRY: value, value: ANYFIX CALL [NAME \"x\"]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [NAME \"x\"]
                                          ^^^",
         ),
         (
-            "ENTRY: value, 5",
+            "ENTRY ⁽value, 5",
             "grammar:1:15: found the number `5`; expected the call `_ … _`, a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)* _$` or the end of the document
-  ENTRY: value, 5
+  ENTRY ⁽value, 5
                 ^",
         ),
         (
-            "ENTRY: value, value: ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]",
+            "ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]",
             "grammar:1:45: found the word `NAME`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `BRACKET`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING`, `LINE` or `NUMBER`
-  ENTRY: value, value: ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]
+  ENTRY ⁽value, value ⁽ANYFIX CALL [WORD \"f\", NAME [STARTS WITH \"g\"]]
                                               ^^^^",
         ),
         (
-            "ENTRY: value, value: a_b",
+            "ENTRY ⁽value, value ⁽a_b",
             "grammar:1:22: found the word `a_b`; expected the word `ONE`, `ZERO`, `OPTIONAL`, `EACH`, `CURLY`, `SQUARE`, `PARENTHESIS`, `BRACKET`, `ANYFIX`, `WORD`, `ANY`, `WORDS`, `STRING`, `LINE`, `NUMBER`, `UNDERSCORE` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
-  ENTRY: value, value: a_b
+  ENTRY ⁽value, value ⁽a_b
                        ^^^",
         ),
         (
-            "ENTRY: value, value: (a, b)",
+            "ENTRY ⁽value, value ⁽(a, b)",
             "grammar:1:22: found `(...)`; expected the word `STRING`, `NUMBER`, `UNDERSCORE`, the call `ONE OF _`, `ZERO OR MORE _`, `ONE OR MORE _`, `OPTIONAL _`, `EACH _`, `CURLY BRACE _`, `SQUARE BRACKET _`, `PARENTHESIS _`, `BRACKET _`, `ANYFIX CALL _ FORMAT _`, `ANYFIX CALL _`, `ANYFIX CALL _?`, `WORD _`, `ANY WORD _?`, `WORDS _`, `WORDS _?`, `STRING _`, `LINE STRING`, `LINE STRING _`, `NUMBER _`, `ANY NODE` or a call whose name matches the regex `^[a-z][a-z0-9]*( [a-z][a-z0-9]*)*$`
-  ENTRY: value, value: (a, b)
+  ENTRY ⁽value, value ⁽(a, b)
                        ^^^^^^",
         ),
     ];

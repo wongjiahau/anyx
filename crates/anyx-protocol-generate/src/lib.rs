@@ -84,7 +84,7 @@ pub fn effects_doc(method: &Method) -> String {
 /// The words that name `method` in generated code: its shape's, or for an
 /// overload, its shape's then `with` and its parameters' types, joined by
 /// `and`, so that each overload has a name of its own:
-/// `tag (names: LIST Text)` is `tag with list of text`, and
+/// `tag (names ⁽LIST Text)` is `tag with list of text`, and
 /// `open (id: file id)` is `open with file id`. A method without overloads
 /// keeps its shape's words.
 pub fn method_words(schema: &Schema, method: &Method) -> String {
@@ -98,7 +98,7 @@ pub fn method_words(schema: &Schema, method: &Method) -> String {
 /// The words that name a call of `method` written in `form`, as
 /// [`method_words`] names the full form: the form's words, or when another
 /// method may be written alike, an overload, then `with` and the written
-/// parameters' types. `find (pattern: Text) [in (paths: LIST Text) DEFAULT
+/// parameters' types. `find (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT
 /// in ["."]]` is `find in` and `find`.
 pub fn form_words(schema: &Schema, method: &Method, form: &Form) -> String {
     let alike = schema

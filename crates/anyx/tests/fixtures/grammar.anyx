@@ -1,44 +1,44 @@
 ## Anyx expressions — described in anyx expressions.
 
-document : sequence,
+document ⁽sequence,
 
-sequence : [ expr { "," expr } [ "," ] ],
-expr     : dotted [ ":" expr ],
-dotted   : run { "." run },
-run      : item { item },
+sequence ⁽[ expr { "," expr } [ "," ] ],
+expr ⁽left grouped [ "⁽" expr ],
+left grouped ⁽run { "₎" run },
+run ⁽item { item },
 
-item     : word | number | string
+item ⁽word | number | string
          | "(" sequence ")"
          | "[" sequence "]"
          | "{" sequence "}",
 
-special    : "," | ":" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "#" | "\"",
-alnum      : letter | digit | "_",
-symbol     : any char except (whitespace | special | alnum),
+special ⁽"," | "⁽" | "₎" | "(" | ")" | "[" | "]" | "{" | "}" | "#" | "\"",
+alnum ⁽letter | digit | "_",
+symbol ⁽any char except (whitespace | special | alnum),
 
-word       : name | symbols,
-name       : (letter | "_") { alnum },
-symbols    : symbol { symbol },
+word ⁽name | symbols,
+name ⁽(letter | "_") { alnum },
+symbols ⁽symbol { symbol },
 
-number     : ["-"] (based | decimal),
-decimal    : digits ["." digits] [exponent],
-exponent   : ("e" | "E") ["+" | "-"] digits,
-based      : "0" ( ("x" | "X") hex { ["_"] hex }
+number ⁽["-"] (based | decimal),
+decimal ⁽digits ["." digits] [exponent],
+exponent ⁽("e" | "E") ["+" | "-"] digits,
+based ⁽"0" ( ("x" | "X") hex { ["_"] hex }
                  | ("b" | "B") bit { ["_"] bit }
                  | ("o" | "O") octal { ["_"] octal } ),
-digits     : digit { ["_"] digit },
+digits ⁽digit { ["_"] digit },
 
-string     : quoted | raw | line,
-quoted     : "\"" { any char except ("\"" | "\\") | escape } "\"",
-escape     : "\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
+string ⁽quoted | raw | line,
+quoted ⁽"\"" { any char except ("\"" | "\\") | escape } "\"",
+escape ⁽"\\" ("\"" | "\\" | "/" | "b" | "f" | "n" | "t" | "r"
                   | "u{" hex { hex } "}" | "u" hex hex hex hex),
-raw        : quotes (inline-content quotes | newline { line newline } indent quotes),
-quotes     : "\"\"\"" { "\"" },
-line       : "#" [" "] rest { newline indent "#" [" "] rest },
-rest       : { any char except newline },
+raw ⁽quotes (inline-content quotes | newline { line newline } indent quotes),
+quotes ⁽"\"\"\"" { "\"" },
+line ⁽"#" [" "] rest { newline indent "#" [" "] rest },
+rest ⁽{ any char except newline },
 
-comment    : "##" { any char except newline },
-whitespace : unicode whitespace,
+comment ⁽"##" { any char except newline },
+whitespace ⁽unicode whitespace,
 
-letter     : unicode letter,
-digit      : "0" to "9",
+letter ⁽unicode letter,
+digit ⁽"0" to "9",

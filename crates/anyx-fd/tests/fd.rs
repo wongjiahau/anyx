@@ -132,7 +132,7 @@ fn details_and_any_match() {
     let details = answer(directory.path(), r#"details of "lib""#);
     assert!(
         details.starts_with(
-            "RETURNS [{ path \"src/lib.rs\", kind: `file, size 14 bytes, modified at \""
+            "RETURNS [{ path \"src/lib.rs\", kind ⁽`file, size 14 bytes, modified at \""
         ),
         "{details}"
     );
@@ -170,9 +170,9 @@ fn mistakes_are_errors_or_invalid_requests() {
         let response = answer(directory.path(), request);
         assert!(
             response.starts_with("INVALID REQUEST"),
-            "{request}: {response}"
+            "{request} ⁽{response}"
         );
-        assert!(response.contains(expected), "{request}: {response}");
+        assert!(response.contains(expected), "{request} ⁽{response}");
     }
 }
 
@@ -189,7 +189,7 @@ fn every_call_of_a_request_runs() {
 fn the_examples_and_built_ins_answer() {
     let directory = tree();
     let guide = answer(directory.path(), "SCHEMA");
-    assert!(guide.contains("find (pattern: Text)"), "{guide}");
+    assert!(guide.contains("find (pattern ⁽Text)"), "{guide}");
     let files = answer(directory.path(), "SCHEMA FILES");
     assert!(files.contains("path \"fd.protocol.anyx\""), "{files}");
 }

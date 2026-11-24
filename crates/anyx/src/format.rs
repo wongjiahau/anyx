@@ -1,6 +1,6 @@
 //! The canonical formatter.
 //!
-//! It works in two passes. The first deletes every `.`, `:` and pair of
+//! It works in two passes. The first deletes every `₎`, `⁽` and pair of
 //! grouping `( )` whose removal leaves the tree unchanged, trying each one and
 //! re-parsing the element it sits in to check. The second lays the remaining
 //! tokens out at [`WIDTH`] columns, with comments attached where they were.
@@ -48,14 +48,14 @@ impl Layout {
 
 /// Formats a document canonically, or returns its parse errors.
 ///
-/// A `.`, `:` or `( )` is removed only when the tree stays the same, so
-/// `1 . f` becomes `1 f` but `x . f` stays (`x f` is another call). The
+/// A `₎`, `⁽` or `( )` is removed only when the tree stays the same, so
+/// `1₎ f` becomes `1 f` but `x₎ f` stays (`x f` is another call). The
 /// result has the same tree as the input, keeps every comment, and formats to
 /// itself.
 ///
 /// ```
-/// let formatted = anyx::format("f : 1 . g, ((x)) y").unwrap();
-/// assert_eq!(formatted, "f: 1 g,\n(x) y,\n");
+/// let formatted = anyx::format("f ⁽1₎ g, ((x)) y").unwrap();
+/// assert_eq!(formatted, "f ⁽1 g,\n(x) y,\n");
 /// ```
 pub fn format(source: &str) -> Result<String, Vec<Error>> {
     format_with(source, &Layout::default())
@@ -65,14 +65,14 @@ pub fn format(source: &str) -> Result<String, Vec<Error>> {
 /// allows.
 ///
 /// ```
-/// let source = "METHOD read (path: Text) RETURNS (file: File) ERRORS [trashed, missing, gone, renamed, locked, moved]";
+/// let source = "METHOD read (path ⁽Text) RETURNS (file ⁽File) ERRORS [trashed, missing, gone, renamed, locked, moved]";
 /// let mut layout = anyx::Layout::new();
 /// layout.break_before(source.find("RETURNS").unwrap());
 /// layout.break_before(source.find("ERRORS").unwrap());
 /// let formatted = anyx::format_with(source, &layout).unwrap();
 /// assert_eq!(
 ///     formatted,
-///     "METHOD read (path: Text)\n    RETURNS (file: File)\n    ERRORS [trashed, missing, gone, renamed, locked, moved]\n"
+///     "METHOD read (path ⁽Text)\n    RETURNS (file ⁽File)\n    ERRORS [trashed, missing, gone, renamed, locked, moved]\n"
 /// );
 /// ```
 pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> {
@@ -104,7 +104,7 @@ pub fn format_with(source: &str, layout: &Layout) -> Result<String, Vec<Error>> 
         comments: &comments,
         tokens: &simplified.tokens,
         start: None,
-        after_dot: false,
+        after_left_group: false,
         breaks: kept_ids
             .iter()
             .enumerate()
@@ -158,7 +158,7 @@ struct Walk<'a> {
 struct ElementInfo {
     /// The element's tokens, not counting its comma.
     tokens: std::ops::Range<usize>,
-    /// Sets of tokens that may be redundant: each `.` and `:`, and each pair
+    /// Sets of tokens that may be redundant: each `₎` and `⁽`, and each pair
     /// of parens around one element with no comma.
     candidates: Vec<Vec<usize>>,
     /// The elements inside its brackets.
@@ -226,7 +226,7 @@ impl<'a> Walk<'a> {
                     }
                 }
             }
-            Expression::Dot(binary) | Expression::Colon(binary) => {
+            Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
                 self.expression(&binary.left, candidates, children);
                 candidates.push(vec![self.tokens.len()]);
                 self.tokens.push(&binary.operator);
@@ -384,6 +384,16 @@ impl Comments {
             moved.append(&mut leading[k + 1]);
             leading[k + 1] = moved;
         }
+        // Let a left grouping marker stay attached when a trailing comment
+        // would otherwise force it onto the next line.
+        for k in 1..spans.len() {
+            if tokens[kept_ids[k]].kind == TokenKind::LeftGroup
+                && leading[k].is_empty()
+                && trailing[k].is_none()
+            {
+                trailing[k] = trailing[k - 1].take();
+            }
+        }
         Comments {
             leading,
             trailing,
@@ -464,7 +474,7 @@ fn bracket_group(doc: Doc, force: bool) -> Doc {
     }
 }
 
-/// A `.` chain. A trailing comment inside moves to the end of its line
+/// A `₎` chain. A trailing comment inside moves to the end of its line
 /// instead of breaking the chain.
 fn chain_group(doc: Doc) -> Doc {
     let (hard, suffix) = holds(&doc);
@@ -486,9 +496,9 @@ struct Builder<'a> {
     start: Option<bool>,
     /// The kept tokens a line may break before, from the [`Layout`].
     breaks: HashSet<usize>,
-    /// Set while formatting the run after a `.`, whose symbol word is an
-    /// operator spaced from what follows, `.+ c`, rather than a prefix.
-    after_dot: bool,
+    /// Set while formatting the run after a `₎`, whose symbol word is an
+    /// operator spaced from what follows, `a₎ + c`, rather than a prefix.
+    after_left_group: bool,
 }
 
 impl Builder<'_> {
@@ -524,7 +534,7 @@ impl Builder<'_> {
     fn expression(&mut self, expression: &Expression) -> Doc {
         match expression {
             Expression::Run(run) => {
-                let after_dot = std::mem::take(&mut self.after_dot);
+                let after_left_group = std::mem::take(&mut self.after_left_group);
                 let breaks: Vec<bool> = run
                     .items
                     .iter()
@@ -546,7 +556,7 @@ impl Builder<'_> {
                         true => &mut tail,
                         false => &mut head,
                     };
-                    if i > 0 && !((i > 1 || !after_dot) && prefix_hugs(&run.items, i)) {
+                    if i > 0 && !((i > 1 || !after_left_group) && prefix_hugs(&run.items, i)) {
                         parts.push(match breaks[i] {
                             true => Doc::Line,
                             false => Doc::Text(" ".into()),
@@ -570,34 +580,31 @@ impl Builder<'_> {
                     }
                 }
             }
-            Expression::Dot(_) => {
+            Expression::LeftGroup(_) => {
                 let mut links = Vec::new();
                 let mut first = expression;
-                while let Expression::Dot(binary) = first {
+                while let Expression::LeftGroup(binary) = first {
                     links.push(binary);
                     first = &binary.left;
                 }
                 let first = self.expression(first);
                 let mut rest = Vec::new();
                 for binary in links.into_iter().rev() {
-                    rest.push(Doc::Line);
                     rest.push(self.token(&binary.operator));
-                    if !starts_with_dot_hugging_symbol(&binary.right) {
-                        rest.push(Doc::Text(" ".into()));
-                    }
-                    self.after_dot = true;
+                    rest.push(Doc::Line);
+                    self.after_left_group = true;
                     rest.push(self.expression(&binary.right));
-                    self.after_dot = false;
+                    self.after_left_group = false;
                 }
                 chain_group(Doc::Concat(vec![first, indent(Doc::Concat(rest))]))
             }
-            Expression::Colon(_) => {
+            Expression::RightGroup(_) => {
                 let mut parts = Vec::new();
                 let mut current = expression;
-                while let Expression::Colon(binary) = current {
+                while let Expression::RightGroup(binary) = current {
                     parts.push(self.expression(&binary.left));
-                    parts.push(self.token(&binary.operator));
                     parts.push(Doc::Text(" ".into()));
+                    parts.push(self.token(&binary.operator));
                     current = &binary.right;
                 }
                 parts.push(self.expression(current));
@@ -755,7 +762,9 @@ fn first_run(mut expression: &Expression) -> &crate::syntax::Run {
     loop {
         match expression {
             Expression::Run(run) => return run,
-            Expression::Dot(binary) | Expression::Colon(binary) => expression = &binary.left,
+            Expression::LeftGroup(binary) | Expression::RightGroup(binary) => {
+                expression = &binary.left
+            }
         }
     }
 }
@@ -794,20 +803,6 @@ fn prefix_hugs(items: &[Item], index: usize) -> bool {
             },
             Item::Skipped(_) => false,
         }
-}
-
-/// A `.` hugs a symbol word after it, as in `1 .+ 2`. A dot run needs
-/// a space to keep it separate from the grouping dot.
-fn starts_with_dot_hugging_symbol(expression: &Expression) -> bool {
-    matches!(
-        expression,
-        Expression::Run(run) if matches!(
-            run.items.first(),
-            Some(Item::Atom(token)) if token.kind == TokenKind::Word
-                && is_symbol_word(&token.text)
-                && !token.text.starts_with('.')
-        )
-    )
 }
 
 fn token_text(token: &Token) -> Doc {

@@ -8,14 +8,14 @@ use anyx_protocol::{Value, decode_request};
 use common::{diagnostics, schema};
 
 const SOURCE: &str = r#"PROTOCOL p VERSION 1,
-TYPE ALIAS Search: { `(hidden: [| `hidden, `null |]) DEFAULT `null },
-TYPE ALIAS Order [| `newest [first (count: Integer) DEFAULT first 10], `oldest |],
-READ ONLY METHOD find (pattern: Text)
-    [in (paths: LIST Text) DEFAULT in ["."]]
-    [with (search: Search) DEFAULT with {}]
-    RETURNS (paths: LIST Text)
+TYPE ALIAS Search ⁽{ `(hidden ⁽[| `hidden, `null |]) DEFAULT `null },
+TYPE ALIAS Order [| `newest [first (count ⁽Integer) DEFAULT first 10], `oldest |],
+READ ONLY METHOD find (pattern ⁽Text)
+    [in (paths ⁽LIST Text) DEFAULT in ["."]]
+    [with (search ⁽Search) DEFAULT with {}]
+    RETURNS (paths ⁽LIST Text)
     ERRORS [| |],
-READ ONLY METHOD list (order: Order) RETURNS (order: Order) ERRORS [| |],"#;
+READ ONLY METHOD list (order ⁽Order) RETURNS (order ⁽Order) ERRORS [| |],"#;
 
 fn arguments(request: &str) -> Vec<Value> {
     let schema = schema(SOURCE);
@@ -111,12 +111,12 @@ fn parts_keep_their_order() {
 fn a_part_needs_a_word_and_a_slot() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-METHOD scale (shape: Text) [(factor: Integer) DEFAULT 1] RETURNS NOTHING ERRORS [| |],",
+METHOD scale (shape ⁽Text) [(factor ⁽Integer) DEFAULT 1] RETURNS NOTHING ERRORS [| |],",
     );
     assert!(found.contains("an optional part with no words"), "{found}");
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-METHOD sort (items: LIST Text) [descending DEFAULT descending] RETURNS NOTHING ERRORS [| |],",
+METHOD sort (items ⁽LIST Text) [descending DEFAULT descending] RETURNS NOTHING ERRORS [| |],",
     );
     assert!(found.contains("with no slot"), "{found}");
 }
@@ -125,8 +125,8 @@ METHOD sort (items: LIST Text) [descending DEFAULT descending] RETURNS NOTHING E
 fn a_default_is_checked_against_its_part() {
     let found = diagnostics(
         r#"PROTOCOL p VERSION 1,
-METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in "."] RETURNS NOTHING ERRORS [| |],
-METHOD look (pattern: Text) [in (paths: LIST Text) DEFAULT at ["."]] RETURNS NOTHING ERRORS [| |],"#,
+METHOD find (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT in "."] RETURNS NOTHING ERRORS [| |],
+METHOD look (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT at ["."]] RETURNS NOTHING ERRORS [| |],"#,
     );
     assert!(found.contains("in a `DEFAULT`"), "{found}");
     assert!(
@@ -139,15 +139,15 @@ METHOD look (pattern: Text) [in (paths: LIST Text) DEFAULT at ["."]] RETURNS NOT
 fn no_two_methods_may_be_written_alike() {
     let found = diagnostics(
         r#"PROTOCOL p VERSION 1,
-METHOD find (pattern: Text) RETURNS NOTHING ERRORS [| |],
-METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in ["."]] RETURNS NOTHING ERRORS [| |],"#,
+METHOD find (pattern ⁽Text) RETURNS NOTHING ERRORS [| |],
+METHOD find (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT in ["."]] RETURNS NOTHING ERRORS [| |],"#,
     );
     assert!(found.contains("written as `find _`"), "{found}");
     // Told apart by a parameter's type, they are overloads.
     schema(
         r#"PROTOCOL p VERSION 1,
-METHOD find (pattern: Integer) RETURNS NOTHING ERRORS [| |],
-METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in ["."]] RETURNS NOTHING ERRORS [| |],"#,
+METHOD find (pattern ⁽Integer) RETURNS NOTHING ERRORS [| |],
+METHOD find (pattern ⁽Text) [in (paths ⁽LIST Text) DEFAULT in ["."]] RETURNS NOTHING ERRORS [| |],"#,
     );
 }
 
@@ -155,7 +155,7 @@ METHOD find (pattern: Text) [in (paths: LIST Text) DEFAULT in ["."]] RETURNS NOT
 fn no_two_variants_of_a_union_may_be_written_alike() {
     let found = diagnostics(
         "PROTOCOL p VERSION 1,
-TYPE ALIAS Order [| `newest [first (count: Integer) DEFAULT first 10], `newest |],",
+TYPE ALIAS Order [| `newest [first (count ⁽Integer) DEFAULT first 10], `newest |],",
     );
     assert!(found.contains("may both be written as `newest`"), "{found}");
 }

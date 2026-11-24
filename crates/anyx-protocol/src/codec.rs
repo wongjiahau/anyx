@@ -124,7 +124,7 @@ pub fn decode_request(schema: &Schema, source: &str) -> Result<Vec<Call>, Proble
 fn request_syntax_problem(source: &str, error: request::DecodeError) -> Problem {
     let mut message = error.message();
     if error.found.contains(" AS ") {
-        message = "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS: LIST Text)`; a value inside another is read by the type around it".into();
+        message = "found an annotation `AS` inside a value; expected one only around a whole argument of a call, as in `tag ([] AS ⁽LIST Text)`; a value inside another is read by the type around it".into();
     }
     if let Some(intrinsic) = crate::prelude::renamed(&source[error.span.start..error.span.end]) {
         message.push_str(&format!(
@@ -309,7 +309,7 @@ fn read_arguments(
                 return Err(in_parameter(Mismatch {
                     span: argument.span,
                     message: format!(
-                        "found `AS: {}`; expected `AS: {}`, the type of `{}`",
+                        "found `AS ⁽{}`; expected `AS ⁽{}`, the type of `{}`",
                         schema.type_name(annotated),
                         schema.type_name(&parameter.r#type),
                         parameter.name
@@ -346,7 +346,7 @@ fn read_arguments(
     Ok((chosen, values))
 }
 
-/// Reads an argument, `value` or `value AS: type`.
+/// Reads an argument, `value` or `value AS ⁽type`.
 fn read_argument<'n>(
     schema: &Schema,
     source: &str,
@@ -432,7 +432,7 @@ fn choose(
         return Err(Mismatch {
             span,
             message: format!(
-                "found `{text}` with arguments that fit several of its overloads, {}; expected them to fit one; annotate each argument with its parameter's type, as in `value AS: type`",
+                "found `{text}` with arguments that fit several of its overloads, {}; expected them to fit one; annotate each argument with its parameter's type, as in `value AS ⁽type`",
                 overloads(&mut fitting.into_iter())
             ),
         });
@@ -473,7 +473,7 @@ fn choose(
     Err(Mismatch {
         span,
         message: format!(
-            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS: Bytes)`",
+            "found `{text}` with {} {}; expected the types of one of its overloads: {all}; a value of `Bytes` or `Instant` is written like a string, so annotate it, as in `(\"AQI=\" AS ⁽Bytes)`",
             match types.len() {
                 1 => "an argument of the type",
                 _ => "arguments of the types",
@@ -498,7 +498,7 @@ fn written(source: &str, span: Span) -> String {
 }
 
 /// `call` as a call of `method`, with its argument at `index` annotated
-/// with its parameter's type: `tag ([] AS: LIST Text)`.
+/// with its parameter's type: `tag ([] AS ⁽LIST Text)`.
 fn fix(
     schema: &Schema,
     source: &str,
@@ -518,7 +518,7 @@ fn fix(
                     | request::Argument::Value(value) => value,
                 };
                 format!(
-                    "({} AS: {})",
+                    "({} AS ⁽{})",
                     written(source, value.span()),
                     schema.type_name(&method.shape.parameters[slot].r#type)
                 )
@@ -626,7 +626,7 @@ pub fn decode_argument(schema: &Schema, source: &str) -> Result<(Type, Value), P
         problem(
             source,
             node.span,
-            "this value has no unambiguous type of its own; annotate it with `AS: Type`".into(),
+            "this value has no unambiguous type of its own; annotate it with `AS ⁽Type`".into(),
         )
     })?;
     let value = crate::request::decode(schema, expected, argument.value)
@@ -698,7 +698,7 @@ pub(crate) fn layout(text: String) -> String {
 }
 
 /// Writes a call of `method` in a request: its words, with `arguments` in
-/// its slots, each annotated with its parameter's type, `([] AS: LIST:
+/// its slots, each annotated with its parameter's type, `([] AS ⁽LIST ⁽
 /// Text)`, unless the type it has of its own as written fits the
 /// parameter, as a decoder reads it: `File Id "a"` for a `[| File Id,
 /// Share Id |]`.
@@ -732,7 +732,7 @@ fn write_call(
         match own.is_some_and(|own| schema.fits_literal(&own, &parameter.r#type)) {
             true => write_slot(schema, &parameter.r#type, value, out)?,
             false => out.push_str(&format!(
-                "({written} AS: {})",
+                "({written} AS ⁽{})",
                 schema.type_name(&parameter.r#type)
             )),
         }
@@ -879,7 +879,7 @@ pub(crate) fn write(
                     out.push_str(", ");
                 }
                 write_quoted(key, out);
-                out.push_str(": ");
+                out.push_str(" ⁽");
                 write(schema, value_type, value, out)?;
             }
             out.push_str(" }");
@@ -939,9 +939,9 @@ fn mismatched(schema: &Schema, r#type: &Type, found: &str) -> EncodeError {
 }
 
 /// Writes fields in the schema's order, each as a reader writes it: a
-/// shape whose slot is last as its words, a `:`, and its value; another
+/// shape whose slot is last as its words, a `⁽`, and its value; another
 /// shape with its value in the slot;
-/// a field without a name as its variant alone. The layout drops each `:` that a
+/// a field without a name as its variant alone. The layout drops each `⁽` that a
 /// reader doesn't need.
 fn write_fields(
     schema: &Schema,
@@ -978,7 +978,7 @@ fn write_fields(
             (r#type, value) => vec![(r#type, value)],
         };
         match &field.form {
-            // `path: "a"`: a slot last takes its value after a `:`.
+            // `path ⁽"a"`: a slot last takes its value after a `⁽`.
             FieldForm::Shape(shape)
                 if shape.ends_with(" _") && !shape[..shape.len() - 2].contains('_') =>
             {
@@ -986,7 +986,7 @@ fn write_fields(
                     unreachable!("a shape with one slot holds one value")
                 };
                 entry.push_str(&shape[..shape.len() - 2]);
-                entry.push_str(": ");
+                entry.push_str(" ⁽");
                 write(schema, r#type, item, &mut entry)?;
             }
             FieldForm::Shape(shape) => {

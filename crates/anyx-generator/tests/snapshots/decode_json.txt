@@ -18,9 +18,9 @@ input:1:5: found the word `yes`; expected the word `null`, `true`, `false`, `{..
   [1, yes]
       ^^^
 
-## {"a": 1, b: 2}
+## {"a" ⁽1, b ⁽2}
 input:1:10: found the call `b _`; expected the call `_ _` or the closing `}`
-  {"a": 1, b: 2}
+  {"a" ⁽1, b ⁽2}
            ^^^^
 
 ## {"a" 1, 2}
@@ -28,7 +28,7 @@ input:1:9: found the number `2`; expected the call `_ _` or the closing `}`
   {"a" 1, 2}
           ^
 
-## {"a": [true, {"b": (1)}]}
+## {"a" ⁽[true, {"b" ⁽(1)}]}
 decodes
 
 ## [1, f(2)]
