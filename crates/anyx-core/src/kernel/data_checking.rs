@@ -1,7 +1,7 @@
 //! Constructor results and strict positivity for data declarations.
 
 use super::evaluation::{Definition, Definitions, fresh_local};
-use super::{Declaration, DeclarationCheckingError, Global, Signature, Term};
+use super::{Declaration, DeclarationCheckingError, Global, Index, Pattern, Signature, Term};
 use crate::lowering::GlobalKind;
 use std::collections::{HashMap, HashSet};
 
@@ -273,5 +273,134 @@ fn visit_global_references<'term>(
             }
         }
         Term::Type | Term::Kind | Term::Local(_) => {}
+    }
+}
+
+/// For each constructor, the binders that stand for the family's parameters.
+///
+/// A constructor restates every argument of its family as a binder, as in
+/// `nothing of (item: Type) RETURNS List of (item)`. Like Coq and Lean, the
+/// core does not count a parameter towards a family's universe: a value of
+/// `List of (Text)` holds `Text` only as the type it already has. A position
+/// is a parameter when it starts the family's arguments and every
+/// constructor passes one of its own binders there, both in its result and
+/// in every recursive occurrence of the family among its fields.
+pub(super) fn parameter_binders(
+    signature: &Signature,
+    constructors: &[Signature],
+) -> Vec<HashSet<usize>> {
+    let data = signature.name.as_str();
+    let mut binders = vec![HashSet::new(); constructors.len()];
+    for position in 0..signature.parameter_types.len() {
+        let chosen: Option<Vec<usize>> = constructors
+            .iter()
+            .map(|constructor| uniform_binder(constructor, data, position))
+            .collect();
+        let Some(chosen) = chosen else { break };
+        for (binders, binder) in binders.iter_mut().zip(chosen) {
+            binders.insert(binder);
+        }
+    }
+    binders
+}
+
+fn uniform_binder(constructor: &Signature, data: &str, position: usize) -> Option<usize> {
+    let depth = constructor.parameter_types.len();
+    let binder = match family_arguments(&constructor.result, data)?.get(position)? {
+        Term::Local(Index(index)) if *index < depth => depth - 1 - index,
+        _ => return None,
+    };
+    let mut uniform = true;
+    for (field, field_type) in constructor.parameter_types.iter().enumerate() {
+        visit_occurrences(field_type, data, field, &mut |arguments, depth| {
+            let expected = depth.checked_sub(1 + binder).map(Index);
+            if arguments.get(position) != expected.map(Term::Local).as_ref() {
+                uniform = false;
+            }
+        });
+    }
+    uniform.then_some(binder)
+}
+
+/// The arguments of `term` when it applies `data`, in written order.
+fn family_arguments<'term>(term: &'term Term, data: &str) -> Option<Vec<&'term Term>> {
+    let mut head = term;
+    let mut spines = Vec::new();
+    while let Term::Apply {
+        function,
+        arguments,
+    } = head
+    {
+        spines.push(arguments);
+        head = function;
+    }
+    match head {
+        Term::Global(Global {
+            name,
+            kind: GlobalKind::Data,
+        }) if name == data => Some(spines.into_iter().rev().flatten().collect()),
+        _ => None,
+    }
+}
+
+/// Calls `visit` with the arguments of each occurrence of `data`, and the
+/// number of binders in scope there.
+fn visit_occurrences(
+    term: &Term,
+    data: &str,
+    depth: usize,
+    visit: &mut impl FnMut(Vec<Term>, usize),
+) {
+    if let Some(arguments) = family_arguments(term, data) {
+        visit(
+            arguments
+                .iter()
+                .map(|argument| (*argument).clone())
+                .collect(),
+            depth,
+        );
+        for argument in arguments {
+            visit_occurrences(argument, data, depth, visit);
+        }
+        return;
+    }
+    match term {
+        Term::FunctionType {
+            parameter_type,
+            result,
+        } => {
+            visit_occurrences(parameter_type, data, depth, visit);
+            visit_occurrences(result, data, depth + 1, visit);
+        }
+        Term::Function { body } => visit_occurrences(body, data, depth + 1, visit),
+        Term::Apply {
+            function,
+            arguments,
+        } => {
+            visit_occurrences(function, data, depth, visit);
+            for argument in arguments {
+                visit_occurrences(argument, data, depth, visit);
+            }
+        }
+        Term::Match { subject, cases } => {
+            visit_occurrences(subject, data, depth, visit);
+            for case in cases {
+                let bound = pattern_binders(&case.pattern);
+                visit_occurrences(&case.result, data, depth + bound, visit);
+            }
+        }
+        Term::List(elements) => {
+            for element in elements {
+                visit_occurrences(element, data, depth, visit);
+            }
+        }
+        Term::Type | Term::Kind | Term::Local(_) | Term::Global(_) => {}
+    }
+}
+
+fn pattern_binders(pattern: &Pattern) -> usize {
+    match pattern {
+        Pattern::Binding => 1,
+        Pattern::Constructor { arguments, .. } => arguments.iter().map(pattern_binders).sum(),
     }
 }

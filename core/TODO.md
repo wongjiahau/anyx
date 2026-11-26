@@ -138,6 +138,17 @@ inference. Macros and effects come later.
     - Leave a result that does not reduce to the family, such as a `MATCH`
       blocked on a parameter, to be rejected as before.
 
+17. A family's parameters don't count towards its universe, as in Coq (done)
+    and Lean, so `List of (item: Type) RETURNS Type` and `List of (Text)`
+    is a field of data in `Type`.
+    - A constructor restates its family's arguments as binders. A binder of
+      `Type` is exempt from "fields of data returning Type are in Type" only
+      when it passes a parameter: a leading position where every
+      constructor passes its own binder, in its result and in every
+      recursive occurrence among its fields.
+    - Anything else is an index or a stored field and stays checked, so
+      `pack (code: Type) RETURNS Any` is still rejected (Girard's paradox).
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword

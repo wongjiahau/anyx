@@ -6,14 +6,16 @@ mod index_unification;
 mod match_checking;
 use match_checking::DataFamilies;
 
-use super::data_checking::{check_data_declarations, unfold_constructor_results};
+use super::data_checking::{
+    check_data_declarations, parameter_binders, unfold_constructor_results,
+};
 use super::evaluation::{Definitions, fresh_local, reverse_position};
 use super::termination::check_termination;
 use super::{
     Declaration, Document, Environment, EvaluationError, Global, Index, Signature, Term, Value,
 };
 use crate::lowering::GlobalKind;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -218,22 +220,25 @@ impl TypeChecker {
         for declaration in declarations.clone() {
             match declaration {
                 Declaration::Function { signature, body } => {
-                    signatures.push((signature, GlobalKind::Function, false));
+                    signatures.push((signature, GlobalKind::Function, None));
                     functions.push((signature, body));
                 }
                 Declaration::Data {
                     signature,
                     constructors,
                 } => {
-                    signatures.push((signature, GlobalKind::Data, false));
+                    signatures.push((signature, GlobalKind::Data, None));
                     self.data_families.register(signature, constructors);
-                    signatures.extend(constructors.iter().map(|constructor| {
-                        (
-                            constructor,
-                            GlobalKind::Constructor,
-                            signature.result == Term::Type,
-                        )
-                    }));
+                    let binders = parameter_binders(signature, constructors);
+                    signatures.extend(constructors.iter().zip(binders).map(
+                        |(constructor, parameters)| {
+                            (
+                                constructor,
+                                GlobalKind::Constructor,
+                                (signature.result == Term::Type).then_some(parameters),
+                            )
+                        },
+                    ));
                 }
             }
         }
@@ -258,9 +263,9 @@ impl TypeChecker {
         }
 
         let scope = self.scope();
-        for (signature, _, fields_must_be_in_type) in &signatures {
+        for (signature, _, small_fields) in &signatures {
             scope
-                .check_signature(signature, *fields_must_be_in_type)
+                .check_signature(signature, small_fields.as_ref())
                 .map_err(|error| DeclarationCheckingError::Signature {
                     name: signature.name.clone(),
                     error,
@@ -381,15 +386,20 @@ impl Scope<'_> {
         self.environment.push(value);
     }
 
+    /// `small_fields` is set for a constructor of data returning `Type`: every
+    /// field must then be in `Type`, except the binders that stand for the
+    /// family's parameters.
     fn check_signature(
         &self,
         signature: &Signature,
-        fields_must_be_in_type: bool,
+        small_fields: Option<&HashSet<usize>>,
     ) -> Result<(), CheckingError> {
         let mut scope = self.clone();
-        for parameter_type in &signature.parameter_types {
+        for (position, parameter_type) in signature.parameter_types.iter().enumerate() {
             let universe = scope.type_universe(parameter_type)?;
-            if fields_must_be_in_type && matches!(universe, Value::Kind) {
+            if small_fields.is_some_and(|parameters| !parameters.contains(&position))
+                && matches!(universe, Value::Kind)
+            {
                 return Err(CheckingError::ConstructorFieldMustBeInType);
             }
             let parameter_type = scope
