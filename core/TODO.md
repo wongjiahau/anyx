@@ -173,6 +173,19 @@ inference. Macros and effects come later.
     - Not yet: projections (`length of (list)`), `{ }` for a record with
       parameters, and defaults on the wire.
 
+20. `Natural` is built in, and `3` is a literal of it. (done)
+    - The kernel checks `DATA Natural RETURNS Type WITH [zero RETURNS
+      Natural, successor of (number: Natural) RETURNS Natural]` before every
+      document, so a schema can't declare its own.
+    - A closed `Natural` is one number: `zero` evaluates to `0` and
+      `successor of` a number to the next one. A match or an index equation
+      peels one step: `0` is `zero`, `n + 1` is `successor of (n)`. That rule
+      is the only trusted code; there is no built-in arithmetic, so `(2) plus
+      (3)` peels its left side twice.
+    - Two different numbers never unify, without peeling down to `zero`.
+    - Generated code sends a `Natural` as a number.
+    - Not yet: literals of `Integer`, `Text`, `Decimal`; built-in `plus`.
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword

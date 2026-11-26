@@ -92,9 +92,16 @@ impl Scope<'_> {
                 }
             }
 
-            if let (Some((left_head, left_arguments)), Some((right_head, right_arguments))) =
-                (rigid_application(&left), rigid_application(&right))
-            {
+            // Two different numbers: peeling would take as many steps as the
+            // smaller one to reach `zero` against `successor of _`.
+            if matches!((&left, &right), (Value::Natural(_), Value::Natural(_))) {
+                return Ok(false);
+            }
+            let (left_peeled, right_peeled) = (left.peeled(), right.peeled());
+            if let (Some((left_head, left_arguments)), Some((right_head, right_arguments))) = (
+                rigid_application(&left_peeled),
+                rigid_application(&right_peeled),
+            ) {
                 if left_head != right_head {
                     return Ok(false);
                 }
@@ -116,6 +123,7 @@ impl Scope<'_> {
 }
 
 fn rigid_application(value: &Value) -> Option<(&Global, &[Value])> {
+    // A number has no local in it, and unification peels it before this.
     match value {
         Value::Constructor { global, arguments } => Some((global, arguments)),
         _ => data_application(value),
@@ -158,7 +166,7 @@ fn mentions_local(term: &Term, index: Index) -> bool {
         Term::List(elements) => elements
             .iter()
             .any(|element| mentions_local(element, index)),
-        Term::Type | Term::Kind | Term::Global(_) => false,
+        Term::Type | Term::Kind | Term::Global(_) | Term::Natural(_) => false,
     }
 }
 

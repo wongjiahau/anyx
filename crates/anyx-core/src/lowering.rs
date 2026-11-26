@@ -90,6 +90,8 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
+    /// `3`, a literal of the built-in `Natural`.
+    Natural(u128),
 }
 
 #[derive(Debug, PartialEq)]
@@ -313,6 +315,12 @@ impl<'source> Resolver<'source> {
         &mut self,
         document: &'source parser::Document,
     ) -> Result<(), LoweringError> {
+        // The built-in `Natural`, which the kernel checks before the file.
+        self.globals.insert("Natural", GlobalKind::Data);
+        for constructor in ["zero", "successor of _"] {
+            self.globals.insert(constructor, GlobalKind::Constructor);
+            self.constructor_data.insert(constructor, "Natural");
+        }
         for declaration in &document.declaration {
             match declaration {
                 parser::Declaration::Data(data) => {
@@ -857,6 +865,12 @@ impl<'source> Resolver<'source> {
                     span: *span,
                     message: "a hole must be a direct argument of a call".to_owned(),
                 });
+            }
+            parser::Expression::Natural(number) => {
+                Term::Natural(number.value.parse().map_err(|_| LoweringError {
+                    span: number.span,
+                    message: format!("`{}` is too large for a `Natural`", number.value),
+                })?)
             }
             parser::Expression::RecordValue(entries) => {
                 self.record_value(entries.span, &entries.value)?

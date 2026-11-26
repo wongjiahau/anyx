@@ -135,6 +135,7 @@ pub enum Expression {
         span: Span,
     },
     Hole(Span),
+    Natural(Spanned<String>),
     List(Spanned<Vec<Expression>>),
     RecordValue(Spanned<Vec<Expression>>),
 }
@@ -214,6 +215,7 @@ impl Expression {
             | Expression::Call { span, .. }
             | Expression::Name { span, .. }
             | Expression::Hole(span) => *span,
+            Expression::Natural(value) => value.span,
             Expression::List(value) => value.span,
             Expression::RecordValue(value) => value.span,
         }
@@ -373,6 +375,7 @@ impl support::Errors for Expression {
                 support::Errors::errors(arguments, found);
             }
             Expression::Hole(value) => support::Errors::errors(value, found),
+            Expression::Natural(value) => support::Errors::errors(value, found),
             Expression::List(value) => support::Errors::errors(value, found),
             Expression::RecordValue(value) => support::Errors::errors(value, found),
         }
@@ -613,6 +616,17 @@ pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
         .or_else(|error| error.or(decode_expression_call(node)))
         .or_else(|error| error.or(decode_expression_name(node)))
         .or_else(|error| error.or(support::underscore(node).map(Expression::Hole)))
+        .or_else(|error| {
+            error.or(support::float(
+                node,
+                0.0,
+                f64::INFINITY,
+                false,
+                "an integer literal of at least 0",
+            )
+            .and_then(|_| support::number_literal(node, false, "an integer literal of at least 0"))
+            .map(Expression::Natural))
+        })
         .or_else(|error| error.or(decode_expression_list(node).map(Expression::List)))
         .or_else(|error| {
             error.or(decode_expression_record_value(node).map(Expression::RecordValue))

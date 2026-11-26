@@ -1,7 +1,3 @@
-DATA Natural RETURNS Type WITH [
-  zero RETURNS Natural,
-  successor of (number: Natural) RETURNS Natural,
-],
 FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural IS
   ⁽MATCH left WITH [
     WHEN zero THEN right,

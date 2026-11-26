@@ -142,11 +142,11 @@ fn blocks_on_nested_constructor_patterns_before_a_fallback() {
                 pattern: Pattern::Constructor {
                     name: "wrap _".into(),
                     arguments: vec![Pattern::Constructor {
-                        name: "zero".into(),
+                        name: "nothing".into(),
                         arguments: Vec::new(),
                     }],
                 },
-                result: constructor("zero"),
+                result: constructor("nothing"),
             },
             Case {
                 pattern: Pattern::Binding,
@@ -156,8 +156,11 @@ fn blocks_on_nested_constructor_patterns_before_a_fallback() {
     };
     assert_eq!(normalize(&term, 1), Ok(term.clone()));
     assert_eq!(
-        normalize(&apply(function(term.clone()), vec![constructor("zero")]), 0),
-        Ok(constructor("zero"))
+        normalize(
+            &apply(function(term.clone()), vec![constructor("nothing")]),
+            0
+        ),
+        Ok(constructor("nothing"))
     );
     assert_eq!(
         normalize(&apply(function(term), vec![constructor("one")]), 0),

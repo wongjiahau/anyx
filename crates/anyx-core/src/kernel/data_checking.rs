@@ -272,7 +272,7 @@ fn visit_global_references<'term>(
                 visit_global_references(element, false, visit);
             }
         }
-        Term::Type | Term::Kind | Term::Local(_) => {}
+        Term::Type | Term::Kind | Term::Local(_) | Term::Natural(_) => {}
     }
 }
 
@@ -394,7 +394,7 @@ fn visit_occurrences(
                 visit_occurrences(element, data, depth, visit);
             }
         }
-        Term::Type | Term::Kind | Term::Local(_) | Term::Global(_) => {}
+        Term::Type | Term::Kind | Term::Local(_) | Term::Global(_) | Term::Natural(_) => {}
     }
 }
 

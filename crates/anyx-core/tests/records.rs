@@ -7,10 +7,6 @@ use anyx_core::{
 };
 
 const DATA: &str = "
-    DATA Natural RETURNS Type WITH [
-        zero RETURNS Natural,
-        successor of (previous: Natural) RETURNS Natural,
-    ],
     DATA Case RETURNS Type WITH [smart case RETURNS Case, any case RETURNS Case],
     DATA Hidden files RETURNS Type WITH [hidden RETURNS Hidden files, skip hidden RETURNS Hidden files],
     DATA Vector of (length: Natural) RETURNS Type WITH [

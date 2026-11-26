@@ -1,6 +1,9 @@
 //! Normalization by evaluation for the core kernel.
 
-use super::{Case, Closure, Environment, Global, Index, Level, Neutral, Pattern, Term, Value};
+use super::{
+    Case, Closure, Environment, Global, Index, Level, Neutral, Pattern, SUCCESSOR, Term, Value,
+    ZERO,
+};
 use crate::lowering::GlobalKind;
 use std::collections::HashMap;
 use std::fmt;
@@ -11,6 +14,8 @@ pub enum EvaluationError {
     UnboundLevel(Level),
     ApplyNonFunction,
     NoMatchingCase,
+    /// A `Natural` past the largest the kernel holds, 2^128 - 1.
+    NaturalOverflow,
 }
 
 impl fmt::Display for EvaluationError {
@@ -24,6 +29,7 @@ impl fmt::Display for EvaluationError {
             }
             Self::ApplyNonFunction => write!(formatter, "cannot apply a non-function value"),
             Self::NoMatchingCase => write!(formatter, "no case matches the subject"),
+            Self::NaturalOverflow => write!(formatter, "a `Natural` grew past 2^128 - 1"),
         }
     }
 }
@@ -55,10 +61,16 @@ impl Definitions {
                     .ok_or(EvaluationError::UnboundIndex(*index))?;
                 environment[position].clone()
             }
+            Term::Global(global)
+                if global.kind == GlobalKind::Constructor && global.name == ZERO =>
+            {
+                Value::Natural(0)
+            }
             Term::Global(global) if global.kind == GlobalKind::Constructor => Value::Constructor {
                 global: global.clone(),
                 arguments: Vec::new(),
             },
+            Term::Natural(number) => Value::Natural(*number),
             Term::Global(global) => self.evaluate_global(global, Vec::new())?,
             Term::FunctionType {
                 parameter_type,
@@ -116,7 +128,10 @@ impl Definitions {
         {
             if let Some(position) = definition.decreasing_parameter {
                 if arguments.len() == definition.parameter_count
-                    && matches!(arguments[position], Value::Constructor { .. })
+                    && matches!(
+                        arguments[position],
+                        Value::Constructor { .. } | Value::Natural(_)
+                    )
                 {
                     return self.evaluate(&definition.body, &arguments);
                 }
@@ -143,6 +158,16 @@ impl Definitions {
                 global,
                 mut arguments,
             } => {
+                // `successor of` a number is the next number.
+                if global.name == SUCCESSOR
+                    && arguments.is_empty()
+                    && let Value::Natural(number) = argument
+                {
+                    return number
+                        .checked_add(1)
+                        .map(Value::Natural)
+                        .ok_or(EvaluationError::NaturalOverflow);
+                }
                 arguments.push(argument);
                 Ok(Value::Constructor { global, arguments })
             }
@@ -230,7 +255,7 @@ fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment)
         bindings.push(subject.clone());
         return PatternMatch::Matched;
     };
-    match subject {
+    match subject.peeled().as_ref() {
         Value::Constructor { global, arguments }
             if name == &global.name && patterns.len() == arguments.len() =>
         {
@@ -274,6 +299,7 @@ impl Definitions {
             }
             Value::Neutral(neutral) => self.read_back_neutral(neutral, depth)?,
             Value::List(elements) => Term::List(self.read_back_values(elements, depth)?),
+            Value::Natural(number) => Term::Natural(*number),
         })
     }
 

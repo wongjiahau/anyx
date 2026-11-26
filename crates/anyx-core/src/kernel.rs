@@ -85,6 +85,8 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
+    /// A literal of the built-in `Natural`: `3` is `successor of (2)`.
+    Natural(u128),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,6 +120,77 @@ pub enum Value {
     },
     Neutral(Neutral),
     List(Vec<Value>),
+    /// Every closed `Natural` is kept as a number: `zero` evaluates to `0`
+    /// and `successor of` a number to the next one. Matching peels one step.
+    Natural(u128),
+}
+
+/// The built-in `Natural`, the type of number literals.
+pub const NATURAL: &str = "Natural";
+pub const ZERO: &str = "zero";
+pub const SUCCESSOR: &str = "successor of _";
+
+/// `DATA Natural RETURNS Type WITH [zero RETURNS Natural, successor of
+/// (number: Natural) RETURNS Natural]`, checked before every document.
+pub fn natural_declaration() -> Declaration {
+    let natural = || {
+        Term::Global(Global {
+            name: NATURAL.to_owned(),
+            kind: GlobalKind::Data,
+        })
+    };
+    Declaration::Data {
+        signature: Signature {
+            name: NATURAL.to_owned(),
+            parameter_types: Vec::new(),
+            result: Term::Type,
+        },
+        constructors: vec![
+            Signature {
+                name: ZERO.to_owned(),
+                parameter_types: Vec::new(),
+                result: natural(),
+            },
+            Signature {
+                name: SUCCESSOR.to_owned(),
+                parameter_types: vec![natural()],
+                result: natural(),
+            },
+        ],
+    }
+}
+
+impl Value {
+    /// A constructor applied to its arguments, with a closed `Natural` kept
+    /// as a number, so `zero` and `0` are the same value.
+    pub fn constructor(global: Global, arguments: Vec<Value>) -> Value {
+        match (global.name.as_str(), arguments.as_slice()) {
+            (ZERO, []) => Value::Natural(0),
+            (SUCCESSOR, [Value::Natural(number)]) if *number < u128::MAX => {
+                Value::Natural(number + 1)
+            }
+            _ => Value::Constructor { global, arguments },
+        }
+    }
+
+    /// A number as the constructor it stands for: `0` is `zero`, `n + 1`
+    /// is `successor of (n)`. Any other value is unchanged.
+    pub fn peeled(&self) -> std::borrow::Cow<'_, Value> {
+        let constructor = |name: &str, arguments| Value::Constructor {
+            global: Global {
+                name: name.to_owned(),
+                kind: GlobalKind::Constructor,
+            },
+            arguments,
+        };
+        match self {
+            Value::Natural(0) => std::borrow::Cow::Owned(constructor(ZERO, Vec::new())),
+            Value::Natural(number) => {
+                std::borrow::Cow::Owned(constructor(SUCCESSOR, vec![Value::Natural(number - 1)]))
+            }
+            _ => std::borrow::Cow::Borrowed(self),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -256,6 +329,7 @@ impl Scope {
                     .collect::<Result<_, _>>()?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
+            lowering::Term::Natural(number) => Term::Natural(*number),
         })
     }
 

@@ -36,13 +36,12 @@ fn checks_and_evaluates_the_sample_declarations() {
 }
 
 fn assert_successor_of_zero(output: &[u8]) {
+    // A closed `Natural` normalizes to a number.
     let normal_form = String::from_utf8_lossy(output);
-    assert!(normal_form.starts_with("Apply {"), "{normal_form}");
-    assert!(
-        normal_form.contains("name: \"successor of _\""),
-        "{normal_form}"
+    assert_eq!(
+        normal_form.split_whitespace().collect::<String>(),
+        "Natural(1,)"
     );
-    assert!(normal_form.contains("name: \"zero\""), "{normal_form}");
 }
 
 #[test]

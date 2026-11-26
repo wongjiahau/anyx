@@ -27,7 +27,7 @@ fn ty(ty: &Ty) -> String {
     match ty {
         Ty::Primitive(primitive) => match primitive {
             Primitive::Text => "string".into(),
-            Primitive::Integer | Primitive::Duration => "number".into(),
+            Primitive::Integer | Primitive::Natural | Primitive::Duration => "number".into(),
             Primitive::Instant => "Date".into(),
             Primitive::Boolean => "boolean".into(),
             Primitive::Nothing => "null".into(),
@@ -92,7 +92,7 @@ fn descriptor(ty: &Ty) -> String {
             "{{ k: {} }}",
             quoted(match primitive {
                 Primitive::Text => "text",
-                Primitive::Integer => "integer",
+                Primitive::Integer | Primitive::Natural => "integer",
                 Primitive::Instant => "instant",
                 Primitive::Duration => "duration",
                 Primitive::Boolean => "boolean",

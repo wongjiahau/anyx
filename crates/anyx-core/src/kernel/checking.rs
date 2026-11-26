@@ -208,8 +208,10 @@ impl TypeChecker {
     }
 
     /// Check all declarations, including data families and their constructors.
+    /// Check `document` after the built-in `Natural`.
     pub fn check_document(self, document: &Document) -> Result<Self, DeclarationCheckingError> {
-        self.check_declarations(document.declarations.iter())
+        let natural = super::natural_declaration();
+        self.check_declarations(std::iter::once(&natural).chain(&document.declarations))
     }
 
     fn check_declarations<'document>(
@@ -574,6 +576,10 @@ impl Scope<'_> {
             }
             Term::Match { .. } => Err(CheckingError::MatchNeedsExpectedType),
             Term::List(_) => Err(CheckingError::UnsupportedTerm),
+            Term::Natural(_) => Ok(Value::Neutral(super::Neutral::Global(Global {
+                name: super::NATURAL.to_owned(),
+                kind: GlobalKind::Data,
+            }))),
         }
     }
 }

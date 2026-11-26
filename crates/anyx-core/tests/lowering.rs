@@ -18,7 +18,6 @@ fn resolves_forward_references_and_match_bindings() {
     let document = lower(
         "
 FUNCTION predecessor of (number: Natural) RETURNS Natural IS (MATCH number WITH [WHEN zero THEN zero, WHEN successor of (number) THEN number]),
-DATA Natural RETURNS Type WITH [zero RETURNS Natural, successor of (number: Natural) RETURNS Natural],
 ",
     )
     .unwrap();

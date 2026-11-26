@@ -12,8 +12,7 @@ fn checks_a_hole_against_a_dependent_function_type() {
     let document = kernel_document(
         "FUNCTION choose (element: Type) value (value: element) RETURNS element IS value,
          FUNCTION choose a natural RETURNS ((value: Natural) RETURNS Natural)
-           IS (choose (Natural) value _),
-         DATA Natural RETURNS Type WITH [],",
+           IS (choose (Natural) value _),",
     );
     let Declaration::Function { signature, body } = &document.declarations[1] else {
         panic!("expected a function declaration");
@@ -60,8 +59,7 @@ fn rejects_mutual_recursion_without_descent() {
 fn checks_forward_references_in_signatures() {
     let document = kernel_document(
         "FUNCTION identity (value: element) RETURNS element IS value,
-         FUNCTION element RETURNS Type IS Natural,
-         DATA Natural RETURNS Type WITH [],",
+         FUNCTION element RETURNS Type IS Natural,",
     );
     assert!(TypeChecker::default().check_document(&document).is_ok());
 }
@@ -353,10 +351,6 @@ fn kernel_document(source: &str) -> Document {
 }
 
 const MATCH_DATA: &str = "
-    DATA Natural RETURNS Type WITH [
-        zero RETURNS Natural,
-        successor of (previous: Natural) RETURNS Natural,
-    ],
     DATA Boolean RETURNS Type WITH [false RETURNS Boolean, true RETURNS Boolean],
     DATA Empty RETURNS Type WITH [],
     DATA Package RETURNS Kind WITH [
@@ -759,13 +753,12 @@ fn rejects_expressions_without_the_required_types() {
 #[test]
 fn rejects_malformed_kernel_patterns() {
     let mut document = kernel_document(
-        "DATA Natural RETURNS Type WITH [zero RETURNS Natural, successor of (number: Natural) RETURNS Natural],
-         FUNCTION example RETURNS Natural IS (MATCH zero WITH [WHEN successor of (number) THEN zero]),",
+        "FUNCTION example RETURNS Natural IS (MATCH zero WITH [WHEN successor of (number) THEN zero]),",
     );
     let Declaration::Function {
         body: Term::Match { cases, .. },
         ..
-    } = &mut document.declarations[1]
+    } = &mut document.declarations[0]
     else {
         panic!("expected a match in the sample function");
     };
@@ -829,8 +822,7 @@ fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
             "cannot establish structural termination",
         ),
     ] {
-        let source =
-            format!("DATA Natural RETURNS Type WITH [zero RETURNS Natural],\n{declaration}");
+        let source = declaration.to_owned();
         let parsed = parse_document(&source);
         assert!(parsed.syntax_errors.is_empty());
         let syntax = parsed.document.unwrap();
@@ -851,8 +843,7 @@ fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
 #[test]
 fn separates_type_from_kind_and_checks_the_universe_of_both_function_type_parts() {
     let document = kernel_document(
-        "DATA Natural RETURNS Type WITH [],
-         FUNCTION universe (number: Natural) RETURNS Kind IS Type,
+        "FUNCTION universe (number: Natural) RETURNS Kind IS Type,
          FUNCTION small RETURNS Kind IS Type,
          FUNCTION higher (item: small) RETURNS Kind IS small,",
     );

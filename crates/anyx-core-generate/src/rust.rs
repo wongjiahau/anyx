@@ -126,6 +126,7 @@ fn ty(schema: &Schema, ty: &Ty, context: Context) -> String {
         Ty::Primitive(primitive) => match primitive {
             Primitive::Text => "String".into(),
             Primitive::Integer => "i64".into(),
+            Primitive::Natural => "u64".into(),
             Primitive::Instant => "::std::time::SystemTime".into(),
             Primitive::Duration => "::std::time::Duration".into(),
             Primitive::Boolean => "bool".into(),

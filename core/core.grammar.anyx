@@ -90,6 +90,8 @@ expression ⁽ONE OF [
   name ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
   ## A hole: `(successor of _)` is a function.
   hole ⁽UNDERSCORE,
+  ## `3`: a `Natural`, the same value as `successor of (2)`.
+  natural ⁽NUMBER [WRITTEN INTEGER, AT LEAST 0],
   list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽expression,
   ## `{ between 1 and 3, newest first }`: a value of the record whose fields
   ## these entries fill.

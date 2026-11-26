@@ -177,10 +177,10 @@ impl Scope<'_> {
         if !self.unify_indices(indices, result_indices)?
             || !self.unify_indices(
                 std::slice::from_ref(&column.value),
-                &[Value::Constructor {
-                    global: global.clone(),
-                    arguments: fields.iter().map(|field| field.value.clone()).collect(),
-                }],
+                &[Value::constructor(
+                    global.clone(),
+                    fields.iter().map(|field| field.value.clone()).collect(),
+                )],
             )?
         {
             return Ok(None);

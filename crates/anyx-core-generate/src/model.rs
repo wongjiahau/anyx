@@ -40,6 +40,8 @@ pub enum Ty {
 pub enum Primitive {
     Text,
     Integer,
+    /// The kernel's built-in `Natural`, sent as a number.
+    Natural,
     Instant,
     Duration,
     Boolean,
@@ -52,6 +54,7 @@ fn primitive(name: &str) -> Option<Primitive> {
     Some(match name {
         "Text" => Primitive::Text,
         "Integer" => Primitive::Integer,
+        "Natural" => Primitive::Natural,
         "Instant" => Primitive::Instant,
         "Duration" => Primitive::Duration,
         "Boolean" => Primitive::Boolean,
@@ -775,6 +778,7 @@ fn clone_term(term: &lowering::Term) -> lowering::Term {
                 .collect(),
         },
         T::List(elements) => T::List(elements.iter().map(clone_term).collect()),
+        T::Natural(number) => T::Natural(*number),
     }
 }
 

@@ -51,8 +51,15 @@ fn a_function_without_a_body_is_served() {
 }
 
 #[test]
-fn rejects_number_and_string_literals() {
-    for literal in ["1", "\"zero\""] {
+fn accepts_only_natural_number_literals() {
+    let source = "FUNCTION example RETURNS Natural IS 12";
+    let document = parse_document(source).document.unwrap();
+    let [Declaration::Function(example)] = document.declaration.as_slice() else {
+        panic!("expected one function");
+    };
+    assert!(matches!(&example.body, Expression::Natural(number) if number.value == "12"));
+
+    for literal in ["1.5", "\"zero\""] {
         let source = format!("FUNCTION example RETURNS Natural IS {literal}");
         let parsed = parse_document(&source);
         assert!(parsed.syntax_errors.is_empty());
