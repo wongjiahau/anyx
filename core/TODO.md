@@ -210,6 +210,18 @@ inference. Macros and effects come later.
     - A `DATA`'s, a `RECORD`'s or a field's head has none: a field has
       `DEFAULT`.
 
+23. fd is a core tool, and the shell calls core tools. (done)
+    - `crates/anyx-fd/fd.anyx` replaces `fd.protocol.anyx`; `build.rs`
+      generates its server, which reads JSON calls of `answer _ to _`.
+    - `anyx-fd --anyx-schema` writes the schema. The shell's
+      `USE … FROM COMMAND` reads it with `anyx_core_generate::client`, which
+      checks a call such as `fd / find "x" with { hidden }` with the kernel,
+      normalizes it so every `DEFAULT` is a value, sends it as JSON, and
+      writes the answer back as anyx: `answered ["src/lib.rs"]`.
+    - A compiled body's result that spells a parameter as `Erased` takes
+      each value it returns through `erase`.
+    - Completion and hover don't reach core tools yet.
+
 ## Later
 
 - Overloading on named types without arguments, then record projections.

@@ -129,6 +129,41 @@ impl fmt::Display for LoweringError {
 impl std::error::Error for LoweringError {}
 
 /// Resolve a single file. All its declaration heads are visible throughout it.
+/// A record's field, as a `{ }` value writes it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecordField {
+    /// The field's words with a `_` in each slot, `between _ and _`, or
+    /// `None` for a field written as its value alone.
+    pub name: Option<String>,
+    /// The binder of each slot.
+    pub binders: Vec<String>,
+}
+
+/// Each record `document` declares, by name, with its fields in order.
+pub fn record_fields(document: &parser::Document) -> HashMap<String, Vec<RecordField>> {
+    document
+        .declaration
+        .iter()
+        .filter_map(|declaration| match declaration {
+            parser::Declaration::Record(record) => {
+                let shape = shape_of(record);
+                Some((
+                    shape.name,
+                    shape
+                        .fields
+                        .into_iter()
+                        .map(|field| RecordField {
+                            name: field.name,
+                            binders: field.binders,
+                        })
+                        .collect(),
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringError> {
     let mut resolver = Resolver::default();
     resolver.register_document(document)?;

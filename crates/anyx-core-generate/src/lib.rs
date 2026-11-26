@@ -13,6 +13,7 @@
 //!
 //! See [`model`] for how types and functions are read.
 
+pub mod client;
 pub mod model;
 mod names;
 mod rust;

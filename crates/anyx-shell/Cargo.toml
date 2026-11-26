@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 anyx = { path = "../anyx", version = "0.1.0" }
+anyx-core-generate = { path = "../anyx-core-generate", version = "0.1.0" }
 anyx-protocol = { path = "../anyx-protocol", version = "0.1.0" }
 crossterm = { version = "0.29", default-features = false, features = ["events", "bracketed-paste", "windows"] }
 regex = "1"

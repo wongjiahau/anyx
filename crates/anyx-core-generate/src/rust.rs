@@ -512,10 +512,15 @@ fn declare_compiled(schema: &Schema, out: &mut String, function: &Function) -> R
         .body
         .as_ref()
         .expect("compiled functions have bodies");
+    let result = schema.erased_ty(function, None)?;
     let mut compiler = Compiler {
         schema,
         locals: Vec::new(),
         next: 0,
+        // A result that spells a parameter as `Erased` takes each value it
+        // can return through `erase`, which a concrete type fits.
+        erase_results: mentions_erased(&result),
+        tail: true,
     };
     for (position, (binding, parameter)) in function
         .bindings
@@ -538,19 +543,28 @@ fn declare_compiled(schema: &Schema, out: &mut String, function: &Function) -> R
         function.name,
         snake_case(&function.name),
         compiled_parameters(schema, function)?.join(", "),
-        ty(
-            schema,
-            &schema.erased_ty(function, None)?,
-            Context::Compiled
-        )
+        ty(schema, &result, Context::Compiled)
     );
     Ok(())
+}
+
+fn mentions_erased(ty: &Ty) -> bool {
+    match ty {
+        Ty::Erased => true,
+        Ty::List(item) | Ty::Optional(item) => mentions_erased(item),
+        Ty::Data { arguments, .. } => arguments.iter().any(mentions_erased),
+        Ty::Primitive(_) | Ty::Variable(_) | Ty::Opaque(_) => false,
+    }
 }
 
 struct Compiler<'schema> {
     schema: &'schema Schema,
     locals: Vec<(BindingIdentifier, String)>,
     next: usize,
+    /// Whether a value the function returns goes through `erase`.
+    erase_results: bool,
+    /// Whether the term being compiled is a value the function returns.
+    tail: bool,
 }
 
 impl Compiler<'_> {
@@ -566,6 +580,25 @@ impl Compiler<'_> {
     }
 
     fn term(&mut self, term: &lowering::Term) -> Result<String, String> {
+        let compiled = self.term_as_written(term)?;
+        Ok(
+            if self.tail && self.erase_results && !matches!(term, lowering::Term::Match { .. }) {
+                format!("erase({compiled})")
+            } else {
+                compiled
+            },
+        )
+    }
+
+    /// A term inside another, whose value the function doesn't return as is.
+    fn inner_term(&mut self, term: &lowering::Term) -> Result<String, String> {
+        let tail = std::mem::replace(&mut self.tail, false);
+        let compiled = self.term(term);
+        self.tail = tail;
+        compiled
+    }
+
+    fn term_as_written(&mut self, term: &lowering::Term) -> Result<String, String> {
         match term {
             lowering::Term::Local(identifier) => self
                 .locals
@@ -585,7 +618,7 @@ impl Compiler<'_> {
                 self.call(name, *kind, arguments)
             }
             lowering::Term::Match { subject, cases } => {
-                let subject = self.term(subject)?;
+                let subject = self.inner_term(subject)?;
                 let mut arms = Vec::new();
                 for case in cases {
                     let scope = self.locals.len();
@@ -616,7 +649,7 @@ impl Compiler<'_> {
                 let mut values = Vec::new();
                 for (position, argument) in arguments.iter().enumerate() {
                     if !constructor.erased(position) {
-                        values.push(self.term(argument)?);
+                        values.push(self.inner_term(argument)?);
                     }
                 }
                 Ok(construct(self.schema, name, &values))
@@ -629,7 +662,7 @@ impl Compiler<'_> {
                 let mut values = Vec::new();
                 for (argument, parameter) in arguments.iter().zip(&function.parameters) {
                     if !parameter.erased {
-                        values.push(self.term(argument)?);
+                        values.push(self.inner_term(argument)?);
                     }
                 }
                 let values = values.join(", ");

@@ -25,6 +25,11 @@ use compile::{Argument, Call as PreparedCall, Compiler, ExpressionValue};
 enum PreparedStatement {
     Opening(String),
     Call(PreparedCall),
+    /// A call of a program brought in with `USE … FROM COMMAND`.
+    Program {
+        scope: String,
+        call: anyx_core_generate::client::Call,
+    },
 }
 
 /// A session-owned tool. Calls have already been checked against `schema()`.
@@ -37,6 +42,9 @@ pub trait Tool {
 #[derive(Default)]
 pub struct Interpreter {
     tools: BTreeMap<String, Box<dyn Tool>>,
+    /// The programs brought in with `USE … FROM COMMAND`, each serving an
+    /// anyx core schema.
+    programs: BTreeMap<String, command::CommandTool>,
     opened: BTreeSet<String>,
     /// The program each tool brought in with `USE … FROM COMMAND` runs.
     commands: BTreeMap<String, String>,
@@ -47,7 +55,7 @@ pub struct Interpreter {
 struct Staged {
     scope: String,
     program: String,
-    replaced: Option<(Box<dyn Tool>, String)>,
+    replaced: Option<(command::CommandTool, String)>,
 }
 
 /// Results up to the first execution failure. `output` is an anyx document
@@ -74,7 +82,7 @@ impl Interpreter {
         {
             return Err("a tool scope must start with a lowercase letter and contain only lowercase letters and digits".into());
         }
-        if self.tools.contains_key(scope) {
+        if self.tools.contains_key(scope) || self.programs.contains_key(scope) {
             return Err(format!("the tool scope `{scope}` is already registered"));
         }
         if !tool.schema().is_protocol() {
@@ -97,10 +105,10 @@ impl Interpreter {
             Ok(prepared) => prepared,
             Err(problem) => {
                 for staged in staged.into_iter().rev() {
-                    self.tools.remove(&staged.scope);
+                    self.programs.remove(&staged.scope);
                     self.commands.remove(&staged.scope);
                     if let Some((tool, program)) = staged.replaced {
-                        self.tools.insert(staged.scope.clone(), tool);
+                        self.programs.insert(staged.scope.clone(), tool);
                         self.commands.insert(staged.scope, program);
                     }
                 }
@@ -122,7 +130,7 @@ impl Interpreter {
             match shell_grammar::decode_directive(node) {
                 Ok(shell_grammar::Directive::Opening(opening)) => {
                     let scope = opening.scope.name.text;
-                    if !self.tools.contains_key(&scope) {
+                    if !self.tools.contains_key(&scope) && !self.programs.contains_key(&scope) {
                         return Err(at(
                             source,
                             opening.scope.span.start,
@@ -141,10 +149,19 @@ impl Interpreter {
                     );
                 }
                 Err(_) => {
+                    if let Some(program) = self.program_call(source, node, &opened)? {
+                        prepared.push(program);
+                        continue;
+                    }
+                    let opened_tools: BTreeSet<String> = opened
+                        .iter()
+                        .filter(|scope| self.tools.contains_key(*scope))
+                        .cloned()
+                        .collect();
                     let compiler = Compiler {
                         interpreter: self,
                         source,
-                        opened: &opened,
+                        opened: &opened_tools,
                     };
                     prepared.push(PreparedStatement::Call(compiler.element(node)?));
                 }
@@ -153,12 +170,77 @@ impl Interpreter {
         Ok(prepared)
     }
 
+    /// `node` as a call of a program: `fd / find "x"`, or `find "x"` when
+    /// `fd` is opened and its schema declares `find _`. `None` when it calls
+    /// no program.
+    fn program_call(
+        &self,
+        source: &str,
+        node: &anyx::Node,
+        opened: &BTreeSet<String>,
+    ) -> Result<Option<PreparedStatement>, Problem> {
+        let prepared = |scope: &str, start: usize| {
+            let tool = &self.programs[scope];
+            tool.call(&source[start..node.span.end])
+                .map(|call| PreparedStatement::Program {
+                    scope: scope.to_owned(),
+                    call,
+                })
+        };
+        let invalid =
+            |start: usize, (offset, message): (usize, String)| at(source, start + offset, message);
+        if let Some((scope, start)) = compile::Compiler::scope_of(source, node.span) {
+            if !self.programs.contains_key(&scope) {
+                return Ok(None);
+            }
+            return match prepared(&scope, start) {
+                Ok(call) => Ok(Some(call)),
+                Err(Some(error)) => Err(invalid(start, error)),
+                Err(None) => Err(at(
+                    source,
+                    start,
+                    format!("`{scope}` has nothing called this"),
+                )),
+            };
+        }
+        let mut fitting = Vec::new();
+        let mut failure = None;
+        for scope in opened
+            .iter()
+            .filter(|scope| self.programs.contains_key(*scope))
+        {
+            match prepared(scope, node.span.start) {
+                Ok(call) => fitting.push((scope, call)),
+                Err(Some(error)) => failure = Some(invalid(node.span.start, error)),
+                Err(None) => {}
+            }
+        }
+        match fitting.len() {
+            0 => failure.map_or(Ok(None), Err),
+            1 => Ok(fitting.pop().map(|(_, call)| call)),
+            _ => {
+                let scopes: Vec<String> = fitting
+                    .iter()
+                    .map(|(scope, _)| format!("`{scope}`"))
+                    .collect();
+                Err(at(
+                    source,
+                    node.span.start,
+                    format!(
+                        "more than one opened tool has this call: {}; write `scope / …`",
+                        scopes.join(", ")
+                    ),
+                ))
+            }
+        }
+    }
+
     /// Brings in `program` as the tool `scope`. Bringing in the same program
     /// under the same name again asks it for its schema again.
     fn import(&mut self, scope: &str, program: &str) -> Result<Staged, String> {
         let replaced = match self.commands.get(scope) {
             Some(existing) if existing == program => {
-                let tool = self.tools.remove(scope).expect("a command has a tool");
+                let tool = self.programs.remove(scope).expect("a command has a tool");
                 Some((tool, self.commands.remove(scope).expect("checked")))
             }
             Some(existing) => {
@@ -180,19 +262,13 @@ impl Interpreter {
             Ok(tool) => tool,
             Err(message) => {
                 if let Some((tool, program)) = staged.replaced {
-                    self.tools.insert(scope.to_string(), tool);
+                    self.programs.insert(scope.to_string(), tool);
                     self.commands.insert(scope.to_string(), program);
                 }
                 return Err(message);
             }
         };
-        if let Err(message) = self.register(scope, tool) {
-            if let Some((tool, program)) = staged.replaced {
-                self.tools.insert(scope.to_string(), tool);
-                self.commands.insert(scope.to_string(), program);
-            }
-            return Err(message);
-        }
+        self.programs.insert(scope.to_string(), tool);
         self.commands
             .insert(staged.scope.clone(), staged.program.clone());
         Ok(staged)
@@ -212,6 +288,16 @@ impl Interpreter {
                     continue;
                 }
                 PreparedStatement::Call(call) => call,
+                PreparedStatement::Program { scope, call } => {
+                    match self.programs[&scope].invoke(&call) {
+                        Ok(value) => written.push(value),
+                        Err(error) => {
+                            execution.error = Some(error);
+                            break;
+                        }
+                    }
+                    continue;
+                }
             };
             match self.evaluate_call(source, &prepared) {
                 Ok(Value::Nothing) => {}

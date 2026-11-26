@@ -786,6 +786,23 @@ impl Compiler<'_> {
         Ok(argument)
     }
 
+    /// `fd / find "x"`: the tool the call names, and where the call after
+    /// `/` starts in the source.
+    pub(crate) fn scope_of(source: &str, span: Span) -> Option<(String, usize)> {
+        let parsed = anyx::parse(&source[span.start..span.end]);
+        let element = parsed.syntax.sequence.elements.first()?;
+        match first_run(&element.expression).items.as_slice() {
+            [Item::Atom(scope), Item::Atom(slash), ..]
+                if scope.kind == TokenKind::Word
+                    && slash.kind == TokenKind::Word
+                    && slash.text == "/" =>
+            {
+                Some((scope.text.clone(), span.start + slash.span.end))
+            }
+            _ => None,
+        }
+    }
+
     fn is_scoped(&self, node: &Node) -> bool {
         let parsed = anyx::parse(&self.source[node.span.start..node.span.end]);
         parsed.syntax.sequence.elements.first().is_some_and(|element| {
