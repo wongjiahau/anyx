@@ -288,7 +288,7 @@ export class Client {{
         else queued.resolve(decode(queued.result, answer, {{}}));
       }});
     }} catch (error) {{
-      calls.forEach((queued) => queued.reject(error));
+      for (const queued of calls) queued.reject(error);
     }}
   }}
 
