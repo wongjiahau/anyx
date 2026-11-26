@@ -89,7 +89,7 @@ pub enum SignatureResult {
 pub enum Head {
     WithParameters {
         name: CallName,
-        arguments: Vec<Parameter>,
+        arguments: Vec<HeadArgument>,
         span: Span,
     },
     Plain {
@@ -97,6 +97,19 @@ pub enum Head {
         arguments: Vec<Node>,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum HeadArgument {
+    Parameter(Parameter),
+    OptionalPart(Spanned<HeadArgumentOptionalPartItem>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeadArgumentOptionalPartItem {
+    pub part: Head,
+    pub entry: Expression,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -204,6 +217,15 @@ impl Head {
     pub fn span(&self) -> Span {
         match self {
             Head::WithParameters { span, .. } | Head::Plain { span, .. } => *span,
+        }
+    }
+}
+
+impl HeadArgument {
+    pub fn span(&self) -> Span {
+        match self {
+            HeadArgument::Parameter(value) => value.span,
+            HeadArgument::OptionalPart(value) => value.span,
         }
     }
 }
@@ -335,6 +357,22 @@ impl support::Errors for Head {
                 support::Errors::errors(arguments, found);
             }
         }
+    }
+}
+
+impl support::Errors for HeadArgument {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            HeadArgument::Parameter(value) => support::Errors::errors(value, found),
+            HeadArgument::OptionalPart(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for HeadArgumentOptionalPartItem {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.part, found);
+        support::Errors::errors(&self.entry, found);
     }
 }
 
@@ -562,7 +600,7 @@ fn decode_head_with_parameters(node: &Node) -> Result<Head, DecodeError> {
     let mut arguments = support::arguments(node, arguments);
     let decoded = Head::WithParameters {
         name,
-        arguments: arguments.one_or_more(decode_parameter, "a parameter")?,
+        arguments: arguments.one_or_more(decode_head_argument, "a head argument")?,
         span: node.span,
     };
     arguments.finish()?;
@@ -584,6 +622,44 @@ fn decode_head_plain(node: &Node) -> Result<Head, DecodeError> {
         arguments: arguments.to_vec(),
         span: node.span,
     })
+}
+
+pub fn decode_head_argument(node: &Node) -> Result<HeadArgument, DecodeError> {
+    decode_parameter(node)
+        .map(HeadArgument::Parameter)
+        .or_else(|error| {
+            error.or(decode_head_argument_optional_part(node).map(HeadArgument::OptionalPart))
+        })
+}
+
+fn decode_head_argument_optional_part(
+    node: &Node,
+) -> Result<Spanned<HeadArgumentOptionalPartItem>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.one(
+        decode_head_argument_optional_part_item,
+        "the call `_ DEFAULT _`",
+    )?;
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+fn decode_head_argument_optional_part_item(
+    node: &Node,
+) -> Result<HeadArgumentOptionalPartItem, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = HeadArgumentOptionalPartItem {
+        part: parts.one(decode_head, "a head")?,
+        entry: parts
+            .word("DEFAULT")?
+            .one(decode_expression, "an expression")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_parameter(node: &Node) -> Result<Parameter, DecodeError> {

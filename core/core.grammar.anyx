@@ -64,9 +64,21 @@ signature result ⁽ONE OF [WORD "Kind", expression],
 head ⁽ONE OF [
   with parameters ⁽ANYFIX CALL [
     NAME [NO KEYWORD, MATCHING REGEX "_"],
-    ARGUMENTS ⁽ONE OR MORE ⁽parameter,
+    ARGUMENTS ⁽ONE OR MORE ⁽head argument,
   ],
   plain ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+],
+
+head argument ⁽ONE OF [
+  parameter,
+  ## `[in (paths: List of (Text)) DEFAULT in []]`: a part a call may leave
+  ## out, as in `find "x"`, which is `find "x" in []`. Only a function or a
+  ## constructor has one, and `DEFAULT` holds the part as written.
+  optional part ⁽SQUARE BRACKET ⁽ANYFIX CALL [
+    part ⁽head,
+    WORD "DEFAULT",
+    entry ⁽expression,
+  ],
 ],
 
 ## `(n: Natural)` is the call `_ : _` with the binder and its type.

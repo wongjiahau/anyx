@@ -199,7 +199,16 @@ inference. Macros and effects come later.
       convertible with the chain. That costs completeness, not soundness.
     - A schema can't declare any of the four.
 
-## Later
+22. Optional parts: `[in (paths: List of (Text)) DEFAULT in []]` in the (done)
+    head of a function or a constructor.
+    - The kernel sees one function, `find _ in _ with _`. Lowering fills in
+      a call that leaves out parts, `find "x"`, with a call of each left-out
+      slot's `DEFAULT`, a function without parameters the kernel checks.
+    - A default names no parameter, so it can't depend on one.
+    - Every shorter form is a name of its own: it can't be another
+      declaration's name. A part has a slot and holds no other part.
+    - A `DATA`'s, a `RECORD`'s or a field's head has none: a field has
+      `DEFAULT`.
 
 - Overloading on named types without arguments, then record projections.
   - Overloads share a shape, such as `id of _`, and differ in at least one

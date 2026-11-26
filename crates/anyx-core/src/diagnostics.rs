@@ -17,7 +17,7 @@ impl DeclarationCheckingError {
                     if matches!(self, Self::Body { name: failed, .. } if failed == &name.text) {
                         return function.body.span();
                     }
-                    if matches!(self, Self::NonTerminatingFunctions(names) if names.contains(&name.text))
+                    if matches!(self, Self::NonTerminatingFunctions(names) if names.contains(&name.text.to_string()))
                     {
                         return function.head.span();
                     }

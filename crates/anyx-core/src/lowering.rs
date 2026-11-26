@@ -135,42 +135,46 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
 
     let mut declarations = Vec::new();
     for declaration in &document.declaration {
-        declarations.push(match declaration {
+        match declaration {
             parser::Declaration::Data(data) => {
                 let signature =
                     resolver.declaration_signature(&data.head, &data.signature_result)?;
                 resolver.locals.clear();
                 let mut constructors = Vec::new();
+                let mut defaults = Vec::new();
                 for constructor in &data.constructors.value {
                     constructors
                         .push(resolver.signature(&constructor.head, Some(&constructor.r#type))?);
                     resolver.locals.clear();
+                    defaults.extend(resolver.optional_defaults(&constructor.head)?);
                 }
-                Declaration::Data {
+                declarations.push(Declaration::Data {
                     signature,
                     constructors,
                     record: false,
-                }
+                });
+                declarations.extend(defaults);
             }
             parser::Declaration::Record(record) => {
                 let (data, defaults) = resolver.record(record)?;
                 declarations.push(data);
                 declarations.extend(defaults);
-                continue;
             }
             parser::Declaration::Function(function) => {
                 let signature =
                     resolver.declaration_signature(&function.head, &function.signature_result)?;
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
-                Declaration::Function { signature, body }
+                declarations.push(Declaration::Function { signature, body });
+                declarations.extend(resolver.optional_defaults(&function.head)?);
             }
             parser::Declaration::ServedFunction(function) => {
                 let signature = resolver.signature(&function.head, Some(&function.result))?;
                 resolver.locals.clear();
-                Declaration::Served { signature }
+                declarations.push(Declaration::Served { signature });
+                declarations.extend(resolver.optional_defaults(&function.head)?);
             }
-        });
+        }
     }
     Ok(Document { declarations })
 }
@@ -185,13 +189,123 @@ pub fn lower_expression(
     resolver.term(expression)
 }
 
-pub(crate) fn head_parts(head: &parser::Head) -> (&parser::CallName, &[parser::Parameter]) {
+/// A declared name, with every optional part written: `find _ in _ with _`.
+pub(crate) struct HeadName<'a> {
+    pub text: std::borrow::Cow<'a, str>,
+    pub span: Span,
+}
+
+impl<'a> HeadName<'a> {
+    /// The name for as long as the source lives. A name with optional parts
+    /// is built from the source, so it is kept for good.
+    pub fn interned(&self) -> &'a str {
+        match &self.text {
+            std::borrow::Cow::Borrowed(text) => text,
+            std::borrow::Cow::Owned(text) => Box::leak(text.clone().into_boxed_str()),
+        }
+    }
+}
+
+/// `[in (paths: List of (Text)) DEFAULT in []]`: a part of a head that a
+/// call may leave out.
+pub(crate) struct OptionalPart<'a> {
+    /// The part's words with its slots, `in _`.
+    pub name: &'a parser::CallName,
+    pub parameters: Vec<&'a parser::Parameter>,
+    /// The part as written with its default values, `in []`.
+    pub entry: &'a parser::Expression,
+    pub span: Span,
+    /// Whether the part holds an optional part of its own.
+    pub nested: bool,
+}
+
+/// A head's whole name and its parameters, optional parts' included.
+pub(crate) fn head_parts(head: &parser::Head) -> (HeadName<'_>, Vec<&parser::Parameter>) {
     match head {
-        parser::Head::Plain { name, .. } => (name, &[]),
+        parser::Head::Plain { name, .. } => (
+            HeadName {
+                text: std::borrow::Cow::Borrowed(&name.text),
+                span: name.span,
+            },
+            Vec::new(),
+        ),
         parser::Head::WithParameters {
             name, arguments, ..
-        } => (name, arguments),
+        } => {
+            let mut parameters = Vec::new();
+            let mut words = Vec::new();
+            let mut arguments = arguments.iter();
+            for word in name.text.split_whitespace() {
+                if word != "_" {
+                    words.push(word.to_owned());
+                    continue;
+                }
+                match arguments.next() {
+                    Some(parser::HeadArgument::Parameter(parameter)) => {
+                        parameters.push(parameter);
+                        words.push("_".to_owned());
+                    }
+                    Some(parser::HeadArgument::OptionalPart(part)) => {
+                        let (part_name, part_parameters) = head_parts(&part.value.part);
+                        parameters.extend(part_parameters);
+                        words.push(part_name.text.into_owned());
+                    }
+                    None => words.push("_".to_owned()),
+                }
+            }
+            let text = if optional_parts(head).is_empty() {
+                std::borrow::Cow::Borrowed(name.text.as_str())
+            } else {
+                std::borrow::Cow::Owned(words.join(" "))
+            };
+            (
+                HeadName {
+                    text,
+                    span: name.span,
+                },
+                parameters,
+            )
+        }
     }
+}
+
+/// The optional parts of a head, in order.
+pub(crate) fn optional_parts(head: &parser::Head) -> Vec<OptionalPart<'_>> {
+    let parser::Head::WithParameters { arguments, .. } = head else {
+        return Vec::new();
+    };
+    arguments
+        .iter()
+        .filter_map(|argument| match argument {
+            parser::HeadArgument::OptionalPart(part) => {
+                let (name, parameters) = match &part.value.part {
+                    parser::Head::WithParameters { name, .. } => {
+                        (name, head_parts(&part.value.part).1)
+                    }
+                    parser::Head::Plain { name, .. } => (name, Vec::new()),
+                };
+                Some(OptionalPart {
+                    name,
+                    parameters,
+                    entry: &part.value.entry,
+                    span: part.span,
+                    nested: !optional_parts(&part.value.part).is_empty(),
+                })
+            }
+            parser::HeadArgument::Parameter(_) => None,
+        })
+        .collect()
+}
+
+/// How a call that leaves out some optional parts is written, and which
+/// parts it writes.
+#[derive(Clone)]
+struct OptionalForm {
+    /// The whole name, every part written.
+    full: String,
+    /// For each slot of the whole name: `Some(default)` when the call leaves
+    /// it out, `None` when the call writes it.
+    slots: Vec<Option<String>>,
 }
 
 #[derive(Default)]
@@ -202,6 +316,10 @@ struct Resolver<'source> {
     /// The data type of each constructor, to find an unnamed field.
     constructor_data: HashMap<&'source str, &'source str>,
     records: Vec<RecordShape>,
+    /// Each way to call a function or constructor that leaves out some of
+    /// its optional parts, by how it is written: `find _` for
+    /// `find _ in _ with _`.
+    optional_forms: HashMap<String, OptionalForm>,
 }
 
 /// What a record entry is known by.
@@ -274,19 +392,21 @@ fn record_slots(record: &parser::Record) -> usize {
 /// slots, and where it is written.
 pub(crate) fn field_parts(
     field: &parser::Field,
-) -> (Option<&parser::CallName>, &[parser::Parameter], Span) {
+) -> (Option<&parser::CallName>, Vec<&parser::Parameter>, Span) {
     let shape = match field {
         parser::Field::Defaulted { field_shape, .. } | parser::Field::FieldShape(field_shape) => {
             field_shape
         }
     };
     match shape {
-        parser::FieldShape::Unnamed(parameter) => {
-            (None, std::slice::from_ref(parameter), parameter.span)
-        }
+        parser::FieldShape::Unnamed(parameter) => (None, vec![parameter], parameter.span),
         parser::FieldShape::Named(head) => {
-            let (name, slots) = head_parts(head);
-            (Some(name), slots, head.span())
+            let name = match head {
+                parser::Head::WithParameters { name, .. } | parser::Head::Plain { name, .. } => {
+                    name
+                }
+            };
+            (Some(name), head_parts(head).1, head.span())
         }
     }
 }
@@ -294,7 +414,7 @@ pub(crate) fn field_parts(
 fn shape_of(record: &parser::Record) -> RecordShape {
     let (name, parameters) = head_parts(&record.head);
     RecordShape {
-        name: name.text.clone(),
+        name: name.text.to_string(),
         constructor: record_constructor_name(&name.text, record_slots(record)),
         has_parameters: !parameters.is_empty(),
         fields: record
@@ -349,17 +469,31 @@ impl<'source> Resolver<'source> {
                     for constructor in &data.constructors.value {
                         self.register(&constructor.head, GlobalKind::Constructor)?;
                         let (name, _) = head_parts(&constructor.head);
-                        self.constructor_data.insert(&name.text, &data_name.text);
+                        self.constructor_data
+                            .insert(name.interned(), data_name.interned());
                     }
                 }
                 parser::Declaration::Record(record) => {
                     self.register(&record.head, GlobalKind::Data)?;
+                    for field in &record.fields.value {
+                        let (parser::Field::Defaulted { field_shape, .. }
+                        | parser::Field::FieldShape(field_shape)) = field;
+                        if let parser::FieldShape::Named(head) = field_shape
+                            && let Some(part) = optional_parts(head).first()
+                        {
+                            return Err(LoweringError {
+                                span: part.span,
+                                message: "a field has no optional parts: give it a `DEFAULT`"
+                                    .to_owned(),
+                            });
+                        }
+                    }
                     let (name, _) = head_parts(&record.head);
                     let constructor = record_constructor_name(&name.text, record_slots(record));
                     let constructor =
                         self.register_generated(&constructor, name.span, GlobalKind::Constructor)?;
                     // A record is a `DATA`, so it can be an unnamed field.
-                    self.constructor_data.insert(constructor, &name.text);
+                    self.constructor_data.insert(constructor, name.interned());
                     self.records.push(shape_of(record));
                     for field in &record.fields.value {
                         if let parser::Field::Defaulted { .. } = field {
@@ -389,13 +523,170 @@ impl<'source> Resolver<'source> {
     ) -> Result<(), LoweringError> {
         let (name, _) = head_parts(head);
         check_binder_name(&name.text, name.span)?;
-        if self.globals.insert(&name.text, kind).is_some() {
+        if self.globals.insert(name.interned(), kind).is_some() {
             return Err(LoweringError {
                 span: name.span,
                 message: format!("duplicate declaration of `{}`", name.text),
             });
         }
+        if let Some(form) = self.optional_forms.get(name.text.as_ref()) {
+            return Err(LoweringError {
+                span: name.span,
+                message: format!(
+                    "`{}` is already `{}` with some of its optional parts left out",
+                    name.text, form.full
+                ),
+            });
+        }
+        let parts = optional_parts(head);
+        if parts.is_empty() {
+            return Ok(());
+        }
+        if kind == GlobalKind::Data {
+            return Err(LoweringError {
+                span: parts[0].span,
+                message: "only a function or a constructor has optional parts".to_owned(),
+            });
+        }
+        for part in &parts {
+            if part.parameters.is_empty() {
+                return Err(LoweringError {
+                    span: part.span,
+                    message: format!(
+                        "the optional part `{}` has no slot, so leaving it out says nothing",
+                        part.name.text
+                    ),
+                });
+            }
+            if part.nested {
+                return Err(LoweringError {
+                    span: part.span,
+                    message: "an optional part can't hold another".to_owned(),
+                });
+            }
+            for parameter in &part.parameters {
+                self.register_generated(
+                    &default_name(&name.text, &parameter.binder.name.value),
+                    part.span,
+                    GlobalKind::Function,
+                )?;
+            }
+        }
+        // Every way to leave out some of the parts, the whole name aside.
+        let parser::Head::WithParameters {
+            name: written_name,
+            arguments,
+            ..
+        } = head
+        else {
+            unreachable!("a head with optional parts has parameters")
+        };
+        for present in 0..(1usize << parts.len()) - 1 {
+            let mut words = Vec::new();
+            let mut slots = Vec::new();
+            let mut arguments = arguments.iter();
+            let mut part_index = 0;
+            for word in written_name.text.split_whitespace() {
+                if word != "_" {
+                    words.push(word.to_owned());
+                    continue;
+                }
+                match arguments.next() {
+                    Some(parser::HeadArgument::OptionalPart(_)) => {
+                        let part = &parts[part_index];
+                        if present & (1 << part_index) != 0 {
+                            words.push(part.name.text.clone());
+                            slots.extend(part.parameters.iter().map(|_| None));
+                        } else {
+                            slots.extend(part.parameters.iter().map(|parameter| {
+                                Some(default_name(&name.text, &parameter.binder.name.value))
+                            }));
+                        }
+                        part_index += 1;
+                    }
+                    _ => {
+                        words.push("_".to_owned());
+                        slots.push(None);
+                    }
+                }
+            }
+            let written = words.join(" ");
+            if self.globals.contains_key(written.as_str())
+                || self.optional_forms.contains_key(&written)
+            {
+                return Err(LoweringError {
+                    span: name.span,
+                    message: format!(
+                        "`{written}` leaves out parts of `{}`, but it already names something else",
+                        name.text
+                    ),
+                });
+            }
+            self.optional_forms.insert(
+                written,
+                OptionalForm {
+                    full: name.text.to_string(),
+                    slots,
+                },
+            );
+        }
         Ok(())
+    }
+
+    /// A function for each slot of each optional part's `DEFAULT`, checked
+    /// on its own, so it can name no parameter.
+    fn optional_defaults(
+        &mut self,
+        head: &'source parser::Head,
+    ) -> Result<Vec<Declaration>, LoweringError> {
+        let (name, parameters) = head_parts(head);
+        let mut defaults = Vec::new();
+        for part in optional_parts(head) {
+            let values: Vec<&parser::Expression> = match part.entry {
+                parser::Expression::Call {
+                    name: entry_name,
+                    arguments,
+                    ..
+                } if entry_name.text == part.name.text => arguments.iter().collect(),
+                _ => {
+                    return Err(LoweringError {
+                        span: part.entry.span(),
+                        message: format!(
+                            "a `DEFAULT` is the part as written: `{}` with a value in each slot",
+                            part.name.text
+                        ),
+                    });
+                }
+            };
+            for (slot, value) in part.parameters.iter().zip(values) {
+                self.locals.clear();
+                let result = self.term(&slot.r#type).map_err(|error| {
+                    match parameters.iter().find(|parameter| {
+                        error.message == format!("unknown name `{}`", parameter.binder.name.value)
+                    }) {
+                        Some(parameter) => LoweringError {
+                            span: part.entry.span(),
+                            message: format!(
+                                "`{}` depends on the parameter `{}`, so it has no `DEFAULT`",
+                                slot.binder.name.value, parameter.binder.name.value
+                            ),
+                        },
+                        None => error,
+                    }
+                })?;
+                let body = self.term(value)?;
+                defaults.push(Declaration::Default {
+                    signature: Signature {
+                        name: default_name(&name.text, &slot.binder.name.value),
+                        parameters: Vec::new(),
+                        result,
+                    },
+                    body,
+                });
+            }
+        }
+        self.locals.clear();
+        Ok(defaults)
     }
 
     /// A global the source names only through a record.
@@ -427,11 +718,11 @@ impl<'source> Resolver<'source> {
 
         // The constructor: the record's parameters, then every field's slots.
         let mut parameters = Vec::new();
-        for parameter in record_parameters {
+        for parameter in &record_parameters {
             parameters.push(self.parameter(parameter, 0)?);
         }
         let mut shape = RecordShape {
-            name: name.text.clone(),
+            name: name.text.to_string(),
             constructor: record_constructor_name(&name.text, record_slots(record)),
             has_parameters: !record_parameters.is_empty(),
             fields: Vec::new(),
@@ -439,7 +730,7 @@ impl<'source> Resolver<'source> {
         for field in &record.fields.value {
             let (field_name, slots, field_span) = field_parts(field);
             let unnamed_type = match field_name {
-                None => Some(self.unnamed_type(&slots[0], &shape)?),
+                None => Some(self.unnamed_type(slots[0], &shape)?),
                 Some(field_name) if slots.is_empty() => {
                     return Err(LoweringError {
                         span: field_span,
@@ -479,7 +770,7 @@ impl<'source> Resolver<'source> {
                     None
                 }
             };
-            for slot in slots {
+            for slot in &slots {
                 parameters.push(self.parameter(slot, 0)?);
             }
             shape.fields.push(FieldShape {
@@ -493,7 +784,7 @@ impl<'source> Resolver<'source> {
             });
         }
         let record_type = Term::Global {
-            name: name.text.clone(),
+            name: name.text.to_string(),
             kind: GlobalKind::Data,
         };
         let result = if record_parameters.is_empty() {
@@ -791,7 +1082,7 @@ impl<'source> Resolver<'source> {
             lowered_parameters.push(self.parameter(parameter, 0)?);
         }
         Ok(Signature {
-            name: name.text.clone(),
+            name: name.text.to_string(),
             parameters: lowered_parameters,
             result: match result {
                 Some(expression) => self.term(expression)?,
@@ -869,10 +1160,34 @@ impl<'source> Resolver<'source> {
                 kind: *kind,
             });
         }
+        // A call that leaves out every slot, such as `list files` for
+        // `list files with _`.
+        if let Some((function, slots)) = self.optional_form(name) {
+            return Ok(Term::Apply {
+                function: Box::new(function),
+                arguments: fill_optional_slots(&slots, Vec::new()),
+            });
+        }
         Err(LoweringError {
             span: name.span,
             message: format!("unknown name `{}`", name.text),
         })
+    }
+
+    /// The whole function or constructor a call that leaves out optional
+    /// parts names, and which of its slots the call leaves out.
+    fn optional_form(&self, name: &parser::CallName) -> Option<(Term, Vec<Option<String>>)> {
+        if self.globals.contains_key(name.text.as_str()) {
+            return None;
+        }
+        let form = self.optional_forms.get(&name.text)?;
+        Some((
+            Term::Global {
+                name: form.full.clone(),
+                kind: self.globals[form.full.as_str()],
+            },
+            form.slots.clone(),
+        ))
     }
 
     fn term(&mut self, expression: &'source parser::Expression) -> Result<Term, LoweringError> {
@@ -934,7 +1249,11 @@ impl<'source> Resolver<'source> {
         name: &parser::CallName,
         arguments: &'source [parser::Expression],
     ) -> Result<Term, LoweringError> {
-        let function = Box::new(self.reference(name)?);
+        let (function, form) = match self.optional_form(name) {
+            Some((function, slots)) => (function, Some(slots)),
+            None => (self.reference(name)?, None),
+        };
+        let function = Box::new(function);
         let mut parameters = Vec::new();
         let mut lowered_arguments = Vec::new();
         for argument in arguments {
@@ -947,6 +1266,9 @@ impl<'source> Resolver<'source> {
                 }
                 _ => self.term(argument)?,
             });
+        }
+        if let Some(slots) = form {
+            lowered_arguments = fill_optional_slots(&slots, lowered_arguments);
         }
         let mut term = Term::Apply {
             function,
@@ -996,7 +1318,7 @@ impl<'source> Resolver<'source> {
             });
         }
         Ok(Pattern::Constructor {
-            name: name.text.clone(),
+            name: name.text.to_string(),
             arguments: arguments
                 .iter()
                 .map(|argument| self.pattern(argument, scope_start))
@@ -1013,4 +1335,22 @@ fn check_binder_name(name: &str, span: Span) -> Result<(), LoweringError> {
         });
     }
     Ok(())
+}
+
+/// The arguments a call writes, with a call of its `DEFAULT` in each slot it
+/// leaves out.
+fn fill_optional_slots(slots: &[Option<String>], written: Vec<Term>) -> Vec<Term> {
+    let mut written = written.into_iter();
+    slots
+        .iter()
+        .map(|slot| match slot {
+            Some(default) => Term::Global {
+                name: default.clone(),
+                kind: GlobalKind::Function,
+            },
+            None => written
+                .next()
+                .expect("the form has a slot for each argument"),
+        })
+        .collect()
 }
