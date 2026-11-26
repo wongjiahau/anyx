@@ -201,6 +201,18 @@ inference. Macros and effects come later.
 
 ## Later
 
+- Overloading on named types without arguments, then record projections.
+  - Overloads share a shape, such as `id of _`, and differ in at least one
+    position whose parameter type is a name with no arguments (`Text`,
+    `Key`), anywhere in the call.
+  - A call picks the one overload whose names match its arguments'
+    synthesized, normalized types: no backtracking, no unification.
+  - Overloads whose types normalize to the same names (an alias such as
+    `Key id` for `Text`) clash where they are declared.
+  - Each overload is its own kernel function; resolution only picks a
+    name, outside the kernel.
+  - Then each field of a record without parameters gets a projection,
+    `id of (summary)`, defined by a `MATCH`.
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword
   being a macro use.
 - Effects: monads as library types, or effect rows.
