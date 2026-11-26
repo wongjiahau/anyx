@@ -1,8 +1,134 @@
 //! Constructor results and strict positivity for data declarations.
 
-use super::{Declaration, DeclarationCheckingError, Global, Term};
+use super::evaluation::{Definition, Definitions, fresh_local};
+use super::{Declaration, DeclarationCheckingError, Global, Signature, Term};
 use crate::lowering::GlobalKind;
 use std::collections::{HashMap, HashSet};
+
+/// Unfold each constructor result that names its family through an alias, a
+/// function that returns a type, so the result and positivity checks below
+/// see the family itself. `get profile RETURNS Private endpoint returning
+/// (Profile)` becomes `get profile RETURNS Endpoint returning (Profile)
+/// access (bearer)`.
+///
+/// Only nonrecursive functions unfold, and a call can only name a global, so
+/// unfolding terminates even though no body has been checked yet. Soundness
+/// does not rest on the alias: the unfolded result is checked as the
+/// constructor's own type.
+pub(super) fn unfold_constructor_results<'document>(
+    declarations: impl Iterator<Item = &'document Declaration> + Clone,
+) -> Vec<Declaration> {
+    let functions: HashMap<_, _> = declarations
+        .clone()
+        .filter_map(|declaration| match declaration {
+            Declaration::Function { signature, body } => {
+                Some((signature.name.as_str(), (signature, body)))
+            }
+            Declaration::Data { .. } => None,
+        })
+        .collect();
+    let calls = |body: &'document Term| {
+        let mut called = Vec::new();
+        visit_global_references(body, true, &mut |reference, _| {
+            if reference.kind == GlobalKind::Function {
+                called.push(reference.name.as_str());
+            }
+        });
+        called
+    };
+    let recursive = |name: &str| {
+        let mut pending = calls(functions[name].1);
+        let mut visited = HashSet::new();
+        while let Some(called) = pending.pop() {
+            if called == name {
+                return true;
+            }
+            if visited.insert(called)
+                && let Some((_, body)) = functions.get(called)
+            {
+                pending.extend(calls(body));
+            }
+        }
+        false
+    };
+    let aliases = Definitions(
+        functions
+            .iter()
+            .filter(|(name, _)| !recursive(name))
+            .map(|(name, (signature, body))| {
+                let mut body = (*body).clone();
+                for _ in &signature.parameter_types {
+                    body = Term::Function {
+                        body: Box::new(body),
+                    };
+                }
+                (
+                    (*name).to_owned(),
+                    Definition {
+                        body,
+                        decreasing_parameter: None,
+                        parameter_count: signature.parameter_types.len(),
+                    },
+                )
+            })
+            .collect(),
+    );
+
+    declarations
+        .map(|declaration| match declaration {
+            Declaration::Data {
+                signature,
+                constructors,
+            } => Declaration::Data {
+                signature: signature.clone(),
+                constructors: constructors
+                    .iter()
+                    .map(|constructor| unfold_result(&aliases, constructor, &signature.name))
+                    .collect(),
+            },
+            function => function.clone(),
+        })
+        .collect()
+}
+
+fn unfold_result(aliases: &Definitions, constructor: &Signature, data: &str) -> Signature {
+    if family_head(&constructor.result).0 == Some(data) {
+        return constructor.clone();
+    }
+    let depth = constructor.parameter_types.len();
+    let environment: Vec<_> = (0..depth).map(fresh_local).collect();
+    let unfolded = aliases
+        .evaluate(&constructor.result, &environment)
+        .and_then(|value| aliases.read_back(&value, depth));
+    match unfolded {
+        Ok(result) => Signature {
+            result,
+            ..constructor.clone()
+        },
+        // Leave the result as written so the check below reports it.
+        Err(_) => constructor.clone(),
+    }
+}
+
+/// The data name at the head of an application spine, and its argument count.
+fn family_head(mut head: &Term) -> (Option<&str>, usize) {
+    let mut argument_count = 0;
+    while let Term::Apply {
+        function,
+        arguments,
+    } = head
+    {
+        head = function;
+        argument_count += arguments.len();
+    }
+    match head {
+        Term::Global(Global {
+            name,
+            kind: GlobalKind::Data,
+        }) => (Some(name), argument_count),
+        _ => (None, argument_count),
+    }
+}
 
 pub(super) fn check_data_declarations<'document>(
     declarations: impl Iterator<Item = &'document Declaration> + Clone,
@@ -68,19 +194,8 @@ pub(super) fn check_data_declarations<'document>(
         }
 
         for constructor in constructors {
-            let mut head = &constructor.result;
-            let mut argument_count = 0;
-            while let Term::Apply {
-                function,
-                arguments,
-            } = head
-            {
-                head = function;
-                argument_count += arguments.len();
-            }
-            if !matches!(head, Term::Global(Global { name, kind: GlobalKind::Data }) if name == data)
-                || argument_count != signature.parameter_types.len()
-            {
+            let (head, argument_count) = family_head(&constructor.result);
+            if head != Some(data) || argument_count != signature.parameter_types.len() {
                 return Err(DeclarationCheckingError::ConstructorMustReturnData {
                     constructor: constructor.name.clone(),
                     data: data.into(),

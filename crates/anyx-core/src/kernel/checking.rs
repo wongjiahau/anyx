@@ -6,7 +6,7 @@ mod index_unification;
 mod match_checking;
 use match_checking::DataFamilies;
 
-use super::data_checking::check_data_declarations;
+use super::data_checking::{check_data_declarations, unfold_constructor_results};
 use super::evaluation::{Definitions, fresh_local, reverse_position};
 use super::termination::check_termination;
 use super::{
@@ -209,6 +209,8 @@ impl TypeChecker {
         mut self,
         declarations: impl Iterator<Item = &'document Declaration> + Clone,
     ) -> Result<Self, DeclarationCheckingError> {
+        let declarations = unfold_constructor_results(declarations);
+        let declarations = declarations.iter();
         check_data_declarations(declarations.clone())?;
 
         let mut signatures = Vec::new();

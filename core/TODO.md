@@ -127,6 +127,17 @@ inference. Macros and effects come later.
     - Keep inline `MATCH` annotations checked in `Type` because a match
       needs a fixed expected universe.
 
+## Aliases
+
+16. A constructor may name its family through an alias, a function that (done)
+    returns a type: `get profile RETURNS Private endpoint returning (Profile)`.
+    - Unfold the written result before the result and positivity checks so
+      both see the family the alias stands for, with its indices.
+    - Unfold only nonrecursive functions, because their bodies are not
+      checked yet. A call can only name a global, so unfolding terminates.
+    - Leave a result that does not reduce to the family, such as a `MATCH`
+      blocked on a parameter, to be rejected as before.
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword

@@ -141,6 +141,106 @@ fn rejects_invalid_data_and_constructor_results() {
     }
 }
 
+const ENDPOINT_DATA: &str = "
+    DATA Access RETURNS Type WITH [public RETURNS Access, bearer RETURNS Access],
+    DATA Session RETURNS Type WITH [session RETURNS Session],
+    DATA Credential for (access: Access) RETURNS Type WITH [
+      anonymous RETURNS Credential for (public),
+      verified (current: Session) RETURNS Credential for (bearer),
+    ],
+    DATA Health RETURNS Type WITH [ok RETURNS Health],
+    DATA Profile RETURNS Type WITH [profile of (owner: Session) RETURNS Profile],
+    FUNCTION Endpoint returning (response: Type) RETURNS Kind IS
+      (Endpoint returning (response) access (bearer)),
+    DATA Endpoint returning (response: Type) access (access: Access) RETURNS Kind WITH [
+      health check RETURNS Endpoint returning (Health) access (public),
+      get profile RETURNS Endpoint returning (Profile),
+    ],";
+
+#[test]
+fn unfolds_an_alias_in_a_constructor_result() {
+    let document = kernel_document(&format!(
+        "{ENDPOINT_DATA}
+         FUNCTION serve (response: Type) access (access: Access)
+           at (endpoint: Endpoint returning (response) access (access))
+           with (credential: Credential for (access)) RETURNS response
+           IS (MATCH endpoint WITH [
+             WHEN health check THEN ok,
+             WHEN get profile THEN (MATCH credential WITH [
+               WHEN verified (current) THEN profile of (current)]),
+           ]),"
+    ));
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn an_unfolded_constructor_result_keeps_its_indices() {
+    let document = kernel_document(&format!(
+        "{ENDPOINT_DATA}
+         FUNCTION serve (response: Type) access (access: Access)
+           at (endpoint: Endpoint returning (response) access (access))
+           with (credential: Credential for (access)) RETURNS response
+           IS (MATCH endpoint WITH [
+             WHEN health check THEN ok,
+             WHEN get profile THEN (MATCH credential WITH [
+               WHEN anonymous THEN profile of (session)]),
+           ]),"
+    ));
+    assert_eq!(
+        TypeChecker::default().check_document(&document).err(),
+        Some(DeclarationCheckingError::Body {
+            name: "serve _ access _ at _ with _".into(),
+            error: CheckingError::ImpossiblePattern("anonymous".into()),
+        }),
+    );
+}
+
+#[test]
+fn rejects_constructor_results_that_do_not_unfold_to_their_family() {
+    for (source, constructor, data) in [
+        (
+            "DATA Flag RETURNS Type WITH [on RETURNS Flag, off RETURNS Flag],
+             DATA Other RETURNS Type WITH [],
+             FUNCTION pick (flag: Flag) RETURNS Type
+               IS (MATCH flag WITH [WHEN on THEN Thing, WHEN off THEN Other]),
+             DATA Thing RETURNS Type WITH [bad (flag: Flag) RETURNS pick (flag)],",
+            "bad _",
+            "Thing",
+        ),
+        (
+            "DATA Thing RETURNS Type WITH [bad RETURNS Loop],
+             FUNCTION Loop RETURNS Type IS Loop,",
+            "bad",
+            "Thing",
+        ),
+    ] {
+        assert_eq!(
+            TypeChecker::default()
+                .check_document(&kernel_document(source))
+                .err(),
+            Some(DeclarationCheckingError::ConstructorMustReturnData {
+                constructor: constructor.into(),
+                data: data.into(),
+            }),
+        );
+    }
+}
+
+#[test]
+fn checks_positivity_after_unfolding_a_constructor_result() {
+    let document = kernel_document(
+        "DATA Box of (item: Type) RETURNS Kind WITH [bad RETURNS Nested],
+         FUNCTION Nested RETURNS Kind IS (Box of (Box of (Type))),",
+    );
+    assert_eq!(
+        TypeChecker::default().check_document(&document).err(),
+        Some(DeclarationCheckingError::NonPositiveOccurrence {
+            declaration: "bad".into(),
+            data: "Box of _".into(),
+        }),
+    );
+}
+
 #[test]
 fn rejects_negative_and_nested_recursive_occurrences() {
     for (source, reference) in [
