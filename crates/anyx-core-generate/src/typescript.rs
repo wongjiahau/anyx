@@ -1,5 +1,6 @@
 //! The TypeScript client of a schema: its types, a JSON codec that restores
-//! integers as `bigint` and instants as `Date`, and a `Client` with one
+//! instants as `Date` (integers and durations stay JSON numbers, as the
+//! old protocol's clients had them), and a `Client` with one
 //! method per constructor of each entry point's split parameter.
 
 use crate::Error;
@@ -26,7 +27,7 @@ fn ty(ty: &Ty) -> String {
     match ty {
         Ty::Primitive(primitive) => match primitive {
             Primitive::Text => "string".into(),
-            Primitive::Integer | Primitive::Duration => "bigint".into(),
+            Primitive::Integer | Primitive::Duration => "number".into(),
             Primitive::Instant => "Date".into(),
             Primitive::Boolean => "boolean".into(),
             Primitive::Nothing => "null".into(),
@@ -252,7 +253,10 @@ interface QueuedCall {{
  * receives JSON text. `batch` sends several calls as one request. */
 export class Client {{
   private queue: QueuedCall[] | null = null;
-  constructor(private readonly send: (request: string) => Promise<string>) {{}}
+  private readonly send: (request: string) => Promise<string>;
+  constructor(send: (request: string) => Promise<string>) {{
+    this.send = send;
+  }}
 
   async batch<R>(build: (calls: Client) => Promise<R>[]): Promise<R[]> {{
     const calls = new Client(this.send);
@@ -322,6 +326,7 @@ function walk(
       return walk(bindings[descriptor.name] ?? { k: "erased" }, value, bindings, leaf);
     case "data": {
       const data = DATA[descriptor.name];
+      if (!data) return value;
       const record = value as Record<string, unknown>;
       const fields = data.constructors[record.kind as string];
       if (!fields) return value;
@@ -341,7 +346,6 @@ function walk(
 
 function encode(descriptor: Descriptor, value: unknown, bindings: Bindings): unknown {
   return walk(descriptor, value, bindings, (k, leaf) => {
-    if (k === "integer" || k === "duration") return Number(leaf);
     if (k === "instant") return (leaf as Date).getTime();
     return leaf;
   });
@@ -349,7 +353,6 @@ function encode(descriptor: Descriptor, value: unknown, bindings: Bindings): unk
 
 function decode(descriptor: Descriptor, value: unknown, bindings: Bindings): unknown {
   return walk(descriptor, value, bindings, (k, leaf) => {
-    if (k === "integer" || k === "duration") return BigInt(leaf as number);
     if (k === "instant") return new Date(leaf as number);
     return leaf;
   });
