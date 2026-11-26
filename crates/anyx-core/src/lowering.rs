@@ -14,6 +14,9 @@ pub enum Declaration {
     Data {
         signature: Signature,
         constructors: Vec<Signature>,
+        /// Written as a `RECORD`: one constructor, whose parameters are the
+        /// record's parameters followed by its fields' binders.
+        record: bool,
     },
     Function {
         signature: Signature,
@@ -22,6 +25,12 @@ pub enum Declaration {
     /// A function without a body: whatever serves the schema implements it.
     Served {
         signature: Signature,
+    },
+    /// One slot of a record field's `DEFAULT`, checked as a function without
+    /// parameters and called where a `{ }` value leaves the field out.
+    Default {
+        signature: Signature,
+        body: Term,
     },
 }
 
@@ -133,7 +142,14 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 Declaration::Data {
                     signature,
                     constructors,
+                    record: false,
                 }
+            }
+            parser::Declaration::Record(record) => {
+                let (data, defaults) = resolver.record(record)?;
+                declarations.push(data);
+                declarations.extend(defaults);
+                continue;
             }
             parser::Declaration::Function(function) => {
                 let signature =
@@ -176,6 +192,120 @@ struct Resolver<'source> {
     globals: HashMap<&'source str, GlobalKind>,
     locals: Vec<(&'source str, BindingIdentifier)>,
     next_binding: usize,
+    /// The data type of each constructor, to find an unnamed field.
+    constructor_data: HashMap<&'source str, &'source str>,
+    records: Vec<RecordShape>,
+}
+
+/// What a `{ }` value needs to know about a record.
+#[derive(Clone)]
+struct RecordShape {
+    name: String,
+    constructor: String,
+    has_parameters: bool,
+    fields: Vec<FieldShape>,
+}
+
+#[derive(Clone)]
+struct FieldShape {
+    /// The field's words with its slots, `between _ and _`; `None` for a
+    /// field written as its value alone.
+    name: Option<String>,
+    /// The data type of a field written as its value alone.
+    unnamed_type: Option<String>,
+    binders: Vec<String>,
+    has_default: bool,
+}
+
+/// The name of a record's constructor: its words, then a slot for each of
+/// its parameters and binders. `File summary` with four fields is
+/// `file summary _ _ _ _`.
+pub fn record_constructor_name(record: &str, slots: usize) -> String {
+    let words: Vec<&str> = record
+        .split_whitespace()
+        .filter(|word| *word != "_")
+        .collect();
+    let mut name = words.join(" ").to_lowercase();
+    for _ in 0..slots {
+        name.push_str(" _");
+    }
+    name
+}
+
+/// The function that holds one slot of a field's `DEFAULT`.
+pub fn default_name(record: &str, binder: &str) -> String {
+    format!(
+        "default {binder} of {}",
+        record
+            .replace('_', "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+
+fn record_slots(record: &parser::Record) -> usize {
+    let (_, parameters) = head_parts(&record.head);
+    parameters.len()
+        + record
+            .fields
+            .value
+            .iter()
+            .map(|field| field_parts(field).1.len())
+            .sum::<usize>()
+}
+
+/// A field's words (none for a field written as its value alone), its
+/// slots, and where it is written.
+pub(crate) fn field_parts(
+    field: &parser::Field,
+) -> (Option<&parser::CallName>, &[parser::Parameter], Span) {
+    let shape = match field {
+        parser::Field::Defaulted { field_shape, .. } | parser::Field::FieldShape(field_shape) => {
+            field_shape
+        }
+    };
+    match shape {
+        parser::FieldShape::Unnamed(parameter) => {
+            (None, std::slice::from_ref(parameter), parameter.span)
+        }
+        parser::FieldShape::Named(head) => {
+            let (name, slots) = head_parts(head);
+            (Some(name), slots, head.span())
+        }
+    }
+}
+
+fn shape_of(record: &parser::Record) -> RecordShape {
+    let (name, parameters) = head_parts(&record.head);
+    RecordShape {
+        name: name.text.clone(),
+        constructor: record_constructor_name(&name.text, record_slots(record)),
+        has_parameters: !parameters.is_empty(),
+        fields: record
+            .fields
+            .value
+            .iter()
+            .map(|field| {
+                let (field_name, slots, _) = field_parts(field);
+                let unnamed = field_name.is_none();
+                FieldShape {
+                    name: field_name.map(|name| name.text.clone()),
+                    unnamed_type: match slots.first().map(|slot| &*slot.r#type) {
+                        Some(parser::Expression::Name { name, .. }) if unnamed => {
+                            Some(name.text.clone())
+                        }
+                        _ => None,
+                    },
+                    binders: slots
+                        .iter()
+                        .map(|slot| slot.binder.name.value.clone())
+                        .collect(),
+                    has_default: matches!(field, parser::Field::Defaulted { .. }),
+                }
+            })
+            .collect(),
+    }
 }
 
 impl<'source> Resolver<'source> {
@@ -187,8 +317,27 @@ impl<'source> Resolver<'source> {
             match declaration {
                 parser::Declaration::Data(data) => {
                     self.register(&data.head, GlobalKind::Data)?;
+                    let (data_name, _) = head_parts(&data.head);
                     for constructor in &data.constructors.value {
                         self.register(&constructor.head, GlobalKind::Constructor)?;
+                        let (name, _) = head_parts(&constructor.head);
+                        self.constructor_data.insert(&name.text, &data_name.text);
+                    }
+                }
+                parser::Declaration::Record(record) => {
+                    self.register(&record.head, GlobalKind::Data)?;
+                    let (name, _) = head_parts(&record.head);
+                    let constructor = record_constructor_name(&name.text, record_slots(record));
+                    self.register_generated(&constructor, name.span, GlobalKind::Constructor)?;
+                    self.records.push(shape_of(record));
+                    for field in &record.fields.value {
+                        if let parser::Field::Defaulted { .. } = field {
+                            for parameter in field_parts(field).1 {
+                                let default =
+                                    default_name(&name.text, &parameter.binder.name.value);
+                                self.register_generated(&default, name.span, GlobalKind::Function)?;
+                            }
+                        }
                     }
                 }
                 parser::Declaration::Function(function) => {
@@ -216,6 +365,359 @@ impl<'source> Resolver<'source> {
             });
         }
         Ok(())
+    }
+
+    /// A global the source names only through a record.
+    fn register_generated(
+        &mut self,
+        name: &str,
+        span: Span,
+        kind: GlobalKind,
+    ) -> Result<(), LoweringError> {
+        let name: &'source str = Box::leak(name.to_owned().into_boxed_str());
+        if self.globals.insert(name, kind).is_some() {
+            return Err(LoweringError {
+                span,
+                message: format!("duplicate declaration of `{name}`"),
+            });
+        }
+        Ok(())
+    }
+
+    /// A record as a data type with one constructor, and a function for each
+    /// slot of each `DEFAULT`.
+    fn record(
+        &mut self,
+        record: &'source parser::Record,
+    ) -> Result<(Declaration, Vec<Declaration>), LoweringError> {
+        let (name, record_parameters) = head_parts(&record.head);
+        let signature = self.declaration_signature(&record.head, &record.signature_result)?;
+        self.locals.clear();
+
+        // The constructor: the record's parameters, then every field's slots.
+        let mut parameters = Vec::new();
+        for parameter in record_parameters {
+            parameters.push(self.parameter(parameter, 0)?);
+        }
+        let mut shape = RecordShape {
+            name: name.text.clone(),
+            constructor: record_constructor_name(&name.text, record_slots(record)),
+            has_parameters: !record_parameters.is_empty(),
+            fields: Vec::new(),
+        };
+        for field in &record.fields.value {
+            let (field_name, slots, field_span) = field_parts(field);
+            let unnamed_type = match field_name {
+                None => Some(self.unnamed_type(&slots[0], &shape)?),
+                Some(field_name) if slots.is_empty() => {
+                    return Err(LoweringError {
+                        span: field_span,
+                        message: format!(
+                            "the field `{0}` holds nothing: give it a slot, as in `{0} (name: Type)`",
+                            field_name.text
+                        ),
+                    });
+                }
+                Some(field_name) => {
+                    // An entry is found by a named field's words first, so
+                    // they mustn't also be a value of an unnamed field.
+                    let data = self.constructor_data.get(field_name.text.as_str());
+                    let names_an_unnamed_value = record.fields.value.iter().any(|other| {
+                        let (other_name, other_slots, _) = field_parts(other);
+                        other_name.is_none()
+                            && matches!(
+                                (&*other_slots[0].r#type, data),
+                                (parser::Expression::Name { name, .. }, Some(data))
+                                    if name.text == *data
+                            )
+                    });
+                    if names_an_unnamed_value
+                        || shape
+                            .fields
+                            .iter()
+                            .any(|other| other.name.as_deref() == Some(&field_name.text))
+                    {
+                        return Err(LoweringError {
+                            span: field_name.span,
+                            message: format!(
+                                "`{}` already names another field or a value of one, so an entry couldn't tell which it fills",
+                                field_name.text
+                            ),
+                        });
+                    }
+                    None
+                }
+            };
+            for slot in slots {
+                parameters.push(self.parameter(slot, 0)?);
+            }
+            shape.fields.push(FieldShape {
+                name: field_name.map(|name| name.text.clone()),
+                unnamed_type,
+                binders: slots
+                    .iter()
+                    .map(|slot| slot.binder.name.value.clone())
+                    .collect(),
+                has_default: matches!(field, parser::Field::Defaulted { .. }),
+            });
+        }
+        let record_type = Term::Global {
+            name: name.text.clone(),
+            kind: GlobalKind::Data,
+        };
+        let result = if record_parameters.is_empty() {
+            record_type
+        } else {
+            Term::Apply {
+                function: Box::new(record_type),
+                arguments: parameters[..record_parameters.len()]
+                    .iter()
+                    .map(|parameter| Term::Local(parameter.binding.identifier))
+                    .collect(),
+            }
+        };
+        let constructor = Signature {
+            name: shape.constructor.clone(),
+            parameters,
+            result,
+        };
+        self.locals.clear();
+
+        // Each default slot is checked on its own, so it may name no field.
+        let mut defaults = Vec::new();
+        for field in &record.fields.value {
+            let parser::Field::Defaulted { entry, .. } = field else {
+                continue;
+            };
+            let (field_name, slots, _) = field_parts(field);
+            let values: Vec<&parser::Expression> = match field_name {
+                None => vec![entry],
+                Some(field_name) => match entry {
+                    parser::Expression::Call {
+                        name: entry_name,
+                        arguments,
+                        ..
+                    } if entry_name.text == field_name.text => arguments.iter().collect(),
+                    _ => {
+                        return Err(LoweringError {
+                            span: entry.span(),
+                            message: format!(
+                                "a `DEFAULT` is the field as written: `{}` with a value in each slot",
+                                field_name.text
+                            ),
+                        });
+                    }
+                },
+            };
+            for (slot, value) in slots.iter().zip(values) {
+                let result = self.term(&slot.r#type).map_err(|error| {
+                    let binders = || {
+                        record
+                            .fields
+                            .value
+                            .iter()
+                            .flat_map(|field| field_parts(field).1)
+                            .map(|slot| slot.binder.name.value.as_str())
+                    };
+                    match binders()
+                        .find(|binder| error.message == format!("unknown name `{binder}`"))
+                    {
+                        Some(binder) => LoweringError {
+                            span: entry.span(),
+                            message: format!(
+                                "`{}` depends on the field `{binder}`, so it has no `DEFAULT`",
+                                slot.binder.name.value
+                            ),
+                        },
+                        None => error,
+                    }
+                })?;
+                let body = self.term(value)?;
+                defaults.push(Declaration::Default {
+                    signature: Signature {
+                        name: default_name(&name.text, &slot.binder.name.value),
+                        parameters: Vec::new(),
+                        result,
+                    },
+                    body,
+                });
+            }
+        }
+        Ok((
+            Declaration::Data {
+                signature,
+                constructors: vec![constructor],
+                record: true,
+            },
+            defaults,
+        ))
+    }
+
+    /// The data type a field written as its value alone holds: an entry finds
+    /// the field by its constructor.
+    fn unnamed_type(
+        &self,
+        slot: &parser::Parameter,
+        shape: &RecordShape,
+    ) -> Result<String, LoweringError> {
+        let parser::Expression::Name { name, .. } = &*slot.r#type else {
+            return Err(LoweringError {
+                span: slot.r#type.span(),
+                message:
+                    "a field written as its value alone holds a `DATA` named without arguments"
+                        .to_owned(),
+            });
+        };
+        if !self
+            .constructor_data
+            .values()
+            .any(|data| *data == name.text)
+        {
+            return Err(LoweringError {
+                span: name.span,
+                message: format!(
+                    "a field written as its value alone holds a `DATA` with constructors; `{}` isn't one",
+                    name.text
+                ),
+            });
+        }
+        if shape
+            .fields
+            .iter()
+            .any(|field| field.unnamed_type.as_deref() == Some(&name.text))
+        {
+            return Err(LoweringError {
+                span: name.span,
+                message: format!(
+                    "two fields written as their value alone both hold `{}`, so an entry couldn't tell which it fills",
+                    name.text
+                ),
+            });
+        }
+        Ok(name.text.clone())
+    }
+
+    /// `{ entries }`: the one record whose fields the entries fill, built in
+    /// its fields' order, with each left-out field's `DEFAULT`.
+    fn record_value(
+        &mut self,
+        span: Span,
+        entries: &'source [parser::Expression],
+    ) -> Result<Term, LoweringError> {
+        let mut keys = Vec::new();
+        for entry in entries {
+            keys.push(match entry {
+                parser::Expression::Call { name, .. } | parser::Expression::Name { name, .. } => {
+                    name.text.as_str()
+                }
+                _ => {
+                    return Err(LoweringError {
+                        span: entry.span(),
+                        message: "a record entry is a field as written, such as `between 1 and 3`"
+                            .to_owned(),
+                    });
+                }
+            });
+        }
+        let fits: Vec<(usize, Vec<usize>)> = self
+            .records
+            .iter()
+            .enumerate()
+            .filter_map(|(index, record)| self.fill(record, &keys).map(|filled| (index, filled)))
+            .collect();
+        let (record, filled) = match fits.as_slice() {
+            [(record, filled)] => (*record, filled.clone()),
+            [] => {
+                return Err(LoweringError {
+                    span,
+                    message: "no record has exactly these fields".to_owned(),
+                });
+            }
+            _ => {
+                let names: Vec<String> = fits
+                    .iter()
+                    .map(|(record, _)| format!("`{}`", self.records[*record].name))
+                    .collect();
+                return Err(LoweringError {
+                    span,
+                    message: format!(
+                        "these entries fit more than one record: {}",
+                        names.join(", ")
+                    ),
+                });
+            }
+        };
+        if self.records[record].has_parameters {
+            return Err(LoweringError {
+                span,
+                message: format!(
+                    "`{}` has parameters, and a `{{ }}` value can't give them yet",
+                    self.records[record].name
+                ),
+            });
+        }
+        let shape = self.records[record].clone();
+        let mut arguments = Vec::new();
+        for (field_index, field) in shape.fields.iter().enumerate() {
+            match filled.iter().position(|filled| *filled == field_index) {
+                Some(entry_index) => match (&entries[entry_index], &field.name) {
+                    (
+                        parser::Expression::Call {
+                            arguments: values, ..
+                        },
+                        Some(_),
+                    ) => {
+                        for value in values {
+                            arguments.push(self.term(value)?);
+                        }
+                    }
+                    (entry, _) => arguments.push(self.term(entry)?),
+                },
+                None => {
+                    for binder in &field.binders {
+                        arguments.push(Term::Global {
+                            name: default_name(&shape.name, binder),
+                            kind: GlobalKind::Function,
+                        });
+                    }
+                }
+            }
+        }
+        let constructor = Term::Global {
+            name: shape.constructor.clone(),
+            kind: GlobalKind::Constructor,
+        };
+        Ok(if arguments.is_empty() {
+            constructor
+        } else {
+            Term::Apply {
+                function: Box::new(constructor),
+                arguments,
+            }
+        })
+    }
+
+    /// The field each entry fills, if the entries fill `record`: each entry
+    /// one field, and every field without a `DEFAULT`.
+    fn fill(&self, record: &RecordShape, keys: &[&str]) -> Option<Vec<usize>> {
+        let mut filled = Vec::new();
+        for key in keys {
+            let data = self.constructor_data.get(key).copied();
+            let field = record.fields.iter().position(|field| {
+                field.name.as_deref() == Some(*key)
+                    || (field.unnamed_type.is_some() && field.unnamed_type.as_deref() == data)
+            })?;
+            if filled.contains(&field) {
+                return None;
+            }
+            filled.push(field);
+        }
+        record
+            .fields
+            .iter()
+            .enumerate()
+            .all(|(index, field)| field.has_default || filled.contains(&index))
+            .then_some(filled)
     }
 
     fn declaration_signature(
@@ -355,6 +857,9 @@ impl<'source> Resolver<'source> {
                     span: *span,
                     message: "a hole must be a direct argument of a call".to_owned(),
                 });
+            }
+            parser::Expression::RecordValue(entries) => {
+                self.record_value(entries.span, &entries.value)?
             }
             parser::Expression::List(elements) => Term::List(
                 elements

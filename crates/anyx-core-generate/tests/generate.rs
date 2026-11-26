@@ -26,3 +26,13 @@ fn a_client_method_takes_the_credential_its_endpoint_fits() {
         "signInPassword(email: string, password: string): Promise<Reply<Session, SignInError>>"
     ));
 }
+
+#[test]
+fn a_record_is_sent_as_its_fields_alone() {
+    let schema = anyx_core_generate::load(SCHEMA, "endpoints.anyx").unwrap();
+    let rust = anyx_core_generate::rust(&schema).unwrap();
+    let typescript = anyx_core_generate::typescript(&schema).unwrap();
+    assert!(rust.contains("pub struct Session {"));
+    assert!(!rust.contains("rename = \"session"));
+    assert!(typescript.contains("export type Session =\n  | { token: string; email: string }"));
+}

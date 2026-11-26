@@ -155,6 +155,24 @@ inference. Macros and effects come later.
     - It has no body, so it is outside termination checking and never
       unfolds.
 
+19. `RECORD` is a `DATA` with one constructor, written as `{ }` with its (done)
+    fields in any order. The kernel is unchanged: lowering builds the
+    constructor call.
+    - A field is a head whose every slot names its binder, as in `between
+      (low: Natural) and (high: Natural)`, or a single `(case: Case)`, which
+      is written as its value alone. An entry finds its field by the field's
+      words or by the data type of its value. Two unnamed fields can't share
+      a type.
+    - The constructor's parameters are the record's own, then every field's
+      binders in order. So a field's type can name an earlier field, and a
+      value is checked in declaration order.
+    - Each slot of a `DEFAULT` is a function without parameters, so it is
+      type-checked and can't name another field. A field whose type names
+      another field has no `DEFAULT`.
+    - Generated code sends a record as its fields alone, without `kind`.
+    - Not yet: projections (`length of (list)`), `{ }` for a record with
+      parameters, and defaults on the wire.
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword

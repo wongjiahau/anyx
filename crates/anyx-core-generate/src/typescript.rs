@@ -72,7 +72,11 @@ fn declare_type(out: &mut String, data: &crate::model::Data) {
         type_name(&data.name)
     );
     for constructor in &data.constructors {
-        let mut fields = vec![format!("kind: {}", quoted(&constructor.kind()))];
+        let mut fields = if data.record {
+            Vec::new()
+        } else {
+            vec![format!("kind: {}", quoted(&constructor.kind()))]
+        };
         for (name, field_ty) in constructor.fields() {
             fields.push(format!("{}: {}", camel_case(name), ty(field_ty)));
         }
@@ -134,9 +138,10 @@ fn declare_descriptors(schema: &Schema, out: &mut String) {
         let generics: Vec<String> = data.generics.iter().map(|name| quoted(name)).collect();
         let _ = writeln!(
             out,
-            "  {}: {{ params: [{}], constructors: {{ {} }} }},",
+            "  {}: {{ params: [{}], record: {}, constructors: {{ {} }} }},",
             quoted(&data.name),
             generics.join(", "),
+            data.record,
             constructors.join(", ")
         );
     }
@@ -186,10 +191,14 @@ fn declare_client(schema: &Schema, out: &mut String) -> Result<(), Error> {
                     }
                 };
                 let constructor_data = &schema.constructor(constructor).data;
-                let mut values = vec![format!(
-                    "kind: {}",
-                    quoted(&schema.constructor(constructor).kind())
-                )];
+                let mut values = if schema.data(constructor_data).record {
+                    Vec::new()
+                } else {
+                    vec![format!(
+                        "kind: {}",
+                        quoted(&schema.constructor(constructor).kind())
+                    )]
+                };
                 for (name, field_ty) in &fields {
                     let identifier = fresh(name, &mut parameters, field_ty);
                     values.push(format!("{}: {identifier}", camel_case(name)));
@@ -306,6 +315,8 @@ const CODEC: &str = r#"type Descriptor =
 
 interface DataDescriptor {
   params: string[];
+  /** A record is sent as its fields alone: its one constructor, no `kind`. */
+  record: boolean;
   constructors: Record<string, [string, Descriptor][]>;
 }
 
@@ -328,14 +339,16 @@ function walk(
       const data = DATA[descriptor.name];
       if (!data) return value;
       const record = value as Record<string, unknown>;
-      const fields = data.constructors[record.kind as string];
+      const fields = data.record
+        ? Object.values(data.constructors)[0]
+        : data.constructors[record.kind as string];
       if (!fields) return value;
       const inner: Bindings = {};
       data.params.forEach((param, index) => {
         const arg = descriptor.args[index] ?? { k: "erased" };
         inner[param] = arg.k === "var" ? bindings[arg.name] ?? { k: "erased" } : arg;
       });
-      const result: Record<string, unknown> = { kind: record.kind };
+      const result: Record<string, unknown> = data.record ? {} : { kind: record.kind };
       for (const [key, field] of fields) result[key] = walk(field, record[key], inner, leaf);
       return result;
     }

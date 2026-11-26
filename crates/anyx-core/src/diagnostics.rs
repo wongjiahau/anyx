@@ -1,6 +1,10 @@
 //! Source locations for declaration checking errors.
 
-use crate::{kernel::DeclarationCheckingError, lowering::head_parts, parser};
+use crate::{
+    kernel::DeclarationCheckingError,
+    lowering::{default_name, field_parts, head_parts, record_constructor_name},
+    parser,
+};
 use anyx::Span;
 
 impl DeclarationCheckingError {
@@ -29,6 +33,11 @@ impl DeclarationCheckingError {
                         return span;
                     }
                 }
+                parser::Declaration::Record(record) => {
+                    if let Some(span) = self.record_span(record) {
+                        return span;
+                    }
+                }
                 parser::Declaration::Data(data) => {
                     if let Some(span) =
                         self.signature_span(&data.head, data.signature_result.span())
@@ -46,6 +55,47 @@ impl DeclarationCheckingError {
             }
         }
         document.span
+    }
+
+    /// The record's head for its own errors and its constructor's, and a
+    /// field's `DEFAULT` for errors in it.
+    fn record_span(&self, record: &parser::Record) -> Option<Span> {
+        let (name, parameters) = head_parts(&record.head);
+        if let Some(span) = self.signature_span(&record.head, record.signature_result.span()) {
+            return Some(span);
+        }
+        let slots = parameters.len()
+            + record
+                .fields
+                .value
+                .iter()
+                .map(|field| field_parts(field).1.len())
+                .sum::<usize>();
+        let constructor = record_constructor_name(&name.text, slots);
+        let failed = match self {
+            Self::Signature { name, .. }
+            | Self::ConstructorMustReturnData {
+                constructor: name, ..
+            }
+            | Self::NonPositiveOccurrence {
+                declaration: name, ..
+            }
+            | Self::Body { name, .. } => name,
+            _ => return None,
+        };
+        if *failed == constructor {
+            return Some(record.fields.span);
+        }
+        record.fields.value.iter().find_map(|field| {
+            let parser::Field::Defaulted { entry, .. } = field else {
+                return None;
+            };
+            field_parts(field)
+                .1
+                .iter()
+                .any(|slot| *failed == default_name(&name.text, &slot.binder.name.value))
+                .then(|| entry.span())
+        })
     }
 
     fn signature_span(&self, head: &parser::Head, result: Span) -> Option<Span> {

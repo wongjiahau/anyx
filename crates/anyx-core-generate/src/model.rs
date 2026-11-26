@@ -77,6 +77,8 @@ pub struct Data {
     /// Whether some argument of the family varies between constructors.
     pub indexed: bool,
     pub opaque: bool,
+    /// Written as a `RECORD`: sent as its fields alone, without `kind`.
+    pub record: bool,
     pub constructors: Vec<Constructor>,
     /// The opaque types a field mentions, which the type is generic over.
     pub opaque_fields: Vec<String>,
@@ -250,6 +252,7 @@ pub(crate) fn build(
             lowering::Declaration::Data {
                 signature: lowered_signature,
                 constructors: lowered_constructors,
+                record,
             },
         ) = (declaration, lowered)
         else {
@@ -301,6 +304,7 @@ pub(crate) fn build(
             generic_positions,
             indexed,
             opaque: constructors.is_empty() && !is_prelude(&signature.name),
+            record: *record,
             constructors: Vec::new(),
             opaque_fields: Vec::new(),
         });

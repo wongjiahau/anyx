@@ -169,6 +169,7 @@ impl TryFrom<&lowering::Document> for Document {
                 lowering::Declaration::Data {
                     signature,
                     constructors,
+                    ..
                 } => Declaration::Data {
                     signature: scope.signature(signature)?,
                     constructors: constructors
@@ -176,7 +177,8 @@ impl TryFrom<&lowering::Document> for Document {
                         .map(|constructor| Scope::default().signature(constructor))
                         .collect::<Result<_, _>>()?,
                 },
-                lowering::Declaration::Function { signature, body } => Declaration::Function {
+                lowering::Declaration::Function { signature, body }
+                | lowering::Declaration::Default { signature, body } => Declaration::Function {
                     signature: scope.signature(signature)?,
                     body: scope.term(body)?,
                 },

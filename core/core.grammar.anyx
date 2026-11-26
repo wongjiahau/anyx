@@ -6,6 +6,7 @@ ENTRY [ZERO OR MORE ⁽declaration],
 
 declaration ⁽ONE OF [
   data,
+  record,
   function,
   served function,
 ],
@@ -16,6 +17,26 @@ data ⁽ANYFIX CALL [
   WORD "RETURNS", signature result,
   WORD "WITH", constructors ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽constructor,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
+
+## `RECORD Range RETURNS Type WITH [between (low: Natural) and (high: Natural),
+## (order: Order) DEFAULT newest first]`: one constructor whose fields are
+## written in any order, `{ newest first, between 1 and 3 }`. A field is a
+## head whose every slot names its binder; a field whose head is a single
+## slot is written as its value alone. `DEFAULT` holds the field as written.
+record ⁽ANYFIX CALL [
+  WORD "RECORD", head,
+  WORD "RETURNS", signature result,
+  WORD "WITH", fields ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽field,
+] FORMAT [BREAK BEFORE WORD "WITH"],
+
+field ⁽ONE OF [
+  defaulted ⁽ANYFIX CALL [field shape, WORD "DEFAULT", entry ⁽expression],
+  field shape,
+],
+
+## `(case: Case)` is written as its value alone, `any case`; any other field
+## is written as its head, `between 1 and 3`.
+field shape ⁽ONE OF [unnamed ⁽parameter, named ⁽head],
 
 ## `successor of (n: Natural) RETURNS Natural`.
 constructor ⁽ANYFIX CALL [
@@ -70,6 +91,9 @@ expression ⁽ONE OF [
   ## A hole: `(successor of _)` is a function.
   hole ⁽UNDERSCORE,
   list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽expression,
+  ## `{ between 1 and 3, newest first }`: a value of the record whose fields
+  ## these entries fill.
+  record value ⁽CURLY BRACE ⁽ZERO OR MORE ⁽expression,
 ],
 
 ## `WHEN successor of (k) THEN ...`.

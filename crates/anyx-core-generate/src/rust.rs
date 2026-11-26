@@ -210,7 +210,7 @@ fn declare_type(schema: &Schema, out: &mut String, data: &crate::model::Data) {
         out.push_str("#[derive(Clone, Debug, PartialEq)]\n");
     }
     if let [constructor] = data.constructors.as_slice() {
-        if serializable {
+        if serializable && !data.record {
             let _ = writeln!(
                 out,
                 "#[serde(tag = \"kind\", rename = {})]",

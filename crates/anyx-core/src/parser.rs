@@ -20,6 +20,7 @@ pub struct Document {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Declaration {
     Data(Data),
+    Record(Record),
     Function(Function),
     ServedFunction(ServedFunction),
 }
@@ -30,6 +31,30 @@ pub struct Data {
     pub signature_result: SignatureResult,
     pub constructors: Spanned<Vec<Constructor>>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Record {
+    pub head: Head,
+    pub signature_result: SignatureResult,
+    pub fields: Spanned<Vec<Field>>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Field {
+    Defaulted {
+        field_shape: FieldShape,
+        entry: Expression,
+        span: Span,
+    },
+    FieldShape(FieldShape),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldShape {
+    Unnamed(Parameter),
+    Named(Head),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -111,6 +136,7 @@ pub enum Expression {
     },
     Hole(Span),
     List(Spanned<Vec<Expression>>),
+    RecordValue(Spanned<Vec<Expression>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -138,8 +164,27 @@ impl Declaration {
     pub fn span(&self) -> Span {
         match self {
             Declaration::Data(value) => value.span,
+            Declaration::Record(value) => value.span,
             Declaration::Function(value) => value.span,
             Declaration::ServedFunction(value) => value.span,
+        }
+    }
+}
+
+impl Field {
+    pub fn span(&self) -> Span {
+        match self {
+            Field::Defaulted { span, .. } => *span,
+            Field::FieldShape(value) => value.span(),
+        }
+    }
+}
+
+impl FieldShape {
+    pub fn span(&self) -> Span {
+        match self {
+            FieldShape::Unnamed(value) => value.span,
+            FieldShape::Named(value) => value.span(),
         }
     }
 }
@@ -170,6 +215,7 @@ impl Expression {
             | Expression::Name { span, .. }
             | Expression::Hole(span) => *span,
             Expression::List(value) => value.span,
+            Expression::RecordValue(value) => value.span,
         }
     }
 }
@@ -192,6 +238,7 @@ impl support::Errors for Declaration {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
             Declaration::Data(value) => support::Errors::errors(value, found),
+            Declaration::Record(value) => support::Errors::errors(value, found),
             Declaration::Function(value) => support::Errors::errors(value, found),
             Declaration::ServedFunction(value) => support::Errors::errors(value, found),
         }
@@ -203,6 +250,37 @@ impl support::Errors for Data {
         support::Errors::errors(&self.head, found);
         support::Errors::errors(&self.signature_result, found);
         support::Errors::errors(&self.constructors, found);
+    }
+}
+
+impl support::Errors for Record {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.head, found);
+        support::Errors::errors(&self.signature_result, found);
+        support::Errors::errors(&self.fields, found);
+    }
+}
+
+impl support::Errors for Field {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Field::Defaulted {
+                field_shape, entry, ..
+            } => {
+                support::Errors::errors(field_shape, found);
+                support::Errors::errors(entry, found);
+            }
+            Field::FieldShape(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for FieldShape {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            FieldShape::Unnamed(value) => support::Errors::errors(value, found),
+            FieldShape::Named(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -296,6 +374,7 @@ impl support::Errors for Expression {
             }
             Expression::Hole(value) => support::Errors::errors(value, found),
             Expression::List(value) => support::Errors::errors(value, found),
+            Expression::RecordValue(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -339,6 +418,7 @@ pub fn decode_document(nodes: &[Node]) -> Result<Document, DecodeError> {
 pub fn decode_declaration(node: &Node) -> Result<Declaration, DecodeError> {
     decode_data(node)
         .map(Declaration::Data)
+        .or_else(|error| error.or(decode_record(node).map(Declaration::Record)))
         .or_else(|error| error.or(decode_function(node).map(Declaration::Function)))
         .or_else(|error| error.or(decode_served_function(node).map(Declaration::ServedFunction)))
 }
@@ -367,6 +447,54 @@ fn decode_data_constructors(node: &Node) -> Result<Spanned<Vec<Constructor>>, De
         value,
         span: node.span,
     })
+}
+
+pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
+    let mut parts = support::call(node, "the call `RECORD _ RETURNS _ WITH _`")?;
+    let decoded = Record {
+        head: parts.word("RECORD")?.one(decode_head, "a head")?,
+        signature_result: parts
+            .word("RETURNS")?
+            .one(decode_signature_result, "a signature result")?,
+        fields: parts.word("WITH")?.one(decode_record_fields, "`[...]`")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+fn decode_record_fields(node: &Node) -> Result<Spanned<Vec<Field>>, DecodeError> {
+    let mut elements = support::square_bracket(node)?;
+    let value = elements.zero_or_more(decode_field);
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
+pub fn decode_field(node: &Node) -> Result<Field, DecodeError> {
+    decode_field_defaulted(node)
+        .or_else(|error| error.or(decode_field_shape(node).map(Field::FieldShape)))
+}
+
+fn decode_field_defaulted(node: &Node) -> Result<Field, DecodeError> {
+    let mut parts = support::call(node, "the call `_ DEFAULT _`")?;
+    let decoded = Field::Defaulted {
+        field_shape: parts.one(decode_field_shape, "a field shape")?,
+        entry: parts
+            .word("DEFAULT")?
+            .one(decode_expression, "an expression")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_field_shape(node: &Node) -> Result<FieldShape, DecodeError> {
+    decode_parameter(node)
+        .map(FieldShape::Unnamed)
+        .or_else(|error| error.or(decode_head(node).map(FieldShape::Named)))
 }
 
 pub fn decode_constructor(node: &Node) -> Result<Constructor, DecodeError> {
@@ -486,6 +614,9 @@ pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
         .or_else(|error| error.or(decode_expression_name(node)))
         .or_else(|error| error.or(support::underscore(node).map(Expression::Hole)))
         .or_else(|error| error.or(decode_expression_list(node).map(Expression::List)))
+        .or_else(|error| {
+            error.or(decode_expression_record_value(node).map(Expression::RecordValue))
+        })
 }
 
 fn decode_expression_function_type(node: &Node) -> Result<Expression, DecodeError> {
@@ -571,6 +702,16 @@ fn decode_expression_list(node: &Node) -> Result<Spanned<Vec<Expression>>, Decod
     })
 }
 
+fn decode_expression_record_value(node: &Node) -> Result<Spanned<Vec<Expression>>, DecodeError> {
+    let mut elements = support::curly_brace(node)?;
+    let value = elements.zero_or_more(decode_expression);
+    elements.finish()?;
+    Ok(Spanned {
+        value,
+        span: node.span,
+    })
+}
+
 pub fn decode_case(node: &Node) -> Result<Case, DecodeError> {
     let mut parts = support::call(node, "the call `WHEN _ THEN _`")?;
     let decoded = Case {
@@ -634,6 +775,10 @@ pub const DOCUMENTATION: &[(&str, &str)] = &[];
 pub const LAYOUT: &[support::LayoutRule] = &[
     support::LayoutRule {
         words: &["DATA", "RETURNS", "WITH"],
+        break_before: &["WITH"],
+    },
+    support::LayoutRule {
+        words: &["RECORD", "RETURNS", "WITH"],
         break_before: &["WITH"],
     },
     support::LayoutRule {

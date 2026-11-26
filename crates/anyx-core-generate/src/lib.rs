@@ -2,7 +2,7 @@
 //! the anyx core.
 //!
 //! - A `DATA` becomes a type in both, sent as JSON with its constructor's
-//!   name under `kind`.
+//!   name under `kind`. A `RECORD` is sent as its fields alone.
 //! - A `FUNCTION` without a body is served: a method of the Rust `Server`
 //!   trait.
 //! - A `FUNCTION` with a body is compiled to Rust as written.
