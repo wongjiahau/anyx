@@ -4,6 +4,8 @@ An RPC protocol written in anyx. A schema declares the methods; requests and
 responses are anyx documents, which people and AI agents read and write
 easily, checked against the schema.
 
+[`WHY.md`](WHY.md) shows what that buys, set against JSON from popular APIs.
+
 ```rust
 let schema = anyx_protocol::Schema::parse(source)?;
 // Or follow explicit imports through a reader:
