@@ -94,7 +94,8 @@ impl Scope<'_> {
 
             // Two different numbers: peeling would take as many steps as the
             // smaller one to reach `zero` against `successor of _`.
-            if matches!((&left, &right), (Value::Natural(_), Value::Natural(_))) {
+            // Two different literals of one type are different values.
+            if is_literal(&left) && is_literal(&right) {
                 return Ok(false);
             }
             let (left_peeled, right_peeled) = (left.peeled(), right.peeled());
@@ -166,7 +167,12 @@ fn mentions_local(term: &Term, index: Index) -> bool {
         Term::List(elements) => elements
             .iter()
             .any(|element| mentions_local(element, index)),
-        Term::Type | Term::Kind | Term::Global(_) | Term::Natural(_) => false,
+        Term::Type
+        | Term::Kind
+        | Term::Global(_)
+        | Term::Natural(_)
+        | Term::Integer(_)
+        | Term::Text(_) => false,
     }
 }
 
@@ -175,4 +181,11 @@ fn binding_count(pattern: &Pattern) -> usize {
         Pattern::Binding => 1,
         Pattern::Constructor { arguments, .. } => arguments.iter().map(binding_count).sum(),
     }
+}
+
+fn is_literal(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Natural(_) | Value::Integer(_) | Value::Text(_)
+    )
 }

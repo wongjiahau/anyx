@@ -779,6 +779,8 @@ fn clone_term(term: &lowering::Term) -> lowering::Term {
         },
         T::List(elements) => T::List(elements.iter().map(clone_term).collect()),
         T::Natural(number) => T::Natural(*number),
+        T::Integer(number) => T::Integer(*number),
+        T::Text(text) => T::Text(text.clone()),
     }
 }
 

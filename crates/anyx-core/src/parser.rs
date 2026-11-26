@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use anyx::{Node, Span};
+use anyx::{Node, Span, StringLiteral};
 pub use support::{CallName, DecodeError, Spanned};
 
 static REGEX_1: std::sync::LazyLock<regex::Regex> =
@@ -135,7 +135,8 @@ pub enum Expression {
         span: Span,
     },
     Hole(Span),
-    Natural(Spanned<String>),
+    Number(Spanned<String>),
+    Text(Spanned<StringLiteral>),
     List(Spanned<Vec<Expression>>),
     RecordValue(Spanned<Vec<Expression>>),
 }
@@ -215,7 +216,8 @@ impl Expression {
             | Expression::Call { span, .. }
             | Expression::Name { span, .. }
             | Expression::Hole(span) => *span,
-            Expression::Natural(value) => value.span,
+            Expression::Number(value) => value.span,
+            Expression::Text(value) => value.span,
             Expression::List(value) => value.span,
             Expression::RecordValue(value) => value.span,
         }
@@ -375,7 +377,8 @@ impl support::Errors for Expression {
                 support::Errors::errors(arguments, found);
             }
             Expression::Hole(value) => support::Errors::errors(value, found),
-            Expression::Natural(value) => support::Errors::errors(value, found),
+            Expression::Number(value) => support::Errors::errors(value, found),
+            Expression::Text(value) => support::Errors::errors(value, found),
             Expression::List(value) => support::Errors::errors(value, found),
             Expression::RecordValue(value) => support::Errors::errors(value, found),
         }
@@ -619,13 +622,16 @@ pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
         .or_else(|error| {
             error.or(support::float(
                 node,
-                0.0,
+                f64::NEG_INFINITY,
                 f64::INFINITY,
                 false,
-                "an integer literal of at least 0",
+                "an integer literal",
             )
-            .and_then(|_| support::number_literal(node, false, "an integer literal of at least 0"))
-            .map(Expression::Natural))
+            .and_then(|_| support::number_literal(node, false, "an integer literal"))
+            .map(Expression::Number))
+        })
+        .or_else(|error| {
+            error.or(support::string(node, |_| true, "a string").map(Expression::Text))
         })
         .or_else(|error| error.or(decode_expression_list(node).map(Expression::List)))
         .or_else(|error| {

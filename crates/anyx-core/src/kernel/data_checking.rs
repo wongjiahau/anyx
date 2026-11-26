@@ -24,7 +24,9 @@ pub(super) fn unfold_constructor_results<'document>(
             Declaration::Function { signature, body } => {
                 Some((signature.name.as_str(), (signature, body)))
             }
-            Declaration::Data { .. } | Declaration::Served { .. } => None,
+            Declaration::Data { .. }
+            | Declaration::Served { .. }
+            | Declaration::Primitive { .. } => None,
         })
         .collect();
     let calls = |body: &'document Term| {
@@ -140,7 +142,9 @@ pub(super) fn check_data_declarations<'document>(
         .clone()
         .filter_map(|declaration| match declaration {
             Declaration::Function { signature, body } => Some((signature.name.as_str(), body)),
-            Declaration::Data { .. } | Declaration::Served { .. } => None,
+            Declaration::Data { .. }
+            | Declaration::Served { .. }
+            | Declaration::Primitive { .. } => None,
         })
         .collect();
     let visit_references = |term, positive, visit: &mut dyn FnMut(&'document str, bool)| {
@@ -272,7 +276,12 @@ fn visit_global_references<'term>(
                 visit_global_references(element, false, visit);
             }
         }
-        Term::Type | Term::Kind | Term::Local(_) | Term::Natural(_) => {}
+        Term::Type
+        | Term::Kind
+        | Term::Local(_)
+        | Term::Natural(_)
+        | Term::Integer(_)
+        | Term::Text(_) => {}
     }
 }
 
@@ -394,7 +403,13 @@ fn visit_occurrences(
                 visit_occurrences(element, data, depth, visit);
             }
         }
-        Term::Type | Term::Kind | Term::Local(_) | Term::Global(_) | Term::Natural(_) => {}
+        Term::Type
+        | Term::Kind
+        | Term::Local(_)
+        | Term::Global(_)
+        | Term::Natural(_)
+        | Term::Integer(_)
+        | Term::Text(_) => {}
     }
 }
 

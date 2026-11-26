@@ -242,13 +242,7 @@ fn checks_positivity_after_unfolding_a_constructor_result() {
 #[test]
 fn a_parameter_does_not_count_towards_the_universe() {
     let document = kernel_document(
-        "DATA Text RETURNS Type WITH [hello RETURNS Text],
-         DATA List of (item: Type) RETURNS Type WITH [
-           nothing of (item: Type) RETURNS List of (item),
-           list of (item: Type) starting (first: item) then (rest: List of (item))
-             RETURNS List of (item),
-         ],
-         DATA Folder RETURNS Type WITH [folder with (files: List of (Text)) RETURNS Folder],",
+        "DATA Folder RETURNS Type WITH [folder with (files: List of (Text)) RETURNS Folder],",
     );
     TypeChecker::default().check_document(&document).unwrap();
 }
@@ -258,14 +252,12 @@ fn a_large_field_that_is_not_a_uniform_parameter_is_rejected() {
     for source in [
         "DATA Any RETURNS Type WITH [pack (code: Type) RETURNS Any],",
         // The recursive occurrence changes the argument, so it is an index.
-        "DATA Text RETURNS Type WITH [hello RETURNS Text],
-         DATA Weird of (item: Type) RETURNS Type WITH [
+        "DATA Weird of (item: Type) RETURNS Type WITH [
            stop of (item: Type) RETURNS Weird of (item),
            step of (item: Type) inner (rest: Weird of (Text)) RETURNS Weird of (item),
          ],",
         // One constructor fixes the argument, so it is an index.
-        "DATA Text RETURNS Type WITH [hello RETURNS Text],
-         DATA Tagged (item: Type) RETURNS Type WITH [
+        "DATA Tagged (item: Type) RETURNS Type WITH [
            text tag RETURNS Tagged (Text),
            any tag (item: Type) RETURNS Tagged (item),
          ],",
@@ -283,8 +275,7 @@ fn a_large_field_that_is_not_a_uniform_parameter_is_rejected() {
 #[test]
 fn a_served_function_is_an_opaque_constant() {
     let document = kernel_document(
-        "DATA Text RETURNS Type WITH [],
-         DATA Document RETURNS Type WITH [document of (text: Text) RETURNS Document],
+        "DATA Document RETURNS Type WITH [document of (text: Text) RETURNS Document],
          FUNCTION read (path: Text) RETURNS Document,
          FUNCTION read twice (path: Text) RETURNS Document IS (read (path)),",
     );
@@ -733,7 +724,7 @@ fn rejects_expressions_without_the_required_types() {
         ),
         (
             "FUNCTION example RETURNS Type IS []",
-            CheckingError::UnsupportedTerm,
+            CheckingError::TypeMismatch,
         ),
     ] {
         let source = format!("{}{source}", include_str!("fixtures/sample.anyx"));

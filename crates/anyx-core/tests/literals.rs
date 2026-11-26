@@ -1,5 +1,6 @@
-//! `3`: a literal of the built-in `Natural`, the same value as
-//! `successor of (successor of (successor of (zero)))`.
+//! Literals: `3` of the built-in `Natural` (the same value as `successor
+//! of (successor of (successor of (zero)))`) or `Integer`, `"src"` of
+//! `Text`, and `[a, b]` of `List of _`.
 
 use anyx_core::{
     kernel::{Declaration, Document, Term, TypeChecker},
@@ -122,4 +123,63 @@ fn natural_is_built_in() {
     let error = check("FUNCTION huge RETURNS Natural IS 340282366920938463463374607431768211456,")
         .unwrap_err();
     assert!(error.contains("too large"), "{error}");
+}
+
+#[test]
+fn text_and_integer_literals_have_fixed_types() {
+    check(
+        "FUNCTION source RETURNS Text IS \"src\",
+         FUNCTION offset RETURNS Integer IS -3,
+         FUNCTION count RETURNS Integer IS 3,",
+    )
+    .unwrap();
+    assert!(check("FUNCTION wrong RETURNS Natural IS -3,").is_err());
+    assert!(check("FUNCTION wrong RETURNS Text IS 3,").is_err());
+    assert!(check("FUNCTION wrong RETURNS Integer IS \"3\",").is_err());
+}
+
+#[test]
+fn a_literal_type_cannot_be_matched_or_redeclared() {
+    // With literals, an empty match on `Text` would prove anything.
+    let error = check(
+        "DATA Never RETURNS Type WITH [],
+         FUNCTION absurd RETURNS Never IS (MATCH \"x\" WITH []),",
+    )
+    .unwrap_err();
+    assert!(error.contains("absurd"), "{error}");
+    for declaration in [
+        "DATA Text RETURNS Type WITH [],",
+        "DATA Integer RETURNS Type WITH [],",
+        "DATA List of (item: Type) RETURNS Type WITH [],",
+    ] {
+        assert!(check(declaration).is_err(), "{declaration}");
+    }
+}
+
+#[test]
+fn different_literals_are_different_indices() {
+    check(
+        "DATA Named (name: Text) RETURNS Type WITH [named src RETURNS Named (\"src\")],
+         FUNCTION src RETURNS Named (\"src\") IS named src,",
+    )
+    .unwrap();
+    assert!(
+        check(
+            "DATA Named (name: Text) RETURNS Type WITH [named src RETURNS Named (\"src\")],
+             FUNCTION lib RETURNS Named (\"lib\") IS named src,"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn a_list_literal_checks_each_element() {
+    check(
+        "FUNCTION paths RETURNS List of (Text) IS [\"src\", \"tests\"],
+         FUNCTION none RETURNS List of (Natural) IS [],
+         FUNCTION nested RETURNS List of (List of (Natural)) IS [[1, 2], []],",
+    )
+    .unwrap();
+    assert!(check("FUNCTION wrong RETURNS List of (Text) IS [\"src\", 3],").is_err());
+    assert!(check("FUNCTION wrong RETURNS Text IS [\"src\"],").is_err());
 }

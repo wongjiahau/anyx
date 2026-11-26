@@ -51,22 +51,28 @@ fn a_function_without_a_body_is_served() {
 }
 
 #[test]
-fn accepts_only_natural_number_literals() {
-    let source = "FUNCTION example RETURNS Natural IS 12";
-    let document = parse_document(source).document.unwrap();
+fn parses_integer_and_text_literals() {
+    for (literal, expected) in [("12", "12"), ("-3", "-3")] {
+        let source = format!("FUNCTION example RETURNS Integer IS {literal}");
+        let document = parse_document(&source).document.unwrap();
+        let [Declaration::Function(example)] = document.declaration.as_slice() else {
+            panic!("expected one function");
+        };
+        assert!(matches!(&example.body, Expression::Number(number) if number.value == expected));
+    }
+    let document = parse_document("FUNCTION example RETURNS Text IS \"src\"")
+        .document
+        .unwrap();
     let [Declaration::Function(example)] = document.declaration.as_slice() else {
         panic!("expected one function");
     };
-    assert!(matches!(&example.body, Expression::Natural(number) if number.value == "12"));
+    assert!(matches!(&example.body, Expression::Text(text) if text.value.value == "src"));
 
-    for literal in ["1.5", "\"zero\""] {
-        let source = format!("FUNCTION example RETURNS Natural IS {literal}");
-        let parsed = parse_document(&source);
-        assert!(parsed.syntax_errors.is_empty());
-        let error = parsed.document.unwrap_err();
-        let rendered = error.render(&source, "sample.anyx");
-        assert!(rendered.starts_with("sample.anyx:1:37:"), "{rendered}");
-    }
+    let source = "FUNCTION example RETURNS Natural IS 1.5";
+    let parsed = parse_document(source);
+    assert!(parsed.syntax_errors.is_empty());
+    let rendered = parsed.document.unwrap_err().render(source, "sample.anyx");
+    assert!(rendered.starts_with("sample.anyx:1:37:"), "{rendered}");
 }
 
 #[test]

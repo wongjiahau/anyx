@@ -208,10 +208,10 @@ impl TypeChecker {
     }
 
     /// Check all declarations, including data families and their constructors.
-    /// Check `document` after the built-in `Natural`.
+    /// Check `document` after the kernel's built-in declarations.
     pub fn check_document(self, document: &Document) -> Result<Self, DeclarationCheckingError> {
-        let natural = super::natural_declaration();
-        self.check_declarations(std::iter::once(&natural).chain(&document.declarations))
+        let built_in = super::built_in_declarations();
+        self.check_declarations(built_in.iter().chain(&document.declarations))
     }
 
     fn check_declarations<'document>(
@@ -230,6 +230,10 @@ impl TypeChecker {
                 Declaration::Served { signature } => {
                     signatures.push((signature, GlobalKind::Function, None));
                     served.push(signature);
+                }
+                // Not a data family, so no match can take it apart.
+                Declaration::Primitive { signature } => {
+                    signatures.push((signature, GlobalKind::Data, None));
                 }
                 Declaration::Function { signature, body } => {
                     signatures.push((signature, GlobalKind::Function, None));
@@ -507,6 +511,27 @@ impl Scope<'_> {
             return self.check_match(subject, cases, &expected);
         }
 
+        // `3` is an `Integer` where one is expected.
+        if let Term::Natural(_) = term
+            && is_global(&expected, super::INTEGER)
+        {
+            return Ok(());
+        }
+
+        // `[a, b]` is a `List of (item)` when each element is an `item`.
+        if let Term::List(elements) = term {
+            let Some((family, [item])) = index_unification::data_application(&expected) else {
+                return Err(CheckingError::TypeMismatch);
+            };
+            if family.name != super::LIST {
+                return Err(CheckingError::TypeMismatch);
+            }
+            for element in elements {
+                self.check_value(element, item)?;
+            }
+            return Ok(());
+        }
+
         let actual = self.synthesize_value(term)?;
         let depth = self.refinements.len();
         if self.definitions.read_back(&actual, depth)?
@@ -576,10 +601,22 @@ impl Scope<'_> {
             }
             Term::Match { .. } => Err(CheckingError::MatchNeedsExpectedType),
             Term::List(_) => Err(CheckingError::UnsupportedTerm),
-            Term::Natural(_) => Ok(Value::Neutral(super::Neutral::Global(Global {
-                name: super::NATURAL.to_owned(),
-                kind: GlobalKind::Data,
-            }))),
+            Term::Natural(_) => Ok(primitive_type(super::NATURAL)),
+            Term::Integer(_) => Ok(primitive_type(super::INTEGER)),
+            Term::Text(_) => Ok(primitive_type(super::TEXT)),
         }
     }
+}
+
+/// The type named `name` with no arguments, such as `Text`.
+fn primitive_type(name: &str) -> Value {
+    Value::Neutral(super::Neutral::Global(Global {
+        name: name.to_owned(),
+        kind: GlobalKind::Data,
+    }))
+}
+
+fn is_global(value: &Value, name: &str) -> bool {
+    matches!(value, Value::Neutral(super::Neutral::Global(global))
+        if global.kind == GlobalKind::Data && global.name == name)
 }

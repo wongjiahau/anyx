@@ -184,7 +184,20 @@ inference. Macros and effects come later.
       (3)` peels its left side twice.
     - Two different numbers never unify, without peeling down to `zero`.
     - Generated code sends a `Natural` as a number.
-    - Not yet: literals of `Integer`, `Text`, `Decimal`; built-in `plus`.
+    - Not yet: literals of `Decimal`; built-in `plus`.
+
+21. `Text`, `Integer` and `List of _` are built in, with literals. (done)
+    - `"src"` is a `Text`, `-3` an `Integer`, and `3` a `Natural` or, where
+      one is expected, an `Integer`.
+    - `Text` and `Integer` are primitives: no constructors, and no `MATCH`
+      takes them apart. Were they empty `DATA`, `MATCH "x" WITH []` would
+      prove anything. Two literals are equal only when they are the same,
+      and nothing reduces them.
+    - `[a, b]` is a `List of (item)` when each element is an `item`. It is
+      its own value, not a chain of `list of _ starting _ then _`, since
+      it doesn't say its item type: a `MATCH` on it waits, and it is not
+      convertible with the chain. That costs completeness, not soundness.
+    - A schema can't declare any of the four.
 
 ## Later
 

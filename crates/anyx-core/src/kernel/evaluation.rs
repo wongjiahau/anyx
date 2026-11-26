@@ -71,6 +71,8 @@ impl Definitions {
                 arguments: Vec::new(),
             },
             Term::Natural(number) => Value::Natural(*number),
+            Term::Integer(number) => Value::Integer(*number),
+            Term::Text(text) => Value::Text(text.clone()),
             Term::Global(global) => self.evaluate_global(global, Vec::new())?,
             Term::FunctionType {
                 parameter_type,
@@ -270,6 +272,9 @@ fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment)
             result
         }
         Value::Neutral(_) => PatternMatch::Blocked,
+        // A `[ ]` literal doesn't say its item type, which the list
+        // constructors take, so it isn't taken apart: the match waits.
+        Value::List(_) => PatternMatch::Blocked,
         _ => PatternMatch::Mismatched,
     }
 }
@@ -300,6 +305,8 @@ impl Definitions {
             Value::Neutral(neutral) => self.read_back_neutral(neutral, depth)?,
             Value::List(elements) => Term::List(self.read_back_values(elements, depth)?),
             Value::Natural(number) => Term::Natural(*number),
+            Value::Integer(number) => Term::Integer(*number),
+            Value::Text(text) => Term::Text(text.clone()),
         })
     }
 

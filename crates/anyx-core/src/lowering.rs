@@ -1,6 +1,6 @@
 //! Name resolution and lowering from the generated syntax tree.
 
-use crate::parser;
+use crate::{kernel, parser};
 use anyx::Span;
 use std::{collections::HashMap, fmt};
 
@@ -90,8 +90,13 @@ pub enum Term {
         cases: Vec<Case>,
     },
     List(Vec<Term>),
-    /// `3`, a literal of the built-in `Natural`.
+    /// `3`, a literal of the built-in `Natural`, or of `Integer` where one
+    /// is expected.
     Natural(u128),
+    /// `-3`, a literal of the built-in `Integer`.
+    Integer(i128),
+    /// `"src"`, a literal of the built-in `Text`.
+    Text(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -323,11 +328,18 @@ impl<'source> Resolver<'source> {
         &mut self,
         document: &'source parser::Document,
     ) -> Result<(), LoweringError> {
-        // The built-in `Natural`, which the kernel checks before the file.
-        self.globals.insert("Natural", GlobalKind::Data);
-        for constructor in ["zero", "successor of _"] {
+        // The kernel's built-in types, which it checks before the file.
+        for data in kernel::BUILT_IN {
+            self.globals.insert(data, GlobalKind::Data);
+        }
+        for (constructor, data) in [
+            (kernel::ZERO, kernel::NATURAL),
+            (kernel::SUCCESSOR, kernel::NATURAL),
+            (kernel::EMPTY_LIST, kernel::LIST),
+            (kernel::LIST_CELL, kernel::LIST),
+        ] {
             self.globals.insert(constructor, GlobalKind::Constructor);
-            self.constructor_data.insert(constructor, "Natural");
+            self.constructor_data.insert(constructor, data);
         }
         for declaration in &document.declaration {
             match declaration {
@@ -892,12 +904,18 @@ impl<'source> Resolver<'source> {
                     message: "a hole must be a direct argument of a call".to_owned(),
                 });
             }
-            parser::Expression::Natural(number) => {
-                Term::Natural(number.value.parse().map_err(|_| LoweringError {
+            parser::Expression::Number(number) => {
+                let too_large = || LoweringError {
                     span: number.span,
-                    message: format!("`{}` is too large for a `Natural`", number.value),
-                })?)
+                    message: format!("`{}` is too large for a number", number.value),
+                };
+                if number.value.starts_with('-') {
+                    Term::Integer(number.value.parse().map_err(|_| too_large())?)
+                } else {
+                    Term::Natural(number.value.parse().map_err(|_| too_large())?)
+                }
             }
+            parser::Expression::Text(text) => Term::Text(text.value.value.clone()),
             parser::Expression::RecordValue(entries) => {
                 self.record_value(entries.span, &entries.value)?
             }

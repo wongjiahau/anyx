@@ -52,6 +52,11 @@ pub enum Declaration {
     Served {
         signature: Signature,
     },
+    /// A built-in type with literals and no constructors, such as `Text`.
+    /// It can't be matched on, so its literals can't prove that it is empty.
+    Primitive {
+        signature: Signature,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -86,7 +91,12 @@ pub enum Term {
     },
     List(Vec<Term>),
     /// A literal of the built-in `Natural`: `3` is `successor of (2)`.
+    /// It is also an `Integer` where one is expected.
     Natural(u128),
+    /// A negative literal of the built-in `Integer`, such as `-3`.
+    Integer(i128),
+    /// A literal of the built-in `Text`, such as `"src"`.
+    Text(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,10 +133,78 @@ pub enum Value {
     /// Every closed `Natural` is kept as a number: `zero` evaluates to `0`
     /// and `successor of` a number to the next one. Matching peels one step.
     Natural(u128),
+    Integer(i128),
+    Text(String),
 }
 
 /// The built-in `Natural`, the type of number literals.
 pub const NATURAL: &str = "Natural";
+/// The built-in `Integer`, which a number literal also fits.
+pub const INTEGER: &str = "Integer";
+/// The built-in `Text`, the type of text literals.
+pub const TEXT: &str = "Text";
+/// The built-in `List of _`, the type of `[ ]` literals.
+pub const LIST: &str = "List of _";
+pub const EMPTY_LIST: &str = "empty list of _";
+pub const LIST_CELL: &str = "list of _ starting _ then _";
+
+/// The types the kernel declares before every document.
+pub const BUILT_IN: [&str; 4] = [NATURAL, INTEGER, TEXT, LIST];
+
+/// The kernel's own declarations, checked before every document.
+///
+/// - `Text` and `Integer` are primitives: they have literals and can't be
+///   matched on.
+/// - `Natural` and `List of _` are ordinary data types whose literals stand
+///   for constructors.
+pub fn built_in_declarations() -> Vec<Declaration> {
+    let data = |name: &str| Global {
+        name: name.to_owned(),
+        kind: GlobalKind::Data,
+    };
+    let list_of = |item: Term| Term::Apply {
+        function: Box::new(Term::Global(data(LIST))),
+        arguments: vec![item],
+    };
+    let primitive = |name: &str| Declaration::Primitive {
+        signature: Signature {
+            name: name.to_owned(),
+            parameter_types: Vec::new(),
+            result: Term::Type,
+        },
+    };
+    vec![
+        primitive(TEXT),
+        primitive(INTEGER),
+        natural_declaration(),
+        Declaration::Data {
+            signature: Signature {
+                name: LIST.to_owned(),
+                parameter_types: vec![Term::Type],
+                result: Term::Type,
+            },
+            constructors: vec![
+                // `empty list of (item: Type) RETURNS List of (item)`
+                Signature {
+                    name: EMPTY_LIST.to_owned(),
+                    parameter_types: vec![Term::Type],
+                    result: list_of(Term::Local(Index(0))),
+                },
+                // `list of (item: Type) starting (first: item)
+                //  then (rest: List of (item)) RETURNS List of (item)`
+                Signature {
+                    name: LIST_CELL.to_owned(),
+                    parameter_types: vec![
+                        Term::Type,
+                        Term::Local(Index(0)),
+                        list_of(Term::Local(Index(1))),
+                    ],
+                    result: list_of(Term::Local(Index(2))),
+                },
+            ],
+        },
+    ]
+}
 pub const ZERO: &str = "zero";
 pub const SUCCESSOR: &str = "successor of _";
 
@@ -330,6 +408,8 @@ impl Scope {
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
             lowering::Term::Natural(number) => Term::Natural(*number),
+            lowering::Term::Integer(number) => Term::Integer(*number),
+            lowering::Term::Text(text) => Term::Text(text.clone()),
         })
     }
 
