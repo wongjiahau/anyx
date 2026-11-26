@@ -6,6 +6,15 @@ use std::fmt;
 mod checking;
 pub use checking::{CheckingError, DeclarationCheckingError, FunctionCheckingError, TypeChecker};
 mod data_checking;
+
+/// For each constructor of a data family, the positions of its binders that
+/// stand for the family's parameters rather than stored fields or indices.
+pub fn parameter_binders(
+    signature: &Signature,
+    constructors: &[Signature],
+) -> Vec<std::collections::HashSet<usize>> {
+    data_checking::parameter_binders(signature, constructors)
+}
 mod evaluation;
 mod termination;
 pub use evaluation::{EvaluationError, convertible, evaluate, normalize, read_back};

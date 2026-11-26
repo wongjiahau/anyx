@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/anyx",
     "crates/anyx-core",
+    "crates/anyx-core-generate",
     "crates/anyx-fd",
     "crates/anyx-generator",
     "crates/anyx-lsp",

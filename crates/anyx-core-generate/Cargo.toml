@@ -1,0 +1,12 @@
+[package]
+name = "anyx-core-generate"
+version.workspace = true
+edition.workspace = true
+description = "Generates a Rust server and a TypeScript client from a schema written in the anyx core"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyx = { path = "../anyx", version = "0.1.0" }
+anyx-core = { path = "../anyx-core", version = "0.1.0" }

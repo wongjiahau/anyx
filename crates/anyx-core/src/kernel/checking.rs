@@ -346,6 +346,26 @@ impl TypeChecker {
         self.definitions.read_back(&value, 0)
     }
 
+    /// Normalize a term in scope of `environment`, outermost first. A
+    /// supplied closed term stands for its binder; a missing one stays a
+    /// variable, read back as a local of the same scope.
+    pub fn normalize_in(
+        &self,
+        term: &Term,
+        environment: &[Option<Term>],
+    ) -> Result<Term, EvaluationError> {
+        let values = environment
+            .iter()
+            .enumerate()
+            .map(|(level, supplied)| match supplied {
+                Some(term) => self.definitions.evaluate(term, &[]),
+                None => Ok(fresh_local(level)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let value = self.definitions.evaluate(term, &values)?;
+        self.definitions.read_back(&value, environment.len())
+    }
+
     fn scope(&self) -> Scope<'_> {
         Scope {
             globals: &self.globals,
