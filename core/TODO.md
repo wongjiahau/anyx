@@ -210,6 +210,8 @@ inference. Macros and effects come later.
     - A `DATA`'s, a `RECORD`'s or a field's head has none: a field has
       `DEFAULT`.
 
+## Later
+
 - Overloading on named types without arguments, then record projections.
   - Overloads share a shape, such as `id of _`, and differ in at least one
     position whose parameter type is a name with no arguments (`Text`,
