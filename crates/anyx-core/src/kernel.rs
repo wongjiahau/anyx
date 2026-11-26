@@ -1,6 +1,6 @@
 //! Kernel terms and the values used to evaluate them.
 
-use crate::lowering::{self, BindingIdentifier, GlobalKind};
+use crate::lowering::{self, BindingIdentifier, GlobalKind, OverloadIdentifier};
 use std::fmt;
 
 mod checking;
@@ -57,6 +57,12 @@ pub enum Declaration {
     Primitive {
         signature: Signature,
     },
+    /// Functions sharing the name `name`, which must differ in a named
+    /// parameter type at some position, so a call's arguments pick one.
+    Overloads {
+        name: String,
+        members: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,6 +94,16 @@ pub enum Term {
     Match {
         subject: Box<Term>,
         cases: Vec<Case>,
+    },
+    /// A call of an overloaded name. Checking picks the one candidate whose
+    /// named parameter types the arguments' types match, records it by `id`,
+    /// and checks the call as an application of it. Picking only names the
+    /// function: the application is checked as any other.
+    Overloaded {
+        id: OverloadIdentifier,
+        name: String,
+        candidates: Vec<Global>,
+        arguments: Vec<Term>,
     },
     List(Vec<Term>),
     /// A literal of the built-in `Natural`: `3` is `successor of (2)`.
@@ -336,6 +352,10 @@ impl TryFrom<&lowering::Document> for Document {
                 lowering::Declaration::Served { signature } => Declaration::Served {
                     signature: scope.signature(signature)?,
                 },
+                lowering::Declaration::Overloads { name, members } => Declaration::Overloads {
+                    name: name.clone(),
+                    members: members.clone(),
+                },
             });
         }
         Ok(Self { declarations })
@@ -405,6 +425,23 @@ impl Scope {
                     .iter()
                     .map(|case| self.case(case))
                     .collect::<Result<_, _>>()?,
+            },
+            lowering::Term::Overloaded {
+                id,
+                name,
+                candidates,
+                arguments,
+            } => Term::Overloaded {
+                id: *id,
+                name: name.clone(),
+                candidates: candidates
+                    .iter()
+                    .map(|candidate| Global {
+                        name: candidate.clone(),
+                        kind: GlobalKind::Function,
+                    })
+                    .collect(),
+                arguments: self.terms(arguments)?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
             lowering::Term::Natural(number) => Term::Natural(*number),

@@ -135,6 +135,10 @@ fn collect_references<'term>(term: &'term Term, references: &mut HashSet<&'term 
     {
         references.insert(name);
     }
+    // A call of an overloaded name may call any of its candidates.
+    if let Term::Overloaded { candidates, .. } = term {
+        references.extend(candidates.iter().map(|candidate| candidate.name.as_str()));
+    }
     all_children(term, |child| {
         collect_references(child, references);
         true
@@ -196,6 +200,25 @@ fn decreases(
                     .all(|argument| decreases(argument, recursive, position, locals))
         }
         Term::Global(_) => recursive_arity(term).is_none(),
+        Term::Overloaded {
+            candidates,
+            arguments,
+            ..
+        } => {
+            let recursive_call = candidates
+                .iter()
+                .filter_map(|candidate| recursive.get(candidate.name.as_str()))
+                .all(|arity| {
+                    arguments.len() >= *arity
+                        && arguments
+                            .get(position)
+                            .is_some_and(|argument| descent(argument, locals) == Descent::Smaller)
+                });
+            recursive_call
+                && arguments
+                    .iter()
+                    .all(|argument| decreases(argument, recursive, position, locals))
+        }
         Term::FunctionType {
             parameter_type,
             result,
@@ -256,7 +279,11 @@ fn all_children<'term>(term: &'term Term, mut visit: impl FnMut(&'term Term) -> 
         Term::Match { subject, cases } => {
             visit(subject) && cases.iter().all(|case| visit(&case.result))
         }
-        Term::List(elements) => elements.iter().all(visit),
+        Term::List(elements)
+        | Term::Overloaded {
+            arguments: elements,
+            ..
+        } => elements.iter().all(visit),
         Term::Type
         | Term::Kind
         | Term::Local(_)

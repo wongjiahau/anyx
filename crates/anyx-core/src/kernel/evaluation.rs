@@ -4,7 +4,7 @@ use super::{
     Case, Closure, Environment, Global, Index, Level, Neutral, Pattern, SUCCESSOR, Term, Value,
     ZERO,
 };
-use crate::lowering::GlobalKind;
+use crate::lowering::{GlobalKind, OverloadIdentifier};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -16,6 +16,8 @@ pub enum EvaluationError {
     NoMatchingCase,
     /// A `Natural` past the largest the kernel holds, 2^128 - 1.
     NaturalOverflow,
+    /// A call of an overloaded name that checking hasn't resolved.
+    UnresolvedOverload,
 }
 
 impl fmt::Display for EvaluationError {
@@ -30,6 +32,9 @@ impl fmt::Display for EvaluationError {
             Self::ApplyNonFunction => write!(formatter, "cannot apply a non-function value"),
             Self::NoMatchingCase => write!(formatter, "no case matches the subject"),
             Self::NaturalOverflow => write!(formatter, "a `Natural` grew past 2^128 - 1"),
+            Self::UnresolvedOverload => {
+                write!(formatter, "a call of an overloaded name wasn't checked")
+            }
         }
     }
 }
@@ -48,8 +53,13 @@ pub(super) struct Definition {
     pub parameter_count: usize,
 }
 
+/// Each function's definition, and the overload each checked call of an
+/// overloaded name picked.
 #[derive(Clone, Default)]
-pub(super) struct Definitions(pub HashMap<String, Definition>);
+pub(super) struct Definitions(
+    pub HashMap<String, Definition>,
+    pub std::cell::RefCell<HashMap<OverloadIdentifier, Global>>,
+);
 
 impl Definitions {
     pub fn evaluate(&self, term: &Term, environment: &[Value]) -> Result<Value, EvaluationError> {
@@ -100,6 +110,19 @@ impl Definitions {
             }
             Term::Match { subject, cases } => {
                 self.evaluate_match(self.evaluate(subject, environment)?, cases, environment)?
+            }
+            Term::Overloaded { id, arguments, .. } => {
+                let chosen = self
+                    .1
+                    .borrow()
+                    .get(id)
+                    .cloned()
+                    .ok_or(EvaluationError::UnresolvedOverload)?;
+                let mut function = self.evaluate_global(&chosen, Vec::new())?;
+                for argument in arguments {
+                    function = self.apply(function, self.evaluate(argument, environment)?)?;
+                }
+                function
             }
             Term::List(elements) => Value::List(
                 elements

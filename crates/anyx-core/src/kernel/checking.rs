@@ -41,6 +41,19 @@ pub enum CheckingError {
     NonExhaustiveMatch {
         pattern: String,
     },
+    /// An argument that picks among `name`'s overloads has no type to
+    /// synthesize, such as `[]`.
+    OverloadArgumentNeedsType {
+        name: String,
+        position: usize,
+    },
+    /// No overload of `name`, or more than one, takes arguments of `types`.
+    NoOverloadFits {
+        name: String,
+        types: Vec<String>,
+    },
+    /// One call of `name`, checked twice, picked two overloads.
+    OverloadPickedTwice(String),
     Evaluation(EvaluationError),
 }
 
@@ -99,6 +112,20 @@ impl fmt::Display for CheckingError {
                     "MATCH is not exhaustive (missing case: {pattern})"
                 )
             }
+            Self::OverloadArgumentNeedsType { name, position } => write!(
+                formatter,
+                "argument {} of `{name}` picks among its overloads, so it needs a type of its own",
+                position + 1
+            ),
+            Self::NoOverloadFits { name, types } => write!(
+                formatter,
+                "no one overload of `{name}` takes {}",
+                types.join(", ")
+            ),
+            Self::OverloadPickedTwice(name) => write!(
+                formatter,
+                "a call of `{name}` picks a different overload each time it is checked"
+            ),
             Self::Evaluation(error) => error.fmt(formatter),
         }
     }
@@ -116,12 +143,30 @@ impl From<EvaluationError> for CheckingError {
 pub enum DeclarationCheckingError {
     DuplicateGlobal(String),
     NonTerminatingFunctions(Vec<String>),
-    Signature { name: String, error: CheckingError },
-    Body { name: String, error: CheckingError },
+    Signature {
+        name: String,
+        error: CheckingError,
+    },
+    Body {
+        name: String,
+        error: CheckingError,
+    },
     DataMustReturnUniverse(String),
-    ConstructorMustReturnData { constructor: String, data: String },
-    NonPositiveOccurrence { declaration: String, data: String },
+    ConstructorMustReturnData {
+        constructor: String,
+        data: String,
+    },
+    NonPositiveOccurrence {
+        declaration: String,
+        data: String,
+    },
     ServedFunctionMustReturnAValue(String),
+    /// Two overloads of `name` don't differ in a named type at any position.
+    OverloadsClash {
+        name: String,
+        first: String,
+        second: String,
+    },
 }
 
 impl fmt::Display for DeclarationCheckingError {
@@ -152,6 +197,14 @@ impl fmt::Display for DeclarationCheckingError {
             Self::ServedFunctionMustReturnAValue(name) => write!(
                 formatter,
                 "served function `{name}` must return a value: its result must be in Type"
+            ),
+            Self::OverloadsClash {
+                name,
+                first,
+                second,
+            } => write!(
+                formatter,
+                "`{first}` and `{second}` overload `{name}`, so they must take different named types at some position"
             ),
             Self::NonPositiveOccurrence { declaration, data } => {
                 write!(
@@ -225,8 +278,10 @@ impl TypeChecker {
         let mut signatures = Vec::new();
         let mut functions = Vec::new();
         let mut served = Vec::new();
+        let mut overloads = Vec::new();
         for declaration in declarations.clone() {
             match declaration {
+                Declaration::Overloads { name, members } => overloads.push((name, members)),
                 Declaration::Served { signature } => {
                     signatures.push((signature, GlobalKind::Function, None));
                     served.push(signature);
@@ -287,6 +342,9 @@ impl TypeChecker {
                     error,
                 })?;
         }
+        for (name, members) in overloads {
+            scope.check_overloads(name, members)?;
+        }
         // A served function answers at run time with a value, never a type,
         // so its result must be in `Type`. A type in `Type` may still be
         // empty: a served function only claims to return one when called.
@@ -344,6 +402,15 @@ impl TypeChecker {
         Ok(self
             .definitions
             .read_back(&self.scope().synthesize_value(term)?, 0)?)
+    }
+
+    /// The function a checked call of an overloaded name picked.
+    pub fn overload_choice(&self, id: crate::lowering::OverloadIdentifier) -> Option<String> {
+        self.definitions
+            .1
+            .borrow()
+            .get(&id)
+            .map(|global| global.name.clone())
     }
 
     /// Normalize a closed, checked term using the checked document's definitions.
@@ -481,6 +548,127 @@ impl Scope<'_> {
         ))
     }
 
+    /// Each pair of overloads must take different named types at some
+    /// position, so a call's arguments pick at most one.
+    fn check_overloads(
+        &self,
+        name: &str,
+        members: &[String],
+    ) -> Result<(), DeclarationCheckingError> {
+        let named = members
+            .iter()
+            .map(|member| {
+                self.named_parameters(member)
+                    .map_err(|error| DeclarationCheckingError::Signature {
+                        name: member.clone(),
+                        error,
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for (first, first_named) in members.iter().zip(&named) {
+            for (second, second_named) in members.iter().zip(&named) {
+                if first >= second {
+                    continue;
+                }
+                let differ = first_named
+                    .iter()
+                    .zip(second_named)
+                    .any(|pair| matches!(pair, (Some(a), Some(b)) if a != b));
+                if !differ {
+                    return Err(DeclarationCheckingError::OverloadsClash {
+                        name: name.to_owned(),
+                        first: first.clone(),
+                        second: second.clone(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// For each parameter of the function `name`, the type it takes when
+    /// that is a type named without arguments, such as `Text`, normalized.
+    fn named_parameters(&self, name: &str) -> Result<Vec<Option<String>>, CheckingError> {
+        let global = Global {
+            name: name.to_owned(),
+            kind: GlobalKind::Function,
+        };
+        let (_, global_type) = self
+            .globals
+            .get(name)
+            .ok_or_else(|| CheckingError::UnknownGlobal(global.clone()))?;
+        let mut function_type = self.definitions.evaluate(global_type, &[])?;
+        let mut level = self.refinements.len();
+        let mut named = Vec::new();
+        while let Value::FunctionType {
+            parameter_type,
+            result,
+        } = function_type
+        {
+            named.push(type_name(&parameter_type));
+            function_type = self.definitions.instantiate(&result, fresh_local(level))?;
+            level += 1;
+        }
+        Ok(named)
+    }
+
+    /// The one candidate whose named parameter types the arguments' types
+    /// match, at each position where two candidates take different names.
+    fn resolve_overload(
+        &self,
+        name: &str,
+        candidates: &[Global],
+        arguments: &[Term],
+    ) -> Result<Global, CheckingError> {
+        let named = candidates
+            .iter()
+            .map(|candidate| self.named_parameters(&candidate.name))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut argument_types = Vec::new();
+        for (position, argument) in arguments.iter().enumerate() {
+            let names: HashSet<&String> = named
+                .iter()
+                .filter_map(|parameters| parameters.get(position)?.as_ref())
+                .collect();
+            if names.len() < 2 {
+                argument_types.push(None);
+                continue;
+            }
+            let argument_type = self.synthesize_value(argument).map_err(|_| {
+                CheckingError::OverloadArgumentNeedsType {
+                    name: name.to_owned(),
+                    position,
+                }
+            })?;
+            argument_types.push(Some(type_name(&argument_type)));
+        }
+        let fitting: Vec<&Global> = candidates
+            .iter()
+            .zip(&named)
+            .filter(|(_, parameters)| {
+                argument_types
+                    .iter()
+                    .zip(parameters.iter())
+                    .all(|pair| match pair {
+                        (Some(argument), Some(parameter)) => argument.as_ref() == Some(parameter),
+                        _ => true,
+                    })
+            })
+            .map(|(candidate, _)| candidate)
+            .collect();
+        match fitting.as_slice() {
+            [chosen] => Ok((*chosen).clone()),
+            _ => Err(CheckingError::NoOverloadFits {
+                name: name.to_owned(),
+                types: argument_types
+                    .iter()
+                    .flatten()
+                    .map(|name| format!("`{}`", name.as_deref().unwrap_or("an unnamed type")))
+                    .collect(),
+            }),
+        }
+    }
+
     fn type_universe(&self, term: &Term) -> Result<Value, CheckingError> {
         if let Term::Match { subject, cases } = term {
             // An inline type-valued match has the same fixed universe as before.
@@ -600,6 +788,22 @@ impl Scope<'_> {
                 Ok(function_type)
             }
             Term::Match { .. } => Err(CheckingError::MatchNeedsExpectedType),
+            Term::Overloaded {
+                id,
+                name,
+                candidates,
+                arguments,
+            } => {
+                let chosen = self.resolve_overload(name, candidates, arguments)?;
+                let previous = self.definitions.1.borrow_mut().insert(*id, chosen.clone());
+                if previous.is_some_and(|previous| previous != chosen) {
+                    return Err(CheckingError::OverloadPickedTwice(name.clone()));
+                }
+                self.synthesize_value(&Term::Apply {
+                    function: Box::new(Term::Global(chosen)),
+                    arguments: arguments.clone(),
+                })
+            }
             Term::List(_) => Err(CheckingError::UnsupportedTerm),
             Term::Natural(_) => Ok(primitive_type(super::NATURAL)),
             Term::Integer(_) => Ok(primitive_type(super::INTEGER)),
@@ -614,6 +818,16 @@ fn primitive_type(name: &str) -> Value {
         name: name.to_owned(),
         kind: GlobalKind::Data,
     }))
+}
+
+/// The name of a type named without arguments, such as `Text`.
+fn type_name(value: &Value) -> Option<String> {
+    match value {
+        Value::Neutral(super::Neutral::Global(global)) if global.kind == GlobalKind::Data => {
+            Some(global.name.clone())
+        }
+        _ => None,
+    }
 }
 
 fn is_global(value: &Value, name: &str) -> bool {

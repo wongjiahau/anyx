@@ -164,7 +164,11 @@ fn mentions_local(term: &Term, index: Index) -> bool {
                     mentions_local(&case.result, Index(index.0 + binding_count(&case.pattern)))
                 })
         }
-        Term::List(elements) => elements
+        Term::List(elements)
+        | Term::Overloaded {
+            arguments: elements,
+            ..
+        } => elements
             .iter()
             .any(|element| mentions_local(element, index)),
         Term::Type

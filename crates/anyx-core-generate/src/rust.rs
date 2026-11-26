@@ -617,6 +617,19 @@ impl Compiler<'_> {
                 };
                 self.call(name, *kind, arguments)
             }
+            lowering::Term::Overloaded {
+                id,
+                name,
+                arguments,
+                ..
+            } => {
+                let chosen = self
+                    .schema
+                    .checker
+                    .overload_choice(*id)
+                    .ok_or_else(|| format!("a call of `{name}` wasn't checked"))?;
+                self.call(&chosen, GlobalKind::Function, arguments)
+            }
             lowering::Term::Match { subject, cases } => {
                 let subject = self.inner_term(subject)?;
                 let mut arms = Vec::new();

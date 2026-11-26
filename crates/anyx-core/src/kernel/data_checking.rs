@@ -26,7 +26,8 @@ pub(super) fn unfold_constructor_results<'document>(
             }
             Declaration::Data { .. }
             | Declaration::Served { .. }
-            | Declaration::Primitive { .. } => None,
+            | Declaration::Primitive { .. }
+            | Declaration::Overloads { .. } => None,
         })
         .collect();
     let calls = |body: &'document Term| {
@@ -74,6 +75,7 @@ pub(super) fn unfold_constructor_results<'document>(
                 )
             })
             .collect(),
+        Default::default(),
     );
 
     declarations
@@ -144,7 +146,8 @@ pub(super) fn check_data_declarations<'document>(
             Declaration::Function { signature, body } => Some((signature.name.as_str(), body)),
             Declaration::Data { .. }
             | Declaration::Served { .. }
-            | Declaration::Primitive { .. } => None,
+            | Declaration::Primitive { .. }
+            | Declaration::Overloads { .. } => None,
         })
         .collect();
     let visit_references = |term, positive, visit: &mut dyn FnMut(&'document str, bool)| {
@@ -265,6 +268,18 @@ fn visit_global_references<'term>(
             }
         }
         Term::Function { body } => visit_global_references(body, false, visit),
+        Term::Overloaded {
+            candidates,
+            arguments,
+            ..
+        } => {
+            for candidate in candidates {
+                visit(candidate, positive);
+            }
+            for argument in arguments {
+                visit_global_references(argument, false, visit);
+            }
+        }
         Term::Match { subject, cases } => {
             visit_global_references(subject, false, visit);
             for case in cases {
@@ -382,6 +397,11 @@ fn visit_occurrences(
             visit_occurrences(result, data, depth + 1, visit);
         }
         Term::Function { body } => visit_occurrences(body, data, depth + 1, visit),
+        Term::Overloaded { arguments, .. } => {
+            for argument in arguments {
+                visit_occurrences(argument, data, depth, visit);
+            }
+        }
         Term::Apply {
             function,
             arguments,

@@ -32,6 +32,13 @@ pub enum Declaration {
         signature: Signature,
         body: Term,
     },
+    /// Functions sharing the name `name`, such as `path of _`, each declared
+    /// under its own name, `path of (Details)`. They must differ in a named
+    /// type, so a call's arguments pick one.
+    Overloads {
+        name: String,
+        members: Vec<String>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +56,19 @@ pub struct Parameter {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BindingIdentifier(usize);
+
+/// A call of an overloaded name. Unique across every document and
+/// expression lowered in the process, so the checker can record which
+/// overload each call picks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OverloadIdentifier(u64);
+
+impl OverloadIdentifier {
+    fn fresh() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Binding {
@@ -88,6 +108,14 @@ pub enum Term {
     Match {
         subject: Box<Term>,
         cases: Vec<Case>,
+    },
+    /// A call of an overloaded name: the checker picks the one candidate
+    /// whose named parameter types the arguments' types match.
+    Overloaded {
+        id: OverloadIdentifier,
+        name: String,
+        candidates: Vec<String>,
+        arguments: Vec<Term>,
     },
     List(Vec<Term>),
     /// `3`, a literal of the built-in `Natural`, or of `Integer` where one
@@ -196,20 +224,30 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 declarations.extend(defaults);
             }
             parser::Declaration::Function(function) => {
-                let signature =
+                let mut signature =
                     resolver.declaration_signature(&function.head, &function.signature_result)?;
+                signature.name = resolver.declared_name(&function.head);
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
                 declarations.push(Declaration::Function { signature, body });
                 declarations.extend(resolver.optional_defaults(&function.head)?);
             }
             parser::Declaration::ServedFunction(function) => {
-                let signature = resolver.signature(&function.head, Some(&function.result))?;
+                let mut signature = resolver.signature(&function.head, Some(&function.result))?;
+                signature.name = resolver.declared_name(&function.head);
                 resolver.locals.clear();
                 declarations.push(Declaration::Served { signature });
                 declarations.extend(resolver.optional_defaults(&function.head)?);
             }
         }
+    }
+    let mut overloads: Vec<_> = resolver.overloads.iter().collect();
+    overloads.sort();
+    for (name, members) in overloads {
+        declarations.push(Declaration::Overloads {
+            name: (*name).to_owned(),
+            members: members.iter().map(|member| (*member).to_owned()).collect(),
+        });
     }
     Ok(Document { declarations })
 }
@@ -355,6 +393,8 @@ struct Resolver<'source> {
     /// its optional parts, by how it is written: `find _` for
     /// `find _ in _ with _`.
     optional_forms: HashMap<String, OptionalForm>,
+    /// The functions sharing each overloaded name, by their own names.
+    overloads: HashMap<&'source str, Vec<&'source str>>,
 }
 
 /// What a record entry is known by.
@@ -496,6 +536,31 @@ impl<'source> Resolver<'source> {
             self.globals.insert(constructor, GlobalKind::Constructor);
             self.constructor_data.insert(constructor, data);
         }
+        // A name two functions declare is overloaded.
+        let mut function_names: HashMap<String, usize> = HashMap::new();
+        for declaration in &document.declaration {
+            if let parser::Declaration::Function(parser::Function { head, .. })
+            | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) =
+                declaration
+            {
+                *function_names
+                    .entry(head_parts(head).0.text.into_owned())
+                    .or_default() += 1;
+            }
+        }
+        for declaration in &document.declaration {
+            if let parser::Declaration::Function(parser::Function { head, .. })
+            | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) =
+                declaration
+            {
+                // A name without slots takes nothing to pick by: declared
+                // twice, it is a duplicate.
+                let (name, parameters) = head_parts(head);
+                if function_names[name.text.as_ref()] > 1 && !parameters.is_empty() {
+                    self.register_overload(head)?;
+                }
+            }
+        }
         for declaration in &document.declaration {
             match declaration {
                 parser::Declaration::Data(data) => {
@@ -540,15 +605,55 @@ impl<'source> Resolver<'source> {
                         }
                     }
                 }
-                parser::Declaration::Function(function) => {
-                    self.register(&function.head, GlobalKind::Function)?;
-                }
-                parser::Declaration::ServedFunction(function) => {
-                    self.register(&function.head, GlobalKind::Function)?;
+                parser::Declaration::Function(parser::Function { head, .. })
+                | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) => {
+                    if !self
+                        .overloads
+                        .contains_key(head_parts(head).0.text.as_ref())
+                    {
+                        self.register(head, GlobalKind::Function)?;
+                    }
                 }
             }
         }
         Ok(())
+    }
+
+    /// Registers one of the functions sharing an overloaded name under its
+    /// own name, `path of (Details)` for `path of (details: Details)`.
+    fn register_overload(&mut self, head: &'source parser::Head) -> Result<(), LoweringError> {
+        let (name, _) = head_parts(head);
+        check_binder_name(&name.text, name.span)?;
+        if let Some(part) = optional_parts(head).first() {
+            return Err(LoweringError {
+                span: part.span,
+                message: format!("`{}` is overloaded, so it has no optional parts", name.text),
+            });
+        }
+        let own = overload_name(head);
+        if own == name.text {
+            return Err(LoweringError {
+                span: name.span,
+                message: format!(
+                    "`{}` is declared more than once, so each must take a named type, such as `(details: Details)`",
+                    name.text
+                ),
+            });
+        }
+        let own = self.register_generated(&own, name.span, GlobalKind::Function)?;
+        self.overloads.entry(name.interned()).or_default().push(own);
+        Ok(())
+    }
+
+    /// The name a function is declared under: its own, or for an overload,
+    /// its name with its named types written in.
+    fn declared_name(&self, head: &parser::Head) -> String {
+        let (name, _) = head_parts(head);
+        if self.overloads.contains_key(name.text.as_ref()) {
+            overload_name(head)
+        } else {
+            name.text.into_owned()
+        }
     }
 
     fn register(
@@ -558,7 +663,9 @@ impl<'source> Resolver<'source> {
     ) -> Result<(), LoweringError> {
         let (name, _) = head_parts(head);
         check_binder_name(&name.text, name.span)?;
-        if self.globals.insert(name.interned(), kind).is_some() {
+        if self.overloads.contains_key(name.text.as_ref())
+            || self.globals.insert(name.interned(), kind).is_some()
+        {
             return Err(LoweringError {
                 span: name.span,
                 message: format!("duplicate declaration of `{}`", name.text),
@@ -1284,9 +1391,11 @@ impl<'source> Resolver<'source> {
         name: &parser::CallName,
         arguments: &'source [parser::Expression],
     ) -> Result<Term, LoweringError> {
-        let (function, form) = match self.optional_form(name) {
-            Some((function, slots)) => (function, Some(slots)),
-            None => (self.reference(name)?, None),
+        let overloaded = self.overloads.get(name.text.as_str()).cloned();
+        let (function, form) = match (&overloaded, self.optional_form(name)) {
+            (Some(_), _) => (Term::Type, None),
+            (None, Some((function, slots))) => (function, Some(slots)),
+            (None, None) => (self.reference(name)?, None),
         };
         let function = Box::new(function);
         let mut parameters = Vec::new();
@@ -1305,9 +1414,17 @@ impl<'source> Resolver<'source> {
         if let Some(slots) = form {
             lowered_arguments = fill_optional_slots(&slots, lowered_arguments);
         }
-        let mut term = Term::Apply {
-            function,
-            arguments: lowered_arguments,
+        let mut term = match overloaded {
+            Some(candidates) => Term::Overloaded {
+                id: OverloadIdentifier::fresh(),
+                name: name.text.clone(),
+                candidates: candidates.iter().map(|name| (*name).to_owned()).collect(),
+                arguments: lowered_arguments,
+            },
+            None => Term::Apply {
+                function,
+                arguments: lowered_arguments,
+            },
         };
         for parameter in parameters.into_iter().rev() {
             term = Term::Function {
@@ -1360,6 +1477,24 @@ impl<'source> Resolver<'source> {
                 .collect::<Result<_, _>>()?,
         })
     }
+}
+
+/// An overload's own name: its name with each slot whose type is written as
+/// a name alone filled in, `path of (Details)`.
+pub(crate) fn overload_name(head: &parser::Head) -> String {
+    let (name, parameters) = head_parts(head);
+    let mut parameters = parameters.into_iter();
+    name.text
+        .split_whitespace()
+        .map(|word| match word {
+            "_" => match parameters.next().map(|parameter| parameter.r#type.as_ref()) {
+                Some(parser::Expression::Name { name, .. }) => format!("({})", name.text),
+                _ => "_".to_owned(),
+            },
+            word => word.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn check_binder_name(name: &str, span: Span) -> Result<(), LoweringError> {

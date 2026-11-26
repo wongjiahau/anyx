@@ -222,20 +222,27 @@ inference. Macros and effects come later.
       each value it returns through `erase`.
     - Completion and hover don't reach core tools yet.
 
+24. Overloading on types named without arguments. (done)
+    - Functions, served or with a body, may share a name, such as
+      `path of _`, when each pair takes different named types (`Details`,
+      `Link`, `Text`) at some position. Each is its own kernel function,
+      named with its types: `path of (Details)`.
+    - A call is `Overloaded`: the checker synthesizes the argument at each
+      position where candidates take different names, and picks the one
+      candidate those types match: no backtracking, no unification. The
+      pick is recorded by the call's id, and the call is checked as an
+      application of it, so picking can't make anything unsound.
+    - Types are compared normalized, so an alias and what it names clash
+      where they are declared. A literal picks by its own type: `3` is a
+      `Natural`. An argument with no type of its own, such as `[]`, can't
+      pick.
+    - An overloaded function has no optional parts, and a name without
+      slots can't be overloaded.
+
 ## Later
 
-- Overloading on named types without arguments, then record projections.
-  - Overloads share a shape, such as `id of _`, and differ in at least one
-    position whose parameter type is a name with no arguments (`Text`,
-    `Key`), anywhere in the call.
-  - A call picks the one overload whose names match its arguments'
-    synthesized, normalized types: no backtracking, no unification.
-  - Overloads whose types normalize to the same names (an alias such as
-    `Key id` for `Text`) clash where they are declared.
-  - Each overload is its own kernel function; resolution only picks a
-    name, outside the kernel.
-  - Then each field of a record without parameters gets a projection,
-    `id of (summary)`, defined by a `MATCH`.
+- Record projections: each field of a record without parameters gets
+  `id of (summary)`, defined by a `MATCH`, as an overload (step 24).
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword
   being a macro use.
 - Effects: monads as library types, or effect rows.

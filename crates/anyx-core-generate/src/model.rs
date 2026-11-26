@@ -777,6 +777,17 @@ fn clone_term(term: &lowering::Term) -> lowering::Term {
                 })
                 .collect(),
         },
+        T::Overloaded {
+            id,
+            name,
+            candidates,
+            arguments,
+        } => T::Overloaded {
+            id: *id,
+            name: name.clone(),
+            candidates: candidates.clone(),
+            arguments: arguments.iter().map(clone_term).collect(),
+        },
         T::List(elements) => T::List(elements.iter().map(clone_term).collect()),
         T::Natural(number) => T::Natural(*number),
         T::Integer(number) => T::Integer(*number),

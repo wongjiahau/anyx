@@ -2,7 +2,7 @@
 
 use crate::{
     kernel::DeclarationCheckingError,
-    lowering::{default_name, field_parts, head_parts, record_constructor_name},
+    lowering::{default_name, field_parts, head_parts, overload_name, record_constructor_name},
     parser,
 };
 use anyx::Span;
@@ -13,11 +13,11 @@ impl DeclarationCheckingError {
         for declaration in &document.declaration {
             match declaration {
                 parser::Declaration::Function(function) => {
-                    let (name, _) = head_parts(&function.head);
-                    if matches!(self, Self::Body { name: failed, .. } if failed == &name.text) {
+                    let names = |failed: &str| declares(&function.head, failed);
+                    if matches!(self, Self::Body { name: failed, .. } if names(failed)) {
                         return function.body.span();
                     }
-                    if matches!(self, Self::NonTerminatingFunctions(names) if names.contains(&name.text.to_string()))
+                    if matches!(self, Self::NonTerminatingFunctions(failed) if failed.iter().any(|failed| names(failed)))
                     {
                         return function.head.span();
                     }
@@ -109,8 +109,15 @@ impl DeclarationCheckingError {
             Self::NonPositiveOccurrence { declaration, .. } => {
                 (declaration, head.span().to(result))
             }
+            Self::OverloadsClash { second, .. } => (second, head.span()),
             Self::Body { .. } | Self::NonTerminatingFunctions(_) => return None,
         };
-        (failed == &name.text).then_some(span)
+        (failed == &name.text || declares(head, failed)).then_some(span)
     }
+}
+
+/// Whether `head` declares the function the kernel knows as `name`: its
+/// own name, or its name as an overload, `path of (Details)`.
+fn declares(head: &parser::Head, name: &str) -> bool {
+    head_parts(head).0.text == name || overload_name(head) == name
 }
