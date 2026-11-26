@@ -24,7 +24,7 @@ pub(super) fn unfold_constructor_results<'document>(
             Declaration::Function { signature, body } => {
                 Some((signature.name.as_str(), (signature, body)))
             }
-            Declaration::Data { .. } => None,
+            Declaration::Data { .. } | Declaration::Served { .. } => None,
         })
         .collect();
     let calls = |body: &'document Term| {
@@ -140,7 +140,7 @@ pub(super) fn check_data_declarations<'document>(
         .clone()
         .filter_map(|declaration| match declaration {
             Declaration::Function { signature, body } => Some((signature.name.as_str(), body)),
-            Declaration::Data { .. } => None,
+            Declaration::Data { .. } | Declaration::Served { .. } => None,
         })
         .collect();
     let visit_references = |term, positive, visit: &mut dyn FnMut(&'document str, bool)| {

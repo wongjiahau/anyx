@@ -7,6 +7,7 @@ ENTRY [ZERO OR MORE ⁽declaration],
 declaration ⁽ONE OF [
   data,
   function,
+  served function,
 ],
 
 ## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`.
@@ -28,6 +29,13 @@ function ⁽ANYFIX CALL [
   WORD "RETURNS", signature result,
   WORD "IS", body ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "IS"],
+
+## `FUNCTION read (path: Path) RETURNS Document`: no body, so whatever serves
+## the schema implements it.
+served function ⁽ANYFIX CALL [
+  WORD "FUNCTION", head,
+  WORD "RETURNS", result ⁽expression,
+],
 
 signature result ⁽ONE OF [WORD "Kind", expression],
 

@@ -39,6 +39,10 @@ pub enum Declaration {
         signature: Signature,
         body: Term,
     },
+    /// A function without a body, an opaque constant for checking.
+    Served {
+        signature: Signature,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -166,6 +170,9 @@ impl TryFrom<&lowering::Document> for Document {
                 lowering::Declaration::Function { signature, body } => Declaration::Function {
                     signature: scope.signature(signature)?,
                     body: scope.term(body)?,
+                },
+                lowering::Declaration::Served { signature } => Declaration::Served {
+                    signature: scope.signature(signature)?,
                 },
             });
         }

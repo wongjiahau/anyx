@@ -19,6 +19,10 @@ pub enum Declaration {
         signature: Signature,
         body: Term,
     },
+    /// A function without a body: whatever serves the schema implements it.
+    Served {
+        signature: Signature,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -138,6 +142,11 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 resolver.locals.clear();
                 Declaration::Function { signature, body }
             }
+            parser::Declaration::ServedFunction(function) => {
+                let signature = resolver.signature(&function.head, Some(&function.result))?;
+                resolver.locals.clear();
+                Declaration::Served { signature }
+            }
         });
     }
     Ok(Document { declarations })
@@ -183,6 +192,9 @@ impl<'source> Resolver<'source> {
                     }
                 }
                 parser::Declaration::Function(function) => {
+                    self.register(&function.head, GlobalKind::Function)?;
+                }
+                parser::Declaration::ServedFunction(function) => {
                     self.register(&function.head, GlobalKind::Function)?;
                 }
             }

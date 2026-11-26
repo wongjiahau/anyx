@@ -23,6 +23,12 @@ impl DeclarationCheckingError {
                         return span;
                     }
                 }
+                parser::Declaration::ServedFunction(function) => {
+                    if let Some(span) = self.signature_span(&function.head, function.result.span())
+                    {
+                        return span;
+                    }
+                }
                 parser::Declaration::Data(data) => {
                     if let Some(span) =
                         self.signature_span(&data.head, data.signature_result.span())
@@ -49,6 +55,7 @@ impl DeclarationCheckingError {
             Self::Signature { name, .. } => (name, head.span().to(result)),
             Self::DataMustReturnUniverse(name) => (name, result),
             Self::ConstructorMustReturnData { constructor, .. } => (constructor, result),
+            Self::ServedFunctionMustReturnAValue(name) => (name, result),
             Self::NonPositiveOccurrence { declaration, .. } => {
                 (declaration, head.span().to(result))
             }

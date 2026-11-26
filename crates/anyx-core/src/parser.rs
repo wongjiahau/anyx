@@ -21,6 +21,7 @@ pub struct Document {
 pub enum Declaration {
     Data(Data),
     Function(Function),
+    ServedFunction(ServedFunction),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +44,13 @@ pub struct Function {
     pub head: Head,
     pub signature_result: SignatureResult,
     pub body: Expression,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ServedFunction {
+    pub head: Head,
+    pub result: Expression,
     pub span: Span,
 }
 
@@ -131,6 +139,7 @@ impl Declaration {
         match self {
             Declaration::Data(value) => value.span,
             Declaration::Function(value) => value.span,
+            Declaration::ServedFunction(value) => value.span,
         }
     }
 }
@@ -184,6 +193,7 @@ impl support::Errors for Declaration {
         match self {
             Declaration::Data(value) => support::Errors::errors(value, found),
             Declaration::Function(value) => support::Errors::errors(value, found),
+            Declaration::ServedFunction(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -208,6 +218,13 @@ impl support::Errors for Function {
         support::Errors::errors(&self.head, found);
         support::Errors::errors(&self.signature_result, found);
         support::Errors::errors(&self.body, found);
+    }
+}
+
+impl support::Errors for ServedFunction {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.head, found);
+        support::Errors::errors(&self.result, found);
     }
 }
 
@@ -323,6 +340,7 @@ pub fn decode_declaration(node: &Node) -> Result<Declaration, DecodeError> {
     decode_data(node)
         .map(Declaration::Data)
         .or_else(|error| error.or(decode_function(node).map(Declaration::Function)))
+        .or_else(|error| error.or(decode_served_function(node).map(Declaration::ServedFunction)))
 }
 
 pub fn decode_data(node: &Node) -> Result<Data, DecodeError> {
@@ -372,6 +390,19 @@ pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
             .word("RETURNS")?
             .one(decode_signature_result, "a signature result")?,
         body: parts.word("IS")?.one(decode_expression, "an expression")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_served_function(node: &Node) -> Result<ServedFunction, DecodeError> {
+    let mut parts = support::call(node, "the call `FUNCTION _ RETURNS _`")?;
+    let decoded = ServedFunction {
+        head: parts.word("FUNCTION")?.one(decode_head, "a head")?,
+        result: parts
+            .word("RETURNS")?
+            .one(decode_expression, "an expression")?,
         span: node.span,
     };
     parts.finish()?;

@@ -35,18 +35,19 @@ FUNCTION successor function RETURNS ((number: Natural) RETURNS Natural) IS (succ
 }
 
 #[test]
-fn reports_a_missing_function_body_at_the_end_of_the_declaration() {
-    let source = "DATA Natural RETURNS Type WITH [],\nFUNCTION missing body RETURNS Natural";
+fn a_function_without_a_body_is_served() {
+    let source = "DATA Natural RETURNS Type WITH [],\nFUNCTION served number RETURNS Natural";
     let parsed = parse_document(source);
     assert!(
         parsed.syntax_errors.is_empty(),
         "{:?}",
         parsed.syntax_errors
     );
-    let error = parsed.document.unwrap_err();
-    let rendered = error.render(source, "sample.anyx");
-    assert!(rendered.starts_with("sample.anyx:2:38:"), "{rendered}");
-    assert!(rendered.contains("expected the word `IS`"), "{rendered}");
+    let document = parsed.document.unwrap();
+    assert!(matches!(
+        document.declaration.as_slice(),
+        [_, anyx_core::parser::Declaration::ServedFunction(_)]
+    ));
 }
 
 #[test]

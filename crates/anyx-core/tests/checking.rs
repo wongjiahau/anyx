@@ -283,6 +283,31 @@ fn a_large_field_that_is_not_a_uniform_parameter_is_rejected() {
 }
 
 #[test]
+fn a_served_function_is_an_opaque_constant() {
+    let document = kernel_document(
+        "DATA Text RETURNS Type WITH [],
+         DATA Document RETURNS Type WITH [document of (text: Text) RETURNS Document],
+         FUNCTION read (path: Text) RETURNS Document,
+         FUNCTION read twice (path: Text) RETURNS Document IS (read (path)),",
+    );
+    TypeChecker::default().check_document(&document).unwrap();
+}
+
+#[test]
+fn a_served_function_cannot_return_a_type() {
+    for source in [
+        "FUNCTION make type RETURNS Type,",
+        "DATA Big RETURNS Kind WITH [big (code: Type) RETURNS Big],
+         FUNCTION make big RETURNS Big,",
+    ] {
+        assert!(matches!(
+            TypeChecker::default().check_document(&kernel_document(source)),
+            Err(DeclarationCheckingError::ServedFunctionMustReturnAValue(_))
+        ));
+    }
+}
+
+#[test]
 fn rejects_negative_and_nested_recursive_occurrences() {
     for (source, reference) in [
         (

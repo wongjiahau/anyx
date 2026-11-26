@@ -149,6 +149,12 @@ inference. Macros and effects come later.
     - Anything else is an index or a stored field and stays checked, so
       `pack (code: Type) RETURNS Any` is still rejected (Girard's paradox).
 
+18. A `FUNCTION` without `IS` is served: whatever serves the schema (done)
+    implements it, and the checker treats it as an opaque constant.
+    - Its result must be in `Type`, so a server never supplies a type.
+    - It has no body, so it is outside termination checking and never
+      unfolds.
+
 ## Later
 
 - Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword

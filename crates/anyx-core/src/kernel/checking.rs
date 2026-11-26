@@ -121,6 +121,7 @@ pub enum DeclarationCheckingError {
     DataMustReturnUniverse(String),
     ConstructorMustReturnData { constructor: String, data: String },
     NonPositiveOccurrence { declaration: String, data: String },
+    ServedFunctionMustReturnAValue(String),
 }
 
 impl fmt::Display for DeclarationCheckingError {
@@ -148,6 +149,10 @@ impl fmt::Display for DeclarationCheckingError {
                     "constructor `{constructor}` must return a fully applied `{data}`"
                 )
             }
+            Self::ServedFunctionMustReturnAValue(name) => write!(
+                formatter,
+                "served function `{name}` must return a value: its result must be in Type"
+            ),
             Self::NonPositiveOccurrence { declaration, data } => {
                 write!(
                     formatter,
@@ -217,8 +222,13 @@ impl TypeChecker {
 
         let mut signatures = Vec::new();
         let mut functions = Vec::new();
+        let mut served = Vec::new();
         for declaration in declarations.clone() {
             match declaration {
+                Declaration::Served { signature } => {
+                    signatures.push((signature, GlobalKind::Function, None));
+                    served.push(signature);
+                }
                 Declaration::Function { signature, body } => {
                     signatures.push((signature, GlobalKind::Function, None));
                     functions.push((signature, body));
@@ -270,6 +280,16 @@ impl TypeChecker {
                     name: signature.name.clone(),
                     error,
                 })?;
+        }
+        // A served function answers at run time with a value, never a type,
+        // so its result must be in `Type`. A type in `Type` may still be
+        // empty: a served function only claims to return one when called.
+        for signature in served {
+            if !scope.returns_a_value(signature)? {
+                return Err(DeclarationCheckingError::ServedFunctionMustReturnAValue(
+                    signature.name.clone(),
+                ));
+            }
         }
 
         for group in check_termination(&functions)? {
@@ -411,6 +431,28 @@ impl Scope<'_> {
             scope.type_universe(&signature.result)?;
         }
         Ok(())
+    }
+
+    fn returns_a_value(&self, signature: &Signature) -> Result<bool, DeclarationCheckingError> {
+        let mut scope = self.clone();
+        let failed = |error| DeclarationCheckingError::Signature {
+            name: signature.name.clone(),
+            error,
+        };
+        for parameter_type in &signature.parameter_types {
+            let parameter_type = scope
+                .definitions
+                .evaluate(parameter_type, &scope.environment)
+                .map_err(|error| failed(error.into()))?;
+            scope.push_parameter(parameter_type);
+        }
+        if signature.result == Term::Kind {
+            return Ok(false);
+        }
+        Ok(matches!(
+            scope.type_universe(&signature.result).map_err(failed)?,
+            Value::Type
+        ))
     }
 
     fn type_universe(&self, term: &Term) -> Result<Value, CheckingError> {
