@@ -199,6 +199,14 @@ struct Resolver<'source> {
     records: Vec<RecordShape>,
 }
 
+/// What a record entry is known by.
+enum Key<'entry> {
+    /// The words of a field, or a constructor of an unnamed field's type.
+    Name(&'entry str),
+    /// The record a nested `{ }` value is.
+    Data(&'entry str),
+}
+
 /// What a `{ }` value needs to know about a record.
 #[derive(Clone)]
 struct RecordShape {
@@ -336,7 +344,10 @@ impl<'source> Resolver<'source> {
                     self.register(&record.head, GlobalKind::Data)?;
                     let (name, _) = head_parts(&record.head);
                     let constructor = record_constructor_name(&name.text, record_slots(record));
-                    self.register_generated(&constructor, name.span, GlobalKind::Constructor)?;
+                    let constructor =
+                        self.register_generated(&constructor, name.span, GlobalKind::Constructor)?;
+                    // A record is a `DATA`, so it can be an unnamed field.
+                    self.constructor_data.insert(constructor, &name.text);
                     self.records.push(shape_of(record));
                     for field in &record.fields.value {
                         if let parser::Field::Defaulted { .. } = field {
@@ -381,7 +392,7 @@ impl<'source> Resolver<'source> {
         name: &str,
         span: Span,
         kind: GlobalKind,
-    ) -> Result<(), LoweringError> {
+    ) -> Result<&'source str, LoweringError> {
         let name: &'source str = Box::leak(name.to_owned().into_boxed_str());
         if self.globals.insert(name, kind).is_some() {
             return Err(LoweringError {
@@ -389,7 +400,7 @@ impl<'source> Resolver<'source> {
                 message: format!("duplicate declaration of `{name}`"),
             });
         }
-        Ok(())
+        Ok(name)
     }
 
     /// A record as a data type with one constructor, and a function for each
@@ -612,49 +623,7 @@ impl<'source> Resolver<'source> {
         span: Span,
         entries: &'source [parser::Expression],
     ) -> Result<Term, LoweringError> {
-        let mut keys = Vec::new();
-        for entry in entries {
-            keys.push(match entry {
-                parser::Expression::Call { name, .. } | parser::Expression::Name { name, .. } => {
-                    name.text.as_str()
-                }
-                _ => {
-                    return Err(LoweringError {
-                        span: entry.span(),
-                        message: "a record entry is a field as written, such as `between 1 and 3`"
-                            .to_owned(),
-                    });
-                }
-            });
-        }
-        let fits: Vec<(usize, Vec<usize>)> = self
-            .records
-            .iter()
-            .enumerate()
-            .filter_map(|(index, record)| self.fill(record, &keys).map(|filled| (index, filled)))
-            .collect();
-        let (record, filled) = match fits.as_slice() {
-            [(record, filled)] => (*record, filled.clone()),
-            [] => {
-                return Err(LoweringError {
-                    span,
-                    message: "no record has exactly these fields".to_owned(),
-                });
-            }
-            _ => {
-                let names: Vec<String> = fits
-                    .iter()
-                    .map(|(record, _)| format!("`{}`", self.records[*record].name))
-                    .collect();
-                return Err(LoweringError {
-                    span,
-                    message: format!(
-                        "these entries fit more than one record: {}",
-                        names.join(", ")
-                    ),
-                });
-            }
-        };
+        let (record, filled) = self.fitting_record(span, entries)?;
         if self.records[record].has_parameters {
             return Err(LoweringError {
                 span,
@@ -705,14 +674,71 @@ impl<'source> Resolver<'source> {
         })
     }
 
-    /// The field each entry fills, if the entries fill `record`: each entry
-    /// one field, and every field without a `DEFAULT`.
-    fn fill(&self, record: &RecordShape, keys: &[&str]) -> Option<Vec<usize>> {
+    /// The one record whose fields `entries` fill, and the field each entry
+    /// fills. An entry is a field's words, as in `between 1 and 3`, or a
+    /// value whose data type an unnamed field holds: a constructor call, or
+    /// a `{ }` value of another record.
+    fn fitting_record(
+        &self,
+        span: Span,
+        entries: &[parser::Expression],
+    ) -> Result<(usize, Vec<usize>), LoweringError> {
+        let mut keys = Vec::new();
+        for entry in entries {
+            keys.push(match entry {
+                parser::Expression::Call { name, .. } | parser::Expression::Name { name, .. } => {
+                    Key::Name(name.text.as_str())
+                }
+                parser::Expression::RecordValue(nested) => {
+                    let (record, _) = self.fitting_record(entry.span(), &nested.value)?;
+                    Key::Data(self.records[record].name.as_str())
+                }
+                _ => {
+                    return Err(LoweringError {
+                        span: entry.span(),
+                        message: "a record entry is a field as written, such as `between 1 and 3`"
+                            .to_owned(),
+                    });
+                }
+            });
+        }
+        let fits: Vec<(usize, Vec<usize>)> = self
+            .records
+            .iter()
+            .enumerate()
+            .filter_map(|(index, record)| self.fill(record, &keys).map(|filled| (index, filled)))
+            .collect();
+        match fits.as_slice() {
+            [(record, filled)] => Ok((*record, filled.clone())),
+            [] => Err(LoweringError {
+                span,
+                message: "no record has exactly these fields".to_owned(),
+            }),
+            _ => {
+                let names: Vec<String> = fits
+                    .iter()
+                    .map(|(record, _)| format!("`{}`", self.records[*record].name))
+                    .collect();
+                Err(LoweringError {
+                    span,
+                    message: format!(
+                        "these entries fit more than one record: {}",
+                        names.join(", ")
+                    ),
+                })
+            }
+        }
+    }
+
+    fn fill(&self, record: &RecordShape, keys: &[Key]) -> Option<Vec<usize>> {
         let mut filled = Vec::new();
         for key in keys {
-            let data = self.constructor_data.get(key).copied();
+            let (name, data) = match key {
+                Key::Name(name) => (Some(*name), self.constructor_data.get(name).copied()),
+                Key::Data(data) => (None, Some(*data)),
+            };
             let field = record.fields.iter().position(|field| {
-                field.name.as_deref() == Some(*key)
+                (name.is_some() && field.name.as_deref() == name)
                     || (field.unnamed_type.is_some() && field.unnamed_type.as_deref() == data)
             })?;
             if filled.contains(&field) {

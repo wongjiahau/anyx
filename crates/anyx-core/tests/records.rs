@@ -151,3 +151,15 @@ fn a_record_s_parameters_come_first_in_its_constructor() {
         Ok(())
     );
 }
+
+#[test]
+fn a_record_can_be_an_unnamed_field() {
+    let source = "RECORD Span RETURNS Type WITH [from (low: Natural) to (high: Natural)],
+         RECORD Labelled RETURNS Type WITH [(span: Span), labelled (label: Case)],
+         FUNCTION nested RETURNS Labelled IS { labelled (any case), { from 1 to 2 } },
+         FUNCTION explicit RETURNS Labelled
+            IS labelled (span (1) (2)) (any case),";
+    check(source).unwrap();
+    let bodies = bodies(source);
+    assert_eq!(bodies[bodies.len() - 2].1, bodies[bodies.len() - 1].1);
+}
