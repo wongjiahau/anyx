@@ -207,7 +207,7 @@ impl Client {
                 match name {
                     "true" => Json::Bool(true),
                     "false" => Json::Bool(false),
-                    "done" | "nothing of _" | "empty list of _" => {
+                    "nothing" | "nothing of _" | "empty list of _" => {
                         if name == "empty list of _" {
                             Json::Array(Vec::new())
                         } else {
@@ -275,7 +275,7 @@ impl Client {
                     Json::Number(number),
                 ) => number.to_string(),
                 (Primitive::Boolean, Json::Bool(boolean)) => boolean.to_string(),
-                (Primitive::Nothing, Json::Null) => "done".to_owned(),
+                (Primitive::Nothing, Json::Null) => "nothing".to_owned(),
                 _ => return Err(unexpected()),
             },
             Ty::List(item) => {

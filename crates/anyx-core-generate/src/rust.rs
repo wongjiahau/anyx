@@ -730,7 +730,7 @@ fn prelude_constructor(name: &str) -> Option<&'static str> {
         "something of _ is _" => "Some({})",
         "true" => "true",
         "false" => "false",
-        "done" => "()",
+        "nothing" => "()",
         _ => return None,
     })
 }

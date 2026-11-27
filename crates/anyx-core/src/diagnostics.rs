@@ -2,7 +2,10 @@
 
 use crate::{
     kernel::DeclarationCheckingError,
-    lowering::{default_name, field_parts, head_parts, overload_name, record_constructor_name},
+    lowering::{
+        constructor_head, default_name, field_parts, head_parts, overload_name,
+        record_constructor_name,
+    },
     parser,
 };
 use anyx::Span;
@@ -40,14 +43,17 @@ impl DeclarationCheckingError {
                 }
                 parser::Declaration::Data(data) => {
                     if let Some(span) =
-                        self.signature_span(&data.head, data.signature_result.span())
+                        self.signature_span(&data.head, returns_span(&data.head, &data.returns))
                     {
                         return span;
                     }
                     for constructor in &data.constructors.value {
-                        if let Some(span) =
-                            self.signature_span(&constructor.head, constructor.r#type.span())
-                        {
+                        let head = constructor_head(constructor);
+                        let result = match constructor {
+                            parser::Constructor::Returning { r#type, .. } => r#type.span(),
+                            parser::Constructor::Head(head) => head.span(),
+                        };
+                        if let Some(span) = self.signature_span(head, result) {
                             return span;
                         }
                     }
@@ -61,7 +67,9 @@ impl DeclarationCheckingError {
     /// field's `DEFAULT` for errors in it.
     fn record_span(&self, record: &parser::Record) -> Option<Span> {
         let (name, parameters) = head_parts(&record.head);
-        if let Some(span) = self.signature_span(&record.head, record.signature_result.span()) {
+        if let Some(span) =
+            self.signature_span(&record.head, returns_span(&record.head, &record.returns))
+        {
             return Some(span);
         }
         let slots = parameters.len()
@@ -114,6 +122,13 @@ impl DeclarationCheckingError {
         };
         (failed == &name.text || declares(head, failed)).then_some(span)
     }
+}
+
+/// Where a declaration's `RETURNS` is written, or its head when it isn't.
+fn returns_span(head: &parser::Head, returns: &Option<parser::SignatureResult>) -> Span {
+    returns
+        .as_ref()
+        .map_or(head.span(), parser::SignatureResult::span)
 }
 
 /// Whether `head` declares the function the kernel knows as `name`: its

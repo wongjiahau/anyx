@@ -5,35 +5,35 @@
 ## in the order of the walk: by name, each directory before what it holds.
 ## Directories are found too.
 
-DATA Boolean RETURNS Type WITH [true RETURNS Boolean, false RETURNS Boolean],
+DATA Boolean WITH [true, false],
 
 ## A time, as seconds since 1970-01-01 UTC.
-DATA Moment RETURNS Type WITH [
-  (seconds: Integer) seconds since the epoch RETURNS Moment,
+DATA Moment WITH [
+  (seconds: Integer) seconds since the epoch,
 ],
 
 ## A span of time, for `changed within (2 hours)`.
-DATA Age RETURNS Type WITH [
-  (count: Natural) seconds RETURNS Age,
-  (count: Natural) minutes RETURNS Age,
-  (count: Natural) hours RETURNS Age,
-  (count: Natural) days RETURNS Age,
-  (count: Natural) weeks RETURNS Age,
+DATA Age WITH [
+  (count: Natural) seconds,
+  (count: Natural) minutes,
+  (count: Natural) hours,
+  (count: Natural) days,
+  (count: Natural) weeks,
 ],
 
 ## What a file is, for `only [file, directory]`.
-DATA File kind RETURNS Type WITH [
-  file RETURNS File kind,
-  directory RETURNS File kind,
-  symlink RETURNS File kind,
+DATA File kind WITH [
+  file,
+  directory,
+  symlink,
   ## A file the owner, group or others may run.
-  executable RETURNS File kind,
+  executable,
   ## An empty file, or a directory with nothing in it.
-  empty RETURNS File kind,
-  socket RETURNS File kind,
-  pipe RETURNS File kind,
-  block device RETURNS File kind,
-  char device RETURNS File kind,
+  empty,
+  socket,
+  pipe,
+  block device,
+  char device,
 ],
 
 ## ---------------------------------------------------------------------------
@@ -42,140 +42,140 @@ DATA File kind RETURNS Type WITH [
 ## fd's default, its first constructor.
 
 ## The case a pattern is matched in.
-DATA Case RETURNS Type WITH [
+DATA Case WITH [
   ## Any case, unless the pattern has an uppercase letter.
-  smart case RETURNS Case,
-  any case RETURNS Case,
-  exact case RETURNS Case,
+  smart case,
+  any case,
+  exact case,
 ],
 
 ## How a pattern is read.
-DATA Syntax RETURNS Type WITH [
-  regex pattern RETURNS Syntax,
+DATA Syntax WITH [
+  regex pattern,
   ## A glob, such as `*.rs`.
-  glob pattern RETURNS Syntax,
+  glob pattern,
   ## Plain text.
-  fixed text pattern RETURNS Syntax,
+  fixed text pattern,
 ],
 
 ## What the pattern is matched against.
-DATA Subject RETURNS Type WITH [
-  file name RETURNS Subject,
-  full path RETURNS Subject,
+DATA Subject WITH [
+  file name,
+  full path,
 ],
 
-DATA Hidden files RETURNS Type WITH [
-  skip hidden RETURNS Hidden files,
+DATA Hidden files WITH [
+  skip hidden,
   ## Find hidden files and directories too.
-  hidden RETURNS Hidden files,
+  hidden,
 ],
 
-DATA Ignore files RETURNS Type WITH [
-  respect ignore files RETURNS Ignore files,
+DATA Ignore files WITH [
+  respect ignore files,
   ## Don't skip what ignore files ignore.
-  no ignore RETURNS Ignore files,
+  no ignore,
 ],
 
-DATA Version control ignores RETURNS Type WITH [
-  respect vcs ignores RETURNS Version control ignores,
+DATA Version control ignores WITH [
+  respect vcs ignores,
   ## Don't skip what `.gitignore` ignores, but still what `.ignore` and
   ## `.fdignore` ignore.
-  no ignore vcs RETURNS Version control ignores,
+  no ignore vcs,
 ],
 
-DATA Parent ignores RETURNS Type WITH [
-  respect parent ignores RETURNS Parent ignores,
+DATA Parent ignores WITH [
+  respect parent ignores,
   ## Don't read ignore files in directories above the search path.
-  no ignore parent RETURNS Parent ignores,
+  no ignore parent,
 ],
 
-DATA Git repository RETURNS Type WITH [
-  require git RETURNS Git repository,
+DATA Git repository WITH [
+  require git,
   ## Read `.gitignore` outside a git repository too.
-  no require git RETURNS Git repository,
+  no require git,
 ],
 
-DATA Links RETURNS Type WITH [
-  stay out of links RETURNS Links,
+DATA Links WITH [
+  stay out of links,
   ## Follow symbolic links into the directories they point to.
-  follow links RETURNS Links,
+  follow links,
 ],
 
-DATA File systems RETURNS Type WITH [
-  cross file systems RETURNS File systems,
+DATA File systems WITH [
+  cross file systems,
   ## Don't go into another file system.
-  one file system RETURNS File systems,
+  one file system,
 ],
 
-DATA Matched directories RETURNS Type WITH [
-  enter matches RETURNS Matched directories,
+DATA Matched directories WITH [
+  enter matches,
   ## Don't go into a directory that matched.
-  prune RETURNS Matched directories,
+  prune,
 ],
 
 ## A depth below a search path: its entries are at depth 1.
-DATA Most depth RETURNS Type WITH [
-  any depth RETURNS Most depth,
-  max depth (depth: Natural) RETURNS Most depth,
+DATA Most depth WITH [
+  any depth,
+  max depth (depth: Natural),
 ],
 
-DATA Least depth RETURNS Type WITH [
-  from the top RETURNS Least depth,
-  min depth (depth: Natural) RETURNS Least depth,
+DATA Least depth WITH [
+  from the top,
+  min depth (depth: Natural),
 ],
 
-DATA Least size RETURNS Type WITH [
-  no minimum size RETURNS Least size,
-  at least (size: Natural) bytes RETURNS Least size,
+DATA Least size WITH [
+  no minimum size,
+  at least (size: Natural) bytes,
 ],
 
-DATA Most size RETURNS Type WITH [
-  no maximum size RETURNS Most size,
-  at most (size: Natural) bytes RETURNS Most size,
+DATA Most size WITH [
+  no maximum size,
+  at most (size: Natural) bytes,
 ],
 
-DATA Recency RETURNS Type WITH [
-  changed any time RETURNS Recency,
-  changed within (age: Age) RETURNS Recency,
+DATA Recency WITH [
+  changed any time,
+  changed within (age: Age),
 ],
 
-DATA Start RETURNS Type WITH [
-  since the beginning RETURNS Start,
-  changed since (time: Moment) RETURNS Start,
+DATA Start WITH [
+  since the beginning,
+  changed since (time: Moment),
 ],
 
-DATA End RETURNS Type WITH [
-  until now RETURNS End,
-  changed before (time: Moment) RETURNS End,
+DATA End WITH [
+  until now,
+  changed before (time: Moment),
 ],
 
-DATA Oldness RETURNS Type WITH [
-  any age RETURNS Oldness,
-  changed more than (age: Age) ago RETURNS Oldness,
+DATA Oldness WITH [
+  any age,
+  changed more than (age: Age) ago,
 ],
 
-DATA User RETURNS Type WITH [
-  any user RETURNS User,
+DATA User WITH [
+  any user,
   ## Owned by the user with this id.
-  owned by user (id: Integer) RETURNS User,
+  owned by user (id: Integer),
 ],
 
-DATA Group RETURNS Type WITH [
-  any group RETURNS Group,
+DATA Group WITH [
+  any group,
   ## Owned by the group with this id.
-  owned by group (id: Integer) RETURNS Group,
+  owned by group (id: Integer),
 ],
 
-DATA Limit RETURNS Type WITH [
-  all results RETURNS Limit,
+DATA Limit WITH [
+  all results,
   ## Stop after this many paths.
-  at most (count: Natural) results RETURNS Limit,
+  at most (count: Natural) results,
 ],
 
 ## How fd searches, as in `{ glob pattern, hidden, max depth 2 }`. Each
 ## field left out keeps fd's default, and a file must pass every filter
 ## given.
-RECORD Search RETURNS Type WITH [
+RECORD Search WITH [
   (case: Case) DEFAULT smart case,
   (syntax: Syntax) DEFAULT regex pattern,
   (subject: Subject) DEFAULT file name,
@@ -212,22 +212,22 @@ RECORD Search RETURNS Type WITH [
 ],
 
 ## What a found file is, as `fd --list-details` shows it.
-RECORD Details RETURNS Type WITH [
+RECORD Details WITH [
   path (path: Text),
   (kind: File kind),
   size (size: Natural) bytes,
   modified at (modified: Moment),
 ],
 
-DATA Fd error RETURNS Type WITH [
-  (path: Text) does not exist RETURNS Fd error,
-  invalid pattern (message: Text) RETURNS Fd error,
-  invalid glob (message: Text) RETURNS Fd error,
+DATA Fd error WITH [
+  (path: Text) does not exist,
+  invalid pattern (message: Text),
+  invalid glob (message: Text),
   ## A path fd found can't be written as Unicode text.
-  (path: Text) is not unicode RETURNS Fd error,
+  (path: Text) is not unicode,
 ],
 
-DATA Outcome of (value: Type) RETURNS Type WITH [
+DATA Outcome of (value: Type) WITH [
   answered (value: Type) with (result: value) RETURNS Outcome of (value),
   failed (value: Type) with (error: Fd error) RETURNS Outcome of (value),
 ],
@@ -237,7 +237,7 @@ DATA Outcome of (value: Type) RETURNS Type WITH [
 ## when there are none, as fd does by default when the search says nothing:
 ## `find "x"` is `find "x" in [] with {}`.
 
-DATA Request returning (response: Type) RETURNS Type WITH [
+DATA Request returning (response: Type) WITH [
   find (pattern: Text)
       [in (paths: List of (Text)) DEFAULT in []]
       [with (search: Search) DEFAULT with {}]

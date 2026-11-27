@@ -28,7 +28,7 @@ pub enum Declaration {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
     pub head: Head,
-    pub signature_result: SignatureResult,
+    pub returns: Option<SignatureResult>,
     pub constructors: Spanned<Vec<Constructor>>,
     pub span: Span,
 }
@@ -36,7 +36,7 @@ pub struct Data {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub head: Head,
-    pub signature_result: SignatureResult,
+    pub returns: Option<SignatureResult>,
     pub fields: Spanned<Vec<Field>>,
     pub span: Span,
 }
@@ -58,10 +58,13 @@ pub enum FieldShape {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Constructor {
-    pub head: Head,
-    pub r#type: Expression,
-    pub span: Span,
+pub enum Constructor {
+    Returning {
+        head: Head,
+        r#type: Expression,
+        span: Span,
+    },
+    Head(Head),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -204,6 +207,15 @@ impl FieldShape {
     }
 }
 
+impl Constructor {
+    pub fn span(&self) -> Span {
+        match self {
+            Constructor::Returning { span, .. } => *span,
+            Constructor::Head(value) => value.span(),
+        }
+    }
+}
+
 impl SignatureResult {
     pub fn span(&self) -> Span {
         match self {
@@ -274,7 +286,7 @@ impl support::Errors for Declaration {
 impl support::Errors for Data {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.signature_result, found);
+        support::Errors::errors(&self.returns, found);
         support::Errors::errors(&self.constructors, found);
     }
 }
@@ -282,7 +294,7 @@ impl support::Errors for Data {
 impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.signature_result, found);
+        support::Errors::errors(&self.returns, found);
         support::Errors::errors(&self.fields, found);
     }
 }
@@ -312,8 +324,13 @@ impl support::Errors for FieldShape {
 
 impl support::Errors for Constructor {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.r#type, found);
+        match self {
+            Constructor::Returning { head, r#type, .. } => {
+                support::Errors::errors(head, found);
+                support::Errors::errors(r#type, found);
+            }
+            Constructor::Head(value) => support::Errors::errors(value, found),
+        }
     }
 }
 
@@ -468,12 +485,21 @@ pub fn decode_declaration(node: &Node) -> Result<Declaration, DecodeError> {
 }
 
 pub fn decode_data(node: &Node) -> Result<Data, DecodeError> {
-    let mut parts = support::call(node, "the call `DATA _ RETURNS _ WITH _`")?;
+    let mut parts = support::call(node, "the call `DATA _ WITH _`")?;
     let decoded = Data {
         head: parts.word("DATA")?.one(decode_head, "a head")?,
-        signature_result: parts
-            .word("RETURNS")?
-            .one(decode_signature_result, "a signature result")?,
+        returns: if parts
+            .choose(&["RETURNS"], false, true, &["the word `RETURNS`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("RETURNS")?
+                    .one(decode_signature_result, "a signature result")?,
+            )
+        } else {
+            None
+        },
         constructors: parts
             .word("WITH")?
             .one(decode_data_constructors, "`[...]`")?,
@@ -494,12 +520,21 @@ fn decode_data_constructors(node: &Node) -> Result<Spanned<Vec<Constructor>>, De
 }
 
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
-    let mut parts = support::call(node, "the call `RECORD _ RETURNS _ WITH _`")?;
+    let mut parts = support::call(node, "the call `RECORD _ WITH _`")?;
     let decoded = Record {
         head: parts.word("RECORD")?.one(decode_head, "a head")?,
-        signature_result: parts
-            .word("RETURNS")?
-            .one(decode_signature_result, "a signature result")?,
+        returns: if parts
+            .choose(&["RETURNS"], false, true, &["the word `RETURNS`"])?
+            .is_some()
+        {
+            Some(
+                parts
+                    .word("RETURNS")?
+                    .one(decode_signature_result, "a signature result")?,
+            )
+        } else {
+            None
+        },
         fields: parts.word("WITH")?.one(decode_record_fields, "`[...]`")?,
         span: node.span,
     };
@@ -542,8 +577,13 @@ pub fn decode_field_shape(node: &Node) -> Result<FieldShape, DecodeError> {
 }
 
 pub fn decode_constructor(node: &Node) -> Result<Constructor, DecodeError> {
+    decode_constructor_returning(node)
+        .or_else(|error| error.or(decode_head(node).map(Constructor::Head)))
+}
+
+fn decode_constructor_returning(node: &Node) -> Result<Constructor, DecodeError> {
     let mut parts = support::call(node, "the call `_ RETURNS _`")?;
-    let decoded = Constructor {
+    let decoded = Constructor::Returning {
         head: parts.one(decode_head, "a head")?,
         r#type: parts
             .word("RETURNS")?
@@ -870,11 +910,11 @@ pub const DOCUMENTATION: &[(&str, &str)] = &[];
 /// How [`format`] lays out calls, from the grammar's `FORMAT`s.
 pub const LAYOUT: &[support::LayoutRule] = &[
     support::LayoutRule {
-        words: &["DATA", "RETURNS", "WITH"],
+        words: &["DATA", "WITH"],
         break_before: &["WITH"],
     },
     support::LayoutRule {
-        words: &["RECORD", "RETURNS", "WITH"],
+        words: &["RECORD", "WITH"],
         break_before: &["WITH"],
     },
     support::LayoutRule {

@@ -11,10 +11,11 @@ declaration ⁽ONE OF [
   served function,
 ],
 
-## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`.
+## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`. Without
+## `RETURNS` it is a `Type`: `DATA Shape WITH [circle, square]`.
 data ⁽ANYFIX CALL [
   WORD "DATA", head,
-  WORD "RETURNS", signature result,
+  returns ⁽OPTIONAL [WORD "RETURNS", signature result],
   WORD "WITH", constructors ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽constructor,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
@@ -23,9 +24,10 @@ data ⁽ANYFIX CALL [
 ## written in any order, `{ newest first, between 1 and 3 }`. A field is a
 ## head whose every slot names its binder; a field whose head is a single
 ## slot is written as its value alone. `DEFAULT` holds the field as written.
+## Without `RETURNS` it is a `Type`.
 record ⁽ANYFIX CALL [
   WORD "RECORD", head,
-  WORD "RETURNS", signature result,
+  returns ⁽OPTIONAL [WORD "RETURNS", signature result],
   WORD "WITH", fields ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽field,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
@@ -38,11 +40,16 @@ field ⁽ONE OF [
 ## is written as its head, `between 1 and 3`.
 field shape ⁽ONE OF [unnamed ⁽parameter, named ⁽head],
 
-## `successor of (n: Natural) RETURNS Natural`.
-constructor ⁽ANYFIX CALL [
+## `successor of (n: Natural) RETURNS Natural`. Without `RETURNS` it returns
+## the type being declared, written as its head: `circle` in
+## `DATA Shape WITH [circle, square]`.
+constructor ⁽ONE OF [
+  returning ⁽ANYFIX CALL [
+    head,
+    WORD "RETURNS", type ⁽expression,
+  ] FORMAT [BREAK BEFORE WORD "RETURNS"],
   head,
-  WORD "RETURNS", type ⁽expression,
-] FORMAT [BREAK BEFORE WORD "RETURNS"],
+],
 
 ## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS ⁽...`.
 function ⁽ANYFIX CALL [

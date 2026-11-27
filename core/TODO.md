@@ -238,6 +238,15 @@ inference. Macros and effects come later.
       pick.
     - An overloaded function has no optional parts, and a name without
       slots can't be overloaded.
+25. `RETURNS` may be left out where it says the obvious. (done)
+    - `DATA Shape WITH [circle, square]` and `RECORD Version WITH [...]`
+      are `Type`s. `RETURNS Kind` is still written out.
+    - A constructor without `RETURNS` returns the type it is a constructor
+      of. A type with parameters says what each constructor returns, since
+      the parameters' values would be unknown.
+    - Lowering fills in what is left out, so the kernel is unchanged.
+    - `WITH` stays: without it, the brackets after `RETURNS Type` would
+      also read as `Type _` called on a list.
 
 ## Later
 

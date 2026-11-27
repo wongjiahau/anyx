@@ -201,15 +201,14 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
         match declaration {
             parser::Declaration::Data(data) => {
                 let signature =
-                    resolver.declaration_signature(&data.head, &data.signature_result)?;
+                    resolver.declaration_signature(&data.head, data.returns.as_ref())?;
                 resolver.locals.clear();
                 let mut constructors = Vec::new();
                 let mut defaults = Vec::new();
                 for constructor in &data.constructors.value {
-                    constructors
-                        .push(resolver.signature(&constructor.head, Some(&constructor.r#type))?);
+                    constructors.push(resolver.constructor(&data.head, constructor)?);
                     resolver.locals.clear();
-                    defaults.extend(resolver.optional_defaults(&constructor.head)?);
+                    defaults.extend(resolver.optional_defaults(constructor_head(constructor))?);
                 }
                 declarations.push(Declaration::Data {
                     signature,
@@ -224,8 +223,8 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 declarations.extend(defaults);
             }
             parser::Declaration::Function(function) => {
-                let mut signature =
-                    resolver.declaration_signature(&function.head, &function.signature_result)?;
+                let mut signature = resolver
+                    .declaration_signature(&function.head, Some(&function.signature_result))?;
                 signature.name = resolver.declared_name(&function.head);
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
@@ -233,7 +232,8 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 declarations.extend(resolver.optional_defaults(&function.head)?);
             }
             parser::Declaration::ServedFunction(function) => {
-                let mut signature = resolver.signature(&function.head, Some(&function.result))?;
+                let mut signature = resolver
+                    .signature_returning(&function.head, |this| this.term(&function.result))?;
                 signature.name = resolver.declared_name(&function.head);
                 resolver.locals.clear();
                 declarations.push(Declaration::Served { signature });
@@ -293,6 +293,13 @@ pub(crate) struct OptionalPart<'a> {
 }
 
 /// A head's whole name and its parameters, optional parts' included.
+/// The head a constructor declares, whether or not it says what it returns.
+pub(crate) fn constructor_head(constructor: &parser::Constructor) -> &parser::Head {
+    match constructor {
+        parser::Constructor::Returning { head, .. } | parser::Constructor::Head(head) => head,
+    }
+}
+
 pub(crate) fn head_parts(head: &parser::Head) -> (HeadName<'_>, Vec<&parser::Parameter>) {
     match head {
         parser::Head::Plain { name, .. } => (
@@ -567,8 +574,9 @@ impl<'source> Resolver<'source> {
                     self.register(&data.head, GlobalKind::Data)?;
                     let (data_name, _) = head_parts(&data.head);
                     for constructor in &data.constructors.value {
-                        self.register(&constructor.head, GlobalKind::Constructor)?;
-                        let (name, _) = head_parts(&constructor.head);
+                        let head = constructor_head(constructor);
+                        self.register(head, GlobalKind::Constructor)?;
+                        let (name, _) = head_parts(head);
                         self.constructor_data
                             .insert(name.interned(), data_name.interned());
                     }
@@ -855,7 +863,7 @@ impl<'source> Resolver<'source> {
         record: &'source parser::Record,
     ) -> Result<(Declaration, Vec<Declaration>), LoweringError> {
         let (name, record_parameters) = head_parts(&record.head);
-        let signature = self.declaration_signature(&record.head, &record.signature_result)?;
+        let signature = self.declaration_signature(&record.head, record.returns.as_ref())?;
         self.locals.clear();
 
         // The constructor: the record's parameters, then every field's slots.
@@ -1199,24 +1207,57 @@ impl<'source> Resolver<'source> {
             .then_some(filled)
     }
 
+    /// A declaration's signature. One written without `RETURNS` is a `Type`.
     fn declaration_signature(
         &mut self,
         head: &'source parser::Head,
-        result: &'source parser::SignatureResult,
+        result: Option<&'source parser::SignatureResult>,
     ) -> Result<Signature, LoweringError> {
-        self.signature(
-            head,
-            match result {
-                parser::SignatureResult::Kind(_) => None,
-                parser::SignatureResult::Expression(expression) => Some(expression),
-            },
-        )
+        self.signature_returning(head, |this| match result {
+            None => Ok(Term::Type),
+            Some(parser::SignatureResult::Kind(_)) => Ok(Term::Kind),
+            Some(parser::SignatureResult::Expression(expression)) => this.term(expression),
+        })
     }
 
-    fn signature(
+    /// A constructor's signature. One written without `RETURNS` returns the
+    /// type it is a constructor of, which then can't take parameters: their
+    /// values would be unknown.
+    fn constructor(
+        &mut self,
+        data: &'source parser::Head,
+        constructor: &'source parser::Constructor,
+    ) -> Result<Signature, LoweringError> {
+        match constructor {
+            parser::Constructor::Returning { head, r#type, .. } => {
+                self.signature_returning(head, |this| this.term(r#type))
+            }
+            parser::Constructor::Head(head) => {
+                let (name, parameters) = head_parts(data);
+                if !parameters.is_empty() {
+                    return Err(LoweringError {
+                        span: head.span(),
+                        message: format!(
+                            "`{}` takes parameters, so each of its constructors says what it returns with `RETURNS`",
+                            name.text,
+                        ),
+                    });
+                }
+                self.signature_returning(head, |_| {
+                    Ok(Term::Global {
+                        name: name.text.to_string(),
+                        kind: GlobalKind::Data,
+                    })
+                })
+            }
+        }
+    }
+
+    /// The signature of `head`, whose parameters are in scope in `result`.
+    fn signature_returning(
         &mut self,
         head: &'source parser::Head,
-        result: Option<&'source parser::Expression>,
+        result: impl FnOnce(&mut Self) -> Result<Term, LoweringError>,
     ) -> Result<Signature, LoweringError> {
         let (name, parameters) = head_parts(head);
         let mut lowered_parameters = Vec::new();
@@ -1226,10 +1267,7 @@ impl<'source> Resolver<'source> {
         Ok(Signature {
             name: name.text.to_string(),
             parameters: lowered_parameters,
-            result: match result {
-                Some(expression) => self.term(expression)?,
-                None => Term::Kind,
-            },
+            result: result(self)?,
         })
     }
 
