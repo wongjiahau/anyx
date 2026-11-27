@@ -15,6 +15,10 @@ fn splits_the_served_handler_by_endpoint() {
     ));
     // The server refuses a credential that doesn't fit the endpoint.
     assert!(rust.contains("`credential` doesn't fit `list files`"));
+    // A constructor takes its type parameters from the function's result,
+    // so it isn't erased; a call's result is.
+    assert!(rust.contains("None => { Reply::Unauthenticated },"), "{rust}");
+    assert!(rust.contains("erase(call_handle_"));
 }
 
 #[test]

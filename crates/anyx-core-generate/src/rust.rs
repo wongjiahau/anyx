@@ -579,10 +579,30 @@ impl Compiler<'_> {
         name
     }
 
+    /// A call's result is erased to the function's result. A constructor
+    /// isn't: Rust takes its type parameters from that result, and `erase`
+    /// would leave them unknown, as in `erase(Reply::Unauthenticated)`.
     fn term(&mut self, term: &lowering::Term) -> Result<String, String> {
         let compiled = self.term_as_written(term)?;
+        let constructs = matches!(
+            term,
+            lowering::Term::Global {
+                kind: lowering::GlobalKind::Constructor,
+                ..
+            }
+        ) || matches!(
+            term,
+            lowering::Term::Apply { function, .. } if matches!(
+                **function,
+                lowering::Term::Global { kind: lowering::GlobalKind::Constructor, .. }
+            )
+        );
         Ok(
-            if self.tail && self.erase_results && !matches!(term, lowering::Term::Match { .. }) {
+            if self.tail
+                && self.erase_results
+                && !constructs
+                && !matches!(term, lowering::Term::Match { .. })
+            {
                 format!("erase({compiled})")
             } else {
                 compiled
