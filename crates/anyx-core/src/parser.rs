@@ -153,6 +153,11 @@ pub enum Expression {
         cases: Spanned<Vec<Case>>,
         span: Span,
     },
+    Ascription {
+        value: Box<Expression>,
+        r#type: Box<Expression>,
+        span: Span,
+    },
     Call {
         name: CallName,
         arguments: Vec<Expression>,
@@ -275,6 +280,7 @@ impl Expression {
         match self {
             Expression::FunctionType { span, .. }
             | Expression::Match { span, .. }
+            | Expression::Ascription { span, .. }
             | Expression::Call { span, .. }
             | Expression::Name { span, .. }
             | Expression::Hole(span) => *span,
@@ -469,6 +475,10 @@ impl support::Errors for Expression {
             Expression::Match { subject, cases, .. } => {
                 support::Errors::errors(subject, found);
                 support::Errors::errors(cases, found);
+            }
+            Expression::Ascription { value, r#type, .. } => {
+                support::Errors::errors(value, found);
+                support::Errors::errors(r#type, found);
             }
             Expression::Call {
                 name, arguments, ..
@@ -798,6 +808,7 @@ pub fn decode_binder(node: &Node) -> Result<Binder, DecodeError> {
 pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
     decode_expression_function_type(node)
         .or_else(|error| error.or(decode_expression_match(node)))
+        .or_else(|error| error.or(decode_expression_ascription(node)))
         .or_else(|error| error.or(decode_expression_call(node)))
         .or_else(|error| error.or(decode_expression_name(node)))
         .or_else(|error| error.or(support::underscore(node).map(Expression::Hole)))
@@ -859,6 +870,23 @@ fn decode_expression_match_cases(node: &Node) -> Result<Spanned<Vec<Case>>, Deco
         value,
         span: node.span,
     })
+}
+
+fn decode_expression_ascription(node: &Node) -> Result<Expression, DecodeError> {
+    let mut parts = support::call(node, "the call `_ : _`")?;
+    let decoded = Expression::Ascription {
+        value: parts.one(
+            |node| decode_expression(node).map(Box::new),
+            "an expression",
+        )?,
+        r#type: parts.word(":")?.one(
+            |node| decode_expression(node).map(Box::new),
+            "an expression",
+        )?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 fn decode_expression_call(node: &Node) -> Result<Expression, DecodeError> {

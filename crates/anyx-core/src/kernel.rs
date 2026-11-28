@@ -106,6 +106,12 @@ pub enum Term {
         arguments: Vec<Term>,
     },
     List(Vec<Term>),
+    /// `(red : Colour)`: `term`, checked against `type`, which is then its
+    /// type. It evaluates to `term`.
+    Annotated {
+        term: Box<Term>,
+        r#type: Box<Term>,
+    },
     /// A literal of the built-in `Natural`: `3` is `successor of (2)`.
     /// It is also an `Integer` where one is expected.
     Natural(u128),
@@ -444,6 +450,10 @@ impl Scope {
                 arguments: self.terms(arguments)?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
+            lowering::Term::Annotated { term, r#type } => Term::Annotated {
+                term: Box::new(self.term(term)?),
+                r#type: Box::new(self.term(r#type)?),
+            },
             lowering::Term::Natural(number) => Term::Natural(*number),
             lowering::Term::Integer(number) => Term::Integer(*number),
             lowering::Term::Text(text) => Term::Text(text.clone()),

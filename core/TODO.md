@@ -269,13 +269,14 @@ inference. Macros and effects come later.
       `:` or `->`. A function type as a result is grouped: `FUNCTION f :
       ((n: Natural) -> Natural) IS ...`, since `_ : _ -> _` is one flat
       call.
-28. Ascription: `(e : T)` is an expression, anywhere an expression is.
+28. Ascription: `(e : T)` is an expression, anywhere an expression is. (done)
     - Checking: `T` is a type, `e` is checked against it, and the whole has
       type `T`. Evaluation: it is `e`.
     - It never casts down: `T` must be the type `e` checks against, not a
       wider one.
     - It is what a writer adds where an overloaded call has no expected
       type (step 29): `paint (red : Colour)`.
+    - The kernel has `Annotated { term, type }`; generated code drops it.
 29. Overloading at every type position, the result included.
     - Functions, served functions and constructors, records' included, share
       one overload set per name. Two of them may share a name when they are

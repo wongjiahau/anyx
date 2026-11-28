@@ -102,6 +102,9 @@ expression ⁽ONE OF [
     WORD "MATCH", subject ⁽expression,
     WORD "WITH", cases ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽case,
   ],
+  ## `(red : Colour)`: `red`, checked against `Colour`, where nothing else
+  ## says which overload of `red` is meant.
+  ascription ⁽ANYFIX CALL [value ⁽expression, WORD ":", type ⁽expression],
   ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
   ## No word of its name is `:` or `->`, which an ascription and a function
   ## type hold.

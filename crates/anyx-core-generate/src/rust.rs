@@ -583,6 +583,10 @@ impl Compiler<'_> {
     /// isn't: Rust takes its type parameters from that result, and `erase`
     /// would leave them unknown, as in `erase(Reply::Unauthenticated)`.
     fn term(&mut self, term: &lowering::Term) -> Result<String, String> {
+        // An ascription only told the checker the type.
+        if let lowering::Term::Annotated { term, .. } = term {
+            return self.term(term);
+        }
         let compiled = self.term_as_written(term)?;
         let constructs = matches!(
             term,

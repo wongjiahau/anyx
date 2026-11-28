@@ -118,6 +118,11 @@ pub enum Term {
         arguments: Vec<Term>,
     },
     List(Vec<Term>),
+    /// `(red : Colour)`: `term`, checked against `type`.
+    Annotated {
+        term: Box<Term>,
+        r#type: Box<Term>,
+    },
     /// `3`, a literal of the built-in `Natural`, or of `Integer` where one
     /// is expected.
     Natural(u128),
@@ -218,8 +223,8 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
     for declaration in &document.declaration {
         match declaration {
             parser::Declaration::Data(data) => {
-                let signature = resolver
-                    .declaration_signature(data.declared.head(), data.declared.result())?;
+                let signature =
+                    resolver.declaration_signature(data.declared.head(), data.declared.result())?;
                 resolver.locals.clear();
                 let mut constructors = Vec::new();
                 let mut defaults = Vec::new();
@@ -1453,6 +1458,10 @@ impl<'source> Resolver<'source> {
                 }
             }
             parser::Expression::Text(text) => Term::Text(text.value.value.clone()),
+            parser::Expression::Ascription { value, r#type, .. } => Term::Annotated {
+                term: Box::new(self.term(value)?),
+                r#type: Box::new(self.term(r#type)?),
+            },
             parser::Expression::RecordValue(entries) => {
                 self.record_value(entries.span, &entries.value)?
             }

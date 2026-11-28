@@ -171,6 +171,9 @@ fn mentions_local(term: &Term, index: Index) -> bool {
         } => elements
             .iter()
             .any(|element| mentions_local(element, index)),
+        Term::Annotated { term, r#type } => {
+            mentions_local(term, index) || mentions_local(r#type, index)
+        }
         Term::Type
         | Term::Kind
         | Term::Global(_)

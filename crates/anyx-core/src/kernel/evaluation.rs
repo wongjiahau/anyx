@@ -130,6 +130,7 @@ impl Definitions {
                     .map(|element| self.evaluate(element, environment))
                     .collect::<Result<_, _>>()?,
             ),
+            Term::Annotated { term, .. } => self.evaluate(term, environment)?,
         })
     }
 

@@ -752,6 +752,10 @@ fn clone_term(term: &lowering::Term) -> lowering::Term {
             name: name.clone(),
             kind: *kind,
         },
+        T::Annotated { term, r#type } => T::Annotated {
+            term: Box::new(clone_term(term)),
+            r#type: Box::new(clone_term(r#type)),
+        },
         T::FunctionType { parameter, result } => T::FunctionType {
             parameter: clone_parameter(parameter),
             result: Box::new(clone_term(result)),

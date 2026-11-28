@@ -194,6 +194,7 @@ impl Client {
             Term::Integer(number) => Json::from(
                 i64::try_from(*number).map_err(|_| format!("{number} doesn't fit an `i64`"))?,
             ),
+            Term::Annotated { term, .. } => self.encode(term)?,
             Term::List(items) => Json::Array(
                 items
                     .iter()

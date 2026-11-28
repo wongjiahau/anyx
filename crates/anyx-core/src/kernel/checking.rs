@@ -805,6 +805,12 @@ impl Scope<'_> {
                 })
             }
             Term::List(_) => Err(CheckingError::UnsupportedTerm),
+            Term::Annotated { term, r#type } => {
+                self.type_universe(r#type)?;
+                let expected = self.definitions.evaluate(r#type, &self.environment)?;
+                self.check_value(term, &expected)?;
+                Ok(expected)
+            }
             Term::Natural(_) => Ok(primitive_type(super::NATURAL)),
             Term::Integer(_) => Ok(primitive_type(super::INTEGER)),
             Term::Text(_) => Ok(primitive_type(super::TEXT)),
