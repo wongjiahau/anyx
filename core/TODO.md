@@ -253,6 +253,45 @@ inference. Macros and effects come later.
     - So an entry says which kind it is: `{ 2 hours }` would read as a
       field `_ hours`, while `{ .2 hours }` is a value of a `.` field.
     - A field's words may now be a constructor of a `.` field's type too.
+27. `:` replaces `RETURNS` everywhere: `FUNCTION parse (t: Text) : Natural
+    IS ...`, `DATA Optional (item: Type) : Type WITH [...]`, and a
+    constructor's `something of (item: Type) is (value: item) : Optional
+    (item)`.
+    - It reads as "`parse` has type `Natural`", the same `:` as a parameter
+      and as an ascription (step 28).
+    - `:` is reserved, so no function is named `_ : _`.
+28. Ascription: `(e : T)` is an expression, anywhere an expression is.
+    - Checking: `T` is a type, `e` is checked against it, and the whole has
+      type `T`. Evaluation: it is `e`.
+    - It never casts down: `T` must be the type `e` checks against, not a
+      wider one.
+    - It is what a writer adds where an overloaded call has no expected
+      type (step 29): `paint (red : Colour)`.
+29. Overloading at every type position, the result included.
+    - Functions, served functions and constructors, records' included, share
+      one overload set per name. Two of them may share a name when they are
+      apart at some position, an argument or the result: both types there
+      are ground in normal form (no free variable, value variables included,
+      so no stuck type-family call either) and they differ.
+      `DATA Colour WITH [red, green]` and `DATA Light WITH [red, amber]`
+      may both declare `red`.
+    - A call picks by its arguments' types at the positions where
+      candidates are apart, then by the type it is checked against, else
+      it is an error asking for an ascription. No backtracking, no
+      unification.
+    - The expected type comes from a function's result, an argument of a
+      call already picked, a field's type, a `MATCH` arm, or an ascription.
+      A `MATCH` pattern picks by the type matched.
+    - `{ }` picks its record by its entries, then by the expected type, so
+      two records may have the same fields.
+    - A name without slots may be overloaded, by its result.
+    - Each overload's own name writes every ground type, the result
+      included, so adding an overload never renames another:
+      `parse (Text) : Natural`, generated as `parse_text_natural`.
+    - Sound because picking only chooses a function, which the kernel
+      checks as any application; apartness relies on normalizing
+      terminating and on different ground types sharing no values (no
+      subtyping between named types).
 
 ## Later
 
