@@ -14,8 +14,8 @@ In the anyx shell:
 
 ```anyx
 USE fd FROM COMMAND "anyx-fd",
-fd / find "\\.rs$" in ["src"] with { only [file], hidden },
-fd / details of "Cargo" with { max depth 2 },
+fd / find "\\.rs$" in ["src"] with { only [file], .hidden },
+fd / details of "Cargo" with { .max depth 2 },
 fd / any match of "TODO",
 ```
 

@@ -15,8 +15,8 @@ const DATA: &str = "
             RETURNS Vector of (successor of (length)),
     ],
     RECORD Search RETURNS Type WITH [
-        (case: Case) DEFAULT smart case,
-        (hidden: Hidden files) DEFAULT skip hidden,
+        .(case: Case) DEFAULT smart case,
+        .(hidden: Hidden files) DEFAULT skip hidden,
         between (low: Natural) and (high: Natural) DEFAULT between (zero) and (zero),
         max depth (max depth: Natural),
     ],
@@ -63,7 +63,7 @@ fn bodies(source: &str) -> Vec<(String, anyx_core::kernel::Term)> {
 #[test]
 fn a_value_fills_its_fields_in_declaration_order_and_defaults_the_rest() {
     let bodies = bodies(
-        "FUNCTION written RETURNS Search IS { max depth (zero), any case },
+        "FUNCTION written RETURNS Search IS { max depth (zero), .any case },
          FUNCTION spelled out RETURNS Search
            IS (search (any case) (skip hidden) (zero) (zero) (zero)),",
     );
@@ -94,7 +94,7 @@ fn a_field_s_type_can_name_an_earlier_field() {
 #[test]
 fn a_value_must_give_every_field_without_a_default() {
     assert_eq!(
-        check("FUNCTION wrong RETURNS Search IS { any case },"),
+        check("FUNCTION wrong RETURNS Search IS { .any case },"),
         Err("no record has exactly these fields".to_owned())
     );
 }
@@ -102,7 +102,7 @@ fn a_value_must_give_every_field_without_a_default() {
 #[test]
 fn a_default_is_checked_against_its_field() {
     assert!(
-        check("RECORD Pick RETURNS Type WITH [(case: Case) DEFAULT hidden],")
+        check("RECORD Pick RETURNS Type WITH [.(case: Case) DEFAULT hidden],")
             .unwrap_err()
             .contains("default case of Pick")
     );
@@ -124,12 +124,20 @@ fn a_field_that_depends_on_another_has_no_default() {
 #[test]
 fn an_entry_finds_one_field_only() {
     assert_eq!(
-        check("RECORD Pair RETURNS Type WITH [(first: Case), (second: Case)],"),
-        Err("two fields written as their value alone both hold `Case`, so an entry couldn't tell which it fills".to_owned())
+        check("RECORD Pair RETURNS Type WITH [.(first: Case), .(second: Case)],"),
+        Err(
+            "two fields marked `.` both hold `Case`, so an entry couldn't tell which it fills"
+                .to_owned()
+        )
     );
+    // `.` tells a value from a field's words, so they may be the same.
     assert_eq!(
-        check("RECORD Pair RETURNS Type WITH [successor of (x: Natural), (n: Natural)],"),
-        Err("`successor of _` already names another field or a value of one, so an entry couldn't tell which it fills".to_owned())
+        check(
+            "DATA Step WITH [next of (n: Natural)],
+             RECORD Pair WITH [next of (x: Natural), .(step: Step)],
+             FUNCTION both RETURNS Pair IS { next of 1, .next of 2 },"
+        ),
+        Ok(())
     );
     assert_eq!(
         check("RECORD Pair RETURNS Type WITH [successor of (x: Natural)],"),
@@ -155,11 +163,23 @@ fn a_record_s_parameters_come_first_in_its_constructor() {
 #[test]
 fn a_record_can_be_an_unnamed_field() {
     let source = "RECORD Span RETURNS Type WITH [from (low: Natural) to (high: Natural)],
-         RECORD Labelled RETURNS Type WITH [(span: Span), labelled (label: Case)],
-         FUNCTION nested RETURNS Labelled IS { labelled (any case), { from 1 to 2 } },
+         RECORD Labelled RETURNS Type WITH [.(span: Span), labelled (label: Case)],
+         FUNCTION nested RETURNS Labelled IS { labelled (any case), .{ from 1 to 2 } },
          FUNCTION explicit RETURNS Labelled
             IS labelled (span (1) (2)) (any case),";
     check(source).unwrap();
     let bodies = bodies(source);
     assert_eq!(bodies[bodies.len() - 2].1, bodies[bodies.len() - 1].1);
+}
+
+#[test]
+fn a_value_of_a_dot_field_is_marked_with_a_dot() {
+    assert_eq!(
+        check("FUNCTION wrong RETURNS Search IS { max depth (zero), any case },"),
+        Err("no record has exactly these fields".to_owned())
+    );
+    assert_eq!(
+        check("FUNCTION wrong RETURNS Search IS { max depth (zero), .max depth (zero) },"),
+        Err("`.` marks a value of a `.` field, but `max depth _` is no constructor".to_owned())
+    );
 }

@@ -3,7 +3,7 @@
 //! the generated server reads, and its answer read back as anyx.
 //!
 //! The expression is a constructor of an entry point's split family, such
-//! as `find "x" with { hidden }` for `answer (response: Type) to (request:
+//! as `find "x" with { .hidden }` for `answer (response: Type) to (request:
 //! Request returning (response))`. The kernel checks it and normalizes it,
 //! so every `DEFAULT` it leaves out is a value by the time it is sent.
 
@@ -332,7 +332,7 @@ impl Client {
                     let entries = fields
                         .iter()
                         .map(|field| match &field.name {
-                            None => Ok(values[&field.binders[0]].0.clone()),
+                            None => Ok(format!(".{}", values[&field.binders[0]].0)),
                             Some(name) => fill(
                                 name,
                                 field

@@ -53,7 +53,7 @@ pub enum Field {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldShape {
-    Unnamed(Parameter),
+    Unnamed { parameter: Parameter, span: Span },
     Named(Head),
 }
 
@@ -154,7 +154,13 @@ pub enum Expression {
     Number(Spanned<String>),
     Text(Spanned<StringLiteral>),
     List(Spanned<Vec<Expression>>),
-    RecordValue(Spanned<Vec<Expression>>),
+    RecordValue(Spanned<Vec<Entry>>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Entry {
+    Unnamed { value: Expression, span: Span },
+    Named(Expression),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -201,7 +207,7 @@ impl Field {
 impl FieldShape {
     pub fn span(&self) -> Span {
         match self {
-            FieldShape::Unnamed(value) => value.span,
+            FieldShape::Unnamed { span, .. } => *span,
             FieldShape::Named(value) => value.span(),
         }
     }
@@ -254,6 +260,15 @@ impl Expression {
             Expression::Text(value) => value.span,
             Expression::List(value) => value.span,
             Expression::RecordValue(value) => value.span,
+        }
+    }
+}
+
+impl Entry {
+    pub fn span(&self) -> Span {
+        match self {
+            Entry::Unnamed { span, .. } => *span,
+            Entry::Named(value) => value.span(),
         }
     }
 }
@@ -316,7 +331,9 @@ impl support::Errors for Field {
 impl support::Errors for FieldShape {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         match self {
-            FieldShape::Unnamed(value) => support::Errors::errors(value, found),
+            FieldShape::Unnamed { parameter, .. } => {
+                support::Errors::errors(parameter, found);
+            }
             FieldShape::Named(value) => support::Errors::errors(value, found),
         }
     }
@@ -436,6 +453,17 @@ impl support::Errors for Expression {
             Expression::Text(value) => support::Errors::errors(value, found),
             Expression::List(value) => support::Errors::errors(value, found),
             Expression::RecordValue(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for Entry {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Entry::Unnamed { value, .. } => {
+                support::Errors::errors(value, found);
+            }
+            Entry::Named(value) => support::Errors::errors(value, found),
         }
     }
 }
@@ -571,9 +599,18 @@ fn decode_field_defaulted(node: &Node) -> Result<Field, DecodeError> {
 }
 
 pub fn decode_field_shape(node: &Node) -> Result<FieldShape, DecodeError> {
-    decode_parameter(node)
-        .map(FieldShape::Unnamed)
+    decode_field_shape_unnamed(node)
         .or_else(|error| error.or(decode_head(node).map(FieldShape::Named)))
+}
+
+fn decode_field_shape_unnamed(node: &Node) -> Result<FieldShape, DecodeError> {
+    let mut parts = support::call(node, "the call `. _`")?;
+    let decoded = FieldShape::Unnamed {
+        parameter: parts.word(".")?.one(decode_parameter, "a parameter")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_constructor(node: &Node) -> Result<Constructor, DecodeError> {
@@ -838,14 +875,28 @@ fn decode_expression_list(node: &Node) -> Result<Spanned<Vec<Expression>>, Decod
     })
 }
 
-fn decode_expression_record_value(node: &Node) -> Result<Spanned<Vec<Expression>>, DecodeError> {
+fn decode_expression_record_value(node: &Node) -> Result<Spanned<Vec<Entry>>, DecodeError> {
     let mut elements = support::curly_brace(node)?;
-    let value = elements.zero_or_more(decode_expression);
+    let value = elements.zero_or_more(decode_entry);
     elements.finish()?;
     Ok(Spanned {
         value,
         span: node.span,
     })
+}
+
+pub fn decode_entry(node: &Node) -> Result<Entry, DecodeError> {
+    decode_entry_unnamed(node).or_else(|error| error.or(decode_expression(node).map(Entry::Named)))
+}
+
+fn decode_entry_unnamed(node: &Node) -> Result<Entry, DecodeError> {
+    let mut parts = support::call(node, "the call `. _`")?;
+    let decoded = Entry::Unnamed {
+        value: parts.word(".")?.one(decode_expression, "an expression")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
 }
 
 pub fn decode_case(node: &Node) -> Result<Case, DecodeError> {

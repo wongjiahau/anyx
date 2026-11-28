@@ -37,9 +37,9 @@ DATA File kind WITH [
 ],
 
 ## ---------------------------------------------------------------------------
-## The choices a search makes. Each is a field written as its value alone,
-## as in `{ glob pattern, hidden, max depth 2 }`, and left out it keeps
-## fd's default, its first constructor.
+## The choices a search makes. Each is a field marked `.`, written as `.`
+## and its value, as in `{ .glob pattern, .hidden, .max depth 2 }`, and
+## left out it keeps fd's default, its first constructor.
 
 ## The case a pattern is matched in.
 DATA Case WITH [
@@ -172,49 +172,49 @@ DATA Limit WITH [
   at most (count: Natural) results,
 ],
 
-## How fd searches, as in `{ glob pattern, hidden, max depth 2 }`. Each
+## How fd searches, as in `{ .glob pattern, .hidden, .max depth 2 }`. Each
 ## field left out keeps fd's default, and a file must pass every filter
 ## given.
 RECORD Search WITH [
-  (case: Case) DEFAULT smart case,
-  (syntax: Syntax) DEFAULT regex pattern,
-  (subject: Subject) DEFAULT file name,
+  .(case: Case) DEFAULT smart case,
+  .(syntax: Syntax) DEFAULT regex pattern,
+  .(subject: Subject) DEFAULT file name,
   ## Each file must match these patterns too, in the same syntax and case.
   also matching (patterns: List of (Text)) DEFAULT also matching [],
-  (hidden: Hidden files) DEFAULT skip hidden,
-  (ignore: Ignore files) DEFAULT respect ignore files,
-  (vcs: Version control ignores) DEFAULT respect vcs ignores,
-  (parents: Parent ignores) DEFAULT respect parent ignores,
-  (git: Git repository) DEFAULT require git,
+  .(hidden: Hidden files) DEFAULT skip hidden,
+  .(ignore: Ignore files) DEFAULT respect ignore files,
+  .(vcs: Version control ignores) DEFAULT respect vcs ignores,
+  .(parents: Parent ignores) DEFAULT respect parent ignores,
+  .(git: Git repository) DEFAULT require git,
   ## Skip what these files ignore, each written as `.gitignore` is.
   ignore files (files: List of (Text)) DEFAULT ignore files [],
   ## Skip paths these globs match, as `--exclude` does.
   excluding (globs: List of (Text)) DEFAULT excluding [],
-  (links: Links) DEFAULT stay out of links,
-  (file systems: File systems) DEFAULT cross file systems,
-  (pruning: Matched directories) DEFAULT enter matches,
-  (max depth: Most depth) DEFAULT any depth,
-  (min depth: Least depth) DEFAULT from the top,
+  .(links: Links) DEFAULT stay out of links,
+  .(file systems: File systems) DEFAULT cross file systems,
+  .(pruning: Matched directories) DEFAULT enter matches,
+  .(max depth: Most depth) DEFAULT any depth,
+  .(min depth: Least depth) DEFAULT from the top,
   ## Find only these kinds of file, or every kind when empty.
   only (kinds: List of (File kind)) DEFAULT only [],
   ## Find only files with one of these extensions, such as `"rs"`, or with
   ## any when empty.
   extensions (extensions: List of (Text)) DEFAULT extensions [],
-  (least size: Least size) DEFAULT no minimum size,
-  (most size: Most size) DEFAULT no maximum size,
-  (recency: Recency) DEFAULT changed any time,
-  (start: Start) DEFAULT since the beginning,
-  (end: End) DEFAULT until now,
-  (oldness: Oldness) DEFAULT any age,
-  (user: User) DEFAULT any user,
-  (group: Group) DEFAULT any group,
-  (limit: Limit) DEFAULT all results,
+  .(least size: Least size) DEFAULT no minimum size,
+  .(most size: Most size) DEFAULT no maximum size,
+  .(recency: Recency) DEFAULT changed any time,
+  .(start: Start) DEFAULT since the beginning,
+  .(end: End) DEFAULT until now,
+  .(oldness: Oldness) DEFAULT any age,
+  .(user: User) DEFAULT any user,
+  .(group: Group) DEFAULT any group,
+  .(limit: Limit) DEFAULT all results,
 ],
 
 ## What a found file is, as `fd --list-details` shows it.
 RECORD Details WITH [
   path (path: Text),
-  (kind: File kind),
+  .(kind: File kind),
   size (size: Natural) bytes,
   modified at (modified: Moment),
 ],

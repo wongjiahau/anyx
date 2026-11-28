@@ -80,7 +80,7 @@ same program under the same name again asks it for its schema again; another
 program under a name in use is an error.
 
 A call is an expression written against the schema, a request of the
-family an entry point splits on, such as `find "x" with { hidden }`. The
+family an entry point splits on, such as `find "x" with { .hidden }`. The
 kernel checks it and fills each `DEFAULT` it leaves out, so a call the schema
 rules out never reaches the program. The shell sends it as the JSON call the
 generated server reads, and shows the answer as anyx: `answered ["src/lib.rs"]`.

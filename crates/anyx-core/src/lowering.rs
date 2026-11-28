@@ -161,7 +161,7 @@ impl std::error::Error for LoweringError {}
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordField {
     /// The field's words with a `_` in each slot, `between _ and _`, or
-    /// `None` for a field written as its value alone.
+    /// `None` for a field marked `.`.
     pub name: Option<String>,
     /// The binder of each slot.
     pub binders: Vec<String>,
@@ -406,9 +406,10 @@ struct Resolver<'source> {
 
 /// What a record entry is known by.
 enum Key<'entry> {
-    /// The words of a field, or a constructor of an unnamed field's type.
-    Name(&'entry str),
-    /// The record a nested `{ }` value is.
+    /// The words of a field, `between _ and _`.
+    Field(&'entry str),
+    /// The type of a `.` entry's value: its constructor's, or the record a
+    /// nested `{ }` value is.
     Data(&'entry str),
 }
 
@@ -424,9 +425,9 @@ struct RecordShape {
 #[derive(Clone)]
 struct FieldShape {
     /// The field's words with its slots, `between _ and _`; `None` for a
-    /// field written as its value alone.
+    /// field marked `.`.
     name: Option<String>,
-    /// The data type of a field written as its value alone.
+    /// The data type of a field marked `.`.
     unnamed_type: Option<String>,
     binders: Vec<String>,
     has_default: bool,
@@ -470,7 +471,7 @@ fn record_slots(record: &parser::Record) -> usize {
             .sum::<usize>()
 }
 
-/// A field's words (none for a field written as its value alone), its
+/// A field's words (none for a field marked `.`), its
 /// slots, and where it is written.
 pub(crate) fn field_parts(
     field: &parser::Field,
@@ -481,7 +482,7 @@ pub(crate) fn field_parts(
         }
     };
     match shape {
-        parser::FieldShape::Unnamed(parameter) => (None, vec![parameter], parameter.span),
+        parser::FieldShape::Unnamed { parameter, span } => (None, vec![parameter], *span),
         parser::FieldShape::Named(head) => {
             let name = match head {
                 parser::Head::WithParameters { name, .. } | parser::Head::Plain { name, .. } => {
@@ -891,28 +892,15 @@ impl<'source> Resolver<'source> {
                     });
                 }
                 Some(field_name) => {
-                    // An entry is found by a named field's words first, so
-                    // they mustn't also be a value of an unnamed field.
-                    let data = self.constructor_data.get(field_name.text.as_str());
-                    let names_an_unnamed_value = record.fields.value.iter().any(|other| {
-                        let (other_name, other_slots, _) = field_parts(other);
-                        other_name.is_none()
-                            && matches!(
-                                (&*other_slots[0].r#type, data),
-                                (parser::Expression::Name { name, .. }, Some(data))
-                                    if name.text == *data
-                            )
-                    });
-                    if names_an_unnamed_value
-                        || shape
-                            .fields
-                            .iter()
-                            .any(|other| other.name.as_deref() == Some(&field_name.text))
+                    if shape
+                        .fields
+                        .iter()
+                        .any(|other| other.name.as_deref() == Some(&field_name.text))
                     {
                         return Err(LoweringError {
                             span: field_name.span,
                             message: format!(
-                                "`{}` already names another field or a value of one, so an entry couldn't tell which it fills",
+                                "`{}` already names another field, so an entry couldn't tell which it fills",
                                 field_name.text
                             ),
                         });
@@ -1025,7 +1013,7 @@ impl<'source> Resolver<'source> {
         ))
     }
 
-    /// The data type a field written as its value alone holds: an entry finds
+    /// The data type a field marked `.` holds: an entry finds
     /// the field by its constructor.
     fn unnamed_type(
         &self,
@@ -1035,9 +1023,7 @@ impl<'source> Resolver<'source> {
         let parser::Expression::Name { name, .. } = &*slot.r#type else {
             return Err(LoweringError {
                 span: slot.r#type.span(),
-                message:
-                    "a field written as its value alone holds a `DATA` named without arguments"
-                        .to_owned(),
+                message: "a field marked `.` holds a `DATA` named without arguments".to_owned(),
             });
         };
         if !self
@@ -1048,7 +1034,7 @@ impl<'source> Resolver<'source> {
             return Err(LoweringError {
                 span: name.span,
                 message: format!(
-                    "a field written as its value alone holds a `DATA` with constructors; `{}` isn't one",
+                    "a field marked `.` holds a `DATA` with constructors; `{}` isn't one",
                     name.text
                 ),
             });
@@ -1061,7 +1047,7 @@ impl<'source> Resolver<'source> {
             return Err(LoweringError {
                 span: name.span,
                 message: format!(
-                    "two fields written as their value alone both hold `{}`, so an entry couldn't tell which it fills",
+                    "two fields marked `.` both hold `{}`, so an entry couldn't tell which it fills",
                     name.text
                 ),
             });
@@ -1074,7 +1060,7 @@ impl<'source> Resolver<'source> {
     fn record_value(
         &mut self,
         span: Span,
-        entries: &'source [parser::Expression],
+        entries: &'source [parser::Entry],
     ) -> Result<Term, LoweringError> {
         let (record, filled) = self.fitting_record(span, entries)?;
         if self.records[record].has_parameters {
@@ -1090,18 +1076,17 @@ impl<'source> Resolver<'source> {
         let mut arguments = Vec::new();
         for (field_index, field) in shape.fields.iter().enumerate() {
             match filled.iter().position(|filled| *filled == field_index) {
-                Some(entry_index) => match (&entries[entry_index], &field.name) {
-                    (
-                        parser::Expression::Call {
-                            arguments: values, ..
-                        },
-                        Some(_),
-                    ) => {
+                Some(entry_index) => match &entries[entry_index] {
+                    parser::Entry::Named(parser::Expression::Call {
+                        arguments: values, ..
+                    }) => {
                         for value in values {
                             arguments.push(self.term(value)?);
                         }
                     }
-                    (entry, _) => arguments.push(self.term(entry)?),
+                    parser::Entry::Named(entry) | parser::Entry::Unnamed { value: entry, .. } => {
+                        arguments.push(self.term(entry)?)
+                    }
                 },
                 None => {
                     for binder in &field.binders {
@@ -1128,31 +1113,53 @@ impl<'source> Resolver<'source> {
     }
 
     /// The one record whose fields `entries` fill, and the field each entry
-    /// fills. An entry is a field's words, as in `between 1 and 3`, or a
-    /// value whose data type an unnamed field holds: a constructor call, or
-    /// a `{ }` value of another record.
+    /// fills. An entry is a field's words, as in `between 1 and 3`, or `.`
+    /// and a value of the type a `.` field holds: a constructor call, as in
+    /// `.any case`, or a `{ }` value of another record.
     fn fitting_record(
         &self,
         span: Span,
-        entries: &[parser::Expression],
+        entries: &[parser::Entry],
     ) -> Result<(usize, Vec<usize>), LoweringError> {
         let mut keys = Vec::new();
         for entry in entries {
             keys.push(match entry {
-                parser::Expression::Call { name, .. } | parser::Expression::Name { name, .. } => {
-                    Key::Name(name.text.as_str())
-                }
-                parser::Expression::RecordValue(nested) => {
-                    let (record, _) = self.fitting_record(entry.span(), &nested.value)?;
-                    Key::Data(self.records[record].name.as_str())
-                }
-                _ => {
+                parser::Entry::Named(
+                    parser::Expression::Call { name, .. } | parser::Expression::Name { name, .. },
+                ) => Key::Field(name.text.as_str()),
+                parser::Entry::Named(entry) => {
                     return Err(LoweringError {
                         span: entry.span(),
-                        message: "a record entry is a field as written, such as `between 1 and 3`"
-                            .to_owned(),
+                        message: "a record entry is a field as written, such as `between 1 and 3`, or `.` and a value, such as `.any case`".to_owned(),
                     });
                 }
+                parser::Entry::Unnamed { value, span } => match value {
+                    parser::Expression::Call { name, .. }
+                    | parser::Expression::Name { name, .. } => {
+                        match self.constructor_data.get(name.text.as_str()) {
+                            Some(data) => Key::Data(data),
+                            None => {
+                                return Err(LoweringError {
+                                    span: *span,
+                                    message: format!(
+                                        "`.` marks a value of a `.` field, but `{}` is no constructor",
+                                        name.text
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    parser::Expression::RecordValue(nested) => {
+                        let (record, _) = self.fitting_record(value.span(), &nested.value)?;
+                        Key::Data(self.records[record].name.as_str())
+                    }
+                    _ => {
+                        return Err(LoweringError {
+                            span: *span,
+                            message: "`.` marks a value of a `.` field: a constructor, such as `.any case`, or a `{ }` value".to_owned(),
+                        });
+                    }
+                },
             });
         }
         let fits: Vec<(usize, Vec<usize>)> = self
@@ -1186,13 +1193,9 @@ impl<'source> Resolver<'source> {
     fn fill(&self, record: &RecordShape, keys: &[Key]) -> Option<Vec<usize>> {
         let mut filled = Vec::new();
         for key in keys {
-            let (name, data) = match key {
-                Key::Name(name) => (Some(*name), self.constructor_data.get(name).copied()),
-                Key::Data(data) => (None, Some(*data)),
-            };
-            let field = record.fields.iter().position(|field| {
-                (name.is_some() && field.name.as_deref() == name)
-                    || (field.unnamed_type.is_some() && field.unnamed_type.as_deref() == data)
+            let field = record.fields.iter().position(|field| match key {
+                Key::Field(name) => field.name.as_deref() == Some(*name),
+                Key::Data(data) => field.unnamed_type.as_deref() == Some(*data),
             })?;
             if filled.contains(&field) {
                 return None;

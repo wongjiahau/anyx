@@ -20,10 +20,11 @@ data ⁽ANYFIX CALL [
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
 ## `RECORD Range RETURNS Type WITH [between (low: Natural) and (high: Natural),
-## (order: Order) DEFAULT newest first]`: one constructor whose fields are
-## written in any order, `{ newest first, between 1 and 3 }`. A field is a
-## head whose every slot names its binder; a field whose head is a single
-## slot is written as its value alone. `DEFAULT` holds the field as written.
+## .(order: Order) DEFAULT newest first]`: one constructor whose fields are
+## written in any order, `{ .newest first, between 1 and 3 }`. A field is a
+## head whose every slot names its binder; a field marked `.` is a single
+## slot, written as `.` and its value alone. `DEFAULT` holds the field as
+## written.
 ## Without `RETURNS` it is a `Type`.
 record ⁽ANYFIX CALL [
   WORD "RECORD", head,
@@ -36,9 +37,9 @@ field ⁽ONE OF [
   field shape,
 ],
 
-## `(case: Case)` is written as its value alone, `any case`; any other field
-## is written as its head, `between 1 and 3`.
-field shape ⁽ONE OF [unnamed ⁽parameter, named ⁽head],
+## `.(case: Case)` is written as `.` and its value alone, `.any case`; any
+## other field is written as its head, `between 1 and 3`.
+field shape ⁽ONE OF [unnamed ⁽ANYFIX CALL [WORD ".", parameter], named ⁽head],
 
 ## `successor of (n: Natural) RETURNS Natural`. Without `RETURNS` it returns
 ## the type being declared, written as its head: `circle` in
@@ -115,9 +116,16 @@ expression ⁽ONE OF [
   ## `"src"`: a `Text`.
   text ⁽STRING,
   list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽expression,
-  ## `{ between 1 and 3, newest first }`: a value of the record whose fields
+  ## `{ between 1 and 3, .newest first }`: a value of the record whose fields
   ## these entries fill.
-  record value ⁽CURLY BRACE ⁽ZERO OR MORE ⁽expression,
+  record value ⁽CURLY BRACE ⁽ZERO OR MORE ⁽entry,
+],
+
+## A field as written, `between 1 and 3`, or `.` and the value of a field
+## marked `.`, `.newest first`.
+entry ⁽ONE OF [
+  unnamed ⁽ANYFIX CALL [WORD ".", value ⁽expression],
+  named ⁽expression,
 ],
 
 ## `WHEN successor of (k) THEN ...`.

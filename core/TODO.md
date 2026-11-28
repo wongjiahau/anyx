@@ -159,10 +159,10 @@ inference. Macros and effects come later.
     fields in any order. The kernel is unchanged: lowering builds the
     constructor call.
     - A field is a head whose every slot names its binder, as in `between
-      (low: Natural) and (high: Natural)`, or a single `(case: Case)`, which
-      is written as its value alone. An entry finds its field by the field's
-      words or by the data type of its value. Two unnamed fields can't share
-      a type.
+      (low: Natural) and (high: Natural)`, or a single slot marked `.`,
+      `.(case: Case)`, whose entry is `.` and its value, `.any case`. An
+      entry finds its field by the field's words, or, marked `.`, by the
+      data type of its value. Two `.` fields can't share a type.
     - The constructor's parameters are the record's own, then every field's
       binders in order. So a field's type can name an earlier field, and a
       value is checked in declaration order.
@@ -215,7 +215,7 @@ inference. Macros and effects come later.
       generates its server, which reads JSON calls of `answer _ to _`.
     - `anyx-fd --anyx-schema` writes the schema. The shell's
       `USE … FROM COMMAND` reads it with `anyx_core_generate::client`, which
-      checks a call such as `fd / find "x" with { hidden }` with the kernel,
+      checks a call such as `fd / find "x" with { .hidden }` with the kernel,
       normalizes it so every `DEFAULT` is a value, sends it as JSON, and
       writes the answer back as anyx: `answered ["src/lib.rs"]`.
     - A compiled body's result that spells a parameter as `Erased` takes
@@ -247,6 +247,12 @@ inference. Macros and effects come later.
     - Lowering fills in what is left out, so the kernel is unchanged.
     - `WITH` stays: without it, the brackets after `RETURNS Type` would
       also read as `Type _` called on a list.
+26. A field written as its value alone is marked `.`, in its declaration (done)
+    and in each value: `RECORD Search WITH [.(case: Case), max depth (n:
+    Natural)]` and `{ .any case, max depth 3 }`.
+    - So an entry says which kind it is: `{ 2 hours }` would read as a
+      field `_ hours`, while `{ .2 hours }` is a value of a `.` field.
+    - A field's words may now be a constructor of a `.` field's type too.
 
 ## Later
 
