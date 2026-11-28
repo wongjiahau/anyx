@@ -1,4 +1,4 @@
-## The core has Type and Kind, dependent function types with RETURNS, holes as
+## The core has Type and Kind, dependent function types with ->, holes as
 ## anonymous functions, calls, FUNCTION, DATA and MATCH.
 
 ## A file is its declarations, separated by commas.
@@ -11,24 +11,22 @@ declaration ⁽ONE OF [
   served function,
 ],
 
-## `DATA Natural RETURNS Type WITH [zero RETURNS Natural, ...]`. Without
-## `RETURNS` it is a `Type`: `DATA Shape WITH [circle, square]`.
+## `DATA Natural : Type WITH [zero : Natural, ...]`. Without
+## `:` it is a `Type`: `DATA Shape WITH [circle, square]`.
 data ⁽ANYFIX CALL [
-  WORD "DATA", head,
-  returns ⁽OPTIONAL [WORD "RETURNS", signature result],
+  WORD "DATA", declared,
   WORD "WITH", constructors ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽constructor,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
-## `RECORD Range RETURNS Type WITH [between (low: Natural) and (high: Natural),
+## `RECORD Range : Type WITH [between (low: Natural) and (high: Natural),
 ## .(order: Order) DEFAULT newest first]`: one constructor whose fields are
 ## written in any order, `{ .newest first, between 1 and 3 }`. A field is a
 ## head whose every slot names its binder; a field marked `.` is a single
 ## slot, written as `.` and its value alone. `DEFAULT` holds the field as
 ## written.
-## Without `RETURNS` it is a `Type`.
+## Without `:` it is a `Type`.
 record ⁽ANYFIX CALL [
-  WORD "RECORD", head,
-  returns ⁽OPTIONAL [WORD "RETURNS", signature result],
+  WORD "RECORD", declared,
   WORD "WITH", fields ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽field,
 ] FORMAT [BREAK BEFORE WORD "WITH"],
 
@@ -41,37 +39,40 @@ field ⁽ONE OF [
 ## other field is written as its head, `between 1 and 3`.
 field shape ⁽ONE OF [unnamed ⁽ANYFIX CALL [WORD ".", parameter], named ⁽head],
 
-## `successor of (n: Natural) RETURNS Natural`. Without `RETURNS` it returns
+## `successor of (n: Natural) : Natural`. Without `:` it returns
 ## the type being declared, written as its head: `circle` in
 ## `DATA Shape WITH [circle, square]`.
 constructor ⁽ONE OF [
-  returning ⁽ANYFIX CALL [
-    head,
-    WORD "RETURNS", type ⁽expression,
-  ] FORMAT [BREAK BEFORE WORD "RETURNS"],
+  returning ⁽ANYFIX CALL [head, WORD ":", type ⁽expression],
   head,
 ],
 
-## `FUNCTION (m: Natural) plus (n: Natural) RETURNS Natural IS ⁽...`.
+## `FUNCTION (m: Natural) plus (n: Natural) : Natural IS ⁽...`.
 function ⁽ANYFIX CALL [
-  WORD "FUNCTION", head,
-  WORD "RETURNS", signature result,
+  WORD "FUNCTION", typed head,
   WORD "IS", body ⁽expression,
 ] FORMAT [BREAK BEFORE WORD "IS"],
 
-## `FUNCTION read (path: Path) RETURNS Document`: no body, so whatever serves
+## `FUNCTION read (path: Path) : Document`: no body, so whatever serves
 ## the schema implements it.
-served function ⁽ANYFIX CALL [
-  WORD "FUNCTION", head,
-  WORD "RETURNS", result ⁽expression,
-],
+served function ⁽ANYFIX CALL [WORD "FUNCTION", typed head],
+
+## What a `DATA` or `RECORD` declares: its head, and what it is unless it is
+## a `Type`.
+declared ⁽ONE OF [typed head, head],
+
+## A head and what it is: `successor of (n: Natural) : Natural`. `:` is a
+## symbol word, so this is the call `_ : _` inside the declaration.
+typed head ⁽ANYFIX CALL [head, WORD ":", result ⁽signature result],
 
 signature result ⁽ONE OF [WORD "Kind", expression],
 
 ## What is declared: a name, with a typed parameter in each slot.
 head ⁽ONE OF [
+  ## No word of its name is `:` or `->`, which a typed head and a function
+  ## type hold.
   with parameters ⁽ANYFIX CALL [
-    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    NAME [NO KEYWORD, MATCHING REGEX "_", MATCHING REGEX "^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$"],
     ARGUMENTS ⁽ONE OR MORE ⁽head argument,
   ],
   plain ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
@@ -95,15 +96,17 @@ parameter ⁽ANYFIX CALL [binder, WORD ":", type ⁽expression],
 binder ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD]],
 
 expression ⁽ONE OF [
-  ## `(n: Natural) RETURNS Vector of (item) length (n)`.
-  function type ⁽ANYFIX CALL [parameter, WORD "RETURNS", result ⁽expression],
+  ## `(n: Natural) -> Vector of (item) length (n)`.
+  function type ⁽ANYFIX CALL [parameter, WORD "->", result ⁽expression],
   match ⁽ANYFIX CALL [
     WORD "MATCH", subject ⁽expression,
     WORD "WITH", cases ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽case,
   ],
   ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
+  ## No word of its name is `:` or `->`, which an ascription and a function
+  ## type hold.
   call ⁽ANYFIX CALL [
-    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    NAME [NO KEYWORD, MATCHING REGEX "_", MATCHING REGEX "^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$"],
     ARGUMENTS ⁽ONE OR MORE ⁽expression,
   ],
   ## A name alone: a variable, a constant, `Type`.

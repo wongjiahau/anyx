@@ -16,23 +16,26 @@ impl DeclarationCheckingError {
         for declaration in &document.declaration {
             match declaration {
                 parser::Declaration::Function(function) => {
-                    let names = |failed: &str| declares(&function.head, failed);
+                    let names = |failed: &str| declares(&function.typed_head.head, failed);
                     if matches!(self, Self::Body { name: failed, .. } if names(failed)) {
                         return function.body.span();
                     }
                     if matches!(self, Self::NonTerminatingFunctions(failed) if failed.iter().any(|failed| names(failed)))
                     {
-                        return function.head.span();
+                        return function.typed_head.head.span();
                     }
-                    if let Some(span) =
-                        self.signature_span(&function.head, function.signature_result.span())
-                    {
+                    if let Some(span) = self.signature_span(
+                        &function.typed_head.head,
+                        function.typed_head.result.span(),
+                    ) {
                         return span;
                     }
                 }
                 parser::Declaration::ServedFunction(function) => {
-                    if let Some(span) = self.signature_span(&function.head, function.result.span())
-                    {
+                    if let Some(span) = self.signature_span(
+                        &function.typed_head.head,
+                        function.typed_head.result.span(),
+                    ) {
                         return span;
                     }
                 }
@@ -43,7 +46,7 @@ impl DeclarationCheckingError {
                 }
                 parser::Declaration::Data(data) => {
                     if let Some(span) =
-                        self.signature_span(&data.head, returns_span(&data.head, &data.returns))
+                        self.signature_span(data.declared.head(), returns_span(&data.declared))
                     {
                         return span;
                     }
@@ -66,9 +69,9 @@ impl DeclarationCheckingError {
     /// The record's head for its own errors and its constructor's, and a
     /// field's `DEFAULT` for errors in it.
     fn record_span(&self, record: &parser::Record) -> Option<Span> {
-        let (name, parameters) = head_parts(&record.head);
+        let (name, parameters) = head_parts(record.declared.head());
         if let Some(span) =
-            self.signature_span(&record.head, returns_span(&record.head, &record.returns))
+            self.signature_span(record.declared.head(), returns_span(&record.declared))
         {
             return Some(span);
         }
@@ -124,11 +127,11 @@ impl DeclarationCheckingError {
     }
 }
 
-/// Where a declaration's `RETURNS` is written, or its head when it isn't.
-fn returns_span(head: &parser::Head, returns: &Option<parser::SignatureResult>) -> Span {
-    returns
-        .as_ref()
-        .map_or(head.span(), parser::SignatureResult::span)
+/// Where a declaration's result is written, or its head when it isn't.
+fn returns_span(declared: &parser::Declared) -> Span {
+    declared
+        .result()
+        .map_or(declared.head().span(), parser::SignatureResult::span)
 }
 
 /// Whether `head` declares the function the kernel knows as `name`: its

@@ -1,4 +1,4 @@
-//! `RETURNS` left out: a `DATA` or `RECORD` without it is a `Type`, and a
+//! `:` left out: a `DATA` or `RECORD` without it is a `Type`, and a
 //! constructor without it returns the type it is a constructor of.
 
 use anyx_core::{
@@ -34,11 +34,11 @@ fn a_shorthand_declares_what_the_full_spelling_does() {
         ],
         RECORD Version WITH [revision (revision: Natural)],";
     let full = "
-        DATA Shape RETURNS Type WITH [
-          circle (radius: Natural) RETURNS Shape,
-          square RETURNS Shape,
+        DATA Shape : Type WITH [
+          circle (radius: Natural) : Shape,
+          square : Shape,
         ],
-        RECORD Version RETURNS Type WITH [revision (revision: Natural)],";
+        RECORD Version : Type WITH [revision (revision: Natural)],";
     check(short).unwrap();
     let declarations = |source| -> Vec<Declaration> { lowered(source).unwrap().declarations };
     assert_eq!(declarations(short), declarations(full));
@@ -47,8 +47,8 @@ fn a_shorthand_declares_what_the_full_spelling_does() {
 #[test]
 fn constructors_with_and_without_returns_mix() {
     check(
-        "DATA Shape WITH [circle, square RETURNS Shape],
-         FUNCTION corners of (shape: Shape) RETURNS Natural IS (MATCH shape WITH [
+        "DATA Shape WITH [circle, square : Shape],
+         FUNCTION corners of (shape: Shape) : Natural IS (MATCH shape WITH [
            WHEN circle THEN 0,
            WHEN square THEN 4,
          ]),",
@@ -60,12 +60,14 @@ fn constructors_with_and_without_returns_mix() {
 fn a_type_with_parameters_says_what_its_constructors_return() {
     let error = check("DATA Box of (item: Type) WITH [empty],").unwrap_err();
     assert!(
-        error.contains("`Box of _` takes parameters, so each of its constructors says what it returns with `RETURNS`"),
+        error.contains(
+            "`Box of _` takes parameters, so each of its constructors says what it returns with `:`"
+        ),
         "{error}"
     );
     check(
         "DATA Box of (item: Type) WITH [
-           empty (item: Type) RETURNS Box of (item),
+           empty (item: Type) : Box of (item),
          ],",
     )
     .unwrap();
@@ -75,8 +77,8 @@ fn a_type_with_parameters_says_what_its_constructors_return() {
 fn a_kind_is_still_written_out() {
     check(
         "DATA Effect WITH [reads, writes],
-         DATA Endpoint (effect: Effect) RETURNS Kind WITH [
-           ping RETURNS Endpoint (reads),
+         DATA Endpoint (effect: Effect) : Kind WITH [
+           ping : Endpoint (reads),
          ],",
     )
     .unwrap();

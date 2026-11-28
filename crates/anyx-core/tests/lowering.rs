@@ -17,7 +17,7 @@ fn lower(source: &str) -> Result<Document, LoweringError> {
 fn resolves_forward_references_and_match_bindings() {
     let document = lower(
         "
-FUNCTION predecessor of (number: Natural) RETURNS Natural IS (MATCH number WITH [WHEN zero THEN zero, WHEN successor of (number) THEN number]),
+FUNCTION predecessor of (number: Natural) : Natural IS (MATCH number WITH [WHEN zero THEN zero, WHEN successor of (number) THEN number]),
 ",
     )
     .unwrap();
@@ -69,8 +69,7 @@ FUNCTION predecessor of (number: Natural) RETURNS Natural IS (MATCH number WITH 
 #[test]
 fn resolves_parameter_annotations_in_written_order() {
     let document =
-        lower("FUNCTION in (element: Type) choose (value: element) RETURNS element IS value")
-            .unwrap();
+        lower("FUNCTION in (element: Type) choose (value: element) : element IS value").unwrap();
     let Declaration::Function { signature, body } = &document.declarations[0] else {
         panic!("expected a function");
     };
@@ -82,9 +81,8 @@ fn resolves_parameter_annotations_in_written_order() {
     assert_eq!(signature.result, Term::Local(element.binding.identifier));
     assert_eq!(*body, Term::Local(value.binding.identifier));
 
-    let error =
-        lower("FUNCTION choose (value: element) in (element: Type) RETURNS element IS value")
-            .unwrap_err();
+    let error = lower("FUNCTION choose (value: element) in (element: Type) : element IS value")
+        .unwrap_err();
     assert_eq!(error.message, "unknown name `element`");
 }
 
@@ -92,9 +90,9 @@ fn resolves_parameter_annotations_in_written_order() {
 fn abstracts_direct_holes_in_order_at_each_call() {
     let document = lower(
         "
-FUNCTION combine (first: Type) with (second: Type) and (third: Type) RETURNS Type IS first,
-FUNCTION identity of (value: Type) RETURNS Type IS value,
-FUNCTION section RETURNS Type IS (combine _ with (identity of _) and _),
+FUNCTION combine (first: Type) with (second: Type) and (third: Type) : Type IS first,
+FUNCTION identity of (value: Type) : Type IS value,
+FUNCTION section : Type IS (combine _ with (identity of _) and _),
 ",
     )
     .unwrap();
@@ -134,11 +132,11 @@ FUNCTION section RETURNS Type IS (combine _ with (identity of _) and _),
 
 #[test]
 fn rejects_a_bare_hole_and_a_pattern_binding_outside_its_case() {
-    let error = lower("FUNCTION section RETURNS Type IS _").unwrap_err();
+    let error = lower("FUNCTION section : Type IS _").unwrap_err();
     assert_eq!(error.message, "a hole must be a direct argument of a call");
 
     let error = lower(
-        "FUNCTION example of (value: Type) RETURNS Type IS (MATCH value WITH [WHEN first THEN first, WHEN second THEN first])",
+        "FUNCTION example of (value: Type) : Type IS (MATCH value WITH [WHEN first THEN first, WHEN second THEN first])",
     )
     .unwrap_err();
     assert_eq!(error.message, "unknown name `first`");
@@ -148,22 +146,18 @@ fn rejects_a_bare_hole_and_a_pattern_binding_outside_its_case() {
 fn rejects_invalid_names_at_the_offending_token() {
     for (source, token, message) in [
         (
-            "FUNCTION example RETURNS Type IS Type, FUNCTION example RETURNS Type IS Type",
+            "FUNCTION example : Type IS Type, FUNCTION example : Type IS Type",
             "example",
             "duplicate declaration of `example`",
         ),
         (
-            "FUNCTION choose (value: Type) and (value: Type) RETURNS Type IS Type",
+            "FUNCTION choose (value: Type) and (value: Type) : Type IS Type",
             "value",
             "duplicate binding of `value`",
         ),
+        ("FUNCTION Type : Type IS Type", "Type", "`Type` is reserved"),
         (
-            "FUNCTION Type RETURNS Type IS Type",
-            "Type",
-            "`Type` is reserved",
-        ),
-        (
-            "FUNCTION example RETURNS Type IS (MATCH Type WITH [WHEN missing (field) THEN field])",
+            "FUNCTION example : Type IS (MATCH Type WITH [WHEN missing (field) THEN field])",
             "missing",
             "unknown constructor `missing _`",
         ),
@@ -183,10 +177,10 @@ fn rejects_invalid_names_at_the_offending_token() {
 #[test]
 fn rejects_kind_outside_a_declaration_result() {
     for source in [
-        "FUNCTION example (item: Kind) RETURNS Type IS item",
-        "FUNCTION example RETURNS Kind IS Kind",
-        "FUNCTION example RETURNS ((item: Type) RETURNS Kind) IS Type",
-        "DATA Example RETURNS Kind WITH [example RETURNS Kind]",
+        "FUNCTION example (item: Kind) : Type IS item",
+        "FUNCTION example : Kind IS Kind",
+        "FUNCTION example : ((item: Type) -> Kind) IS Type",
+        "DATA Example : Kind WITH [example : Kind]",
     ] {
         let error = lower(source).unwrap_err();
         assert_eq!(&source[error.span.start..error.span.end], "Kind");

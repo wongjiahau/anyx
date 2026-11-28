@@ -8,13 +8,13 @@ use anyx_core::{
 fn indexes_parameters_patterns_and_holes_in_their_own_scopes() {
     let parsed = parse_document(
         "
-DATA Pair RETURNS Kind WITH [pair (left: Type) with (right: Type) RETURNS Pair],
-FUNCTION in (element: Type) choose (value: element) RETURNS ((element: element) RETURNS element)
+DATA Pair : Kind WITH [pair (left: Type) with (right: Type) : Pair],
+FUNCTION in (element: Type) choose (value: element) : ((element: element) -> element)
 IS (MATCH value WITH [
   WHEN pair (value) with (other) THEN (combine (value) with _ and (element)),
   WHEN fallback THEN value
 ]),
-FUNCTION combine (first: Type) with (second: Type) and (third: Type) RETURNS Type IS first,
+FUNCTION combine (first: Type) with (second: Type) and (third: Type) : Type IS first,
 ",
     );
     assert!(

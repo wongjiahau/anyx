@@ -200,14 +200,14 @@ pub fn built_in_declarations() -> Vec<Declaration> {
                 result: Term::Type,
             },
             constructors: vec![
-                // `empty list of (item: Type) RETURNS List of (item)`
+                // `empty list of (item: Type) : List of (item)`
                 Signature {
                     name: EMPTY_LIST.to_owned(),
                     parameter_types: vec![Term::Type],
                     result: list_of(Term::Local(Index(0))),
                 },
                 // `list of (item: Type) starting (first: item)
-                //  then (rest: List of (item)) RETURNS List of (item)`
+                //  then (rest: List of (item)) : List of (item)`
                 Signature {
                     name: LIST_CELL.to_owned(),
                     parameter_types: vec![
@@ -224,8 +224,8 @@ pub fn built_in_declarations() -> Vec<Declaration> {
 pub const ZERO: &str = "zero";
 pub const SUCCESSOR: &str = "successor of _";
 
-/// `DATA Natural RETURNS Type WITH [zero RETURNS Natural, successor of
-/// (number: Natural) RETURNS Natural]`, checked before every document.
+/// `DATA Natural : Type WITH [zero : Natural, successor of
+/// (number: Natural) : Natural]`, checked before every document.
 pub fn natural_declaration() -> Declaration {
     let natural = || {
         Term::Global(Global {

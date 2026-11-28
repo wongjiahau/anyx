@@ -8,7 +8,11 @@ pub use support::{CallName, DecodeError, Spanned};
 static REGEX_1: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new("_").expect("the generator checked it"));
 
-static REGEX_2: std::sync::LazyLock<regex::Regex> =
+static REGEX_2: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new("^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$").expect("the generator checked it")
+});
+
+static REGEX_3: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new("^[^_]+$").expect("the generator checked it"));
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,16 +31,14 @@ pub enum Declaration {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
-    pub head: Head,
-    pub returns: Option<SignatureResult>,
+    pub declared: Declared,
     pub constructors: Spanned<Vec<Constructor>>,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
-    pub head: Head,
-    pub returns: Option<SignatureResult>,
+    pub declared: Declared,
     pub fields: Spanned<Vec<Field>>,
     pub span: Span,
 }
@@ -69,16 +71,27 @@ pub enum Constructor {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub head: Head,
-    pub signature_result: SignatureResult,
+    pub typed_head: TypedHead,
     pub body: Expression,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ServedFunction {
+    pub typed_head: TypedHead,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Declared {
+    TypedHead(TypedHead),
+    Head(Head),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedHead {
     pub head: Head,
-    pub result: Expression,
+    pub result: SignatureResult,
     pub span: Span,
 }
 
@@ -222,6 +235,15 @@ impl Constructor {
     }
 }
 
+impl Declared {
+    pub fn span(&self) -> Span {
+        match self {
+            Declared::TypedHead(value) => value.span,
+            Declared::Head(value) => value.span(),
+        }
+    }
+}
+
 impl SignatureResult {
     pub fn span(&self) -> Span {
         match self {
@@ -300,16 +322,14 @@ impl support::Errors for Declaration {
 
 impl support::Errors for Data {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.returns, found);
+        support::Errors::errors(&self.declared, found);
         support::Errors::errors(&self.constructors, found);
     }
 }
 
 impl support::Errors for Record {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.returns, found);
+        support::Errors::errors(&self.declared, found);
         support::Errors::errors(&self.fields, found);
     }
 }
@@ -353,13 +373,27 @@ impl support::Errors for Constructor {
 
 impl support::Errors for Function {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
-        support::Errors::errors(&self.head, found);
-        support::Errors::errors(&self.signature_result, found);
+        support::Errors::errors(&self.typed_head, found);
         support::Errors::errors(&self.body, found);
     }
 }
 
 impl support::Errors for ServedFunction {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        support::Errors::errors(&self.typed_head, found);
+    }
+}
+
+impl support::Errors for Declared {
+    fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
+        match self {
+            Declared::TypedHead(value) => support::Errors::errors(value, found),
+            Declared::Head(value) => support::Errors::errors(value, found),
+        }
+    }
+}
+
+impl support::Errors for TypedHead {
     fn errors<'a>(&'a self, found: &mut std::vec::Vec<&'a support::DecodeError>) {
         support::Errors::errors(&self.head, found);
         support::Errors::errors(&self.result, found);
@@ -515,19 +549,7 @@ pub fn decode_declaration(node: &Node) -> Result<Declaration, DecodeError> {
 pub fn decode_data(node: &Node) -> Result<Data, DecodeError> {
     let mut parts = support::call(node, "the call `DATA _ WITH _`")?;
     let decoded = Data {
-        head: parts.word("DATA")?.one(decode_head, "a head")?,
-        returns: if parts
-            .choose(&["RETURNS"], false, true, &["the word `RETURNS`"])?
-            .is_some()
-        {
-            Some(
-                parts
-                    .word("RETURNS")?
-                    .one(decode_signature_result, "a signature result")?,
-            )
-        } else {
-            None
-        },
+        declared: parts.word("DATA")?.one(decode_declared, "a declared")?,
         constructors: parts
             .word("WITH")?
             .one(decode_data_constructors, "`[...]`")?,
@@ -550,19 +572,7 @@ fn decode_data_constructors(node: &Node) -> Result<Spanned<Vec<Constructor>>, De
 pub fn decode_record(node: &Node) -> Result<Record, DecodeError> {
     let mut parts = support::call(node, "the call `RECORD _ WITH _`")?;
     let decoded = Record {
-        head: parts.word("RECORD")?.one(decode_head, "a head")?,
-        returns: if parts
-            .choose(&["RETURNS"], false, true, &["the word `RETURNS`"])?
-            .is_some()
-        {
-            Some(
-                parts
-                    .word("RETURNS")?
-                    .one(decode_signature_result, "a signature result")?,
-            )
-        } else {
-            None
-        },
+        declared: parts.word("RECORD")?.one(decode_declared, "a declared")?,
         fields: parts.word("WITH")?.one(decode_record_fields, "`[...]`")?,
         span: node.span,
     };
@@ -619,12 +629,10 @@ pub fn decode_constructor(node: &Node) -> Result<Constructor, DecodeError> {
 }
 
 fn decode_constructor_returning(node: &Node) -> Result<Constructor, DecodeError> {
-    let mut parts = support::call(node, "the call `_ RETURNS _`")?;
+    let mut parts = support::call(node, "the call `_ : _`")?;
     let decoded = Constructor::Returning {
         head: parts.one(decode_head, "a head")?,
-        r#type: parts
-            .word("RETURNS")?
-            .one(decode_expression, "an expression")?,
+        r#type: parts.word(":")?.one(decode_expression, "an expression")?,
         span: node.span,
     };
     parts.finish()?;
@@ -632,12 +640,11 @@ fn decode_constructor_returning(node: &Node) -> Result<Constructor, DecodeError>
 }
 
 pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
-    let mut parts = support::call(node, "the call `FUNCTION _ RETURNS _ IS _`")?;
+    let mut parts = support::call(node, "the call `FUNCTION _ IS _`")?;
     let decoded = Function {
-        head: parts.word("FUNCTION")?.one(decode_head, "a head")?,
-        signature_result: parts
-            .word("RETURNS")?
-            .one(decode_signature_result, "a signature result")?,
+        typed_head: parts
+            .word("FUNCTION")?
+            .one(decode_typed_head, "a typed head")?,
         body: parts.word("IS")?.one(decode_expression, "an expression")?,
         span: node.span,
     };
@@ -646,12 +653,30 @@ pub fn decode_function(node: &Node) -> Result<Function, DecodeError> {
 }
 
 pub fn decode_served_function(node: &Node) -> Result<ServedFunction, DecodeError> {
-    let mut parts = support::call(node, "the call `FUNCTION _ RETURNS _`")?;
+    let mut parts = support::call(node, "the call `FUNCTION _`")?;
     let decoded = ServedFunction {
-        head: parts.word("FUNCTION")?.one(decode_head, "a head")?,
+        typed_head: parts
+            .word("FUNCTION")?
+            .one(decode_typed_head, "a typed head")?,
+        span: node.span,
+    };
+    parts.finish()?;
+    Ok(decoded)
+}
+
+pub fn decode_declared(node: &Node) -> Result<Declared, DecodeError> {
+    decode_typed_head(node)
+        .map(Declared::TypedHead)
+        .or_else(|error| error.or(decode_head(node).map(Declared::Head)))
+}
+
+pub fn decode_typed_head(node: &Node) -> Result<TypedHead, DecodeError> {
+    let mut parts = support::call(node, "the call `_ : _`")?;
+    let decoded = TypedHead {
+        head: parts.one(decode_head, "a head")?,
         result: parts
-            .word("RETURNS")?
-            .one(decode_expression, "an expression")?,
+            .word(":")?
+            .one(decode_signature_result, "a signature result")?,
         span: node.span,
     };
     parts.finish()?;
@@ -671,8 +696,12 @@ pub fn decode_head(node: &Node) -> Result<Head, DecodeError> {
 fn decode_head_with_parameters(node: &Node) -> Result<Head, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
-        "a call whose name has no keyword and matches the regex `_`",
+        |name| {
+            !name.split(' ').any(anyx::is_keyword)
+                && REGEX_1.is_match(name)
+                && REGEX_2.is_match(name)
+        },
+        "a call whose name has no keyword, matches the regex `_` and matches the regex `^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$`",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Head::WithParameters {
@@ -689,7 +718,7 @@ fn decode_head_plain(node: &Node) -> Result<Head, DecodeError> {
         node,
         |name| {
             !name.split(' ').any(anyx::is_keyword)
-                && REGEX_2.is_match(name)
+                && REGEX_3.is_match(name)
                 && !name.split(' ').any(|word| word == "_")
         },
         "a call whose name has no keyword, matches the regex `^[^_]+$` and has no `_`",
@@ -793,10 +822,10 @@ pub fn decode_expression(node: &Node) -> Result<Expression, DecodeError> {
 }
 
 fn decode_expression_function_type(node: &Node) -> Result<Expression, DecodeError> {
-    let mut parts = support::call(node, "the call `_ RETURNS _`")?;
+    let mut parts = support::call(node, "the call `_ -> _`")?;
     let decoded = Expression::FunctionType {
         parameter: parts.one(decode_parameter, "a parameter")?,
-        result: parts.word("RETURNS")?.one(
+        result: parts.word("->")?.one(
             |node| decode_expression(node).map(Box::new),
             "an expression",
         )?,
@@ -835,8 +864,12 @@ fn decode_expression_match_cases(node: &Node) -> Result<Spanned<Vec<Case>>, Deco
 fn decode_expression_call(node: &Node) -> Result<Expression, DecodeError> {
     let (name, arguments) = support::any_call(
         node,
-        |name| !name.split(' ').any(anyx::is_keyword) && REGEX_1.is_match(name),
-        "a call whose name has no keyword and matches the regex `_`",
+        |name| {
+            !name.split(' ').any(anyx::is_keyword)
+                && REGEX_1.is_match(name)
+                && REGEX_2.is_match(name)
+        },
+        "a call whose name has no keyword, matches the regex `_` and matches the regex `^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$`",
     )?;
     let mut arguments = support::arguments(node, arguments);
     let decoded = Expression::Call {
@@ -853,7 +886,7 @@ fn decode_expression_name(node: &Node) -> Result<Expression, DecodeError> {
         node,
         |name| {
             !name.split(' ').any(anyx::is_keyword)
-                && REGEX_2.is_match(name)
+                && REGEX_3.is_match(name)
                 && !name.split(' ').any(|word| word == "_")
         },
         "a call whose name has no keyword, matches the regex `^[^_]+$` and has no `_`",
@@ -937,7 +970,7 @@ fn decode_pattern_name(node: &Node) -> Result<Pattern, DecodeError> {
         node,
         |name| {
             !name.split(' ').any(anyx::is_keyword)
-                && REGEX_2.is_match(name)
+                && REGEX_3.is_match(name)
                 && !name.split(' ').any(|word| word == "_")
         },
         "a call whose name has no keyword, matches the regex `^[^_]+$` and has no `_`",
@@ -969,11 +1002,7 @@ pub const LAYOUT: &[support::LayoutRule] = &[
         break_before: &["WITH"],
     },
     support::LayoutRule {
-        words: &["RETURNS"],
-        break_before: &["RETURNS"],
-    },
-    support::LayoutRule {
-        words: &["FUNCTION", "RETURNS", "IS"],
+        words: &["FUNCTION", "IS"],
         break_before: &["IS"],
     },
     support::LayoutRule {

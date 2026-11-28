@@ -7,20 +7,20 @@ use anyx_core::{
 };
 
 const DATA: &str = "
-    DATA Case RETURNS Type WITH [smart case RETURNS Case, any case RETURNS Case],
-    DATA Hidden files RETURNS Type WITH [hidden RETURNS Hidden files, skip hidden RETURNS Hidden files],
-    DATA Vector of (length: Natural) RETURNS Type WITH [
-        empty RETURNS Vector of (zero),
+    DATA Case : Type WITH [smart case : Case, any case : Case],
+    DATA Hidden files : Type WITH [hidden : Hidden files, skip hidden : Hidden files],
+    DATA Vector of (length: Natural) : Type WITH [
+        empty : Vector of (zero),
         prepend length (length: Natural) value (first: Natural) tail (rest: Vector of (length))
-            RETURNS Vector of (successor of (length)),
+            : Vector of (successor of (length)),
     ],
-    RECORD Search RETURNS Type WITH [
+    RECORD Search : Type WITH [
         .(case: Case) DEFAULT smart case,
         .(hidden: Hidden files) DEFAULT skip hidden,
         between (low: Natural) and (high: Natural) DEFAULT between (zero) and (zero),
         max depth (max depth: Natural),
     ],
-    RECORD Sized list RETURNS Type WITH [
+    RECORD Sized list : Type WITH [
         length (length: Natural),
         items (items: Vector of (length)),
     ],";
@@ -63,8 +63,8 @@ fn bodies(source: &str) -> Vec<(String, anyx_core::kernel::Term)> {
 #[test]
 fn a_value_fills_its_fields_in_declaration_order_and_defaults_the_rest() {
     let bodies = bodies(
-        "FUNCTION written RETURNS Search IS { max depth (zero), .any case },
-         FUNCTION spelled out RETURNS Search
+        "FUNCTION written : Search IS { max depth (zero), .any case },
+         FUNCTION spelled out : Search
            IS (search (any case) (skip hidden) (zero) (zero) (zero)),",
     );
     let body = |name: &str| &bodies.iter().find(|(found, _)| found == name).unwrap().1;
@@ -75,7 +75,7 @@ fn a_value_fills_its_fields_in_declaration_order_and_defaults_the_rest() {
 fn a_field_s_type_can_name_an_earlier_field() {
     assert_eq!(
         check(
-            "FUNCTION one item RETURNS Sized list IS {
+            "FUNCTION one item : Sized list IS {
                items (prepend length (zero) value (zero) tail (empty)),
                length (successor of (zero)),
              },"
@@ -83,18 +83,16 @@ fn a_field_s_type_can_name_an_earlier_field() {
         Ok(())
     );
     assert!(
-        check(
-            "FUNCTION wrong RETURNS Sized list IS { items (empty), length (successor of (zero)) },"
-        )
-        .unwrap_err()
-        .contains("expected type")
+        check("FUNCTION wrong : Sized list IS { items (empty), length (successor of (zero)) },")
+            .unwrap_err()
+            .contains("expected type")
     );
 }
 
 #[test]
 fn a_value_must_give_every_field_without_a_default() {
     assert_eq!(
-        check("FUNCTION wrong RETURNS Search IS { .any case },"),
+        check("FUNCTION wrong : Search IS { .any case },"),
         Err("no record has exactly these fields".to_owned())
     );
 }
@@ -102,7 +100,7 @@ fn a_value_must_give_every_field_without_a_default() {
 #[test]
 fn a_default_is_checked_against_its_field() {
     assert!(
-        check("RECORD Pick RETURNS Type WITH [.(case: Case) DEFAULT hidden],")
+        check("RECORD Pick : Type WITH [.(case: Case) DEFAULT hidden],")
             .unwrap_err()
             .contains("default case of Pick")
     );
@@ -112,7 +110,7 @@ fn a_default_is_checked_against_its_field() {
 fn a_field_that_depends_on_another_has_no_default() {
     assert_eq!(
         check(
-            "RECORD Pair RETURNS Type WITH [
+            "RECORD Pair : Type WITH [
                length (size: Natural),
                items (elements: Vector of (size)) DEFAULT items (empty),
              ],"
@@ -124,7 +122,7 @@ fn a_field_that_depends_on_another_has_no_default() {
 #[test]
 fn an_entry_finds_one_field_only() {
     assert_eq!(
-        check("RECORD Pair RETURNS Type WITH [.(first: Case), .(second: Case)],"),
+        check("RECORD Pair : Type WITH [.(first: Case), .(second: Case)],"),
         Err(
             "two fields marked `.` both hold `Case`, so an entry couldn't tell which it fills"
                 .to_owned()
@@ -135,16 +133,16 @@ fn an_entry_finds_one_field_only() {
         check(
             "DATA Step WITH [next of (n: Natural)],
              RECORD Pair WITH [next of (x: Natural), .(step: Step)],
-             FUNCTION both RETURNS Pair IS { next of 1, .next of 2 },"
+             FUNCTION both : Pair IS { next of 1, .next of 2 },"
         ),
         Ok(())
     );
     assert_eq!(
-        check("RECORD Pair RETURNS Type WITH [successor of (x: Natural)],"),
+        check("RECORD Pair : Type WITH [successor of (x: Natural)],"),
         Ok(())
     );
     assert_eq!(
-        check("RECORD Pair RETURNS Type WITH [first (x: Natural), second (x: Natural)],"),
+        check("RECORD Pair : Type WITH [first (x: Natural), second (x: Natural)],"),
         Err("duplicate binding of `x`".to_owned())
     );
 }
@@ -153,8 +151,8 @@ fn an_entry_finds_one_field_only() {
 fn a_record_s_parameters_come_first_in_its_constructor() {
     assert_eq!(
         check(
-            "RECORD Box of (item: Type) RETURNS Kind WITH [content (content: item)],
-             FUNCTION boxed RETURNS Box of (Natural) IS (box of (Natural) (zero)),"
+            "RECORD Box of (item: Type) : Kind WITH [content (content: item)],
+             FUNCTION boxed : Box of (Natural) IS (box of (Natural) (zero)),"
         ),
         Ok(())
     );
@@ -162,10 +160,10 @@ fn a_record_s_parameters_come_first_in_its_constructor() {
 
 #[test]
 fn a_record_can_be_an_unnamed_field() {
-    let source = "RECORD Span RETURNS Type WITH [from (low: Natural) to (high: Natural)],
-         RECORD Labelled RETURNS Type WITH [.(span: Span), labelled (label: Case)],
-         FUNCTION nested RETURNS Labelled IS { labelled (any case), .{ from 1 to 2 } },
-         FUNCTION explicit RETURNS Labelled
+    let source = "RECORD Span : Type WITH [from (low: Natural) to (high: Natural)],
+         RECORD Labelled : Type WITH [.(span: Span), labelled (label: Case)],
+         FUNCTION nested : Labelled IS { labelled (any case), .{ from 1 to 2 } },
+         FUNCTION explicit : Labelled
             IS labelled (span (1) (2)) (any case),";
     check(source).unwrap();
     let bodies = bodies(source);
@@ -175,11 +173,11 @@ fn a_record_can_be_an_unnamed_field() {
 #[test]
 fn a_value_of_a_dot_field_is_marked_with_a_dot() {
     assert_eq!(
-        check("FUNCTION wrong RETURNS Search IS { max depth (zero), any case },"),
+        check("FUNCTION wrong : Search IS { max depth (zero), any case },"),
         Err("no record has exactly these fields".to_owned())
     );
     assert_eq!(
-        check("FUNCTION wrong RETURNS Search IS { max depth (zero), .max depth (zero) },"),
+        check("FUNCTION wrong : Search IS { max depth (zero), .max depth (zero) },"),
         Err("`.` marks a value of a `.` field, but `max depth _` is no constructor".to_owned())
     );
 }

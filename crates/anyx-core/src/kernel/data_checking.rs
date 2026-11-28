@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 /// Unfold each constructor result that names its family through an alias, a
 /// function that returns a type, so the result and positivity checks below
-/// see the family itself. `get profile RETURNS Private endpoint returning
-/// (Profile)` becomes `get profile RETURNS Endpoint returning (Profile)
+/// see the family itself. `get profile : Private endpoint returning
+/// (Profile)` becomes `get profile : Endpoint returning (Profile)
 /// access (bearer)`.
 ///
 /// Only nonrecursive functions unfold, and a call can only name a global, so
@@ -303,7 +303,7 @@ fn visit_global_references<'term>(
 /// For each constructor, the binders that stand for the family's parameters.
 ///
 /// A constructor restates every argument of its family as a binder, as in
-/// `nothing of (item: Type) RETURNS List of (item)`. Like Coq and Lean, the
+/// `nothing of (item: Type) : List of (item)`. Like Coq and Lean, the
 /// core does not count a parameter towards a family's universe: a value of
 /// `List of (Text)` holds `Text` only as the type it already has. A position
 /// is a parameter when it starts the family's arguments and every

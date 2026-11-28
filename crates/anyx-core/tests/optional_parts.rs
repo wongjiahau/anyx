@@ -8,13 +8,13 @@ use anyx_core::{
 };
 
 const DATA: &str = "
-    DATA Case RETURNS Type WITH [smart case RETURNS Case, any case RETURNS Case],
+    DATA Case : Type WITH [smart case : Case, any case : Case],
     FUNCTION find (pattern: Text)
         [in (paths: List of (Text)) DEFAULT in []]
         [with (case: Case) DEFAULT with (smart case)]
-      RETURNS List of (Text),
-    DATA Request RETURNS Type WITH [
-        search (pattern: Text) [under (depth: Natural) DEFAULT under 3] RETURNS Request,
+      : List of (Text),
+    DATA Request : Type WITH [
+        search (pattern: Text) [under (depth: Natural) DEFAULT under 3] : Request,
     ],";
 
 fn lowered(source: &str) -> Result<Document, String> {
@@ -52,10 +52,10 @@ fn body(source: &str, name: &str) -> Term {
 
 #[test]
 fn a_call_that_leaves_out_parts_gets_their_defaults() {
-    let source = "FUNCTION short RETURNS List of (Text) IS find \"x\",
-         FUNCTION some RETURNS List of (Text) IS find \"x\" with (any case),
-         FUNCTION all RETURNS List of (Text) IS find \"x\" in [\"src\"] with (smart case),
-         FUNCTION written RETURNS List of (Text) IS find \"x\" in [] with (smart case),";
+    let source = "FUNCTION short : List of (Text) IS find \"x\",
+         FUNCTION some : List of (Text) IS find \"x\" with (any case),
+         FUNCTION all : List of (Text) IS find \"x\" in [\"src\"] with (smart case),
+         FUNCTION written : List of (Text) IS find \"x\" in [] with (smart case),";
     check(source).unwrap();
     assert_eq!(body(source, "short"), body(source, "written"));
     assert_ne!(body(source, "some"), body(source, "written"));
@@ -63,8 +63,8 @@ fn a_call_that_leaves_out_parts_gets_their_defaults() {
 
 #[test]
 fn a_constructor_can_have_optional_parts() {
-    let source = "FUNCTION shallow RETURNS Request IS search \"x\",
-         FUNCTION written RETURNS Request IS search \"x\" under 3,";
+    let source = "FUNCTION shallow : Request IS search \"x\",
+         FUNCTION written : Request IS search \"x\" under 3,";
     check(source).unwrap();
     assert_eq!(body(source, "shallow"), body(source, "written"));
 }
@@ -72,12 +72,12 @@ fn a_constructor_can_have_optional_parts() {
 #[test]
 fn a_default_is_checked_and_names_no_parameter() {
     let error = check(
-        "FUNCTION wrong (pattern: Text) [in (paths: List of (Text)) DEFAULT in 3] RETURNS Text IS pattern,",
+        "FUNCTION wrong (pattern: Text) [in (paths: List of (Text)) DEFAULT in 3] : Text IS pattern,",
     )
     .unwrap_err();
     assert!(error.contains("default paths of wrong"), "{error}");
     let error = check(
-        "FUNCTION wrong (item: Type) [holding (value: item) DEFAULT holding 3] RETURNS Type IS item,",
+        "FUNCTION wrong (item: Type) [holding (value: item) DEFAULT holding 3] : Type IS item,",
     )
     .unwrap_err();
     assert!(error.contains("depends on the parameter `item`"), "{error}");
@@ -86,12 +86,12 @@ fn a_default_is_checked_and_names_no_parameter() {
 #[test]
 fn only_functions_and_constructors_have_optional_parts() {
     for source in [
-        "DATA Box [of (item: Type) DEFAULT of Text] RETURNS Type WITH [],",
-        "RECORD Pair RETURNS Type WITH [first (x: Text) [then (y: Text) DEFAULT then \"\"]],",
+        "DATA Box [of (item: Type) DEFAULT of Text] : Type WITH [],",
+        "RECORD Pair : Type WITH [first (x: Text) [then (y: Text) DEFAULT then \"\"]],",
     ] {
         assert!(check(source).is_err(), "{source}");
     }
     // A shorter form can't be another declaration's name.
-    let error = check("FUNCTION find (pattern: Text) RETURNS Text IS pattern,").unwrap_err();
+    let error = check("FUNCTION find (pattern: Text) : Text IS pattern,").unwrap_err();
     assert!(error.contains("find _"), "{error}");
 }

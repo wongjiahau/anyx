@@ -1,7 +1,7 @@
 # The core: what to build, in order
 
 The first version is the smallest core: `Type`, dependent function types
-(`(x: a) RETURNS b`), holes as anonymous functions, calls, `FUNCTION`, `DATA`
+(`(x: a) -> b`), holes as anonymous functions, calls, `FUNCTION`, `DATA`
 and `MATCH`. Every argument is written out: no `GIVEN`, no type classes, no
 inference. Macros and effects come later.
 
@@ -253,13 +253,22 @@ inference. Macros and effects come later.
     - So an entry says which kind it is: `{ 2 hours }` would read as a
       field `_ hours`, while `{ .2 hours }` is a value of a `.` field.
     - A field's words may now be a constructor of a `.` field's type too.
-27. `:` replaces `RETURNS` everywhere: `FUNCTION parse (t: Text) : Natural
-    IS ...`, `DATA Optional (item: Type) : Type WITH [...]`, and a
+27. `:` replaces `RETURNS` everywhere: `FUNCTION parse (t: Text) : (done)
+    Natural IS ...`, `DATA Optional (item: Type) : Type WITH [...]`, and a
     constructor's `something of (item: Type) is (value: item) : Optional
     (item)`.
     - It reads as "`parse` has type `Natural`", the same `:` as a parameter
       and as an ascription (step 28).
     - `:` is reserved, so no function is named `_ : _`.
+    - A function type is written with `->`: `(n: Natural) -> Vector of
+      (n)`. With `:` there, `(n : Natural) : Type` would read as a
+      function type and as two ascriptions alike.
+    - `:` and `->` are symbol words, so `FUNCTION f (x: T) : R IS b` is
+      `FUNCTION _ IS _` holding the call `_ : _`: the grammar nests a typed
+      head inside the declaration, and no call or head name has the word
+      `:` or `->`. A function type as a result is grouped: `FUNCTION f :
+      ((n: Natural) -> Natural) IS ...`, since `_ : _ -> _` is one flat
+      call.
 28. Ascription: `(e : T)` is an expression, anywhere an expression is.
     - Checking: `T` is a type, `e` is checked against it, and the whole has
       type `T`. Evaluation: it is `e`.

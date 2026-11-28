@@ -192,6 +192,24 @@ pub fn record_fields(document: &parser::Document) -> HashMap<String, Vec<RecordF
         .collect()
 }
 
+impl parser::Declared {
+    /// The head a `DATA` or `RECORD` declares.
+    pub(crate) fn head(&self) -> &parser::Head {
+        match self {
+            Self::TypedHead(typed) => &typed.head,
+            Self::Head(head) => head,
+        }
+    }
+
+    /// What it is, when written; without it, it is a `Type`.
+    pub(crate) fn result(&self) -> Option<&parser::SignatureResult> {
+        match self {
+            Self::TypedHead(typed) => Some(&typed.result),
+            Self::Head(_) => None,
+        }
+    }
+}
+
 pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringError> {
     let mut resolver = Resolver::default();
     resolver.register_document(document)?;
@@ -200,13 +218,13 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
     for declaration in &document.declaration {
         match declaration {
             parser::Declaration::Data(data) => {
-                let signature =
-                    resolver.declaration_signature(&data.head, data.returns.as_ref())?;
+                let signature = resolver
+                    .declaration_signature(data.declared.head(), data.declared.result())?;
                 resolver.locals.clear();
                 let mut constructors = Vec::new();
                 let mut defaults = Vec::new();
                 for constructor in &data.constructors.value {
-                    constructors.push(resolver.constructor(&data.head, constructor)?);
+                    constructors.push(resolver.constructor(data.declared.head(), constructor)?);
                     resolver.locals.clear();
                     defaults.extend(resolver.optional_defaults(constructor_head(constructor))?);
                 }
@@ -223,21 +241,25 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 declarations.extend(defaults);
             }
             parser::Declaration::Function(function) => {
-                let mut signature = resolver
-                    .declaration_signature(&function.head, Some(&function.signature_result))?;
-                signature.name = resolver.declared_name(&function.head);
+                let mut signature = resolver.declaration_signature(
+                    &function.typed_head.head,
+                    Some(&function.typed_head.result),
+                )?;
+                signature.name = resolver.declared_name(&function.typed_head.head);
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
                 declarations.push(Declaration::Function { signature, body });
-                declarations.extend(resolver.optional_defaults(&function.head)?);
+                declarations.extend(resolver.optional_defaults(&function.typed_head.head)?);
             }
             parser::Declaration::ServedFunction(function) => {
-                let mut signature = resolver
-                    .signature_returning(&function.head, |this| this.term(&function.result))?;
-                signature.name = resolver.declared_name(&function.head);
+                let mut signature = resolver.declaration_signature(
+                    &function.typed_head.head,
+                    Some(&function.typed_head.result),
+                )?;
+                signature.name = resolver.declared_name(&function.typed_head.head);
                 resolver.locals.clear();
                 declarations.push(Declaration::Served { signature });
-                declarations.extend(resolver.optional_defaults(&function.head)?);
+                declarations.extend(resolver.optional_defaults(&function.typed_head.head)?);
             }
         }
     }
@@ -461,7 +483,7 @@ pub fn default_name(record: &str, binder: &str) -> String {
 }
 
 fn record_slots(record: &parser::Record) -> usize {
-    let (_, parameters) = head_parts(&record.head);
+    let (_, parameters) = head_parts(record.declared.head());
     parameters.len()
         + record
             .fields
@@ -495,7 +517,7 @@ pub(crate) fn field_parts(
 }
 
 fn shape_of(record: &parser::Record) -> RecordShape {
-    let (name, parameters) = head_parts(&record.head);
+    let (name, parameters) = head_parts(record.declared.head());
     RecordShape {
         name: name.text.to_string(),
         constructor: record_constructor_name(&name.text, record_slots(record)),
@@ -547,9 +569,14 @@ impl<'source> Resolver<'source> {
         // A name two functions declare is overloaded.
         let mut function_names: HashMap<String, usize> = HashMap::new();
         for declaration in &document.declaration {
-            if let parser::Declaration::Function(parser::Function { head, .. })
-            | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) =
-                declaration
+            if let parser::Declaration::Function(parser::Function {
+                typed_head: parser::TypedHead { head, .. },
+                ..
+            })
+            | parser::Declaration::ServedFunction(parser::ServedFunction {
+                typed_head: parser::TypedHead { head, .. },
+                ..
+            }) = declaration
             {
                 *function_names
                     .entry(head_parts(head).0.text.into_owned())
@@ -557,9 +584,14 @@ impl<'source> Resolver<'source> {
             }
         }
         for declaration in &document.declaration {
-            if let parser::Declaration::Function(parser::Function { head, .. })
-            | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) =
-                declaration
+            if let parser::Declaration::Function(parser::Function {
+                typed_head: parser::TypedHead { head, .. },
+                ..
+            })
+            | parser::Declaration::ServedFunction(parser::ServedFunction {
+                typed_head: parser::TypedHead { head, .. },
+                ..
+            }) = declaration
             {
                 // A name without slots takes nothing to pick by: declared
                 // twice, it is a duplicate.
@@ -572,8 +604,8 @@ impl<'source> Resolver<'source> {
         for declaration in &document.declaration {
             match declaration {
                 parser::Declaration::Data(data) => {
-                    self.register(&data.head, GlobalKind::Data)?;
-                    let (data_name, _) = head_parts(&data.head);
+                    self.register(data.declared.head(), GlobalKind::Data)?;
+                    let (data_name, _) = head_parts(data.declared.head());
                     for constructor in &data.constructors.value {
                         let head = constructor_head(constructor);
                         self.register(head, GlobalKind::Constructor)?;
@@ -583,7 +615,7 @@ impl<'source> Resolver<'source> {
                     }
                 }
                 parser::Declaration::Record(record) => {
-                    self.register(&record.head, GlobalKind::Data)?;
+                    self.register(record.declared.head(), GlobalKind::Data)?;
                     for field in &record.fields.value {
                         let (parser::Field::Defaulted { field_shape, .. }
                         | parser::Field::FieldShape(field_shape)) = field;
@@ -597,7 +629,7 @@ impl<'source> Resolver<'source> {
                             });
                         }
                     }
-                    let (name, _) = head_parts(&record.head);
+                    let (name, _) = head_parts(record.declared.head());
                     let constructor = record_constructor_name(&name.text, record_slots(record));
                     let constructor =
                         self.register_generated(&constructor, name.span, GlobalKind::Constructor)?;
@@ -614,8 +646,14 @@ impl<'source> Resolver<'source> {
                         }
                     }
                 }
-                parser::Declaration::Function(parser::Function { head, .. })
-                | parser::Declaration::ServedFunction(parser::ServedFunction { head, .. }) => {
+                parser::Declaration::Function(parser::Function {
+                    typed_head: parser::TypedHead { head, .. },
+                    ..
+                })
+                | parser::Declaration::ServedFunction(parser::ServedFunction {
+                    typed_head: parser::TypedHead { head, .. },
+                    ..
+                }) => {
                     if !self
                         .overloads
                         .contains_key(head_parts(head).0.text.as_ref())
@@ -863,8 +901,9 @@ impl<'source> Resolver<'source> {
         &mut self,
         record: &'source parser::Record,
     ) -> Result<(Declaration, Vec<Declaration>), LoweringError> {
-        let (name, record_parameters) = head_parts(&record.head);
-        let signature = self.declaration_signature(&record.head, record.returns.as_ref())?;
+        let (name, record_parameters) = head_parts(record.declared.head());
+        let signature =
+            self.declaration_signature(record.declared.head(), record.declared.result())?;
         self.locals.clear();
 
         // The constructor: the record's parameters, then every field's slots.
@@ -1210,7 +1249,7 @@ impl<'source> Resolver<'source> {
             .then_some(filled)
     }
 
-    /// A declaration's signature. One written without `RETURNS` is a `Type`.
+    /// A declaration's signature. One written without `:` is a `Type`.
     fn declaration_signature(
         &mut self,
         head: &'source parser::Head,
@@ -1223,7 +1262,7 @@ impl<'source> Resolver<'source> {
         })
     }
 
-    /// A constructor's signature. One written without `RETURNS` returns the
+    /// A constructor's signature. One written without `:` returns the
     /// type it is a constructor of, which then can't take parameters: their
     /// values would be unknown.
     fn constructor(
@@ -1241,7 +1280,7 @@ impl<'source> Resolver<'source> {
                     return Err(LoweringError {
                         span: head.span(),
                         message: format!(
-                            "`{}` takes parameters, so each of its constructors says what it returns with `RETURNS`",
+                            "`{}` takes parameters, so each of its constructors says what it returns with `:`",
                             name.text,
                         ),
                     });

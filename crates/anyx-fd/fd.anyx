@@ -228,8 +228,8 @@ DATA Fd error WITH [
 ],
 
 DATA Outcome of (value: Type) WITH [
-  answered (value: Type) with (result: value) RETURNS Outcome of (value),
-  failed (value: Type) with (error: Fd error) RETURNS Outcome of (value),
+  answered (value: Type) with (result: value) : Outcome of (value),
+  failed (value: Type) with (error: Fd error) : Outcome of (value),
 ],
 
 ## ---------------------------------------------------------------------------
@@ -241,30 +241,30 @@ DATA Request returning (response: Type) WITH [
   find (pattern: Text)
       [in (paths: List of (Text)) DEFAULT in []]
       [with (search: Search) DEFAULT with {}]
-    RETURNS Request returning (List of (Text)),
+    : Request returning (List of (Text)),
   ## What `find` finds, with each file's details.
   details of (pattern: Text)
       [in (paths: List of (Text)) DEFAULT in []]
       [with (search: Search) DEFAULT with {}]
-    RETURNS Request returning (List of (Details)),
+    : Request returning (List of (Details)),
   ## Whether `find` finds anything. It stops at the first.
   any match of (pattern: Text)
       [in (paths: List of (Text)) DEFAULT in []]
       [with (search: Search) DEFAULT with {}]
-    RETURNS Request returning (Boolean),
+    : Request returning (Boolean),
 ],
 
 ## What fd serves.
 FUNCTION paths matching (pattern: Text) under (paths: List of (Text)) by (search: Search)
-  RETURNS Outcome of (List of (Text)),
+  : Outcome of (List of (Text)),
 FUNCTION details matching (pattern: Text) under (paths: List of (Text)) by (search: Search)
-  RETURNS Outcome of (List of (Details)),
+  : Outcome of (List of (Details)),
 FUNCTION whether any matches (pattern: Text) under (paths: List of (Text)) by (search: Search)
-  RETURNS Outcome of (Boolean),
+  : Outcome of (Boolean),
 
 ## The entry point: the answer to a request.
 FUNCTION answer (response: Type) to (request: Request returning (response))
-  RETURNS Outcome of (response)
+  : Outcome of (response)
   IS (MATCH request WITH [
     WHEN find (pattern) in (paths) with (search)
       THEN paths matching (pattern) under (paths) by (search),

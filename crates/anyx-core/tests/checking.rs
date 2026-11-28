@@ -10,8 +10,8 @@ use anyx_core::{
 #[test]
 fn checks_a_hole_against_a_dependent_function_type() {
     let document = kernel_document(
-        "FUNCTION choose (element: Type) value (value: element) RETURNS element IS value,
-         FUNCTION choose a natural RETURNS ((value: Natural) RETURNS Natural)
+        "FUNCTION choose (element: Type) value (value: element) : element IS value,
+         FUNCTION choose a natural : ((value: Natural) -> Natural)
            IS (choose (Natural) value _),",
     );
     let Declaration::Function { signature, body } = &document.declarations[1] else {
@@ -44,9 +44,9 @@ fn rejects_using_a_value_where_a_type_is_required() {
 #[test]
 fn rejects_mutual_recursion_without_descent() {
     let document = kernel_document(
-        "FUNCTION first (element: Type) value (value: element) RETURNS element
+        "FUNCTION first (element: Type) value (value: element) : element
            IS (second (element) value (value)),
-         FUNCTION second (element: Type) value (value: element) RETURNS element
+         FUNCTION second (element: Type) value (value: element) : element
            IS (first (element) value (value)),",
     );
     assert!(matches!(
@@ -58,8 +58,8 @@ fn rejects_mutual_recursion_without_descent() {
 #[test]
 fn checks_forward_references_in_signatures() {
     let document = kernel_document(
-        "FUNCTION identity (value: element) RETURNS element IS value,
-         FUNCTION element RETURNS Type IS Natural,",
+        "FUNCTION identity (value: element) : element IS value,
+         FUNCTION element : Type IS Natural,",
     );
     assert!(TypeChecker::default().check_document(&document).is_ok());
 }
@@ -67,7 +67,7 @@ fn checks_forward_references_in_signatures() {
 #[test]
 fn rejects_an_ill_formed_signature() {
     let document = kernel_document(
-        "FUNCTION invalid (element: Type) value (value: element) RETURNS value IS value,",
+        "FUNCTION invalid (element: Type) value (value: element) : value IS value,",
     );
     assert!(matches!(
         TypeChecker::default().check_functions(&document),
@@ -81,7 +81,7 @@ fn rejects_an_ill_formed_signature() {
 #[test]
 fn rejects_a_body_that_disagrees_with_its_declared_type() {
     let document = kernel_document(
-        "FUNCTION invalid (element: Type) value (value: element) RETURNS element IS Type,",
+        "FUNCTION invalid (element: Type) value (value: element) : element IS Type,",
     );
     assert!(matches!(
         TypeChecker::default().check_functions(&document),
@@ -96,7 +96,7 @@ fn rejects_a_body_that_disagrees_with_its_declared_type() {
 fn checks_data_families_and_exposes_constructors_to_functions() {
     let document = kernel_document(&format!(
         "FUNCTION singleton (item: Type) value (value: item)
-           RETURNS (Vector of (item) length (successor of (zero)))
+           : (Vector of (item) length (successor of (zero)))
            IS (prepend (item) length (zero) value (value) tail (empty of (item))),
          {VECTOR_DATA}{MATCH_DATA}",
     ));
@@ -106,10 +106,10 @@ fn checks_data_families_and_exposes_constructors_to_functions() {
 #[test]
 fn accepts_positive_mutual_recursion_and_nonrecursive_function_domains() {
     let document = kernel_document(
-        "DATA First RETURNS Type WITH [
-           first from (callback: ((input: Unrelated) RETURNS Second)) RETURNS First],
-         DATA Second RETURNS Type WITH [second from (previous: First) RETURNS Second],
-         DATA Unrelated RETURNS Type WITH [],",
+        "DATA First : Type WITH [
+           first from (callback: ((input: Unrelated) -> Second)) : First],
+         DATA Second : Type WITH [second from (previous: First) : Second],
+         DATA Unrelated : Type WITH [],",
     );
     TypeChecker::default().check_document(&document).unwrap();
 }
@@ -118,12 +118,12 @@ fn accepts_positive_mutual_recursion_and_nonrecursive_function_domains() {
 fn rejects_invalid_data_and_constructor_results() {
     for (source, expected) in [
         (
-            "DATA Wrong RETURNS Wrong WITH [],",
+            "DATA Wrong : Wrong WITH [],",
             DeclarationCheckingError::DataMustReturnUniverse("Wrong".into()),
         ),
         (
-            "DATA First RETURNS Type WITH [wrong RETURNS Second],
-             DATA Second RETURNS Type WITH [],",
+            "DATA First : Type WITH [wrong : Second],
+             DATA Second : Type WITH [],",
             DeclarationCheckingError::ConstructorMustReturnData {
                 constructor: "wrong".into(),
                 data: "First".into(),
@@ -140,19 +140,19 @@ fn rejects_invalid_data_and_constructor_results() {
 }
 
 const ENDPOINT_DATA: &str = "
-    DATA Access RETURNS Type WITH [public RETURNS Access, bearer RETURNS Access],
-    DATA Session RETURNS Type WITH [session RETURNS Session],
-    DATA Credential for (access: Access) RETURNS Type WITH [
-      anonymous RETURNS Credential for (public),
-      verified (current: Session) RETURNS Credential for (bearer),
+    DATA Access : Type WITH [public : Access, bearer : Access],
+    DATA Session : Type WITH [session : Session],
+    DATA Credential for (access: Access) : Type WITH [
+      anonymous : Credential for (public),
+      verified (current: Session) : Credential for (bearer),
     ],
-    DATA Health RETURNS Type WITH [ok RETURNS Health],
-    DATA Profile RETURNS Type WITH [profile of (owner: Session) RETURNS Profile],
-    FUNCTION Endpoint returning (response: Type) RETURNS Kind IS
+    DATA Health : Type WITH [ok : Health],
+    DATA Profile : Type WITH [profile of (owner: Session) : Profile],
+    FUNCTION Endpoint returning (response: Type) : Kind IS
       (Endpoint returning (response) access (bearer)),
-    DATA Endpoint returning (response: Type) access (access: Access) RETURNS Kind WITH [
-      health check RETURNS Endpoint returning (Health) access (public),
-      get profile RETURNS Endpoint returning (Profile),
+    DATA Endpoint returning (response: Type) access (access: Access) : Kind WITH [
+      health check : Endpoint returning (Health) access (public),
+      get profile : Endpoint returning (Profile),
     ],";
 
 #[test]
@@ -161,7 +161,7 @@ fn unfolds_an_alias_in_a_constructor_result() {
         "{ENDPOINT_DATA}
          FUNCTION serve (response: Type) access (access: Access)
            at (endpoint: Endpoint returning (response) access (access))
-           with (credential: Credential for (access)) RETURNS response
+           with (credential: Credential for (access)) : response
            IS (MATCH endpoint WITH [
              WHEN health check THEN ok,
              WHEN get profile THEN (MATCH credential WITH [
@@ -177,7 +177,7 @@ fn an_unfolded_constructor_result_keeps_its_indices() {
         "{ENDPOINT_DATA}
          FUNCTION serve (response: Type) access (access: Access)
            at (endpoint: Endpoint returning (response) access (access))
-           with (credential: Credential for (access)) RETURNS response
+           with (credential: Credential for (access)) : response
            IS (MATCH endpoint WITH [
              WHEN health check THEN ok,
              WHEN get profile THEN (MATCH credential WITH [
@@ -197,17 +197,17 @@ fn an_unfolded_constructor_result_keeps_its_indices() {
 fn rejects_constructor_results_that_do_not_unfold_to_their_family() {
     for (source, constructor, data) in [
         (
-            "DATA Flag RETURNS Type WITH [on RETURNS Flag, off RETURNS Flag],
-             DATA Other RETURNS Type WITH [],
-             FUNCTION pick (flag: Flag) RETURNS Type
+            "DATA Flag : Type WITH [on : Flag, off : Flag],
+             DATA Other : Type WITH [],
+             FUNCTION pick (flag: Flag) : Type
                IS (MATCH flag WITH [WHEN on THEN Thing, WHEN off THEN Other]),
-             DATA Thing RETURNS Type WITH [bad (flag: Flag) RETURNS pick (flag)],",
+             DATA Thing : Type WITH [bad (flag: Flag) : pick (flag)],",
             "bad _",
             "Thing",
         ),
         (
-            "DATA Thing RETURNS Type WITH [bad RETURNS Loop],
-             FUNCTION Loop RETURNS Type IS Loop,",
+            "DATA Thing : Type WITH [bad : Loop],
+             FUNCTION Loop : Type IS Loop,",
             "bad",
             "Thing",
         ),
@@ -227,8 +227,8 @@ fn rejects_constructor_results_that_do_not_unfold_to_their_family() {
 #[test]
 fn checks_positivity_after_unfolding_a_constructor_result() {
     let document = kernel_document(
-        "DATA Box of (item: Type) RETURNS Kind WITH [bad RETURNS Nested],
-         FUNCTION Nested RETURNS Kind IS (Box of (Box of (Type))),",
+        "DATA Box of (item: Type) : Kind WITH [bad : Nested],
+         FUNCTION Nested : Kind IS (Box of (Box of (Type))),",
     );
     assert_eq!(
         TypeChecker::default().check_document(&document).err(),
@@ -241,25 +241,24 @@ fn checks_positivity_after_unfolding_a_constructor_result() {
 
 #[test]
 fn a_parameter_does_not_count_towards_the_universe() {
-    let document = kernel_document(
-        "DATA Folder RETURNS Type WITH [folder with (files: List of (Text)) RETURNS Folder],",
-    );
+    let document =
+        kernel_document("DATA Folder : Type WITH [folder with (files: List of (Text)) : Folder],");
     TypeChecker::default().check_document(&document).unwrap();
 }
 
 #[test]
 fn a_large_field_that_is_not_a_uniform_parameter_is_rejected() {
     for source in [
-        "DATA Any RETURNS Type WITH [pack (code: Type) RETURNS Any],",
+        "DATA Any : Type WITH [pack (code: Type) : Any],",
         // The recursive occurrence changes the argument, so it is an index.
-        "DATA Weird of (item: Type) RETURNS Type WITH [
-           stop of (item: Type) RETURNS Weird of (item),
-           step of (item: Type) inner (rest: Weird of (Text)) RETURNS Weird of (item),
+        "DATA Weird of (item: Type) : Type WITH [
+           stop of (item: Type) : Weird of (item),
+           step of (item: Type) inner (rest: Weird of (Text)) : Weird of (item),
          ],",
         // One constructor fixes the argument, so it is an index.
-        "DATA Tagged (item: Type) RETURNS Type WITH [
-           text tag RETURNS Tagged (Text),
-           any tag (item: Type) RETURNS Tagged (item),
+        "DATA Tagged (item: Type) : Type WITH [
+           text tag : Tagged (Text),
+           any tag (item: Type) : Tagged (item),
          ],",
     ] {
         assert!(matches!(
@@ -275,9 +274,9 @@ fn a_large_field_that_is_not_a_uniform_parameter_is_rejected() {
 #[test]
 fn a_served_function_is_an_opaque_constant() {
     let document = kernel_document(
-        "DATA Document RETURNS Type WITH [document of (text: Text) RETURNS Document],
-         FUNCTION read (path: Text) RETURNS Document,
-         FUNCTION read twice (path: Text) RETURNS Document IS (read (path)),",
+        "DATA Document : Type WITH [document of (text: Text) : Document],
+         FUNCTION read (path: Text) : Document,
+         FUNCTION read twice (path: Text) : Document IS (read (path)),",
     );
     TypeChecker::default().check_document(&document).unwrap();
 }
@@ -285,9 +284,9 @@ fn a_served_function_is_an_opaque_constant() {
 #[test]
 fn a_served_function_cannot_return_a_type() {
     for source in [
-        "FUNCTION make type RETURNS Type,",
-        "DATA Big RETURNS Kind WITH [big (code: Type) RETURNS Big],
-         FUNCTION make big RETURNS Big,",
+        "FUNCTION make type : Type,",
+        "DATA Big : Kind WITH [big (code: Type) : Big],
+         FUNCTION make big : Big,",
     ] {
         assert!(matches!(
             TypeChecker::default().check_document(&kernel_document(source)),
@@ -300,21 +299,21 @@ fn a_served_function_cannot_return_a_type() {
 fn rejects_negative_and_nested_recursive_occurrences() {
     for (source, reference) in [
         (
-            "DATA First RETURNS Type WITH [
-               bad (callback: ((nested: ((input: First) RETURNS Type)) RETURNS Type))
-                 RETURNS First],",
+            "DATA First : Type WITH [
+               bad (callback: ((nested: ((input: First) -> Type)) -> Type))
+                 : First],",
             "First",
         ),
         (
-            "DATA First RETURNS Type WITH [
-               bad (callback: ((input: Second) RETURNS Type)) RETURNS First],
-             DATA Second RETURNS Type WITH [second from (previous: First) RETURNS Second],",
+            "DATA First : Type WITH [
+               bad (callback: ((input: Second) -> Type)) : First],
+             DATA Second : Type WITH [second from (previous: First) : Second],",
             "Second",
         ),
         (
-            "DATA Box of (item: Type) RETURNS Type WITH [],
-             DATA First RETURNS Type WITH [
-               bad (nested: Box of (First)) RETURNS First],",
+            "DATA Box of (item: Type) : Type WITH [],
+             DATA First : Type WITH [
+               bad (nested: Box of (First)) : First],",
             "First",
         ),
     ] {
@@ -342,26 +341,26 @@ fn kernel_document(source: &str) -> Document {
 }
 
 const MATCH_DATA: &str = "
-    DATA Boolean RETURNS Type WITH [false RETURNS Boolean, true RETURNS Boolean],
-    DATA Empty RETURNS Type WITH [],
-    DATA Package RETURNS Kind WITH [
-        pack (element: Type) value (value: element) RETURNS Package,
+    DATA Boolean : Type WITH [false : Boolean, true : Boolean],
+    DATA Empty : Type WITH [],
+    DATA Package : Kind WITH [
+        pack (element: Type) value (value: element) : Package,
     ],
-    DATA Indexed by (index: Natural) RETURNS Type WITH [],
+    DATA Indexed by (index: Natural) : Type WITH [],
 ";
 
 #[test]
 fn checks_nested_patterns_and_dependent_fields() {
     let document = kernel_document(&format!(
-        "FUNCTION inspect (number: Natural) RETURNS Natural IS (MATCH number WITH [
+        "FUNCTION inspect (number: Natural) : Natural IS (MATCH number WITH [
             WHEN zero THEN zero,
             WHEN successor of (zero) THEN zero,
             WHEN successor of (successor of (previous)) THEN previous,
         ]),
-        FUNCTION consume (package: Package) RETURNS Natural IS (MATCH package WITH [
+        FUNCTION consume (package: Package) : Natural IS (MATCH package WITH [
             WHEN pack (element) value (value) THEN (use (element) value (value)),
         ]),
-        FUNCTION use (element: Type) value (value: element) RETURNS Natural IS zero,
+        FUNCTION use (element: Type) value (value: element) : Natural IS zero,
         {MATCH_DATA}"
     ));
     TypeChecker::default().check_document(&document).unwrap();
@@ -370,7 +369,7 @@ fn checks_nested_patterns_and_dependent_fields() {
 #[test]
 fn checks_an_empty_match_and_normalizes_it_under_a_binder() {
     let document = kernel_document(&format!(
-        "FUNCTION eliminate (impossible: Empty) RETURNS Type IS (MATCH impossible WITH []),
+        "FUNCTION eliminate (impossible: Empty) : Type IS (MATCH impossible WITH []),
          {MATCH_DATA}"
     ));
     TypeChecker::default().check_document(&document).unwrap();
@@ -425,7 +424,7 @@ fn rejects_invalid_plain_data_matches() {
     ] {
         let document = kernel_document(&format!(
             "{MATCH_DATA}
-             FUNCTION inspect (subject: {subject_type}) RETURNS Natural
+             FUNCTION inspect (subject: {subject_type}) : Natural
                  IS (MATCH subject WITH [{cases}]),"
         ));
         assert_eq!(
@@ -453,8 +452,8 @@ fn reports_a_missing_nested_pattern_that_can_be_added_as_a_case() {
         let source = |added_case: &str| {
             format!(
                 "{MATCH_DATA}
-                 DATA Other RETURNS Type WITH [field1 RETURNS Other],
-                 FUNCTION inspect (number: Natural) RETURNS Natural IS (MATCH number WITH [
+                 DATA Other : Type WITH [field1 : Other],
+                 FUNCTION inspect (number: Natural) : Natural IS (MATCH number WITH [
                      WHEN zero THEN zero,
                      WHEN {nested_case} THEN zero,
                      {added_case}
@@ -486,11 +485,11 @@ fn reports_a_missing_nested_pattern_that_can_be_added_as_a_case() {
 }
 
 const VECTOR_DATA: &str = "
-    DATA Vector of (item: Type) length (length: Natural) RETURNS Kind WITH [
-        empty of (item: Type) RETURNS (Vector of (item) length (zero)),
+    DATA Vector of (item: Type) length (length: Natural) : Kind WITH [
+        empty of (item: Type) : (Vector of (item) length (zero)),
         prepend (item: Type) length (length: Natural) value (value: item)
             tail (tail: Vector of (item) length (length))
-            RETURNS (Vector of (item) length (successor of (length))),
+            : (Vector of (item) length (successor of (length))),
     ],
 ";
 
@@ -500,7 +499,7 @@ fn checks_indexed_matches_and_refines_the_branch_result_type() {
         "{MATCH_DATA}{VECTOR_DATA}
          FUNCTION copy (element: Type) length (size: Natural)
              vector (vector: Vector of (element) length (size))
-             RETURNS (Vector of (element) length (size))
+             : (Vector of (element) length (size))
              IS (MATCH vector WITH [
                  WHEN empty of (item) THEN (empty of (element)),
                  WHEN prepend (item) length (length) value (value) tail (tail)
@@ -508,21 +507,21 @@ fn checks_indexed_matches_and_refines_the_branch_result_type() {
              ]),
          FUNCTION tail of (element: Type) length (size: Natural)
              vector (vector: Vector of (element) length (successor of (size)))
-             RETURNS (Vector of (element) length (size))
+             : (Vector of (element) length (size))
              IS (MATCH vector WITH [
                  WHEN prepend (item) length (length) value (value) tail (tail) THEN tail,
              ]),
          FUNCTION first of a pair (vector: Vector of (Natural) length (successor of (zero)))
-             RETURNS Natural IS (MATCH vector WITH [
+             : Natural IS (MATCH vector WITH [
                  WHEN prepend (item) length (length) value (zero) tail (empty of (tail item))
                      THEN zero,
                  WHEN prepend (item) length (length) value (successor of (previous))
                      tail (empty of (tail item)) THEN previous,
              ]),
          FUNCTION inspect empty (vector: Vector of (Natural) length (zero))
-             RETURNS (MATCH vector WITH [WHEN empty of (item) THEN Natural])
+             : (MATCH vector WITH [WHEN empty of (item) THEN Natural])
              IS (MATCH vector WITH [WHEN empty of (item) THEN zero]),
-         FUNCTION eliminate indexed (impossible: Indexed by (zero)) RETURNS Type
+         FUNCTION eliminate indexed (impossible: Indexed by (zero)) : Type
              IS (MATCH impossible WITH []),"
     ));
     TypeChecker::default().check_document(&document).unwrap();
@@ -558,12 +557,12 @@ fn rejects_impossible_indexed_patterns_and_reports_reachable_missing_patterns() 
     ] {
         let document = kernel_document(&format!(
             "{MATCH_DATA}{VECTOR_DATA}
-             FUNCTION opaque of (number: Natural) RETURNS Natural IS (MATCH number WITH [
+             FUNCTION opaque of (number: Natural) : Natural IS (MATCH number WITH [
                  WHEN zero THEN zero,
                  WHEN successor of (previous) THEN (opaque of (previous)),
              ]),
              FUNCTION inspect (number: Natural) vector (vector: Vector of (Natural) length ({indices}))
-                 RETURNS Natural IS (MATCH vector WITH [{cases}]),"
+                 : Natural IS (MATCH vector WITH [{cases}]),"
         ));
         assert_eq!(
             TypeChecker::default().check_document(&document).err(),
@@ -579,11 +578,11 @@ fn rejects_impossible_indexed_patterns_and_reports_reachable_missing_patterns() 
 fn rejects_conflicting_indices_for_a_repeated_constructor_field() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}
-         DATA Equal (left: Natural) to (right: Natural) RETURNS Type WITH [
-             equal at (number: Natural) RETURNS (Equal (number) to (number)),
+         DATA Equal (left: Natural) to (right: Natural) : Type WITH [
+             equal at (number: Natural) : (Equal (number) to (number)),
          ],
          FUNCTION eliminate (impossible: Equal (zero) to (successor of (zero)))
-             RETURNS Natural IS (MATCH impossible WITH []),"
+             : Natural IS (MATCH impossible WITH []),"
     ));
     TypeChecker::default().check_document(&document).unwrap();
 }
@@ -592,20 +591,20 @@ fn rejects_conflicting_indices_for_a_repeated_constructor_field() {
 fn excludes_constructors_with_an_impossible_indexed_field() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}{VECTOR_DATA}
-         DATA At zero (index: Natural) RETURNS Type WITH [
-             at zero RETURNS (At zero (zero)),
+         DATA At zero (index: Natural) : Type WITH [
+             at zero : (At zero (zero)),
          ],
-         DATA Wrapper RETURNS Type WITH [
-             wrap (field: At zero (successor of (zero))) RETURNS Wrapper,
+         DATA Wrapper : Type WITH [
+             wrap (field: At zero (successor of (zero))) : Wrapper,
          ],
-         FUNCTION eliminate wrapper (value: Wrapper) RETURNS Natural
+         FUNCTION eliminate wrapper (value: Wrapper) : Natural
              IS (MATCH value WITH []),
-         DATA Equal (left: Natural) to (right: Natural) RETURNS Type WITH [
-             equal at (number: Natural) RETURNS (Equal (number) to (number)),
+         DATA Equal (left: Natural) to (right: Natural) : Type WITH [
+             equal at (number: Natural) : (Equal (number) to (number)),
          ],
          FUNCTION eliminate cycle (number: Natural)
              proof (impossible: Equal (number) to (successor of (number)))
-             RETURNS Natural IS (MATCH impossible WITH []),"
+             : Natural IS (MATCH impossible WITH []),"
     ));
     TypeChecker::default().check_document(&document).unwrap();
 }
@@ -615,7 +614,7 @@ fn confines_index_refinements_to_the_matching_branch() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}{VECTOR_DATA}
          FUNCTION invalid (size: Natural) vector (vector: Vector of (Natural) length (size))
-             RETURNS (Vector of (Natural) length (size))
+             : (Vector of (Natural) length (size))
              IS (MATCH vector WITH [
                  WHEN empty of (item) THEN (empty of (item)),
                  WHEN prepend (item) length (length) value (value) tail (tail)
@@ -635,11 +634,11 @@ fn confines_index_refinements_to_the_matching_branch() {
 fn proves_adding_zero_on_the_right_by_induction() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}
-         DATA (left: Natural) equals (right: Natural) RETURNS Type WITH [
-             reflexivity of (number: Natural) RETURNS ((number) equals (number)),
+         DATA (left: Natural) equals (right: Natural) : Type WITH [
+             reflexivity of (number: Natural) : ((number) equals (number)),
          ],
          FUNCTION adding zero to (number: Natural)
-             RETURNS (((number) plus (zero)) equals (number))
+             : (((number) plus (zero)) equals (number))
              IS (MATCH number WITH [
                  WHEN zero THEN (reflexivity of (zero)),
                  WHEN successor of (previous) THEN
@@ -648,11 +647,11 @@ fn proves_adding_zero_on_the_right_by_induction() {
              ]),
          FUNCTION successor preserves equality from (left: Natural) to (right: Natural)
              by (proof: (left) equals (right))
-             RETURNS ((successor of (left)) equals (successor of (right)))
+             : ((successor of (left)) equals (successor of (right)))
              IS (MATCH proof WITH [
                  WHEN reflexivity of (number) THEN (reflexivity of (successor of (number))),
              ]),
-         FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural
+         FUNCTION (left: Natural) plus (right: Natural) : Natural
              IS (MATCH left WITH [
                  WHEN zero THEN right,
                  WHEN successor of (previous) THEN (successor of ((previous) plus (right))),
@@ -665,11 +664,11 @@ fn proves_adding_zero_on_the_right_by_induction() {
 fn checks_mutual_structural_recursion() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}
-         FUNCTION even (number: Natural) RETURNS Boolean IS (MATCH number WITH [
+         FUNCTION even (number: Natural) : Boolean IS (MATCH number WITH [
              WHEN zero THEN true,
              WHEN successor of (previous) THEN (odd (previous)),
          ]),
-         FUNCTION odd (number: Natural) RETURNS Boolean IS (MATCH number WITH [
+         FUNCTION odd (number: Natural) : Boolean IS (MATCH number WITH [
              WHEN zero THEN false,
              WHEN successor of (previous) THEN (even (previous)),
          ]),"
@@ -681,7 +680,7 @@ fn checks_mutual_structural_recursion() {
 fn rejects_recursion_on_an_unrelated_constructor_field() {
     let document = kernel_document(&format!(
         "{MATCH_DATA}
-         FUNCTION recurse (first: Natural) with (second: Natural) RETURNS Natural
+         FUNCTION recurse (first: Natural) with (second: Natural) : Natural
              IS (MATCH second WITH [
                  WHEN zero THEN zero,
                  WHEN successor of (previous) THEN (recurse (previous) with (second)),
@@ -696,9 +695,9 @@ fn rejects_recursion_on_an_unrelated_constructor_field() {
 #[test]
 fn rejects_negative_data_hidden_behind_a_transparent_function() {
     let document = kernel_document(
-        "FUNCTION alias RETURNS Type IS Recursive,
-         DATA Recursive RETURNS Type WITH [
-             wrap (field: ⁽(value: alias) RETURNS Type) RETURNS Recursive,
+        "FUNCTION alias : Type IS Recursive,
+         DATA Recursive : Type WITH [
+             wrap (field: ⁽(value: alias) -> Type) : Recursive,
          ],",
     );
     assert!(matches!(
@@ -711,21 +710,18 @@ fn rejects_negative_data_hidden_behind_a_transparent_function() {
 fn rejects_expressions_without_the_required_types() {
     for (source, expected) in [
         (
-            "FUNCTION example RETURNS Type IS (successor of _)",
+            "FUNCTION example : Type IS (successor of _)",
             CheckingError::ExpectedFunctionType,
         ),
         (
-            "FUNCTION example RETURNS Natural IS (successor of (Type))",
+            "FUNCTION example : Natural IS (successor of (Type))",
             CheckingError::TypeMismatch,
         ),
         (
-            "FUNCTION example RETURNS Natural IS (MATCH (MATCH zero WITH [WHEN value THEN value]) WITH [WHEN value THEN value])",
+            "FUNCTION example : Natural IS (MATCH (MATCH zero WITH [WHEN value THEN value]) WITH [WHEN value THEN value])",
             CheckingError::MatchNeedsExpectedType,
         ),
-        (
-            "FUNCTION example RETURNS Type IS []",
-            CheckingError::TypeMismatch,
-        ),
+        ("FUNCTION example : Type IS []", CheckingError::TypeMismatch),
     ] {
         let source = format!("{}{source}", include_str!("fixtures/sample.anyx"));
         assert_eq!(
@@ -744,7 +740,7 @@ fn rejects_expressions_without_the_required_types() {
 #[test]
 fn rejects_malformed_kernel_patterns() {
     let mut document = kernel_document(
-        "FUNCTION example RETURNS Natural IS (MATCH zero WITH [WHEN successor of (number) THEN zero]),",
+        "FUNCTION example : Natural IS (MATCH zero WITH [WHEN successor of (number) THEN zero]),",
     );
     let Declaration::Function {
         body: Term::Match { cases, .. },
@@ -773,7 +769,7 @@ fn rejects_malformed_kernel_patterns() {
 
 #[test]
 fn rejects_duplicate_kernel_declarations_and_unbound_references() {
-    let mut document = kernel_document("FUNCTION example RETURNS Type IS Type");
+    let mut document = kernel_document("FUNCTION example : Type IS Type");
     document.declarations.push(document.declarations[0].clone());
     let checker = TypeChecker::default();
     assert_eq!(
@@ -798,17 +794,17 @@ fn rejects_duplicate_kernel_declarations_and_unbound_references() {
 fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
     for (declaration, highlighted, diagnostic) in [
         (
-            "FUNCTION example RETURNS zero IS zero",
-            "example RETURNS zero",
+            "FUNCTION example : zero IS zero",
+            "example : zero",
             "signature of `example`",
         ),
         (
-            "FUNCTION example RETURNS Natural IS Type",
+            "FUNCTION example : Natural IS Type",
             "Type",
             "body of `example`",
         ),
         (
-            "FUNCTION example RETURNS Natural IS example",
+            "FUNCTION example : Natural IS example",
             "example",
             "cannot establish structural termination",
         ),
@@ -834,9 +830,9 @@ fn locates_declaration_errors_in_signatures_bodies_and_recursive_heads() {
 #[test]
 fn separates_type_from_kind_and_checks_the_universe_of_both_function_type_parts() {
     let document = kernel_document(
-        "FUNCTION universe (number: Natural) RETURNS Kind IS Type,
-         FUNCTION small RETURNS Kind IS Type,
-         FUNCTION higher (item: small) RETURNS Kind IS small,",
+        "FUNCTION universe (number: Natural) : Kind IS Type,
+         FUNCTION small : Kind IS Type,
+         FUNCTION higher (item: small) : Kind IS small,",
     );
     let checker = TypeChecker::default().check_document(&document).unwrap();
     let natural = Term::Global(anyx_core::kernel::Global {
@@ -873,11 +869,11 @@ fn separates_type_from_kind_and_checks_the_universe_of_both_function_type_parts(
 fn constructor_fields_must_fit_the_written_data_universe() {
     for (declarations, annotation) in [
         ("", "Type"),
-        ("DATA Large RETURNS Kind WITH [],", "Large"),
-        ("", "((input: Type) RETURNS Type)"),
+        ("DATA Large : Kind WITH [],", "Large"),
+        ("", "((input: Type) -> Type)"),
     ] {
         let rejected = kernel_document(&format!(
-            "{declarations} DATA Package RETURNS Type WITH [pack (item: {annotation}) RETURNS Package],"
+            "{declarations} DATA Package : Type WITH [pack (item: {annotation}) : Package],"
         ));
         assert_eq!(
             TypeChecker::default().check_document(&rejected).err(),
@@ -887,7 +883,7 @@ fn constructor_fields_must_fit_the_written_data_universe() {
             }),
         );
         let accepted = kernel_document(&format!(
-            "{declarations} DATA Package RETURNS Kind WITH [pack (item: {annotation}) RETURNS Package],"
+            "{declarations} DATA Package : Kind WITH [pack (item: {annotation}) : Package],"
         ));
         TypeChecker::default().check_document(&accepted).unwrap();
     }
@@ -896,9 +892,9 @@ fn constructor_fields_must_fit_the_written_data_universe() {
 #[test]
 fn takes_and_returns_a_kind_level_data_type() {
     let document = kernel_document(
-        "DATA Package RETURNS Kind WITH [pack (item: Type) RETURNS Package],
-         FUNCTION keep (package: Package) RETURNS Package IS package,
-         FUNCTION package type RETURNS Kind IS Package,",
+        "DATA Package : Kind WITH [pack (item: Type) : Package],
+         FUNCTION keep (package: Package) : Package IS package,
+         FUNCTION package type : Kind IS Package,",
     );
     TypeChecker::default().check_document(&document).unwrap();
 }

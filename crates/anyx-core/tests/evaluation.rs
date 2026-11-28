@@ -53,13 +53,13 @@ fn conversion_ignores_neutral_application_grouping() {
 fn evaluates_constructor_matches_from_source() {
     let parsed = parse_document(
         r#"
-DATA First RETURNS Type WITH [],
-DATA Second RETURNS Type WITH [],
-DATA Pair RETURNS Kind WITH [pair (left: Type) with (right: Type) RETURNS Pair],
-FUNCTION choose RETURNS Type IS (MATCH (pair (First) with (Second)) WITH [
+DATA First : Type WITH [],
+DATA Second : Type WITH [],
+DATA Pair : Kind WITH [pair (left: Type) with (right: Type) : Pair],
+FUNCTION choose : Type IS (MATCH (pair (First) with (Second)) WITH [
     WHEN pair (left) with (right) THEN left
 ]),
-FUNCTION expected RETURNS Type IS First,
+FUNCTION expected : Type IS First,
 "#,
     );
     assert!(
