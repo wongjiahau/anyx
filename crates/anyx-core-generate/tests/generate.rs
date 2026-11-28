@@ -1,0 +1,67 @@
+//! The generators read a schema of bearer and public endpoints.
+
+const SCHEMA: &str = include_str!("fixtures/endpoints.anyx");
+
+#[test]
+fn splits_the_served_handler_by_endpoint() {
+    let schema = anyx_core_generate::load(SCHEMA, "endpoints.anyx").unwrap();
+    let rust = anyx_core_generate::rust(&schema).unwrap();
+    // A public endpoint's handler gets no account; a bearer one gets one.
+    assert!(rust.contains(
+        "async fn sign_in_password(&self, email: String, password: String) -> Reply<Session, SignInError>;"
+    ));
+    assert!(rust.contains(
+        "async fn list_files(&self, account: Self::Account) -> Reply<Vec<FileSummary>, Never>;"
+    ));
+    // The server refuses a credential that doesn't fit the endpoint.
+    assert!(rust.contains("`credential` doesn't fit `list files`"));
+    // A constructor takes its type parameters from the function's result,
+    // so it isn't erased; a call's result is.
+    assert!(
+        rust.contains("None => { Reply::Unauthenticated },"),
+        "{rust}"
+    );
+    assert!(rust.contains("erase(call_handle_"));
+}
+
+#[test]
+fn a_client_method_takes_the_credential_its_endpoint_fits() {
+    let schema = anyx_core_generate::load(SCHEMA, "endpoints.anyx").unwrap();
+    let typescript = anyx_core_generate::typescript(&schema).unwrap();
+    assert!(typescript.contains("listFiles(token: string): Promise<Reply<FileSummary[], never>>"));
+    assert!(typescript.contains(
+        "signInPassword(email: string, password: string): Promise<Reply<Session, SignInError>>"
+    ));
+}
+
+#[test]
+fn a_record_is_sent_as_its_fields_alone() {
+    let schema = anyx_core_generate::load(SCHEMA, "endpoints.anyx").unwrap();
+    let rust = anyx_core_generate::rust(&schema).unwrap();
+    let typescript = anyx_core_generate::typescript(&schema).unwrap();
+    assert!(rust.contains("pub struct Session {"));
+    assert!(!rust.contains("rename = \"session"));
+    assert!(typescript.contains("export type Session =\n  | { token: string; email: string }"));
+}
+
+#[test]
+fn an_overloaded_constructor_is_named_as_written() {
+    let schema = anyx_core_generate::load(
+        "DATA Colour WITH [red, green],
+         DATA Light WITH [red, amber],
+         FUNCTION light of (colour: Colour) : Light
+           IS (MATCH colour WITH [WHEN red THEN red, WHEN green THEN amber]),
+         FUNCTION parse (text: Text) : Colour,
+         FUNCTION parse (text: Text) : Light,",
+        "colours.anyx",
+    )
+    .unwrap();
+    let rust = anyx_core_generate::rust(&schema).unwrap();
+    assert!(rust.contains("Colour::Red => { Light::Red },"), "{rust}");
+    assert!(rust.contains("async fn parse_text_colour(&self, text: String) -> Colour;"));
+    assert!(rust.contains("async fn parse_text_light(&self, text: String) -> Light;"));
+    let typescript = anyx_core_generate::typescript(&schema).unwrap();
+    assert!(typescript.contains(
+        "\"Light\": { params: [], record: false, constructors: { \"red\": [], \"amber\": [] } },"
+    ));
+}

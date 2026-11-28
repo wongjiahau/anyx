@@ -22,14 +22,33 @@ name = "anyx"
 version = "0.1.0"
 
 [[package]]
+name = "anyx-core"
+version = "0.1.0"
+dependencies = [
+ "anyx",
+ "regex",
+]
+
+[[package]]
+name = "anyx-core-generate"
+version = "0.1.0"
+dependencies = [
+ "anyx",
+ "anyx-core",
+ "serde_json",
+]
+
+[[package]]
 name = "anyx-fd"
 version = "0.1.0"
 dependencies = [
- "anyx-protocol",
+ "anyx-core-generate",
  "anyx-shell",
  "globset",
  "ignore",
  "regex",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
@@ -82,6 +101,7 @@ name = "anyx-shell"
 version = "0.1.0"
 dependencies = [
  "anyx",
+ "anyx-core-generate",
  "anyx-protocol",
  "crossterm",
  "ratatui",

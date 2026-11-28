@@ -1,0 +1,275 @@
+## Finds files by name, as `fd` does, skipping what `.gitignore`, `.ignore`
+## and `.fdignore` ignore, and hidden files. The pattern is a regex matched
+## against each file's name, in smart case: any case, unless the pattern has
+## an uppercase letter. Paths are relative to the shell's working directory,
+## in the order of the walk: by name, each directory before what it holds.
+## Directories are found too.
+
+DATA Boolean WITH [true, false],
+
+## A time, as seconds since 1970-01-01 UTC.
+DATA Moment WITH [
+  (seconds: Integer) seconds since the epoch,
+],
+
+## A span of time, for `changed within (2 hours)`.
+DATA Age WITH [
+  (count: Natural) seconds,
+  (count: Natural) minutes,
+  (count: Natural) hours,
+  (count: Natural) days,
+  (count: Natural) weeks,
+],
+
+## What a file is, for `only [file, directory]`.
+DATA File kind WITH [
+  file,
+  directory,
+  symlink,
+  ## A file the owner, group or others may run.
+  executable,
+  ## An empty file, or a directory with nothing in it.
+  empty,
+  socket,
+  pipe,
+  block device,
+  char device,
+],
+
+## ---------------------------------------------------------------------------
+## The choices a search makes. Each is a field marked `.`, written as `.`
+## and its value, as in `{ .glob pattern, .hidden, .max depth 2 }`, and
+## left out it keeps fd's default, its first constructor.
+
+## The case a pattern is matched in.
+DATA Case WITH [
+  ## Any case, unless the pattern has an uppercase letter.
+  smart case,
+  any case,
+  exact case,
+],
+
+## How a pattern is read.
+DATA Syntax WITH [
+  regex pattern,
+  ## A glob, such as `*.rs`.
+  glob pattern,
+  ## Plain text.
+  fixed text pattern,
+],
+
+## What the pattern is matched against.
+DATA Subject WITH [
+  file name,
+  full path,
+],
+
+DATA Hidden files WITH [
+  skip hidden,
+  ## Find hidden files and directories too.
+  hidden,
+],
+
+DATA Ignore files WITH [
+  respect ignore files,
+  ## Don't skip what ignore files ignore.
+  no ignore,
+],
+
+DATA Version control ignores WITH [
+  respect vcs ignores,
+  ## Don't skip what `.gitignore` ignores, but still what `.ignore` and
+  ## `.fdignore` ignore.
+  no ignore vcs,
+],
+
+DATA Parent ignores WITH [
+  respect parent ignores,
+  ## Don't read ignore files in directories above the search path.
+  no ignore parent,
+],
+
+DATA Git repository WITH [
+  require git,
+  ## Read `.gitignore` outside a git repository too.
+  no require git,
+],
+
+DATA Links WITH [
+  stay out of links,
+  ## Follow symbolic links into the directories they point to.
+  follow links,
+],
+
+DATA File systems WITH [
+  cross file systems,
+  ## Don't go into another file system.
+  one file system,
+],
+
+DATA Matched directories WITH [
+  enter matches,
+  ## Don't go into a directory that matched.
+  prune,
+],
+
+## A depth below a search path: its entries are at depth 1.
+DATA Most depth WITH [
+  any depth,
+  max depth (depth: Natural),
+],
+
+DATA Least depth WITH [
+  from the top,
+  min depth (depth: Natural),
+],
+
+DATA Least size WITH [
+  no minimum size,
+  at least (size: Natural) bytes,
+],
+
+DATA Most size WITH [
+  no maximum size,
+  at most (size: Natural) bytes,
+],
+
+DATA Recency WITH [
+  changed any time,
+  changed within (age: Age),
+],
+
+DATA Start WITH [
+  since the beginning,
+  changed since (time: Moment),
+],
+
+DATA End WITH [
+  until now,
+  changed before (time: Moment),
+],
+
+DATA Oldness WITH [
+  any age,
+  changed more than (age: Age) ago,
+],
+
+DATA User WITH [
+  any user,
+  ## Owned by the user with this id.
+  owned by user (id: Integer),
+],
+
+DATA Group WITH [
+  any group,
+  ## Owned by the group with this id.
+  owned by group (id: Integer),
+],
+
+DATA Limit WITH [
+  all results,
+  ## Stop after this many paths.
+  at most (count: Natural) results,
+],
+
+## How fd searches, as in `{ .glob pattern, .hidden, .max depth 2 }`. Each
+## field left out keeps fd's default, and a file must pass every filter
+## given.
+RECORD Search WITH [
+  .(case: Case) DEFAULT smart case,
+  .(syntax: Syntax) DEFAULT regex pattern,
+  .(subject: Subject) DEFAULT file name,
+  ## Each file must match these patterns too, in the same syntax and case.
+  also matching (patterns: List of (Text)) DEFAULT also matching [],
+  .(hidden: Hidden files) DEFAULT skip hidden,
+  .(ignore: Ignore files) DEFAULT respect ignore files,
+  .(vcs: Version control ignores) DEFAULT respect vcs ignores,
+  .(parents: Parent ignores) DEFAULT respect parent ignores,
+  .(git: Git repository) DEFAULT require git,
+  ## Skip what these files ignore, each written as `.gitignore` is.
+  ignore files (files: List of (Text)) DEFAULT ignore files [],
+  ## Skip paths these globs match, as `--exclude` does.
+  excluding (globs: List of (Text)) DEFAULT excluding [],
+  .(links: Links) DEFAULT stay out of links,
+  .(file systems: File systems) DEFAULT cross file systems,
+  .(pruning: Matched directories) DEFAULT enter matches,
+  .(max depth: Most depth) DEFAULT any depth,
+  .(min depth: Least depth) DEFAULT from the top,
+  ## Find only these kinds of file, or every kind when empty.
+  only (kinds: List of (File kind)) DEFAULT only [],
+  ## Find only files with one of these extensions, such as `"rs"`, or with
+  ## any when empty.
+  extensions (extensions: List of (Text)) DEFAULT extensions [],
+  .(least size: Least size) DEFAULT no minimum size,
+  .(most size: Most size) DEFAULT no maximum size,
+  .(recency: Recency) DEFAULT changed any time,
+  .(start: Start) DEFAULT since the beginning,
+  .(end: End) DEFAULT until now,
+  .(oldness: Oldness) DEFAULT any age,
+  .(user: User) DEFAULT any user,
+  .(group: Group) DEFAULT any group,
+  .(limit: Limit) DEFAULT all results,
+],
+
+## What a found file is, as `fd --list-details` shows it.
+RECORD Details WITH [
+  path (path: Text),
+  .(kind: File kind),
+  size (size: Natural) bytes,
+  modified at (modified: Moment),
+],
+
+DATA Fd error WITH [
+  (path: Text) does not exist,
+  invalid pattern (message: Text),
+  invalid glob (message: Text),
+  ## A path fd found can't be written as Unicode text.
+  (path: Text) is not unicode,
+],
+
+DATA Outcome of (value: Type) WITH [
+  answered (value: Type) with (result: value) : Outcome of (value),
+  failed (value: Type) with (error: Fd error) : Outcome of (value),
+],
+
+## ---------------------------------------------------------------------------
+## What a caller asks. Each searches the paths, or the working directory
+## when there are none, as fd does by default when the search says nothing:
+## `find "x"` is `find "x" in [] with {}`.
+
+DATA Request returning (response: Type) WITH [
+  find (pattern: Text)
+      [in (paths: List of (Text)) DEFAULT in []]
+      [with (search: Search) DEFAULT with {}]
+    : Request returning (List of (Text)),
+  ## What `find` finds, with each file's details.
+  details of (pattern: Text)
+      [in (paths: List of (Text)) DEFAULT in []]
+      [with (search: Search) DEFAULT with {}]
+    : Request returning (List of (Details)),
+  ## Whether `find` finds anything. It stops at the first.
+  any match of (pattern: Text)
+      [in (paths: List of (Text)) DEFAULT in []]
+      [with (search: Search) DEFAULT with {}]
+    : Request returning (Boolean),
+],
+
+## What fd serves.
+FUNCTION paths matching (pattern: Text) under (paths: List of (Text)) by (search: Search)
+  : Outcome of (List of (Text)),
+FUNCTION details matching (pattern: Text) under (paths: List of (Text)) by (search: Search)
+  : Outcome of (List of (Details)),
+FUNCTION whether any matches (pattern: Text) under (paths: List of (Text)) by (search: Search)
+  : Outcome of (Boolean),
+
+## The entry point: the answer to a request.
+FUNCTION answer (response: Type) to (request: Request returning (response))
+  : Outcome of (response)
+  IS (MATCH request WITH [
+    WHEN find (pattern) in (paths) with (search)
+      THEN paths matching (pattern) under (paths) by (search),
+    WHEN details of (pattern) in (paths) with (search)
+      THEN details matching (pattern) under (paths) by (search),
+    WHEN any match of (pattern) in (paths) with (search)
+      THEN whether any matches (pattern) under (paths) by (search),
+  ]),

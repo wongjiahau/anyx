@@ -1,0 +1,13 @@
+FUNCTION (left: Natural) plus (right: Natural) : Natural IS
+  ⁽MATCH left WITH [
+    WHEN zero THEN right,
+    WHEN successor of (previous) THEN successor of ((previous) plus (right)),
+  ],
+FUNCTION successor function : ((number: Natural) -> Natural) IS
+  ⁽successor of _,
+DATA Vector of (item: Type) length (length: Natural) : Kind WITH [
+  empty of (item: Type) : Vector of (item) length (zero),
+  prepend (item: Type) length (length: Natural) value (first: item)
+    tail (rest: Vector of (item) length (length))
+    : Vector of (item) length (successor of (length)),
+],

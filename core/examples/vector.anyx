@@ -1,0 +1,78 @@
+DATA Natural RETURNS Type WITH [
+  zero RETURNS Natural,
+  successor of (number: Natural) RETURNS Natural,
+],
+
+FUNCTION (left: Natural) plus (right: Natural) RETURNS Natural IS:
+  MATCH left WITH [
+    WHEN zero THEN right,
+    WHEN successor of (previous) THEN successor of ((previous) plus (right)),
+  ],
+
+DATA (left: Natural) equals (right: Natural) RETURNS Type WITH [
+  reflexivity of (number: Natural) RETURNS (number) equals (number),
+],
+
+FUNCTION successor preserves equality from (left: Natural) to (right: Natural)
+  by (proof: (left) equals (right))
+  RETURNS (successor of (left)) equals (successor of (right))
+  IS: MATCH proof WITH [
+    WHEN reflexivity of (number) THEN reflexivity of (successor of (number)),
+  ],
+
+DATA Vector of (length: Natural) (item: Type) RETURNS Kind WITH [
+  empty of (item: Type) RETURNS Vector of (zero) (item),
+  prepend (item: Type) length (length: Natural) value (first: item)
+    tail (rest: Vector of (length) (item))
+    RETURNS Vector of (successor of (length)) (item),
+],
+
+## The type is the proof: the result's length is the sum of the two lengths.
+FUNCTION concatenate (item: Type)
+  lengths (left length: Natural) and (right length: Natural)
+  vectors (left: Vector of (left length) (item))
+  and (right: Vector of (right length) (item))
+  RETURNS Vector of ((left length) plus (right length)) (item)
+  IS: MATCH left WITH [
+    WHEN empty of (element) THEN right,
+    WHEN prepend (element) length (rest length) value (first) tail (rest) THEN
+      prepend (item) length ((rest length) plus (right length)) value (first)
+        tail (concatenate (item) lengths (rest length) and (right length)
+          vectors (rest) and (right)),
+  ],
+
+## Counts the items one by one, ignoring the length in the type.
+FUNCTION count (item: Type) length (length: Natural)
+  of (vector: Vector of (length) (item))
+  RETURNS Natural
+  IS: MATCH vector WITH [
+    WHEN empty of (element) THEN zero,
+    WHEN prepend (element) length (rest length) value (first) tail (rest) THEN
+      successor of (count (item) length (rest length) of (rest)),
+  ],
+
+## A proof about what `concatenate` does, not just its type: counting the
+## result gives the sum of counting each vector.
+FUNCTION counting concatenation of (item: Type)
+  lengths (left length: Natural) and (right length: Natural)
+  vectors (left: Vector of (left length) (item))
+  and (right: Vector of (right length) (item))
+  RETURNS (count (item) length ((left length) plus (right length))
+      of (concatenate (item) lengths (left length) and (right length)
+        vectors (left) and (right)))
+    equals ((count (item) length (left length) of (left))
+      plus (count (item) length (right length) of (right)))
+  IS: MATCH left WITH [
+    WHEN empty of (element) THEN
+      reflexivity of (count (item) length (right length) of (right)),
+    WHEN prepend (element) length (rest length) value (first) tail (rest) THEN
+      successor preserves equality
+        from (count (item) length ((rest length) plus (right length))
+          of (concatenate (item) lengths (rest length) and (right length)
+            vectors (rest) and (right)))
+        to ((count (item) length (rest length) of (rest))
+          plus (count (item) length (right length) of (right)))
+        by (counting concatenation of (item)
+          lengths (rest length) and (right length)
+          vectors (rest) and (right)),
+  ],

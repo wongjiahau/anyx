@@ -60,31 +60,36 @@ qualification when different open tools expose the same method shape.
 
 ## Bring in a program
 
-Any program that answers `--anyx-protocol` is a tool. `USE … FROM COMMAND`
-brings one in under a name:
+Any program that serves an anyx core schema is a tool: it writes the schema
+on `--anyx-schema` and answers requests on `--anyx-protocol`, as the server
+`anyx-core-generate` writes does. `USE … FROM COMMAND` brings one in under a
+name:
 
 ```anyx
 USE fd FROM COMMAND "anyx-fd",
-fd / find "\\.rs$" with [(file) only],
+fd / find "\\.rs$" with { only [file] },
 USE ALL FROM fd,
 any match of "README",
 ```
 
-The `USE` line asks the program for its schema with the built-in
-`SCHEMA FILES` call and checks it, before any call in the document runs. A
-missing program, one that fails, or a schema with errors is reported on that
-line, and the document runs nothing. A tool brought in by a document that
-fails to validate is not kept. Bringing in the same program under the same
-name again asks it for its schema again; another program under a name in use
-is an error.
+The `USE` line asks the program for its schema and checks it, before any call
+in the document runs. A missing program, one that fails, or a schema with
+errors is reported on that line, and the document runs nothing. A tool
+brought in by a document that fails to validate is not kept. Bringing in the
+same program under the same name again asks it for its schema again; another
+program under a name in use is an error.
+
+A call is an expression written against the schema, a request of the
+family an entry point splits on, such as `find "x" with { .hidden }`. The
+kernel checks it and fills each `DEFAULT` it leaves out, so a call the schema
+rules out never reaches the program. The shell sends it as the JSON call the
+generated server reads, and shows the answer as anyx: `answered ["src/lib.rs"]`.
 
 Each call runs the program once, with `--anyx-protocol`, in the shell's
 working directory: the shell writes the request to its standard input, closes
-it, and reads the response from its standard output. Its `REQUIRES` are
-checked before the program runs, so a call the schema rules out never reaches
-it. A program that exits with a failure or answers something that isn't a
-response to the call gives `INTERNAL ERROR`. Its standard error is shown only
-when the `USE` line fails.
+it, and reads the answer from its standard output. A program that exits with
+a failure gives `INTERNAL ERROR`. Its standard error is shown only when the
+`USE` line fails. Completion and hover don't reach these tools yet.
 
 ## Interactive shell
 

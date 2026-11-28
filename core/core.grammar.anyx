@@ -1,0 +1,150 @@
+## The core has Type and Kind, dependent function types with ->, holes as
+## anonymous functions, calls, FUNCTION, DATA and MATCH.
+
+## A file is its declarations, separated by commas.
+ENTRY [ZERO OR MORE ⁽declaration],
+
+declaration ⁽ONE OF [
+  data,
+  record,
+  function,
+  served function,
+],
+
+## `DATA Natural : Type WITH [zero : Natural, ...]`. Without
+## `:` it is a `Type`: `DATA Shape WITH [circle, square]`.
+data ⁽ANYFIX CALL [
+  WORD "DATA", declared,
+  WORD "WITH", constructors ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽constructor,
+] FORMAT [BREAK BEFORE WORD "WITH"],
+
+## `RECORD Range : Type WITH [between (low: Natural) and (high: Natural),
+## .(order: Order) DEFAULT newest first]`: one constructor whose fields are
+## written in any order, `{ .newest first, between 1 and 3 }`. A field is a
+## head whose every slot names its binder; a field marked `.` is a single
+## slot, written as `.` and its value alone. `DEFAULT` holds the field as
+## written.
+## Without `:` it is a `Type`.
+record ⁽ANYFIX CALL [
+  WORD "RECORD", declared,
+  WORD "WITH", fields ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽field,
+] FORMAT [BREAK BEFORE WORD "WITH"],
+
+field ⁽ONE OF [
+  defaulted ⁽ANYFIX CALL [field shape, WORD "DEFAULT", entry ⁽expression],
+  field shape,
+],
+
+## `.(case: Case)` is written as `.` and its value alone, `.any case`; any
+## other field is written as its head, `between 1 and 3`.
+field shape ⁽ONE OF [unnamed ⁽ANYFIX CALL [WORD ".", parameter], named ⁽head],
+
+## `successor of (n: Natural) : Natural`. Without `:` it returns
+## the type being declared, written as its head: `circle` in
+## `DATA Shape WITH [circle, square]`.
+constructor ⁽ONE OF [
+  returning ⁽ANYFIX CALL [head, WORD ":", type ⁽expression],
+  head,
+],
+
+## `FUNCTION (m: Natural) plus (n: Natural) : Natural IS ⁽...`.
+function ⁽ANYFIX CALL [
+  WORD "FUNCTION", typed head,
+  WORD "IS", body ⁽expression,
+] FORMAT [BREAK BEFORE WORD "IS"],
+
+## `FUNCTION read (path: Path) : Document`: no body, so whatever serves
+## the schema implements it.
+served function ⁽ANYFIX CALL [WORD "FUNCTION", typed head],
+
+## What a `DATA` or `RECORD` declares: its head, and what it is unless it is
+## a `Type`.
+declared ⁽ONE OF [typed head, head],
+
+## A head and what it is: `successor of (n: Natural) : Natural`. `:` is a
+## symbol word, so this is the call `_ : _` inside the declaration.
+typed head ⁽ANYFIX CALL [head, WORD ":", result ⁽signature result],
+
+signature result ⁽ONE OF [WORD "Kind", expression],
+
+## What is declared: a name, with a typed parameter in each slot.
+head ⁽ONE OF [
+  ## No word of its name is `:` or `->`, which a typed head and a function
+  ## type hold.
+  with parameters ⁽ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_", MATCHING REGEX "^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$"],
+    ARGUMENTS ⁽ONE OR MORE ⁽head argument,
+  ],
+  plain ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+],
+
+head argument ⁽ONE OF [
+  parameter,
+  ## `[in (paths: List of (Text)) DEFAULT in []]`: a part a call may leave
+  ## out, as in `find "x"`, which is `find "x" in []`. Only a function or a
+  ## constructor has one, and `DEFAULT` holds the part as written.
+  optional part ⁽SQUARE BRACKET ⁽ANYFIX CALL [
+    part ⁽head,
+    WORD "DEFAULT",
+    entry ⁽expression,
+  ],
+],
+
+## `(n: Natural)` is the call `_ : _` with the binder and its type.
+parameter ⁽ANYFIX CALL [binder, WORD ":", type ⁽expression],
+
+binder ⁽ANYFIX CALL [name ⁽WORDS [NO KEYWORD]],
+
+expression ⁽ONE OF [
+  ## `(n: Natural) -> Vector of (item) length (n)`.
+  function type ⁽ANYFIX CALL [parameter, WORD "->", result ⁽expression],
+  match ⁽ANYFIX CALL [
+    WORD "MATCH", subject ⁽expression,
+    WORD "WITH", cases ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽case,
+  ],
+  ## `(red : Colour)`: `red`, checked against `Colour`, where nothing else
+  ## says which overload of `red` is meant.
+  ascription ⁽ANYFIX CALL [value ⁽expression, WORD ":", type ⁽expression],
+  ## A call of a function or constructor: `successor of (k)`, `_ plus _`.
+  ## No word of its name is `:` or `->`, which an ascription and a function
+  ## type hold.
+  call ⁽ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_", MATCHING REGEX "^(?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+)(?: (?:[^ :-][^ ]*|-|-[^ >][^ ]*|->[^ ]+|:[^ ]+))*$"],
+    ARGUMENTS ⁽ONE OR MORE ⁽expression,
+  ],
+  ## A name alone: a variable, a constant, `Type`.
+  name ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+  ## A hole: `(successor of _)` is a function.
+  hole ⁽UNDERSCORE,
+  ## `3`: a `Natural`, the same value as `successor of (2)`, or an
+  ## `Integer` where one is expected. `-3` is only an `Integer`.
+  number ⁽NUMBER [WRITTEN INTEGER],
+  ## `"src"`: a `Text`.
+  text ⁽STRING,
+  list ⁽SQUARE BRACKET ⁽ZERO OR MORE ⁽expression,
+  ## `{ between 1 and 3, .newest first }`: a value of the record whose fields
+  ## these entries fill.
+  record value ⁽CURLY BRACE ⁽ZERO OR MORE ⁽entry,
+],
+
+## A field as written, `between 1 and 3`, or `.` and the value of a field
+## marked `.`, `.newest first`.
+entry ⁽ONE OF [
+  unnamed ⁽ANYFIX CALL [WORD ".", value ⁽expression],
+  named ⁽expression,
+],
+
+## `WHEN successor of (k) THEN ...`.
+case ⁽ANYFIX CALL [
+  WORD "WHEN", pattern,
+  WORD "THEN", result ⁽expression,
+] FORMAT [BREAK BEFORE WORD "THEN"],
+
+pattern ⁽ONE OF [
+  constructor ⁽ANYFIX CALL [
+    NAME [NO KEYWORD, MATCHING REGEX "_"],
+    ARGUMENTS ⁽ONE OR MORE ⁽pattern,
+  ],
+  ## A constructor of no arguments, or a variable.
+  name ⁽ANYFIX CALL [NAME [NO KEYWORD, MATCHING REGEX "^[^_]+$"], NO ARGUMENTS],
+],

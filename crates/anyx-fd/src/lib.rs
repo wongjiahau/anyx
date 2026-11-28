@@ -1,168 +1,128 @@
-//! `fd`, as an anyx protocol tool: finds files by name, skipping what ignore
+//! `fd`, as an anyx core tool: finds files by name, skipping what ignore
 //! files ignore. It is built on the libraries `fd` is built on (`ignore`,
 //! `regex` and `globset`), not on `fd`'s command line.
 //!
-//! [`answer`] reads one request and writes its response, as the program
+//! Its schema is `fd.anyx`, and its server is generated from it. [`answer`]
+//! answers one request, a JSON list of calls, as the program
 //! `anyx-fd --anyx-protocol` does for the anyx shell.
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyx_protocol::server::{argument, built_in, read_request, respond, validate_outcome};
-use anyx_protocol::{Call, IntoValue, Outcome, Schema, Value};
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 
+include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
+
+use protocol::{
+    Age, Case as CaseChoice, Details, End, FdError, FileKind, FileSystems, GitRepository, Group,
+    HiddenFiles, IgnoreFiles, LeastDepth, LeastSize, Limit, Links, MatchedDirectories, Moment,
+    MostDepth, MostSize, Oldness, Outcome, ParentIgnores, Recency, Start, Subject,
+    Syntax as SyntaxChoice, User, VersionControlIgnores,
+};
+
 /// The schema, as written.
-pub const SOURCE: &str = include_str!("../fd.protocol.anyx");
+pub const SCHEMA: &str = include_str!("../fd.anyx");
 
-/// The schema's file, as `SCHEMA FILES` names it.
-pub const PATH: &str = "fd.protocol.anyx";
-
-/// The schema, read once.
-pub fn schema() -> &'static Schema {
-    static SCHEMA: OnceLock<Schema> = OnceLock::new();
-    SCHEMA.get_or_init(|| {
-        Schema::load(PATH, |path| match path == PATH {
-            true => Ok(SOURCE.to_string()),
-            false => Err(format!("fd has no file `{path}`")),
-        })
-        .expect("the fd schema is valid")
-    })
-}
-
-/// Answers `request`, with paths relative to `directory`.
+/// Answers `request`, a JSON list of calls, with paths relative to
+/// `directory`.
 pub fn answer(request: &str, directory: &Path) -> String {
-    let schema = schema();
-    let calls = match read_request(schema, request) {
-        Ok(calls) => calls,
-        Err(response) => return response,
-    };
-    let mut outcomes = Vec::new();
-    let mut stopped = false;
-    for call in &calls {
-        if stopped {
-            outcomes.push(Outcome::NotRun);
-            continue;
-        }
-        let outcome = built_in(schema, call).unwrap_or_else(|| invoke(call, directory));
-        if validate_outcome(schema, call, &outcome).is_err() {
-            stopped = true;
-            outcomes.push(Outcome::InternalError);
-        } else {
-            stopped = matches!(outcome, Outcome::InternalError);
-            outcomes.push(outcome);
-        }
-    }
-    respond(schema, &calls, outcomes)
+    block_on(protocol::handle_request(
+        &Fd {
+            directory: directory.to_path_buf(),
+        },
+        request,
+    ))
 }
 
-fn invoke(call: &Call, directory: &Path) -> Outcome {
-    let method = schema().method_at(call.method);
-    let mut arguments = call.arguments.clone().into_iter();
-    // Every call is of the full form, `find _ in _ with _`: the codec fills
-    // in the parts a request leaves out.
-    let pattern: String = argument(&mut arguments);
-    let paths: Vec<String> = argument(&mut arguments);
-    let fields = match arguments.next() {
-        Some(Value::Record(fields)) => fields,
-        _ => unreachable!("the codec checked the search"),
-    };
-    let verb = ["find _", "details of _", "any match of _"]
-        .into_iter()
-        .find(|verb| method.shape.text.starts_with(verb))
-        .unwrap_or_else(|| unreachable!("fd has no method `{}`", method.shape.text));
-    let search = match Search::new(&pattern, paths, &Fields(fields), directory) {
-        Ok(search) => search,
-        Err(error) => return Outcome::Error(error),
-    };
-    let found = match verb {
-        "any match of _" => search.run(Some(1)),
-        _ => search.run(None),
-    };
-    let found = match found {
-        Ok(found) => found,
-        Err(error) => return Outcome::Error(error),
-    };
-    Outcome::Value(match verb {
-        "any match of _" => (!found.is_empty()).into_value(),
-        "details of _" => Value::List(found.iter().map(Found::details).collect()),
-        _ => Value::List(
-            found
-                .into_iter()
-                .map(|found| Value::Text(found.path))
-                .collect(),
-        ),
-    })
-}
-
-/// The fields of a `Search`, each read as its type.
-struct Fields(std::collections::BTreeMap<String, Value>);
-
-impl Fields {
-    fn get(&self, name: &str) -> Option<&Value> {
-        // A nullable field holds `null` or its item.
-        match self.0.get(name)? {
-            Value::Variant { shape, .. } if shape == "null" => None,
-            value => Some(value),
+/// Runs a future that never waits, as every one of fd's does.
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        if let std::task::Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return output;
         }
-    }
-
-    fn variant(&self, name: &str) -> Option<&str> {
-        match self.get(name)? {
-            Value::Variant { shape, .. } => Some(shape),
-            _ => unreachable!("the codec checked `{name}`"),
-        }
-    }
-
-    fn integer(&self, name: &str) -> Option<i64> {
-        match self.get(name)? {
-            Value::Integer(n) => Some(*n),
-            _ => unreachable!("the codec checked `{name}`"),
-        }
-    }
-
-    fn instant(&self, name: &str) -> Option<SystemTime> {
-        match self.get(name)? {
-            Value::Instant(time) => Some(*time),
-            _ => unreachable!("the codec checked `{name}`"),
-        }
-    }
-
-    /// The time `name`'s duration ago.
-    fn ago(&self, name: &str, now: SystemTime) -> Option<SystemTime> {
-        match self.get(name)? {
-            Value::Duration(period) => {
-                Some(now.checked_sub(*period).unwrap_or(SystemTime::UNIX_EPOCH))
-            }
-            _ => unreachable!("the codec checked `{name}`"),
-        }
-    }
-
-    fn list(&self, name: &str) -> &[Value] {
-        match self.get(name) {
-            Some(Value::List(items)) => items,
-            None => &[],
-            _ => unreachable!("the codec checked `{name}`"),
-        }
-    }
-
-    fn texts(&self, name: &str) -> Vec<String> {
-        self.list(name)
-            .iter()
-            .map(|item| match item {
-                Value::Text(text) => text.clone(),
-                _ => unreachable!("the codec checked `{name}`"),
-            })
-            .collect()
     }
 }
 
-fn error(shape: &str, arguments: Vec<Value>) -> Value {
-    Value::Variant {
-        shape: shape.to_string(),
-        arguments,
+struct Fd {
+    directory: PathBuf,
+}
+
+impl protocol::Server for Fd {
+    async fn paths_matching_under_by(
+        &self,
+        pattern: String,
+        paths: Vec<String>,
+        search: protocol::Search,
+    ) -> Outcome<Vec<String>> {
+        outcome(
+            Search::new(&pattern, paths, &search, &self.directory)
+                .and_then(|search| search.run(None))
+                .map(|found| found.into_iter().map(|found| found.path).collect()),
+        )
     }
+
+    async fn details_matching_under_by(
+        &self,
+        pattern: String,
+        paths: Vec<String>,
+        search: protocol::Search,
+    ) -> Outcome<Vec<Details>> {
+        outcome(
+            Search::new(&pattern, paths, &search, &self.directory)
+                .and_then(|search| search.run(None))
+                .map(|found| found.iter().map(Found::details).collect()),
+        )
+    }
+
+    async fn whether_any_matches_under_by(
+        &self,
+        pattern: String,
+        paths: Vec<String>,
+        search: protocol::Search,
+    ) -> Outcome<bool> {
+        outcome(
+            Search::new(&pattern, paths, &search, &self.directory)
+                .and_then(|search| search.run(Some(1)))
+                .map(|found| !found.is_empty()),
+        )
+    }
+}
+
+fn outcome<T>(result: Result<T, FdError>) -> Outcome<T> {
+    match result {
+        Ok(result) => Outcome::Answered { result },
+        Err(error) => Outcome::Failed { error },
+    }
+}
+
+fn age(age: &Age) -> Duration {
+    let (count, seconds) = match age {
+        Age::Seconds { count } => (*count, 1),
+        Age::Minutes { count } => (*count, 60),
+        Age::Hours { count } => (*count, 60 * 60),
+        Age::Days { count } => (*count, 24 * 60 * 60),
+        Age::Weeks { count } => (*count, 7 * 24 * 60 * 60),
+    };
+    Duration::from_secs(count.saturating_mul(seconds))
+}
+
+fn moment(moment: &Moment) -> SystemTime {
+    let Moment { seconds } = moment;
+    if *seconds >= 0 {
+        UNIX_EPOCH + Duration::from_secs(seconds.unsigned_abs())
+    } else {
+        UNIX_EPOCH - Duration::from_secs(seconds.unsigned_abs())
+    }
+}
+
+fn seconds_since_the_epoch(time: SystemTime) -> Moment {
+    let seconds = match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => i64::try_from(after.as_secs()).unwrap_or(i64::MAX),
+        Err(before) => -i64::try_from(before.duration().as_secs()).unwrap_or(i64::MAX),
+    };
+    Moment { seconds }
 }
 
 enum Syntax {
@@ -183,7 +143,7 @@ enum Matcher {
 }
 
 impl Matcher {
-    fn new(pattern: &str, syntax: &Syntax, case: &Case) -> Result<Self, Value> {
+    fn new(pattern: &str, syntax: &Syntax, case: &Case) -> Result<Self, FdError> {
         let insensitive = match case {
             Case::Exact => false,
             Case::Any => true,
@@ -195,11 +155,8 @@ impl Matcher {
                 .literal_separator(true)
                 .build()
                 .map(|glob| Self::Glob(glob.compile_matcher()))
-                .map_err(|problem| {
-                    error(
-                        "invalid glob _",
-                        vec![Value::Text(problem.kind().to_string())],
-                    )
+                .map_err(|problem| FdError::InvalidGlob {
+                    message: problem.kind().to_string(),
                 }),
             Syntax::Regex | Syntax::Fixed => {
                 let pattern = match syntax {
@@ -210,11 +167,8 @@ impl Matcher {
                     .case_insensitive(insensitive)
                     .build()
                     .map(Self::Regex)
-                    .map_err(|problem| {
-                        error(
-                            "invalid pattern _",
-                            vec![Value::Text(regex_message(&problem))],
-                        )
+                    .map_err(|problem| FdError::InvalidPattern {
+                        message: regex_message(&problem),
                     })
             }
         }
@@ -251,35 +205,31 @@ enum Kind {
 }
 
 impl Kind {
-    fn read(value: &Value) -> Self {
-        match value {
-            Value::Variant { shape, .. } => match shape.as_str() {
-                "file" => Self::File,
-                "directory" => Self::Directory,
-                "symlink" => Self::Symlink,
-                "executable" => Self::Executable,
-                "empty" => Self::Empty,
-                "socket" => Self::Socket,
-                "pipe" => Self::Pipe,
-                "block device" => Self::BlockDevice,
-                "char device" => Self::CharDevice,
-                other => unreachable!("the codec checked the kind `{other}`"),
-            },
-            _ => unreachable!("the codec checked the kind"),
+    fn read(kind: &FileKind) -> Self {
+        match kind {
+            FileKind::File => Self::File,
+            FileKind::Directory => Self::Directory,
+            FileKind::Symlink => Self::Symlink,
+            FileKind::Executable => Self::Executable,
+            FileKind::Empty => Self::Empty,
+            FileKind::Socket => Self::Socket,
+            FileKind::Pipe => Self::Pipe,
+            FileKind::BlockDevice => Self::BlockDevice,
+            FileKind::CharDevice => Self::CharDevice,
         }
     }
 
-    fn word(self) -> &'static str {
+    fn written(self) -> FileKind {
         match self {
-            Self::File => "file",
-            Self::Directory => "directory",
-            Self::Symlink => "symlink",
-            Self::Executable => "executable",
-            Self::Empty => "empty",
-            Self::Socket => "socket",
-            Self::Pipe => "pipe",
-            Self::BlockDevice => "block device",
-            Self::CharDevice => "char device",
+            Self::File => FileKind::File,
+            Self::Directory => FileKind::Directory,
+            Self::Symlink => FileKind::Symlink,
+            Self::Executable => FileKind::Executable,
+            Self::Empty => FileKind::Empty,
+            Self::Socket => FileKind::Socket,
+            Self::Pipe => FileKind::Pipe,
+            Self::BlockDevice => FileKind::BlockDevice,
+            Self::CharDevice => FileKind::CharDevice,
         }
     }
 }
@@ -317,52 +267,60 @@ impl Search {
     fn new(
         pattern: &str,
         paths: Vec<String>,
-        fields: &Fields,
+        search: &protocol::Search,
         directory: &Path,
-    ) -> Result<Self, Value> {
+    ) -> Result<Self, FdError> {
         let now = SystemTime::now();
-        let depth = |name: &str| {
-            fields
-                .integer(name)
-                .map(|n| usize::try_from(n).unwrap_or(usize::MAX))
-        };
-        let size = |name: &str| fields.integer(name).map(|n| n as u64);
+        let ago = |age_ago: &Age| now.checked_sub(age(age_ago)).unwrap_or(UNIX_EPOCH);
+        let depth = |depth: u64| usize::try_from(depth).unwrap_or(usize::MAX);
         // Both bounds of a side must hold, so the later lower bound and the
         // earlier upper bound win.
         let changed_after = [
-            fields.ago("changed within", now),
-            fields.instant("changed since"),
+            match &search.recency {
+                Recency::ChangedWithin { age } => Some(ago(age)),
+                Recency::ChangedAnyTime => None,
+            },
+            match &search.start {
+                Start::ChangedSince { time } => Some(moment(time)),
+                Start::SinceTheBeginning => None,
+            },
         ]
         .into_iter()
         .flatten()
         .max();
         let changed_before = [
-            fields.instant("changed before"),
-            fields.ago("changed more than ago", now),
+            match &search.end {
+                End::ChangedBefore { time } => Some(moment(time)),
+                End::UntilNow => None,
+            },
+            match &search.oldness {
+                Oldness::ChangedMoreThanAgo { age } => Some(ago(age)),
+                Oldness::AnyAge => None,
+            },
         ]
         .into_iter()
         .flatten()
         .min();
         let mut ignore_files = Vec::new();
-        for path in fields.texts("ignore files") {
-            let full = directory.join(&path);
+        for path in &search.files {
+            let full = directory.join(path);
             if !full.exists() {
-                return Err(error("_ does not exist", vec![Value::Text(path)]));
+                return Err(FdError::DoesNotExist { path: path.clone() });
             }
             ignore_files.push(full);
         }
-        let syntax = match fields.variant("pattern") {
-            Some("glob pattern") => Syntax::Glob,
-            Some("fixed text pattern") => Syntax::Fixed,
-            _ => Syntax::Regex,
+        let syntax = match search.syntax {
+            SyntaxChoice::GlobPattern => Syntax::Glob,
+            SyntaxChoice::FixedTextPattern => Syntax::Fixed,
+            SyntaxChoice::RegexPattern => Syntax::Regex,
         };
-        let case = match fields.variant("case") {
-            Some("exact case") => Case::Exact,
-            Some("any case") => Case::Any,
-            _ => Case::Smart,
+        let case = match search.case {
+            CaseChoice::ExactCase => Case::Exact,
+            CaseChoice::AnyCase => Case::Any,
+            CaseChoice::SmartCase => Case::Smart,
         };
         let mut patterns = vec![pattern.to_string()];
-        patterns.extend(fields.texts("also matching"));
+        patterns.extend(search.patterns.iter().cloned());
         let matchers = patterns
             .iter()
             .map(|pattern| Matcher::new(pattern, &syntax, &case))
@@ -374,53 +332,76 @@ impl Search {
                 false => paths.into_iter().map(Some).collect(),
             },
             matchers,
-            full_path: fields.variant("full path").is_some(),
-            hidden: fields.variant("hidden").is_some(),
-            no_ignore: fields.variant("no ignore").is_some(),
-            no_ignore_vcs: fields.variant("no ignore vcs").is_some(),
-            no_ignore_parent: fields.variant("no ignore parent").is_some(),
-            no_require_git: fields.variant("no require git").is_some(),
+            full_path: search.subject == Subject::FullPath,
+            hidden: search.hidden == HiddenFiles::Hidden,
+            no_ignore: search.ignore == IgnoreFiles::NoIgnore,
+            no_ignore_vcs: search.vcs == VersionControlIgnores::NoIgnoreVcs,
+            no_ignore_parent: search.parents == ParentIgnores::NoIgnoreParent,
+            no_require_git: search.git == GitRepository::NoRequireGit,
             ignore_files,
-            excluding: fields.texts("excluding"),
-            follow_links: fields.variant("follow links").is_some(),
-            one_file_system: fields.variant("one file system").is_some(),
-            prune: fields.variant("prune").is_some(),
-            min_depth: depth("min depth"),
-            max_depth: depth("max depth"),
-            kinds: fields.list("only").iter().map(Kind::read).collect(),
-            extensions: fields
-                .texts("extensions")
+            excluding: search.globs.clone(),
+            follow_links: search.links == Links::FollowLinks,
+            one_file_system: search.file_systems == FileSystems::OneFileSystem,
+            prune: search.pruning == MatchedDirectories::Prune,
+            min_depth: match search.min_depth {
+                LeastDepth::MinDepth { depth: least } => Some(depth(least)),
+                LeastDepth::FromTheTop => None,
+            },
+            max_depth: match search.max_depth {
+                MostDepth::MaxDepth { depth: most } => Some(depth(most)),
+                MostDepth::AnyDepth => None,
+            },
+            kinds: search.kinds.iter().map(Kind::read).collect(),
+            extensions: search
+                .extensions
                 .iter()
                 .map(|extension| extension.trim_start_matches('.').to_lowercase())
                 .collect(),
-            at_least: size("at least bytes"),
-            at_most: size("at most bytes"),
+            at_least: match search.least_size {
+                LeastSize::AtLeastBytes { size } => Some(size),
+                LeastSize::NoMinimumSize => None,
+            },
+            at_most: match search.most_size {
+                MostSize::AtMostBytes { size } => Some(size),
+                MostSize::NoMaximumSize => None,
+            },
             changed_after,
             changed_before,
-            user: fields.integer("owned by user"),
-            group: fields.integer("owned by group"),
-            limit: depth("at most results"),
+            user: match search.user {
+                User::OwnedByUser { id } => Some(id),
+                User::AnyUser => None,
+            },
+            group: match search.group {
+                Group::OwnedByGroup { id } => Some(id),
+                Group::AnyGroup => None,
+            },
+            limit: match search.limit {
+                Limit::AtMostResults { count } => Some(depth(count)),
+                Limit::AllResults => None,
+            },
         })
     }
 
     /// What the search finds, in the order of the walk: by name, each
     /// directory before what it holds. `limit` stops it early.
-    fn run(&self, limit: Option<usize>) -> Result<Vec<Found>, Value> {
+    fn run(&self, limit: Option<usize>) -> Result<Vec<Found>, FdError> {
         let limit = match (limit, self.limit) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
         let mut found = Vec::new();
+        if limit == Some(0) {
+            return Ok(found);
+        }
         for root in &self.roots {
             let start = match root {
                 Some(root) => self.directory.join(root),
                 None => self.directory.clone(),
             };
             if !start.exists() {
-                return Err(error(
-                    "_ does not exist",
-                    vec![Value::Text(root.clone().unwrap_or_else(|| ".".into()))],
-                ));
+                return Err(FdError::DoesNotExist {
+                    path: root.clone().unwrap_or_else(|| ".".into()),
+                });
             }
             let mut walk = WalkBuilder::new(&start);
             walk.standard_filters(!self.no_ignore)
@@ -443,12 +424,14 @@ impl Search {
             if !self.excluding.is_empty() {
                 let mut overrides = OverrideBuilder::new(&start);
                 for glob in &self.excluding {
-                    overrides.add(&format!("!{glob}")).map_err(|problem| {
-                        error("invalid glob _", vec![Value::Text(glob_message(&problem))])
-                    })?;
+                    overrides
+                        .add(&format!("!{glob}"))
+                        .map_err(|problem| FdError::InvalidGlob {
+                            message: glob_message(&problem),
+                        })?;
                 }
-                walk.overrides(overrides.build().map_err(|problem| {
-                    error("invalid glob _", vec![Value::Text(glob_message(&problem))])
+                walk.overrides(overrides.build().map_err(|problem| FdError::InvalidGlob {
+                    message: glob_message(&problem),
                 })?);
             }
             let mut pruned: Vec<PathBuf> = Vec::new();
@@ -473,10 +456,9 @@ impl Search {
                     None => relative.to_path_buf(),
                 };
                 let Some(text) = path.to_str() else {
-                    return Err(error(
-                        "_ is not unicode",
-                        vec![Value::Text(path.to_string_lossy().into_owned())],
-                    ));
+                    return Err(FdError::IsNotUnicode {
+                        path: path.to_string_lossy().into_owned(),
+                    });
                 };
                 if !self.matches(&entry, &path) {
                     continue;
@@ -639,8 +621,8 @@ struct Found {
 }
 
 impl Found {
-    /// A `Details` record.
-    fn details(&self) -> Value {
+    /// What `details of` says of the file.
+    fn details(&self) -> Details {
         let metadata = match self.follow_links {
             true => std::fs::metadata(self.entry.path()),
             false => std::fs::symlink_metadata(self.entry.path()),
@@ -658,34 +640,15 @@ impl Found {
         .into_iter()
         .find(|kind| is(&self.entry, *kind))
         .unwrap_or(Kind::File);
-        Value::Record(
-            [
-                ("path".to_string(), Value::Text(self.path.clone())),
-                (
-                    "kind".to_string(),
-                    Value::Variant {
-                        shape: kind.word().to_string(),
-                        arguments: Vec::new(),
-                    },
-                ),
-                (
-                    "size bytes".to_string(),
-                    Value::Integer(
-                        metadata
-                            .as_ref()
-                            .map_or(0, |m| i64::try_from(m.len()).unwrap_or(i64::MAX)),
-                    ),
-                ),
-                (
-                    "modified at".to_string(),
-                    Value::Instant(
-                        metadata
-                            .and_then(|m| m.modified().ok())
-                            .unwrap_or(SystemTime::UNIX_EPOCH),
-                    ),
-                ),
-            ]
-            .into(),
-        )
+        Details {
+            path: self.path.clone(),
+            kind: kind.written(),
+            size: metadata.as_ref().map_or(0, std::fs::Metadata::len),
+            modified: seconds_since_the_epoch(
+                metadata
+                    .and_then(|metadata| metadata.modified().ok())
+                    .unwrap_or(UNIX_EPOCH),
+            ),
+        }
     }
 }

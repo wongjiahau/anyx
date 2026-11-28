@@ -1,0 +1,12 @@
+[package]
+name = "anyx-core"
+version.workspace = true
+edition.workspace = true
+description = "A parser for the dependently typed anyx core language"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyx = { path = "../anyx", version = "0.1.0" }
+regex = "1"

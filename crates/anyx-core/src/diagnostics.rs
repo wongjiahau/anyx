@@ -1,0 +1,146 @@
+//! Source locations for declaration checking errors.
+
+use crate::{
+    kernel::DeclarationCheckingError,
+    lowering::{
+        constructor_head, default_name, field_parts, head_parts, overload_name,
+        record_constructor_name,
+    },
+    parser,
+};
+use anyx::Span;
+
+impl DeclarationCheckingError {
+    /// Locate the signature, body, or first declaration in a recursive group.
+    pub fn span(&self, document: &parser::Document) -> Span {
+        for declaration in &document.declaration {
+            match declaration {
+                parser::Declaration::Function(function) => {
+                    let names = |failed: &str| declares(&function.typed_head.head, failed);
+                    if matches!(self, Self::Body { name: failed, .. } if names(failed)) {
+                        return function.body.span();
+                    }
+                    if matches!(self, Self::NonTerminatingFunctions(failed) if failed.iter().any(|failed| names(failed)))
+                    {
+                        return function.typed_head.head.span();
+                    }
+                    if let Some(span) = self.signature_span(
+                        &function.typed_head.head,
+                        function.typed_head.result.span(),
+                    ) {
+                        return span;
+                    }
+                }
+                parser::Declaration::ServedFunction(function) => {
+                    if let Some(span) = self.signature_span(
+                        &function.typed_head.head,
+                        function.typed_head.result.span(),
+                    ) {
+                        return span;
+                    }
+                }
+                parser::Declaration::Record(record) => {
+                    if let Some(span) = self.record_span(record) {
+                        return span;
+                    }
+                }
+                parser::Declaration::Data(data) => {
+                    if let Some(span) =
+                        self.signature_span(data.declared.head(), returns_span(&data.declared))
+                    {
+                        return span;
+                    }
+                    for constructor in &data.constructors.value {
+                        let head = constructor_head(constructor);
+                        let result = match constructor {
+                            parser::Constructor::Returning { r#type, .. } => r#type.span(),
+                            parser::Constructor::Head(head) => head.span(),
+                        };
+                        if let Some(span) = self.signature_span(head, result) {
+                            return span;
+                        }
+                    }
+                }
+            }
+        }
+        document.span
+    }
+
+    /// The record's head for its own errors and its constructor's, and a
+    /// field's `DEFAULT` for errors in it.
+    fn record_span(&self, record: &parser::Record) -> Option<Span> {
+        let (name, parameters) = head_parts(record.declared.head());
+        if let Some(span) =
+            self.signature_span(record.declared.head(), returns_span(&record.declared))
+        {
+            return Some(span);
+        }
+        let slots = parameters.len()
+            + record
+                .fields
+                .value
+                .iter()
+                .map(|field| field_parts(field).1.len())
+                .sum::<usize>();
+        let constructor = record_constructor_name(&name.text, slots);
+        let failed = match self {
+            Self::Signature { name, .. }
+            | Self::ConstructorMustReturnData {
+                constructor: name, ..
+            }
+            | Self::NonPositiveOccurrence {
+                declaration: name, ..
+            }
+            | Self::Body { name, .. } => name,
+            _ => return None,
+        };
+        if *failed == constructor {
+            return Some(record.fields.span);
+        }
+        record.fields.value.iter().find_map(|field| {
+            let parser::Field::Defaulted { entry, .. } = field else {
+                return None;
+            };
+            field_parts(field)
+                .1
+                .iter()
+                .any(|slot| *failed == default_name(&name.text, &slot.binder.name.value))
+                .then(|| entry.span())
+        })
+    }
+
+    fn signature_span(&self, head: &parser::Head, result: Span) -> Option<Span> {
+        let (name, _) = head_parts(head);
+        let (failed, span) = match self {
+            Self::DuplicateGlobal(name) => (name, head.span()),
+            Self::Signature { name, .. } => (name, head.span().to(result)),
+            Self::DataMustReturnUniverse(name) => (name, result),
+            Self::ConstructorMustReturnData { constructor, .. } => (constructor, result),
+            Self::ServedFunctionMustReturnAValue(name) => (name, result),
+            Self::NonPositiveOccurrence { declaration, .. } => {
+                (declaration, head.span().to(result))
+            }
+            Self::OverloadsClash { second, .. } => (second, head.span()),
+            Self::Body { .. } | Self::NonTerminatingFunctions(_) => return None,
+        };
+        (failed == &name.text || declares(head, failed)).then_some(span)
+    }
+}
+
+/// Where a declaration's result is written, or its head when it isn't.
+fn returns_span(declared: &parser::Declared) -> Span {
+    declared
+        .result()
+        .map_or(declared.head().span(), parser::SignatureResult::span)
+}
+
+/// Whether `head` declares the function the kernel knows as `name`: its
+/// own name, or its name as an overload, `path of (Details) : Text`.
+fn declares(head: &parser::Head, name: &str) -> bool {
+    let own = overload_name(head, None);
+    head_parts(head).0.text == name
+        || own == name
+        || name
+            .strip_prefix(own.as_str())
+            .is_some_and(|rest| rest.starts_with(" : "))
+}

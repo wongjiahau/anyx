@@ -1,0 +1,321 @@
+# The core: what to build, in order
+
+The first version is the smallest core: `Type`, dependent function types
+(`(x: a) -> b`), holes as anonymous functions, calls, `FUNCTION`, `DATA`
+and `MATCH`. Every argument is written out: no `GIVEN`, no type classes, no
+inference. Macros and effects come later.
+
+## Syntax
+
+1. Remove `MACRO`, `QUOTE`, `UNQUOTE`, the macro-use catch-all and `GIVEN` (done)
+   from `core.grammar.anyx`. That also removes both generator warnings.
+2. Create a `crates/anyx-core` crate whose parser is generated from that (done)
+   grammar, as the other crates do.
+   - Check in the generated parser and expose it as `anyx_core::parser` so callers can use the typed tree directly and builds need no generator.
+
+## Front end
+
+3. Turn the generated tree into core terms, consuming the tree as it is. (done)
+   - Resolve exact call names in one file-wide namespace and resolve locals
+     lexically. This lets declarations refer to one another in any order.
+   - Reject duplicate names in the same scope and allow nested bindings to
+     shadow outer ones. Each scope has one meaning for each name.
+   - Reserve `Type` so it always denotes the universe.
+   - Give constructors their own explicit parameters so any arguments to the
+     data type are written in the constructor's signature.
+   - In patterns, resolve a bare constructor name to that constructor and
+     bind other bare names within the case. This needs no type information.
+   - Abstract a call's direct holes from left to right and reject holes outside
+     calls. The generated tree retains call nesting and argument order.
+   - Resolve parameter annotations in written order, with earlier parameters
+     in scope. This makes dependencies visible and rules out cycles.
+   - Keep resolved binding identities in the lowered tree so item 4 can
+     choose the kernel's indexing and evaluation representation.
+
+## Kernel
+
+4. Term representation: de Bruijn indices for terms, separate values for (done)
+   evaluation.
+   - Convert resolved binding identities in a separate pass so syntax and name resolution keep their existing interface.
+   - Count indices from the innermost binder and value levels from the outermost so local values stay stable when a scope grows.
+   - Keep declaration parameters in written order and place pattern binders into scope left to right so each index has a predictable meaning.
+   - Drop local binder names in kernel terms because indices carry their identity, and retain exact global names for lookup.
+   - Give function values closures over ordered environments and represent blocked eliminations as neutral values so evaluation can retain their inputs.
+   - Carry match and literal forms through to the kernel so conversion preserves the lowered tree.
+5. Evaluation, read-back and conversion checking, by normalisation by evaluation. (done)
+   - Keep global function bodies opaque until item 7 so normalization does
+     not evaluate unchecked recursive declarations.
+   - Reduce matches in case order and retain blocked matches with their
+     environments so read-back can normalize branches under fresh binders.
+   - Keep constructor names and arguments together in values so patterns can
+     inspect them without unfolding global definitions.
+   - Compare beta-normal forms structurally, using decoded text and a single
+     application spine per head, so source spelling and call grouping do not
+     affect conversion. Leave type-directed eta rules for the type checker.
+6. Bidirectional checking of `Type`, function types, holes, calls and names. (done)
+   `Type` is in `Type` for now: a known inconsistency.
+   - Supply closed global types to the checker because declaration checking starts in item 7.
+   - Check hole-created functions against an expected function type because their parameter types must come from written annotations.
+   - Compare types by beta normalization because it reuses the kernel's existing conversion rule.
+7. `FUNCTION` declarations, including recursion between them. (done)
+   - Register all explicitly written function types, then check signatures before bodies so mutually recursive calls use their declared types in either order.
+   - Check declaration bodies under their written parameters using the existing function checker so dependent binders keep their source order.
+   - Keep function bodies opaque during conversion until termination checking is available so recursive calls cannot make type checking diverge.
+   - Accept caller-supplied data and constructor types because checking `DATA` declarations belongs to item 8.
+8. `DATA` declarations: constructors must return their own type, and strict (done)
+   positivity holds.
+   - Register all written signatures before checking them so data, constructors,
+     and functions can refer to declarations in either order.
+   - Require data signatures to end in `Type` and constructor results to
+     name their fully applied data family so the target is explicit.
+   - Allow recursive families as field types or in function results, and
+     reject them in function domains, application arguments, and family
+     parameter types because those positions have no established positivity.
+   - Check cycles among data dependencies so mutually recursive declarations
+     obey the same positivity rule as direct recursion.
+9. `MATCH` on plain data, with exhaustiveness and redundancy checks. (done)
+   - Match declared data types without parameters because indexed families need item 10.
+   - Check each branch against the expected result type from the enclosing expression so no branch has to supply a result type.
+   - Check constructor fields in written order so later field types can refer to earlier pattern values.
+   - Check coverage over constructor trees because this detects overlap in nested patterns without trying to prove whether field types are inhabited.
+   - Allow an empty case list for data without constructors because there are no constructor cases to write.
+   - Report one missing pattern with fresh names for unconstrained fields so it can be pasted into a case.
+10. `MATCH` on indexed families such as `Vector`, with index unification. (done)
+    - Unify constructor result indices before checking nested fields, and keep refinements local to each case so dependent field and result types use the equations established by that pattern.
+    - Unify local values and injective data and constructor heads, keeping blocked equations possible for coverage because opaque calls cannot establish impossibility.
+    - Refine a local indexed subject to its matched constructor so a written return type can depend on the subject.
+    - Inspect immediate constructors of untested indexed fields because index contradictions can prove those fields empty without an unbounded search for inhabitants.
+11. Termination: structural recursion only, at first. (done)
+    - Require every call in a recursive group to pass a constructor subfield at the same written parameter position because one strict descent suffices for direct and mutual recursion.
+    - Check signatures first and publish each dependency group's bodies after type and termination checking because conversion must only run checked definitions.
+    - Unfold recursive calls only when saturated with a constructor at the decreasing position because evaluation must stop on unknown inputs.
+    - Refine local subjects in plain-data matches because inductive branches need the subject's constructor to compute their expected types.
+    - Treat data occurrences hidden in transparent functions as nonpositive because a function can place them in a negative position.
+
+## Usable
+
+12. Literals: decide whether `NUMBER` and `STRING` stay, with built-in (done)
+    `Natural` and `Text`, or wait for a prelude.
+    - Defer `NUMBER` and `STRING` to a prelude so the core needs no built-in `Natural` or `Text` types.
+13. Errors with source spans, and a CLI that checks a file and evaluates a (done)
+    chosen expression.
+    - Locate checking errors at the enclosing signature or body, and termination errors at the first implicated head, because the generated tree already records these spans.
+    - Use `anyx-core FILE [--evaluate EXPRESSION --type TYPE]` because the expression and its expected type can be supplied explicitly and decoded with the existing grammar.
+    - Print the normalized kernel term because the core has no surface syntax for every normal form.
+14. Tests: the sample declarations as passing cases, and a failing case for (done)
+    each check.
+    - Run the sample through the CLI and exercise rejections in the existing test suites because each test can then assert the error at the layer that reports it.
+
+## Universes
+
+15. Two levels: `Type: Kind`, replacing `Type` in `Type`. (done)
+    - `Kind` has no type: it may only be written as the result of a
+      signature, never as a parameter's type or inside an expression.
+    - A function type is in `Kind` when either side is, otherwise in `Type`:
+      `(n: Natural) RETURNS Natural` is in `Type`, `(a: Type) RETURNS Type`
+      is in `Kind`.
+    - `DATA` keeps `RETURNS`, which must say `Type` or `Kind` (with any
+      written parameters before it, as now). The checker verifies it and
+      never infers it: a `DATA` that `RETURNS Type` may only have constructor
+      fields in `Type`, so a value in `Type` never holds a type.
+    - Tests: Girard's paradox is ruled out by rejecting a `Type` data type
+      with a field `(item: Type)`, the same data accepted as `RETURNS Kind`,
+      and a function that takes or returns a `Kind`-level type.
+
+    - Allow a literal `Kind` as the final result of a `DATA` or
+      `FUNCTION` declaration because `Kind` has no type of its own.
+    - Keep inline `MATCH` annotations checked in `Type` because a match
+      needs a fixed expected universe.
+
+## Aliases
+
+16. A constructor may name its family through an alias, a function that (done)
+    returns a type: `get profile RETURNS Private endpoint returning (Profile)`.
+    - Unfold the written result before the result and positivity checks so
+      both see the family the alias stands for, with its indices.
+    - Unfold only nonrecursive functions, because their bodies are not
+      checked yet. A call can only name a global, so unfolding terminates.
+    - Leave a result that does not reduce to the family, such as a `MATCH`
+      blocked on a parameter, to be rejected as before.
+
+17. A family's parameters don't count towards its universe, as in Coq (done)
+    and Lean, so `List of (item: Type) RETURNS Type` and `List of (Text)`
+    is a field of data in `Type`.
+    - A constructor restates its family's arguments as binders. A binder of
+      `Type` is exempt from "fields of data returning Type are in Type" only
+      when it passes a parameter: a leading position where every
+      constructor passes its own binder, in its result and in every
+      recursive occurrence among its fields.
+    - Anything else is an index or a stored field and stays checked, so
+      `pack (code: Type) RETURNS Any` is still rejected (Girard's paradox).
+
+18. A `FUNCTION` without `IS` is served: whatever serves the schema (done)
+    implements it, and the checker treats it as an opaque constant.
+    - Its result must be in `Type`, so a server never supplies a type.
+    - It has no body, so it is outside termination checking and never
+      unfolds.
+
+19. `RECORD` is a `DATA` with one constructor, written as `{ }` with its (done)
+    fields in any order. The kernel is unchanged: lowering builds the
+    constructor call.
+    - A field is a head whose every slot names its binder, as in `between
+      (low: Natural) and (high: Natural)`, or a single slot marked `.`,
+      `.(case: Case)`, whose entry is `.` and its value, `.any case`. An
+      entry finds its field by the field's words, or, marked `.`, by the
+      data type of its value. Two `.` fields can't share a type.
+    - The constructor's parameters are the record's own, then every field's
+      binders in order. So a field's type can name an earlier field, and a
+      value is checked in declaration order.
+    - Each slot of a `DEFAULT` is a function without parameters, so it is
+      type-checked and can't name another field. A field whose type names
+      another field has no `DEFAULT`.
+    - Generated code sends a record as its fields alone, without `kind`.
+    - Not yet: projections (`length of (list)`), `{ }` for a record with
+      parameters, and defaults on the wire.
+
+20. `Natural` is built in, and `3` is a literal of it. (done)
+    - The kernel checks `DATA Natural RETURNS Type WITH [zero RETURNS
+      Natural, successor of (number: Natural) RETURNS Natural]` before every
+      document, so a schema can't declare its own.
+    - A closed `Natural` is one number: `zero` evaluates to `0` and
+      `successor of` a number to the next one. A match or an index equation
+      peels one step: `0` is `zero`, `n + 1` is `successor of (n)`. That rule
+      is the only trusted code; there is no built-in arithmetic, so `(2) plus
+      (3)` peels its left side twice.
+    - Two different numbers never unify, without peeling down to `zero`.
+    - Generated code sends a `Natural` as a number.
+    - Not yet: literals of `Decimal`; built-in `plus`.
+
+21. `Text`, `Integer` and `List of _` are built in, with literals. (done)
+    - `"src"` is a `Text`, `-3` an `Integer`, and `3` a `Natural` or, where
+      one is expected, an `Integer`.
+    - `Text` and `Integer` are primitives: no constructors, and no `MATCH`
+      takes them apart. Were they empty `DATA`, `MATCH "x" WITH []` would
+      prove anything. Two literals are equal only when they are the same,
+      and nothing reduces them.
+    - `[a, b]` is a `List of (item)` when each element is an `item`. It is
+      its own value, not a chain of `list of _ starting _ then _`, since
+      it doesn't say its item type: a `MATCH` on it waits, and it is not
+      convertible with the chain. That costs completeness, not soundness.
+    - A schema can't declare any of the four.
+
+22. Optional parts: `[in (paths: List of (Text)) DEFAULT in []]` in the (done)
+    head of a function or a constructor.
+    - The kernel sees one function, `find _ in _ with _`. Lowering fills in
+      a call that leaves out parts, `find "x"`, with a call of each left-out
+      slot's `DEFAULT`, a function without parameters the kernel checks.
+    - A default names no parameter, so it can't depend on one.
+    - Every shorter form is a name of its own: it can't be another
+      declaration's name. A part has a slot and holds no other part.
+    - A `DATA`'s, a `RECORD`'s or a field's head has none: a field has
+      `DEFAULT`.
+
+23. fd is a core tool, and the shell calls core tools. (done)
+    - `crates/anyx-fd/fd.anyx` replaces `fd.protocol.anyx`; `build.rs`
+      generates its server, which reads JSON calls of `answer _ to _`.
+    - `anyx-fd --anyx-schema` writes the schema. The shell's
+      `USE … FROM COMMAND` reads it with `anyx_core_generate::client`, which
+      checks a call such as `fd / find "x" with { .hidden }` with the kernel,
+      normalizes it so every `DEFAULT` is a value, sends it as JSON, and
+      writes the answer back as anyx: `answered ["src/lib.rs"]`.
+    - A compiled body's result that spells a parameter as `Erased` takes
+      each value it returns through `erase`.
+    - Completion and hover don't reach core tools yet.
+
+24. Overloading on types named without arguments. (done)
+    - Functions, served or with a body, may share a name, such as
+      `path of _`, when each pair takes different named types (`Details`,
+      `Link`, `Text`) at some position. Each is its own kernel function,
+      named with its types: `path of (Details)`.
+    - A call is `Overloaded`: the checker synthesizes the argument at each
+      position where candidates take different names, and picks the one
+      candidate those types match: no backtracking, no unification. The
+      pick is recorded by the call's id, and the call is checked as an
+      application of it, so picking can't make anything unsound.
+    - Types are compared normalized, so an alias and what it names clash
+      where they are declared. A literal picks by its own type: `3` is a
+      `Natural`. An argument with no type of its own, such as `[]`, can't
+      pick.
+    - An overloaded function has no optional parts, and a name without
+      slots can't be overloaded.
+25. `RETURNS` may be left out where it says the obvious. (done)
+    - `DATA Shape WITH [circle, square]` and `RECORD Version WITH [...]`
+      are `Type`s. `RETURNS Kind` is still written out.
+    - A constructor without `RETURNS` returns the type it is a constructor
+      of. A type with parameters says what each constructor returns, since
+      the parameters' values would be unknown.
+    - Lowering fills in what is left out, so the kernel is unchanged.
+    - `WITH` stays: without it, the brackets after `RETURNS Type` would
+      also read as `Type _` called on a list.
+26. A field written as its value alone is marked `.`, in its declaration (done)
+    and in each value: `RECORD Search WITH [.(case: Case), max depth (n:
+    Natural)]` and `{ .any case, max depth 3 }`.
+    - So an entry says which kind it is: `{ 2 hours }` would read as a
+      field `_ hours`, while `{ .2 hours }` is a value of a `.` field.
+    - A field's words may now be a constructor of a `.` field's type too.
+27. `:` replaces `RETURNS` everywhere: `FUNCTION parse (t: Text) : (done)
+    Natural IS ...`, `DATA Optional (item: Type) : Type WITH [...]`, and a
+    constructor's `something of (item: Type) is (value: item) : Optional
+    (item)`.
+    - It reads as "`parse` has type `Natural`", the same `:` as a parameter
+      and as an ascription (step 28).
+    - `:` is reserved, so no function is named `_ : _`.
+    - A function type is written with `->`: `(n: Natural) -> Vector of
+      (n)`. With `:` there, `(n : Natural) : Type` would read as a
+      function type and as two ascriptions alike.
+    - `:` and `->` are symbol words, so `FUNCTION f (x: T) : R IS b` is
+      `FUNCTION _ IS _` holding the call `_ : _`: the grammar nests a typed
+      head inside the declaration, and no call or head name has the word
+      `:` or `->`. A function type as a result is grouped: `FUNCTION f :
+      ((n: Natural) -> Natural) IS ...`, since `_ : _ -> _` is one flat
+      call.
+28. Ascription: `(e : T)` is an expression, anywhere an expression is. (done)
+    - Checking: `T` is a type, `e` is checked against it, and the whole has
+      type `T`. Evaluation: it is `e`.
+    - It never casts down: `T` must be the type `e` checks against, not a
+      wider one.
+    - It is what a writer adds where an overloaded call has no expected
+      type (step 29): `paint (red : Colour)`.
+    - The kernel has `Annotated { term, type }`; generated code drops it.
+29. Overloading at every type position, the result included. (done)
+    - Functions, served functions and constructors, records' included, share
+      one overload set per name. Two of them may share a name when they are
+      apart at some position, an argument or the result: both types there
+      are ground in normal form (no free variable, value variables included,
+      so no stuck type-family call either) and they differ.
+      `DATA Colour WITH [red, green]` and `DATA Light WITH [red, amber]`
+      may both declare `red`.
+    - A call picks by its arguments' types at the positions where
+      candidates are apart, then by the type it is checked against, else
+      it is an error asking for an ascription. No backtracking, no
+      unification.
+    - The expected type comes from a function's result, an argument of a
+      call already picked, a field's type, a `MATCH` arm, or an ascription.
+      A `MATCH` pattern picks by the type matched.
+    - `{ }` picks its record by its entries, then by the expected type, so
+      two records may have the same fields.
+    - A name without slots may be overloaded, by its result.
+    - Each overload's own name writes every ground type, the result
+      included, so adding an overload never renames another:
+      `parse (Text) : Natural`, generated as `parse_text_natural`.
+    - One type's constructors have different names, so a pattern finds
+      its constructor in the type matched. The checker records which, by
+      the pattern's id, for the generators.
+    - A `{ }` value that fits several records lowers to `Alternatives`,
+      one value per record; checking keeps the one of the expected type.
+    - Generated code names an overloaded constructor as written: `Red` in
+      both `Colour` and `Light`, sent as `"red"`.
+    - Sound because picking only chooses a function, which the kernel
+      checks as any application; apartness relies on normalizing
+      terminating and on different ground types sharing no values (no
+      subtyping between named types).
+
+## Later
+
+- Record projections: each field of a record without parameters gets
+  `id of (summary)`, defined by a `MATCH`, as an overload (step 24).
+- Macros: `MACRO`, `QUOTE`, `UNQUOTE`, with a call whose name holds a keyword
+  being a macro use.
+- Effects: monads as library types, or effect rows.
+- More universe levels, only if two prove too few, and whether `MATCH`
+  stays in the core or becomes recursors.

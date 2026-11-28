@@ -1,113 +1,71 @@
-//! A tool that is a program: `USE fd FROM COMMAND "anyx-fd"`.
+//! A tool that is a program serving an anyx core schema:
+//! `USE fd FROM COMMAND "anyx-fd"`.
 //!
-//! The program is run once for each request, with `--anyx-protocol`, in the
-//! shell's working directory. The shell writes the request to its standard
-//! input, closes it, and reads the response from its standard output, so a
-//! request needs no framing. The schema comes from the built-in
-//! `SCHEMA FILES` call, which the shell checks and keeps for the session.
+//! The shell asks the program for its schema once, with `--anyx-schema`,
+//! and checks it. Each call is then checked against the schema, written as
+//! the JSON call the program's generated server reads, and sent to the
+//! program run with `--anyx-protocol` in the shell's working directory. The
+//! shell writes the request to its standard input, closes it, and reads the
+//! answer from its standard output, so a request needs no framing.
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use anyx_protocol::{Call, Outcome, Response, Schema, Value};
-
-use crate::Tool;
+use anyx_core_generate::client::{Call, CallError, Client};
 
 /// The flag a program answers a request on.
 pub const FLAG: &str = "--anyx-protocol";
 
+/// The flag a program writes its schema on.
+pub const SCHEMA_FLAG: &str = "--anyx-schema";
+
 pub struct CommandTool {
     program: String,
-    schema: Schema,
+    client: Client,
 }
 
 impl CommandTool {
     /// Asks `program` for its schema and checks it.
     pub fn open(program: &str) -> Result<Self, String> {
-        // Every schema has the built-in calls, so any one reads the answer.
-        let any = crate::environment::schema();
-        let call = Call {
-            method: any.schema_files(),
-            arguments: Vec::new(),
-        };
-        let request = anyx_protocol::encode_request(any, std::slice::from_ref(&call))
-            .expect("`SCHEMA FILES` has no arguments to encode");
-        let answer = run(program, &request)?;
-        let files = match anyx_protocol::decode_response(any, &[call.method], &answer) {
-            Ok(Response::Outcomes(outcomes)) => match outcomes.as_slice() {
-                [Outcome::Value(Value::List(files))] => {
-                    files.iter().map(schema_file).collect::<Option<Vec<_>>>()
-                }
-                _ => None,
-            },
-            _ => None,
-        }
-        .filter(|files| !files.is_empty())
-        .ok_or_else(|| format!("`{program} {FLAG}` didn't answer `SCHEMA FILES` with its files"))?;
-        let schema = Schema::load(&files[0].0, |path| {
-            files
-                .iter()
-                .find(|(file, _)| file == path)
-                .map(|(_, source)| source.clone())
-                .ok_or_else(|| format!("`{program}` didn't send `{path}`"))
-        })
-        .map_err(|diagnostics| {
-            let rendered = diagnostics
-                .iter()
-                .map(|diagnostic| {
-                    let source = files
-                        .iter()
-                        .find(|(path, _)| *path == diagnostic.path)
-                        .map_or("", |(_, source)| source.as_str());
-                    diagnostic.render(source, &diagnostic.path)
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!("the schema of `{program}` has errors:\n{rendered}")
-        })?;
+        let schema = run(program, SCHEMA_FLAG, "")?;
+        let client = Client::load(&schema, program)
+            .map_err(|error| format!("the schema of `{program}` has errors:\n{error}"))?;
         Ok(Self {
             program: program.to_string(),
-            schema,
+            client,
         })
     }
-}
 
-impl Tool for CommandTool {
-    fn schema(&self) -> &Schema {
-        &self.schema
+    /// `source`, an expression written against the schema, as a call.
+    /// `Err(None)` when it names nothing the schema declares.
+    pub fn call(&self, source: &str) -> Result<Call, Option<(usize, String)>> {
+        self.client
+            .call_written(source)
+            .map_err(|error| match error {
+                CallError::Elsewhere => None,
+                CallError::Invalid { span, message } => Some((span.start, message)),
+            })
     }
 
-    /// A program that fails, is killed, or answers something that isn't a
-    /// response to the call, gives `INTERNAL ERROR`.
-    fn invoke(&mut self, call: &Call) -> Outcome {
-        let Ok(request) = anyx_protocol::encode_request(&self.schema, std::slice::from_ref(call))
-        else {
-            return Outcome::InternalError;
-        };
-        let Ok(answer) = run(&self.program, &request) else {
-            return Outcome::InternalError;
-        };
-        match anyx_protocol::decode_response(&self.schema, &[call.method], &answer) {
-            Ok(Response::Outcomes(mut outcomes)) if outcomes.len() == 1 => outcomes.remove(0),
-            _ => Outcome::InternalError,
-        }
-    }
-}
-
-fn schema_file(value: &Value) -> Option<(String, String)> {
-    let Value::Record(fields) = value else {
-        return None;
-    };
-    match (fields.get("path")?, fields.get("source")?) {
-        (Value::Text(path), Value::Text(source)) => Some((path.clone(), source.clone())),
-        _ => None,
+    /// Sends `call` and reads its answer as an anyx value. A program that
+    /// fails, or answers something that isn't an answer to the call, gives
+    /// `INTERNAL ERROR`.
+    pub fn invoke(&self, call: &Call) -> Result<String, String> {
+        let answer = run(&self.program, FLAG, &call.request).map_err(|_| internal_error())?;
+        self.client
+            .answer(call, &answer)
+            .map_err(|message| format!("INVALID REQUEST {message:?}\n"))
     }
 }
 
-/// Runs `program` with the flag, writes `request`, and returns what it wrote
+fn internal_error() -> String {
+    "INTERNAL ERROR\n".to_owned()
+}
+
+/// Runs `program` with `flag`, writes `request`, and returns what it wrote
 /// to standard output when it exits successfully.
-fn run(program: &str, request: &str) -> Result<String, String> {
+fn run(program: &str, flag: &str, request: &str) -> Result<String, String> {
     let mut child = Command::new(program)
-        .arg(FLAG)
+        .arg(flag)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -125,12 +83,12 @@ fn run(program: &str, request: &str) -> Result<String, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
-            "`{program} {FLAG}` failed ({}){}{}",
+            "`{program} {flag}` failed ({}){}{}",
             output.status,
             if stderr.trim().is_empty() { "" } else { ":\n" },
             stderr.trim_end()
         ));
     }
     String::from_utf8(output.stdout)
-        .map_err(|_| format!("`{program} {FLAG}` answered with text that isn't UTF-8"))
+        .map_err(|_| format!("`{program} {flag}` answered with text that isn't UTF-8"))
 }
