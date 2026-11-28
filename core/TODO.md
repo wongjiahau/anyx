@@ -277,7 +277,7 @@ inference. Macros and effects come later.
     - It is what a writer adds where an overloaded call has no expected
       type (step 29): `paint (red : Colour)`.
     - The kernel has `Annotated { term, type }`; generated code drops it.
-29. Overloading at every type position, the result included.
+29. Overloading at every type position, the result included. (done)
     - Functions, served functions and constructors, records' included, share
       one overload set per name. Two of them may share a name when they are
       apart at some position, an argument or the result: both types there
@@ -298,6 +298,13 @@ inference. Macros and effects come later.
     - Each overload's own name writes every ground type, the result
       included, so adding an overload never renames another:
       `parse (Text) : Natural`, generated as `parse_text_natural`.
+    - One type's constructors have different names, so a pattern finds
+      its constructor in the type matched. The checker records which, by
+      the pattern's id, for the generators.
+    - A `{ }` value that fits several records lowers to `Alternatives`,
+      one value per record; checking keeps the one of the expected type.
+    - Generated code names an overloaded constructor as written: `Red` in
+      both `Colour` and `Light`, sent as `"red"`.
     - Sound because picking only chooses a function, which the kernel
       checks as any application; apartness relies on normalizing
       terminating and on different ground types sharing no values (no

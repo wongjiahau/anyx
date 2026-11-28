@@ -587,6 +587,21 @@ impl Compiler<'_> {
         if let lowering::Term::Annotated { term, .. } = term {
             return self.term(term);
         }
+        // A `{ }` value of the record the checker picked.
+        if let lowering::Term::Alternatives { id, alternatives } = term {
+            let chosen = self
+                .schema
+                .checker
+                .overload_choice(*id)
+                .ok_or_else(|| "a `{ }` value wasn't checked".to_string())?;
+            let (_, value) = alternatives
+                .iter()
+                .find(|(record, _)| {
+                    matches!(record, lowering::Term::Global { name, .. } if *name == chosen)
+                })
+                .ok_or_else(|| "a `{ }` value picked no record".to_string())?;
+            return self.term(value);
+        }
         let compiled = self.term_as_written(term)?;
         let constructs = matches!(
             term,
@@ -644,15 +659,19 @@ impl Compiler<'_> {
             lowering::Term::Overloaded {
                 id,
                 name,
+                candidates,
                 arguments,
-                ..
             } => {
                 let chosen = self
                     .schema
                     .checker
                     .overload_choice(*id)
                     .ok_or_else(|| format!("a call of `{name}` wasn't checked"))?;
-                self.call(&chosen, GlobalKind::Function, arguments)
+                let kind = candidates
+                    .iter()
+                    .find(|(candidate, _)| *candidate == chosen)
+                    .map_or(GlobalKind::Function, |(_, kind)| *kind);
+                self.call(&chosen, kind, arguments)
             }
             lowering::Term::Match { subject, cases } => {
                 let subject = self.inner_term(subject)?;
@@ -727,7 +746,22 @@ impl Compiler<'_> {
                 let name = self.bind(binding);
                 Ok(if erased { "_".into() } else { name })
             }
-            lowering::Pattern::Constructor { name, arguments } => {
+            lowering::Pattern::Constructor {
+                name: written,
+                candidates,
+                id,
+                arguments,
+            } => {
+                // The constructor the checker found, for a name two types
+                // declare.
+                let name = &match id {
+                    Some(id) => self
+                        .schema
+                        .checker
+                        .overload_choice(*id)
+                        .ok_or_else(|| format!("a pattern `{written}` wasn't checked"))?,
+                    None => candidates[0].clone(),
+                };
                 let constructor = self.schema.constructor(name);
                 let mut fields = Vec::new();
                 for (position, argument) in arguments.iter().enumerate() {

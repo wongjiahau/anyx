@@ -8,6 +8,8 @@ use std::collections::HashMap;
 #[derive(Clone, Default)]
 pub(super) struct DataFamilies {
     families: HashMap<String, Family>,
+    /// How an overloaded constructor is written, `red` for `red : Colour`.
+    written: HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -37,6 +39,19 @@ impl DataFamilies {
                     .collect(),
             },
         );
+    }
+
+    /// Records that each of `members` is written `name`.
+    pub(super) fn register_overloads(&mut self, name: &str, members: &[String]) {
+        for member in members {
+            self.written.insert(member.clone(), name.to_owned());
+        }
+    }
+
+    fn written<'name>(&'name self, constructor: &'name str) -> &'name str {
+        self.written
+            .get(constructor)
+            .map_or(constructor, String::as_str)
     }
 
     fn family<'value>(&self, data_type: &'value Value) -> Option<(&Family, &'value [Value])> {
@@ -112,7 +127,13 @@ impl Scope<'_> {
 
     fn check_pattern(&mut self, pattern: &Pattern, column: &Column) -> Result<(), CheckingError> {
         let value_type = self.refine(&column.value_type)?;
-        let Pattern::Constructor { name, arguments } = pattern else {
+        let Pattern::Constructor {
+            name,
+            candidates,
+            id,
+            arguments,
+        } = pattern
+        else {
             self.bind_parameter(value_type, self.refine(&column.value)?);
             return Ok(());
         };
@@ -123,8 +144,17 @@ impl Scope<'_> {
         let constructor = family
             .constructors
             .iter()
-            .find(|constructor| constructor.name == *name)
+            .find(|constructor| candidates.contains(&constructor.name))
             .ok_or_else(|| CheckingError::WrongPatternConstructor(name.clone()))?;
+        if let Some(id) = id {
+            self.definitions.1.borrow_mut().insert(
+                *id,
+                super::super::Global {
+                    name: constructor.name.clone(),
+                    kind: crate::lowering::GlobalKind::Constructor,
+                },
+            );
+        }
         if arguments.len() != constructor.arity {
             return Err(CheckingError::WrongPatternArgumentCount {
                 constructor: name.clone(),
@@ -203,7 +233,12 @@ impl Scope<'_> {
         let value_type = self.refine(&column.value_type)?;
         let family = self.data_families.family(&value_type);
 
-        if let Pattern::Constructor { name, arguments } = first {
+        if let Pattern::Constructor {
+            candidates,
+            arguments,
+            ..
+        } = first
+        {
             // The branch checker has already validated the pattern's family
             // and arity. Earlier column refinements may have changed its type.
             let Some((family, _)) = family else {
@@ -212,7 +247,7 @@ impl Scope<'_> {
             let Some(constructor) = family
                 .constructors
                 .iter()
-                .find(|constructor| constructor.name == *name)
+                .find(|constructor| candidates.contains(&constructor.name))
             else {
                 return Ok(None);
             };
@@ -228,7 +263,7 @@ impl Scope<'_> {
         let heads: Vec<_> = earlier
             .iter()
             .filter_map(|row| match row[0] {
-                Pattern::Constructor { name, .. } => Some(name),
+                Pattern::Constructor { candidates, .. } => Some(candidates),
                 Pattern::Binding => None,
             })
             .collect();
@@ -239,13 +274,10 @@ impl Scope<'_> {
             for constructor in family
                 .constructors
                 .iter()
-                .filter(|constructor| !heads.contains(&&constructor.name))
-                .chain(
-                    family
-                        .constructors
-                        .iter()
-                        .filter(|constructor| heads.contains(&&constructor.name)),
-                )
+                .filter(|constructor| !heads.iter().any(|head| head.contains(&constructor.name)))
+                .chain(family.constructors.iter().filter(|constructor| {
+                    heads.iter().any(|head| head.contains(&constructor.name))
+                }))
             {
                 if let Some(witness) = self.uncovered_constructor(
                     earlier,
@@ -318,7 +350,9 @@ impl Scope<'_> {
                 witness.insert(
                     0,
                     Pattern::Constructor {
-                        name: constructor.name.clone(),
+                        name: self.data_families.written(&constructor.name).to_owned(),
+                        candidates: vec![constructor.name.clone()],
+                        id: None,
                         arguments,
                     },
                 );
@@ -336,7 +370,11 @@ fn specialize<'pattern>(
         .filter_map(|row| {
             let fields: Vec<_> = match row[0] {
                 Pattern::Binding => vec![&Pattern::Binding; arity],
-                Pattern::Constructor { name, arguments } if name == constructor => {
+                Pattern::Constructor {
+                    candidates,
+                    arguments,
+                    ..
+                } if candidates.iter().any(|candidate| candidate == constructor) => {
                     arguments.iter().collect()
                 }
                 Pattern::Constructor { .. } => return None,
@@ -349,7 +387,9 @@ fn specialize<'pattern>(
 fn format_pattern(pattern: &Pattern, binding_names: &mut impl Iterator<Item = String>) -> String {
     match pattern {
         Pattern::Binding => binding_names.next().expect("fresh pattern binding"),
-        Pattern::Constructor { name, arguments } => {
+        Pattern::Constructor {
+            name, arguments, ..
+        } => {
             let mut arguments = arguments.iter();
             // The canonical call name uses a standalone underscore for each argument slot.
             name.split(' ')

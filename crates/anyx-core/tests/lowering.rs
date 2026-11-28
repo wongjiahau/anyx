@@ -42,6 +42,8 @@ FUNCTION predecessor of (number: Natural) : Natural IS (MATCH number WITH [WHEN 
         cases[0].pattern,
         Pattern::Constructor {
             name: "zero".to_owned(),
+            candidates: vec!["zero".to_owned()],
+            id: None,
             arguments: vec![],
         }
     );
@@ -52,7 +54,10 @@ FUNCTION predecessor of (number: Natural) : Natural IS (MATCH number WITH [WHEN 
             kind: GlobalKind::Constructor,
         }
     );
-    let Pattern::Constructor { name, arguments } = &cases[1].pattern else {
+    let Pattern::Constructor {
+        name, arguments, ..
+    } = &cases[1].pattern
+    else {
         panic!("expected a constructor pattern");
     };
     assert_eq!(name, "successor of _");

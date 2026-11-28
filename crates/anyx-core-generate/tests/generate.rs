@@ -43,3 +43,25 @@ fn a_record_is_sent_as_its_fields_alone() {
     assert!(!rust.contains("rename = \"session"));
     assert!(typescript.contains("export type Session =\n  | { token: string; email: string }"));
 }
+
+#[test]
+fn an_overloaded_constructor_is_named_as_written() {
+    let schema = anyx_core_generate::load(
+        "DATA Colour WITH [red, green],
+         DATA Light WITH [red, amber],
+         FUNCTION light of (colour: Colour) : Light
+           IS (MATCH colour WITH [WHEN red THEN red, WHEN green THEN amber]),
+         FUNCTION parse (text: Text) : Colour,
+         FUNCTION parse (text: Text) : Light,",
+        "colours.anyx",
+    )
+    .unwrap();
+    let rust = anyx_core_generate::rust(&schema).unwrap();
+    assert!(rust.contains("Colour::Red => { Light::Red },"), "{rust}");
+    assert!(rust.contains("async fn parse_text_colour(&self, text: String) -> Colour;"));
+    assert!(rust.contains("async fn parse_text_light(&self, text: String) -> Light;"));
+    let typescript = anyx_core_generate::typescript(&schema).unwrap();
+    assert!(typescript.contains(
+        "\"Light\": { params: [], record: false, constructors: { \"red\": [], \"amber\": [] } },"
+    ));
+}

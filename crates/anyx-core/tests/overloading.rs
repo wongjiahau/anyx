@@ -1,5 +1,5 @@
-//! Functions sharing a name, such as `path of _`, told apart by a type named
-//! without arguments that they take at some position.
+//! Functions sharing a name, such as `path of _`, told apart by the types
+//! they take.
 
 use anyx_core::{
     kernel::{Declaration, Document, Term, TypeChecker},
@@ -105,7 +105,7 @@ fn an_overload_can_recurse_through_the_shared_name() {
 }
 
 #[test]
-fn overloads_must_differ_in_a_named_type() {
+fn overloads_must_be_apart_somewhere() {
     // An alias names the same type, so the two clash.
     let error = check(
         "FUNCTION Key : Type IS Text,
@@ -113,20 +113,25 @@ fn overloads_must_differ_in_a_named_type() {
          FUNCTION id of (text: Text) : Text IS text,",
     )
     .unwrap_err();
-    assert!(error.contains("must take different named types"), "{error}");
-    let error = check(
-        "FUNCTION first of (texts: List of (Text)) : Natural IS 0,
-         FUNCTION first of (numbers: List of (Natural)) : Natural IS 0,",
-    )
-    .unwrap_err();
-    assert!(error.contains("each must take a named type"), "{error}");
+    assert!(
+        error.contains("must take or return different types"),
+        "{error}"
+    );
+    // A type application tells them apart.
+    assert_eq!(
+        check(
+            "FUNCTION first of (texts: List of (Text)) : Natural IS 0,
+             FUNCTION first of (numbers: List of (Natural)) : Natural IS 0,",
+        ),
+        Ok(())
+    );
     let error = check(
         "FUNCTION twice (text: Text) : Text IS text,
          FUNCTION twice (other: Text) : Text IS other,",
     )
     .unwrap_err();
     assert!(
-        error.contains("duplicate declaration of `twice (Text)`"),
+        error.contains("duplicate declaration of `twice _`"),
         "{error}"
     );
 }
@@ -154,12 +159,15 @@ fn a_call_no_overload_takes_is_an_error() {
 }
 
 #[test]
-fn an_overloaded_name_is_no_other_declaration() {
-    let error = check("DATA Shape : Type WITH [path of (text: Text) : Shape],").unwrap_err();
-    assert!(
-        error.contains("duplicate declaration of `path of _`"),
-        "{error}"
+fn a_constructor_joins_the_overloads_of_its_name() {
+    assert_eq!(
+        check("DATA Shape : Type WITH [path of (text: Text) : Shape],"),
+        Ok(())
     );
+}
+
+#[test]
+fn an_overloaded_name_has_no_optional_parts() {
     let error = check(
         "FUNCTION find (pattern: Text) [in (paths: List of (Text)) DEFAULT in []] : Text IS pattern,
          FUNCTION find (pattern: Natural) in (paths: List of (Text)) : Text IS \"x\",",

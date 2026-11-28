@@ -174,6 +174,9 @@ fn mentions_local(term: &Term, index: Index) -> bool {
         Term::Annotated { term, r#type } => {
             mentions_local(term, index) || mentions_local(r#type, index)
         }
+        Term::Alternatives { alternatives, .. } => alternatives
+            .iter()
+            .any(|(record, value)| mentions_local(record, index) || mentions_local(value, index)),
         Term::Type
         | Term::Kind
         | Term::Global(_)

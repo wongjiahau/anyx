@@ -346,7 +346,7 @@ impl Client {
                     format!("{{ {} }}", entries.join(", "))
                 } else {
                     fill(
-                        &constructor.name,
+                        &constructor.written,
                         constructor.binders.iter().map(|binder| {
                             binder.ty.as_ref().map(|_| values[&binder.name].1.as_str())
                         }),

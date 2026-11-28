@@ -88,7 +88,11 @@ pub struct Data {
 }
 
 pub struct Constructor {
+    /// The kernel's name: its own name when it is overloaded,
+    /// `red : Colour`.
     pub name: String,
+    /// The name as written, `red`.
+    pub written: String,
     pub data: String,
     pub binders: Vec<Binder>,
     /// The family's arguments in the constructor's result, normalized, in
@@ -126,7 +130,7 @@ impl Constructor {
         let mut words = Vec::new();
         let mut slot = 0;
         let mut skipping = false;
-        for word in self.name.split_whitespace() {
+        for word in self.written.split_whitespace() {
             if word == "_" {
                 skipping = self
                     .binders
@@ -243,6 +247,19 @@ pub(crate) fn build(
         data_index: HashMap::new(),
         constructor_index: HashMap::new(),
     };
+
+    // How each overload is written: `red` for `red : Colour`.
+    let written: HashMap<&str, &str> = lowered
+        .declarations
+        .iter()
+        .flat_map(|declaration| match declaration {
+            lowering::Declaration::Overloads { name, members } => members
+                .iter()
+                .map(|member| (member.as_str(), name.as_str()))
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect();
 
     // The shape of each data type comes first, so field types can name any.
     let mut pending = Vec::new();
@@ -365,6 +382,9 @@ pub(crate) fn build(
             }
             built.push(Constructor {
                 name: constructor.name.clone(),
+                written: written
+                    .get(constructor.name.as_str())
+                    .map_or(constructor.name.clone(), |name| (*name).to_owned()),
                 data: schema.datas[data].name.clone(),
                 binders,
                 result_arguments,
@@ -752,6 +772,13 @@ fn clone_term(term: &lowering::Term) -> lowering::Term {
             name: name.clone(),
             kind: *kind,
         },
+        T::Alternatives { id, alternatives } => T::Alternatives {
+            id: *id,
+            alternatives: alternatives
+                .iter()
+                .map(|(record, value)| (clone_term(record), clone_term(value)))
+                .collect(),
+        },
         T::Annotated { term, r#type } => T::Annotated {
             term: Box::new(clone_term(term)),
             r#type: Box::new(clone_term(r#type)),
@@ -815,8 +842,15 @@ fn clone_parameter(parameter: &lowering::Parameter) -> lowering::Parameter {
 
 fn clone_pattern(pattern: &lowering::Pattern) -> lowering::Pattern {
     match pattern {
-        lowering::Pattern::Constructor { name, arguments } => lowering::Pattern::Constructor {
+        lowering::Pattern::Constructor {
+            name,
+            candidates,
+            id,
+            arguments,
+        } => lowering::Pattern::Constructor {
             name: name.clone(),
+            candidates: candidates.clone(),
+            id: *id,
             arguments: arguments.iter().map(clone_pattern).collect(),
         },
         lowering::Pattern::Binding(binding) => lowering::Pattern::Binding(clone_binding(binding)),

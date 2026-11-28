@@ -118,7 +118,7 @@ impl Definitions {
                     .get(id)
                     .cloned()
                     .ok_or(EvaluationError::UnresolvedOverload)?;
-                let mut function = self.evaluate_global(&chosen, Vec::new())?;
+                let mut function = self.evaluate(&Term::Global(chosen), environment)?;
                 for argument in arguments {
                     function = self.apply(function, self.evaluate(argument, environment)?)?;
                 }
@@ -131,6 +131,19 @@ impl Definitions {
                     .collect::<Result<_, _>>()?,
             ),
             Term::Annotated { term, .. } => self.evaluate(term, environment)?,
+            Term::Alternatives { id, alternatives } => {
+                let chosen = self
+                    .1
+                    .borrow()
+                    .get(id)
+                    .cloned()
+                    .ok_or(EvaluationError::UnresolvedOverload)?;
+                let (_, value) = alternatives
+                    .iter()
+                    .find(|(record, _)| matches!(record, Term::Global(global) if *global == chosen))
+                    .ok_or(EvaluationError::UnresolvedOverload)?;
+                self.evaluate(value, environment)?
+            }
         })
     }
 
@@ -274,8 +287,9 @@ enum PatternMatch {
 
 fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment) -> PatternMatch {
     let Pattern::Constructor {
-        name,
+        candidates,
         arguments: patterns,
+        ..
     } = pattern
     else {
         bindings.push(subject.clone());
@@ -283,7 +297,7 @@ fn match_pattern(pattern: &Pattern, subject: &Value, bindings: &mut Environment)
     };
     match subject.peeled().as_ref() {
         Value::Constructor { global, arguments }
-            if name == &global.name && patterns.len() == arguments.len() =>
+            if candidates.contains(&global.name) && patterns.len() == arguments.len() =>
         {
             let mut result = PatternMatch::Matched;
             for (pattern, argument) in patterns.iter().zip(arguments) {

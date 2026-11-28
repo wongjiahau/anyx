@@ -2,7 +2,10 @@
 
 use crate::{kernel, parser};
 use anyx::Span;
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Document {
@@ -110,14 +113,20 @@ pub enum Term {
         cases: Vec<Case>,
     },
     /// A call of an overloaded name: the checker picks the one candidate
-    /// whose named parameter types the arguments' types match.
+    /// whose types the arguments' types, and then the expected type, match.
     Overloaded {
         id: OverloadIdentifier,
         name: String,
-        candidates: Vec<String>,
+        candidates: Vec<(String, GlobalKind)>,
         arguments: Vec<Term>,
     },
     List(Vec<Term>),
+    /// A `{ }` value whose entries fit several records: each record's
+    /// type and the value of it. The type it is checked against picks.
+    Alternatives {
+        id: OverloadIdentifier,
+        alternatives: Vec<(Term, Term)>,
+    },
     /// `(red : Colour)`: `term`, checked against `type`.
     Annotated {
         term: Box<Term>,
@@ -141,7 +150,15 @@ pub struct Case {
 #[derive(Debug, PartialEq)]
 pub enum Pattern {
     Constructor {
+        /// The name as written, `red`.
         name: String,
+        /// The constructors it may be: its own name, or for an overloaded
+        /// name each overload's. Only one is a constructor of the type
+        /// matched, since one type's constructors have different names.
+        candidates: Vec<String>,
+        /// Where the checker records which candidate it found, when there
+        /// are several.
+        id: Option<OverloadIdentifier>,
         arguments: Vec<Pattern>,
     },
     Binding(Binding),
@@ -229,7 +246,12 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                 let mut constructors = Vec::new();
                 let mut defaults = Vec::new();
                 for constructor in &data.constructors.value {
-                    constructors.push(resolver.constructor(data.declared.head(), constructor)?);
+                    let mut signature = resolver.constructor(data.declared.head(), constructor)?;
+                    signature.name = resolver.declared_name(
+                        constructor_head(constructor),
+                        constructor_result_text(data.declared.head(), constructor).as_deref(),
+                    );
+                    constructors.push(signature);
                     resolver.locals.clear();
                     defaults.extend(resolver.optional_defaults(constructor_head(constructor))?);
                 }
@@ -250,7 +272,10 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                     &function.typed_head.head,
                     Some(&function.typed_head.result),
                 )?;
-                signature.name = resolver.declared_name(&function.typed_head.head);
+                signature.name = resolver.declared_name(
+                    &function.typed_head.head,
+                    function_result_text(&function.typed_head).as_deref(),
+                );
                 let body = resolver.term(&function.body)?;
                 resolver.locals.clear();
                 declarations.push(Declaration::Function { signature, body });
@@ -261,7 +286,10 @@ pub fn lower_document(document: &parser::Document) -> Result<Document, LoweringE
                     &function.typed_head.head,
                     Some(&function.typed_head.result),
                 )?;
-                signature.name = resolver.declared_name(&function.typed_head.head);
+                signature.name = resolver.declared_name(
+                    &function.typed_head.head,
+                    function_result_text(&function.typed_head).as_deref(),
+                );
                 resolver.locals.clear();
                 declarations.push(Declaration::Served { signature });
                 declarations.extend(resolver.optional_defaults(&function.typed_head.head)?);
@@ -436,8 +464,8 @@ enum Key<'entry> {
     /// The words of a field, `between _ and _`.
     Field(&'entry str),
     /// The type of a `.` entry's value: its constructor's, or the record a
-    /// nested `{ }` value is.
-    Data(&'entry str),
+    /// nested `{ }` value is. An overloaded constructor may be of several.
+    Data(Vec<&'entry str>),
 }
 
 /// What a `{ }` value needs to know about a record.
@@ -571,38 +599,57 @@ impl<'source> Resolver<'source> {
             self.globals.insert(constructor, GlobalKind::Constructor);
             self.constructor_data.insert(constructor, data);
         }
-        // A name two functions declare is overloaded.
-        let mut function_names: HashMap<String, usize> = HashMap::new();
+        // A name two functions or constructors declare is overloaded.
+        let mut members = Vec::new();
         for declaration in &document.declaration {
-            if let parser::Declaration::Function(parser::Function {
-                typed_head: parser::TypedHead { head, .. },
-                ..
-            })
-            | parser::Declaration::ServedFunction(parser::ServedFunction {
-                typed_head: parser::TypedHead { head, .. },
-                ..
-            }) = declaration
-            {
-                *function_names
-                    .entry(head_parts(head).0.text.into_owned())
-                    .or_default() += 1;
+            match declaration {
+                parser::Declaration::Function(parser::Function { typed_head, .. })
+                | parser::Declaration::ServedFunction(parser::ServedFunction {
+                    typed_head, ..
+                }) => members.push((
+                    &typed_head.head,
+                    function_result_text(typed_head),
+                    GlobalKind::Function,
+                    None,
+                )),
+                parser::Declaration::Data(data) => {
+                    let data_head = data.declared.head();
+                    let mut names = HashSet::new();
+                    for constructor in &data.constructors.value {
+                        let head = constructor_head(constructor);
+                        let (name, _) = head_parts(head);
+                        if !names.insert(name.text.clone()) {
+                            return Err(LoweringError {
+                                span: name.span,
+                                message: format!(
+                                    "`{}` has two constructors called `{}`, so a pattern couldn't tell them apart",
+                                    head_parts(data_head).0.text,
+                                    name.text
+                                ),
+                            });
+                        }
+                        members.push((
+                            head,
+                            constructor_result_text(data_head, constructor),
+                            GlobalKind::Constructor,
+                            Some(head_parts(data_head).0.interned()),
+                        ));
+                    }
+                }
+                parser::Declaration::Record(_) => {}
             }
         }
-        for declaration in &document.declaration {
-            if let parser::Declaration::Function(parser::Function {
-                typed_head: parser::TypedHead { head, .. },
-                ..
-            })
-            | parser::Declaration::ServedFunction(parser::ServedFunction {
-                typed_head: parser::TypedHead { head, .. },
-                ..
-            }) = declaration
-            {
-                // A name without slots takes nothing to pick by: declared
-                // twice, it is a duplicate.
-                let (name, parameters) = head_parts(head);
-                if function_names[name.text.as_ref()] > 1 && !parameters.is_empty() {
-                    self.register_overload(head)?;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (head, ..) in &members {
+            *counts
+                .entry(head_parts(head).0.text.into_owned())
+                .or_default() += 1;
+        }
+        for (head, result, kind, data) in members {
+            if counts[head_parts(head).0.text.as_ref()] > 1 {
+                let own = self.register_overload(head, result.as_deref(), kind)?;
+                if let Some(data) = data {
+                    self.constructor_data.insert(own, data);
                 }
             }
         }
@@ -613,8 +660,11 @@ impl<'source> Resolver<'source> {
                     let (data_name, _) = head_parts(data.declared.head());
                     for constructor in &data.constructors.value {
                         let head = constructor_head(constructor);
-                        self.register(head, GlobalKind::Constructor)?;
                         let (name, _) = head_parts(head);
+                        if self.overloads.contains_key(name.text.as_ref()) {
+                            continue;
+                        }
+                        self.register(head, GlobalKind::Constructor)?;
                         self.constructor_data
                             .insert(name.interned(), data_name.interned());
                     }
@@ -671,9 +721,15 @@ impl<'source> Resolver<'source> {
         Ok(())
     }
 
-    /// Registers one of the functions sharing an overloaded name under its
-    /// own name, `path of (Details)` for `path of (details: Details)`.
-    fn register_overload(&mut self, head: &'source parser::Head) -> Result<(), LoweringError> {
+    /// Registers one of the functions or constructors sharing an overloaded
+    /// name under its own name, `path of (Details) : Text` for
+    /// `path of (details: Details) : Text`.
+    fn register_overload(
+        &mut self,
+        head: &'source parser::Head,
+        result: Option<&str>,
+        kind: GlobalKind,
+    ) -> Result<&'source str, LoweringError> {
         let (name, _) = head_parts(head);
         check_binder_name(&name.text, name.span)?;
         if let Some(part) = optional_parts(head).first() {
@@ -682,27 +738,34 @@ impl<'source> Resolver<'source> {
                 message: format!("`{}` is overloaded, so it has no optional parts", name.text),
             });
         }
-        let own = overload_name(head);
+        let own = overload_name(head, result);
         if own == name.text {
             return Err(LoweringError {
                 span: name.span,
                 message: format!(
-                    "`{}` is declared more than once, so each must take a named type, such as `(details: Details)`",
+                    "`{}` is declared more than once, so each must take or return a named type, such as `(details: Details)`",
                     name.text
                 ),
             });
         }
-        let own = self.register_generated(&own, name.span, GlobalKind::Function)?;
+        // Two declarations with the same types are the same declaration.
+        if self.globals.contains_key(own.as_str()) {
+            return Err(LoweringError {
+                span: name.span,
+                message: format!("duplicate declaration of `{}`", name.text),
+            });
+        }
+        let own = self.register_generated(&own, name.span, kind)?;
         self.overloads.entry(name.interned()).or_default().push(own);
-        Ok(())
+        Ok(own)
     }
 
-    /// The name a function is declared under: its own, or for an overload,
-    /// its name with its named types written in.
-    fn declared_name(&self, head: &parser::Head) -> String {
+    /// The name a function or constructor is declared under: its own, or
+    /// for an overload, its name with its types written in.
+    fn declared_name(&self, head: &parser::Head, result: Option<&str>) -> String {
         let (name, _) = head_parts(head);
         if self.overloads.contains_key(name.text.as_ref()) {
-            overload_name(head)
+            overload_name(head, result)
         } else {
             name.text.into_owned()
         }
@@ -1106,7 +1169,33 @@ impl<'source> Resolver<'source> {
         span: Span,
         entries: &'source [parser::Entry],
     ) -> Result<Term, LoweringError> {
-        let (record, filled) = self.fitting_record(span, entries)?;
+        let fits = self.fitting_records(span, entries)?;
+        if let [(record, filled)] = fits.as_slice() {
+            return self.record_of(span, entries, *record, filled);
+        }
+        // The type the value is checked against picks the record.
+        let mut alternatives = Vec::new();
+        for (record, filled) in &fits {
+            let record_type = Term::Global {
+                name: self.records[*record].name.clone(),
+                kind: GlobalKind::Data,
+            };
+            alternatives.push((record_type, self.record_of(span, entries, *record, filled)?));
+        }
+        Ok(Term::Alternatives {
+            id: OverloadIdentifier::fresh(),
+            alternatives,
+        })
+    }
+
+    /// A value of `record` with `entries` filling the fields `filled`.
+    fn record_of(
+        &mut self,
+        span: Span,
+        entries: &'source [parser::Entry],
+        record: usize,
+        filled: &[usize],
+    ) -> Result<Term, LoweringError> {
         if self.records[record].has_parameters {
             return Err(LoweringError {
                 span,
@@ -1156,15 +1245,15 @@ impl<'source> Resolver<'source> {
         })
     }
 
-    /// The one record whose fields `entries` fill, and the field each entry
+    /// Each record whose fields `entries` fill, and the field each entry
     /// fills. An entry is a field's words, as in `between 1 and 3`, or `.`
     /// and a value of the type a `.` field holds: a constructor call, as in
     /// `.any case`, or a `{ }` value of another record.
-    fn fitting_record(
+    fn fitting_records(
         &self,
         span: Span,
         entries: &[parser::Entry],
-    ) -> Result<(usize, Vec<usize>), LoweringError> {
+    ) -> Result<Vec<(usize, Vec<usize>)>, LoweringError> {
         let mut keys = Vec::new();
         for entry in entries {
             keys.push(match entry {
@@ -1180,9 +1269,21 @@ impl<'source> Resolver<'source> {
                 parser::Entry::Unnamed { value, span } => match value {
                     parser::Expression::Call { name, .. }
                     | parser::Expression::Name { name, .. } => {
-                        match self.constructor_data.get(name.text.as_str()) {
-                            Some(data) => Key::Data(data),
-                            None => {
+                        let datas: Vec<&str> = match self.overloads.get(name.text.as_str()) {
+                            Some(members) => members
+                                .iter()
+                                .filter_map(|member| self.constructor_data.get(member).copied())
+                                .collect(),
+                            None => self
+                                .constructor_data
+                                .get(name.text.as_str())
+                                .copied()
+                                .into_iter()
+                                .collect(),
+                        };
+                        match datas.is_empty() {
+                            false => Key::Data(datas),
+                            true => {
                                 return Err(LoweringError {
                                     span: *span,
                                     message: format!(
@@ -1194,8 +1295,24 @@ impl<'source> Resolver<'source> {
                         }
                     }
                     parser::Expression::RecordValue(nested) => {
-                        let (record, _) = self.fitting_record(value.span(), &nested.value)?;
-                        Key::Data(self.records[record].name.as_str())
+                        match self.fitting_records(value.span(), &nested.value)?.as_slice() {
+                            [(record, _)] => Key::Data(vec![self.records[*record].name.as_str()]),
+                            _ => {
+                                return Err(LoweringError {
+                                    span: *span,
+                                    message: "this `{ }` value fits more than one record, so `.` can't tell which field it fills; say which with an ascription, such as `.({ ... } : Size)`".to_owned(),
+                                });
+                            }
+                        }
+                    }
+                    // `.({ width 3 } : Size)`: a value of a field of that type.
+                    parser::Expression::Ascription { r#type, .. }
+                        if matches!(&**r#type, parser::Expression::Name { .. }) =>
+                    {
+                        let parser::Expression::Name { name, .. } = &**r#type else {
+                            unreachable!("matched above");
+                        };
+                        Key::Data(vec![name.text.as_str()])
                     }
                     _ => {
                         return Err(LoweringError {
@@ -1212,26 +1329,13 @@ impl<'source> Resolver<'source> {
             .enumerate()
             .filter_map(|(index, record)| self.fill(record, &keys).map(|filled| (index, filled)))
             .collect();
-        match fits.as_slice() {
-            [(record, filled)] => Ok((*record, filled.clone())),
-            [] => Err(LoweringError {
+        if fits.is_empty() {
+            return Err(LoweringError {
                 span,
                 message: "no record has exactly these fields".to_owned(),
-            }),
-            _ => {
-                let names: Vec<String> = fits
-                    .iter()
-                    .map(|(record, _)| format!("`{}`", self.records[*record].name))
-                    .collect();
-                Err(LoweringError {
-                    span,
-                    message: format!(
-                        "these entries fit more than one record: {}",
-                        names.join(", ")
-                    ),
-                })
-            }
+            });
         }
+        Ok(fits)
     }
 
     fn fill(&self, record: &RecordShape, keys: &[Key]) -> Option<Vec<usize>> {
@@ -1239,7 +1343,10 @@ impl<'source> Resolver<'source> {
         for key in keys {
             let field = record.fields.iter().position(|field| match key {
                 Key::Field(name) => field.name.as_deref() == Some(*name),
-                Key::Data(data) => field.unnamed_type.as_deref() == Some(*data),
+                Key::Data(datas) => field
+                    .unnamed_type
+                    .as_deref()
+                    .is_some_and(|data| datas.contains(&data)),
             })?;
             if filled.contains(&field) {
                 return None;
@@ -1387,6 +1494,15 @@ impl<'source> Resolver<'source> {
                 kind: *kind,
             });
         }
+        // `red`, which two types declare: the expected type picks.
+        if let Some(candidates) = self.overload_candidates(&name.text) {
+            return Ok(Term::Overloaded {
+                id: OverloadIdentifier::fresh(),
+                name: name.text.clone(),
+                candidates,
+                arguments: Vec::new(),
+            });
+        }
         // A call that leaves out every slot, such as `list files` for
         // `list files with _`.
         if let Some((function, slots)) = self.optional_form(name) {
@@ -1399,6 +1515,17 @@ impl<'source> Resolver<'source> {
             span: name.span,
             message: format!("unknown name `{}`", name.text),
         })
+    }
+
+    /// Each overload of `name`, by its own name and kind.
+    fn overload_candidates(&self, name: &str) -> Option<Vec<(String, GlobalKind)>> {
+        let members = self.overloads.get(name)?;
+        Some(
+            members
+                .iter()
+                .map(|member| ((*member).to_owned(), self.globals[member]))
+                .collect(),
+        )
     }
 
     /// The whole function or constructor a call that leaves out optional
@@ -1480,7 +1607,7 @@ impl<'source> Resolver<'source> {
         name: &parser::CallName,
         arguments: &'source [parser::Expression],
     ) -> Result<Term, LoweringError> {
-        let overloaded = self.overloads.get(name.text.as_str()).cloned();
+        let overloaded = self.overload_candidates(&name.text);
         let (function, form) = match (&overloaded, self.optional_form(name)) {
             (Some(_), _) => (Term::Type, None),
             (None, Some((function, slots))) => (function, Some(slots)),
@@ -1507,7 +1634,7 @@ impl<'source> Resolver<'source> {
             Some(candidates) => Term::Overloaded {
                 id: OverloadIdentifier::fresh(),
                 name: name.text.clone(),
-                candidates: candidates.iter().map(|name| (*name).to_owned()).collect(),
+                candidates,
                 arguments: lowered_arguments,
             },
             None => Term::Apply {
@@ -1537,10 +1664,21 @@ impl<'source> Resolver<'source> {
         pattern: &'source parser::Pattern,
         scope_start: usize,
     ) -> Result<Pattern, LoweringError> {
+        let constructors = |name: &str| -> Vec<String> {
+            match self.overloads.get(name) {
+                Some(members) => members
+                    .iter()
+                    .filter(|member| self.globals[*member] == GlobalKind::Constructor)
+                    .map(|member| (*member).to_owned())
+                    .collect(),
+                None if self.globals.get(name) == Some(&GlobalKind::Constructor) => {
+                    vec![name.to_owned()]
+                }
+                None => Vec::new(),
+            }
+        };
         let (name, arguments) = match pattern {
-            parser::Pattern::Name { name, .. }
-                if self.globals.get(name.text.as_str()) != Some(&GlobalKind::Constructor) =>
-            {
+            parser::Pattern::Name { name, .. } if constructors(&name.text).is_empty() => {
                 return Ok(Pattern::Binding(self.named_binding(
                     &name.text,
                     name.span,
@@ -1552,7 +1690,8 @@ impl<'source> Resolver<'source> {
                 name, arguments, ..
             } => (name, arguments.as_slice()),
         };
-        if self.globals.get(name.text.as_str()) != Some(&GlobalKind::Constructor) {
+        let candidates = constructors(&name.text);
+        if candidates.is_empty() {
             return Err(LoweringError {
                 span: name.span,
                 message: format!("unknown constructor `{}`", name.text),
@@ -1560,6 +1699,8 @@ impl<'source> Resolver<'source> {
         }
         Ok(Pattern::Constructor {
             name: name.text.to_string(),
+            id: (candidates.len() > 1).then(OverloadIdentifier::fresh),
+            candidates,
             arguments: arguments
                 .iter()
                 .map(|argument| self.pattern(argument, scope_start))
@@ -1568,22 +1709,73 @@ impl<'source> Resolver<'source> {
     }
 }
 
-/// An overload's own name: its name with each slot whose type is written as
-/// a name alone filled in, `path of (Details)`.
-pub(crate) fn overload_name(head: &parser::Head) -> String {
+/// An overload's own name: its name with each slot's type written in, and
+/// its result, `parse (Text) : Natural`. Every type is written, so adding an
+/// overload never renames another.
+pub(crate) fn overload_name(head: &parser::Head, result: Option<&str>) -> String {
     let (name, parameters) = head_parts(head);
     let mut parameters = parameters.into_iter();
-    name.text
+    let own = name
+        .text
         .split_whitespace()
         .map(|word| match word {
-            "_" => match parameters.next().map(|parameter| parameter.r#type.as_ref()) {
-                Some(parser::Expression::Name { name, .. }) => format!("({})", name.text),
-                _ => "_".to_owned(),
+            "_" => match parameters
+                .next()
+                .and_then(|parameter| type_text(&parameter.r#type))
+            {
+                Some(text) => format!("({text})"),
+                None => "_".to_owned(),
             },
             word => word.to_owned(),
         })
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    match result {
+        Some(result) => format!("{own} : {result}"),
+        None => own,
+    }
+}
+
+/// A type as an overload's own name writes it: `Text`, `List of (Text)`.
+/// Only names and calls are written.
+pub(crate) fn type_text(expression: &parser::Expression) -> Option<String> {
+    match expression {
+        parser::Expression::Name { name, .. } => Some(name.text.clone()),
+        parser::Expression::Call {
+            name, arguments, ..
+        } => {
+            let mut arguments = arguments.iter();
+            name.text
+                .split_whitespace()
+                .map(|word| match word {
+                    "_" => Some(format!("({})", type_text(arguments.next()?)?)),
+                    word => Some(word.to_owned()),
+                })
+                .collect::<Option<Vec<_>>>()
+                .map(|words| words.join(" "))
+        }
+        _ => None,
+    }
+}
+
+/// What a function's own name writes as its result.
+pub(crate) fn function_result_text(typed: &parser::TypedHead) -> Option<String> {
+    match &typed.result {
+        parser::SignatureResult::Kind(_) => Some("Kind".to_owned()),
+        parser::SignatureResult::Expression(expression) => type_text(expression),
+    }
+}
+
+/// What a constructor's own name writes as its result: what it returns, or
+/// without `:` the type it is a constructor of.
+pub(crate) fn constructor_result_text(
+    data: &parser::Head,
+    constructor: &parser::Constructor,
+) -> Option<String> {
+    match constructor {
+        parser::Constructor::Returning { r#type, .. } => type_text(r#type),
+        parser::Constructor::Head(_) => Some(head_parts(data).0.text.into_owned()),
+    }
 }
 
 fn check_binder_name(name: &str, span: Span) -> Result<(), LoweringError> {

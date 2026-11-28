@@ -295,6 +295,12 @@ fn visit_global_references<'term>(
             visit_global_references(term, positive, visit);
             visit_global_references(r#type, false, visit);
         }
+        Term::Alternatives { alternatives, .. } => {
+            for (record, value) in alternatives {
+                visit_global_references(record, false, visit);
+                visit_global_references(value, false, visit);
+            }
+        }
         Term::Type
         | Term::Kind
         | Term::Local(_)
@@ -430,6 +436,12 @@ fn visit_occurrences(
         Term::Annotated { term, r#type } => {
             visit_occurrences(term, data, depth, visit);
             visit_occurrences(r#type, data, depth, visit);
+        }
+        Term::Alternatives { alternatives, .. } => {
+            for (record, value) in alternatives {
+                visit_occurrences(record, data, depth, visit);
+                visit_occurrences(value, data, depth, visit);
+            }
         }
         Term::Type
         | Term::Kind

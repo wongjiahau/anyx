@@ -52,6 +52,15 @@ pub enum CheckingError {
         name: String,
         types: Vec<String>,
     },
+    /// Several overloads of `name` fit the call, and nothing says which.
+    AmbiguousOverload {
+        name: String,
+        candidates: Vec<String>,
+    },
+    /// A `{ }` value fits several records, and nothing says which.
+    AmbiguousRecord {
+        records: Vec<String>,
+    },
     /// One call of `name`, checked twice, picked two overloads.
     OverloadPickedTwice(String),
     Evaluation(EvaluationError),
@@ -114,13 +123,36 @@ impl fmt::Display for CheckingError {
             }
             Self::OverloadArgumentNeedsType { name, position } => write!(
                 formatter,
-                "argument {} of `{name}` picks among its overloads, so it needs a type of its own",
+                "argument {} of `{name}` picks among its overloads, so it needs a type of its own: write one with an ascription, as in `(red : Colour)`",
                 position + 1
             ),
             Self::NoOverloadFits { name, types } => write!(
                 formatter,
                 "no one overload of `{name}` takes {}",
                 types.join(", ")
+            ),
+            Self::AmbiguousOverload { name, candidates } => write!(
+                formatter,
+                "`{name}` could be {}; say which with an ascription, such as `({name} : {})`",
+                candidates
+                    .iter()
+                    .map(|candidate| format!("`{candidate}`"))
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+                candidates
+                    .first()
+                    .and_then(|candidate| candidate.rsplit_once(" : "))
+                    .map_or("Type", |(_, result)| result)
+            ),
+            Self::AmbiguousRecord { records } => write!(
+                formatter,
+                "these entries fit {}; say which with an ascription, such as `({{ ... }} : {})`",
+                records
+                    .iter()
+                    .map(|record| format!("`{record}`"))
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+                records.first().map_or("Type", String::as_str)
             ),
             Self::OverloadPickedTwice(name) => write!(
                 formatter,
@@ -204,7 +236,7 @@ impl fmt::Display for DeclarationCheckingError {
                 second,
             } => write!(
                 formatter,
-                "`{first}` and `{second}` overload `{name}`, so they must take different named types at some position"
+                "`{first}` and `{second}` overload `{name}`, so they must take or return different types at some position, each with no variable"
             ),
             Self::NonPositiveOccurrence { declaration, data } => {
                 write!(
@@ -281,7 +313,10 @@ impl TypeChecker {
         let mut overloads = Vec::new();
         for declaration in declarations.clone() {
             match declaration {
-                Declaration::Overloads { name, members } => overloads.push((name, members)),
+                Declaration::Overloads { name, members } => {
+                    self.data_families.register_overloads(name, members);
+                    overloads.push((name, members));
+                }
                 Declaration::Served { signature } => {
                     signatures.push((signature, GlobalKind::Function, None));
                     served.push(signature);
@@ -548,33 +583,34 @@ impl Scope<'_> {
         ))
     }
 
-    /// Each pair of overloads must take different named types at some
-    /// position, so a call's arguments pick at most one.
+    /// Each pair of overloads must be apart at some position, an argument
+    /// or the result: both types there ground, and different. So a call's
+    /// arguments and expected type pick at most one.
     fn check_overloads(
         &self,
         name: &str,
         members: &[String],
     ) -> Result<(), DeclarationCheckingError> {
-        let named = members
+        let types = members
             .iter()
             .map(|member| {
-                self.named_parameters(member)
+                self.overload_types(member)
                     .map_err(|error| DeclarationCheckingError::Signature {
                         name: member.clone(),
                         error,
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        for (first, first_named) in members.iter().zip(&named) {
-            for (second, second_named) in members.iter().zip(&named) {
+        for (first, first_types) in members.iter().zip(&types) {
+            for (second, second_types) in members.iter().zip(&types) {
                 if first >= second {
                     continue;
                 }
-                let differ = first_named
+                let apart = first_types
                     .iter()
-                    .zip(second_named)
+                    .zip(second_types)
                     .any(|pair| matches!(pair, (Some(a), Some(b)) if a != b));
-                if !differ {
+                if !apart {
                     return Err(DeclarationCheckingError::OverloadsClash {
                         name: name.to_owned(),
                         first: first.clone(),
@@ -586,52 +622,65 @@ impl Scope<'_> {
         Ok(())
     }
 
-    /// For each parameter of the function `name`, the type it takes when
-    /// that is a type named without arguments, such as `Text`, normalized.
-    fn named_parameters(&self, name: &str) -> Result<Vec<Option<String>>, CheckingError> {
-        let global = Global {
-            name: name.to_owned(),
-            kind: GlobalKind::Function,
-        };
-        let (_, global_type) = self
-            .globals
-            .get(name)
-            .ok_or_else(|| CheckingError::UnknownGlobal(global.clone()))?;
+    /// The type of each parameter of the function or constructor `name`,
+    /// then its result's, in normal form where it is ground: no variable,
+    /// and only `DATA`, constructors and literals, such as `List of (Text)`.
+    fn overload_types(&self, name: &str) -> Result<Vec<Option<Term>>, CheckingError> {
+        let (_, global_type) = self.globals.get(name).ok_or_else(|| {
+            CheckingError::UnknownGlobal(Global {
+                name: name.to_owned(),
+                kind: GlobalKind::Function,
+            })
+        })?;
         let mut function_type = self.definitions.evaluate(global_type, &[])?;
         let mut level = self.refinements.len();
-        let mut named = Vec::new();
+        let mut types = Vec::new();
         while let Value::FunctionType {
             parameter_type,
             result,
         } = function_type
         {
-            named.push(type_name(&parameter_type));
+            types.push(self.ground(&parameter_type, level)?);
             function_type = self.definitions.instantiate(&result, fresh_local(level))?;
             level += 1;
         }
-        Ok(named)
+        types.push(self.ground(&function_type, level)?);
+        Ok(types)
     }
 
-    /// The one candidate whose named parameter types the arguments' types
-    /// match, at each position where two candidates take different names.
+    /// `value` in normal form, when it is ground.
+    fn ground(&self, value: &Value, depth: usize) -> Result<Option<Term>, CheckingError> {
+        let term = self.definitions.read_back(value, depth)?;
+        Ok(is_ground(&term).then_some(term))
+    }
+
+    /// The one candidate the arguments' types pick, at each position where
+    /// candidates are apart, and then the type the call is checked against.
     fn resolve_overload(
         &self,
         name: &str,
         candidates: &[Global],
         arguments: &[Term],
+        expected: Option<&Value>,
     ) -> Result<Global, CheckingError> {
-        let named = candidates
+        let types = candidates
             .iter()
-            .map(|candidate| self.named_parameters(&candidate.name))
+            .map(|candidate| self.overload_types(&candidate.name))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut argument_types = Vec::new();
+        let depth = self.refinements.len();
+        let mut given = Vec::new();
         for (position, argument) in arguments.iter().enumerate() {
-            let names: HashSet<&String> = named
+            let mut apart: Vec<&Term> = Vec::new();
+            for taken in types
                 .iter()
-                .filter_map(|parameters| parameters.get(position)?.as_ref())
-                .collect();
-            if names.len() < 2 {
-                argument_types.push(None);
+                .filter_map(|types| types.get(position)?.as_ref())
+            {
+                if !apart.contains(&taken) {
+                    apart.push(taken);
+                }
+            }
+            if apart.len() < 2 {
+                given.push(None);
                 continue;
             }
             let argument_type = self.synthesize_value(argument).map_err(|_| {
@@ -640,33 +689,64 @@ impl Scope<'_> {
                     position,
                 }
             })?;
-            argument_types.push(Some(type_name(&argument_type)));
+            given.push(Some(self.definitions.read_back(&argument_type, depth)?));
         }
-        let fitting: Vec<&Global> = candidates
-            .iter()
-            .zip(&named)
-            .filter(|(_, parameters)| {
-                argument_types
-                    .iter()
-                    .zip(parameters.iter())
-                    .all(|pair| match pair {
-                        (Some(argument), Some(parameter)) => argument.as_ref() == Some(parameter),
-                        _ => true,
-                    })
+        let fits = |types: &Vec<Option<Term>>, given: &[Option<Term>]| {
+            given.iter().zip(types.iter()).all(|pair| match pair {
+                (Some(given), Some(taken)) => given == taken,
+                _ => true,
             })
-            .map(|(candidate, _)| candidate)
+        };
+        let mut fitting: Vec<usize> = (0..candidates.len())
+            .filter(|index| fits(&types[*index], &given))
             .collect();
+        if fitting.len() > 1
+            && let Some(expected) = expected
+        {
+            let expected = self.definitions.read_back(expected, depth)?;
+            fitting.retain(|index| match types[*index].get(arguments.len()) {
+                Some(Some(result)) => *result == expected,
+                _ => true,
+            });
+        }
         match fitting.as_slice() {
-            [chosen] => Ok((*chosen).clone()),
-            _ => Err(CheckingError::NoOverloadFits {
+            [chosen] => Ok(candidates[*chosen].clone()),
+            [] => Err(CheckingError::NoOverloadFits {
                 name: name.to_owned(),
-                types: argument_types
+                types: given
                     .iter()
                     .flatten()
-                    .map(|name| format!("`{}`", name.as_deref().unwrap_or("an unnamed type")))
+                    .map(|given| format!("`{}`", term_text(given)))
+                    .collect(),
+            }),
+            several => Err(CheckingError::AmbiguousOverload {
+                name: name.to_owned(),
+                candidates: several
+                    .iter()
+                    .map(|index| candidates[*index].name.clone())
                     .collect(),
             }),
         }
+    }
+
+    /// Picks the overload a call of `name` means, and records it.
+    fn pick_overload(
+        &self,
+        id: crate::lowering::OverloadIdentifier,
+        name: &str,
+        candidates: &[Global],
+        arguments: &[Term],
+        expected: Option<&Value>,
+    ) -> Result<Term, CheckingError> {
+        let chosen = self.resolve_overload(name, candidates, arguments, expected)?;
+        let previous = self.definitions.1.borrow_mut().insert(id, chosen.clone());
+        if previous.is_some_and(|previous| previous != chosen) {
+            return Err(CheckingError::OverloadPickedTwice(name.to_owned()));
+        }
+        Ok(Term::Apply {
+            function: Box::new(Term::Global(chosen)),
+            arguments: arguments.to_vec(),
+        })
     }
 
     fn type_universe(&self, term: &Term) -> Result<Value, CheckingError> {
@@ -718,6 +798,37 @@ impl Scope<'_> {
                 self.check_value(element, item)?;
             }
             return Ok(());
+        }
+
+        // A `{ }` value that fits several records is of the one expected.
+        if let Term::Alternatives { id, alternatives } = term {
+            let depth = self.refinements.len();
+            let wanted = self.definitions.read_back(&expected, depth)?;
+            let (record, value) = alternatives
+                .iter()
+                .find(|(record, _)| *record == wanted)
+                .ok_or_else(|| CheckingError::AmbiguousRecord {
+                    records: alternatives
+                        .iter()
+                        .map(|(record, _)| term_text(record))
+                        .collect(),
+                })?;
+            if let Term::Global(record) = record {
+                self.definitions.1.borrow_mut().insert(*id, record.clone());
+            }
+            return self.check_value(value, &expected);
+        }
+
+        // An overloaded call picks by the type it is checked against too.
+        if let Term::Overloaded {
+            id,
+            name,
+            candidates,
+            arguments,
+        } = term
+        {
+            let picked = self.pick_overload(*id, name, candidates, arguments, Some(&expected))?;
+            return self.check_value(&picked, &expected);
         }
 
         let actual = self.synthesize_value(term)?;
@@ -794,17 +905,16 @@ impl Scope<'_> {
                 candidates,
                 arguments,
             } => {
-                let chosen = self.resolve_overload(name, candidates, arguments)?;
-                let previous = self.definitions.1.borrow_mut().insert(*id, chosen.clone());
-                if previous.is_some_and(|previous| previous != chosen) {
-                    return Err(CheckingError::OverloadPickedTwice(name.clone()));
-                }
-                self.synthesize_value(&Term::Apply {
-                    function: Box::new(Term::Global(chosen)),
-                    arguments: arguments.clone(),
-                })
+                let picked = self.pick_overload(*id, name, candidates, arguments, None)?;
+                self.synthesize_value(&picked)
             }
             Term::List(_) => Err(CheckingError::UnsupportedTerm),
+            Term::Alternatives { alternatives, .. } => Err(CheckingError::AmbiguousRecord {
+                records: alternatives
+                    .iter()
+                    .map(|(record, _)| term_text(record))
+                    .collect(),
+            }),
             Term::Annotated { term, r#type } => {
                 self.type_universe(r#type)?;
                 let expected = self.definitions.evaluate(r#type, &self.environment)?;
@@ -827,12 +937,46 @@ fn primitive_type(name: &str) -> Value {
 }
 
 /// The name of a type named without arguments, such as `Text`.
-fn type_name(value: &Value) -> Option<String> {
-    match value {
-        Value::Neutral(super::Neutral::Global(global)) if global.kind == GlobalKind::Data => {
-            Some(global.name.clone())
+/// Whether a type in normal form is ground: built only from `Type`,
+/// `DATA`, constructors and literals, with no variable or function call.
+fn is_ground(term: &Term) -> bool {
+    match term {
+        Term::Type | Term::Natural(_) | Term::Integer(_) | Term::Text(_) => true,
+        Term::Global(global) => global.kind != GlobalKind::Function,
+        Term::Apply {
+            function,
+            arguments,
+        } => is_ground(function) && arguments.iter().all(is_ground),
+        Term::List(elements) => elements.iter().all(is_ground),
+        _ => false,
+    }
+}
+
+/// A ground type as written: `List of (Text)`.
+fn term_text(term: &Term) -> String {
+    match term {
+        Term::Type => "Type".to_owned(),
+        Term::Global(global) => global.name.clone(),
+        Term::Apply {
+            function,
+            arguments,
+        } => {
+            let mut arguments = arguments.iter();
+            term_text(function)
+                .split(' ')
+                .map(|word| match word {
+                    "_" => arguments.next().map_or("_".to_owned(), |argument| {
+                        format!("({})", term_text(argument))
+                    }),
+                    word => word.to_owned(),
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
         }
-        _ => None,
+        Term::Natural(number) => number.to_string(),
+        Term::Integer(number) => number.to_string(),
+        Term::Text(text) => format!("{text:?}"),
+        _ => "an unwritten type".to_owned(),
     }
 }
 

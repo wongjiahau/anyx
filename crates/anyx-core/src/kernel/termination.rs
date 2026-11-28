@@ -285,6 +285,9 @@ fn all_children<'term>(term: &'term Term, mut visit: impl FnMut(&'term Term) -> 
             ..
         } => elements.iter().all(visit),
         Term::Annotated { term, r#type } => visit(term) && visit(r#type),
+        Term::Alternatives { alternatives, .. } => alternatives
+            .iter()
+            .all(|(record, value)| visit(record) && visit(value)),
         Term::Type
         | Term::Kind
         | Term::Local(_)

@@ -135,7 +135,12 @@ fn returns_span(declared: &parser::Declared) -> Span {
 }
 
 /// Whether `head` declares the function the kernel knows as `name`: its
-/// own name, or its name as an overload, `path of (Details)`.
+/// own name, or its name as an overload, `path of (Details) : Text`.
 fn declares(head: &parser::Head, name: &str) -> bool {
-    head_parts(head).0.text == name || overload_name(head) == name
+    let own = overload_name(head, None);
+    head_parts(head).0.text == name
+        || own == name
+        || name
+            .strip_prefix(own.as_str())
+            .is_some_and(|rest| rest.starts_with(" : "))
 }

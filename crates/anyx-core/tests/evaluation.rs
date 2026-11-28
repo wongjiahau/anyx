@@ -91,6 +91,8 @@ FUNCTION expected : Type IS First,
 fn reads_back_blocked_matches_with_captures_and_pattern_binders() {
     let pair = Pattern::Constructor {
         name: "pair _ with _".into(),
+        candidates: vec!["pair _ with _".into()],
+        id: None,
         arguments: vec![Pattern::Binding, Pattern::Binding],
     };
     let cases = vec![
@@ -141,8 +143,12 @@ fn blocks_on_nested_constructor_patterns_before_a_fallback() {
             Case {
                 pattern: Pattern::Constructor {
                     name: "wrap _".into(),
+                    candidates: vec!["wrap _".into()],
+                    id: None,
                     arguments: vec![Pattern::Constructor {
                         name: "nothing".into(),
+                        candidates: vec!["nothing".into()],
+                        id: None,
                         arguments: Vec::new(),
                     }],
                 },

@@ -106,6 +106,13 @@ pub enum Term {
         arguments: Vec<Term>,
     },
     List(Vec<Term>),
+    /// A `{ }` value whose entries fit several records: each record's type
+    /// and the value of it. Checking keeps the one whose type is the type
+    /// expected, records it by `id`, and checks it as any other value.
+    Alternatives {
+        id: OverloadIdentifier,
+        alternatives: Vec<(Term, Term)>,
+    },
     /// `(red : Colour)`: `term`, checked against `type`, which is then its
     /// type. It evaluates to `term`.
     Annotated {
@@ -131,7 +138,14 @@ pub struct Case {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pattern {
     Constructor {
+        /// The name as written, `red`.
         name: String,
+        /// The constructors it may be. Only one is a constructor of the
+        /// type matched.
+        candidates: Vec<String>,
+        /// Where checking records the candidate found, when there are
+        /// several.
+        id: Option<OverloadIdentifier>,
         arguments: Vec<Pattern>,
     },
     Binding,
@@ -442,14 +456,21 @@ impl Scope {
                 name: name.clone(),
                 candidates: candidates
                     .iter()
-                    .map(|candidate| Global {
+                    .map(|(candidate, kind)| Global {
                         name: candidate.clone(),
-                        kind: GlobalKind::Function,
+                        kind: *kind,
                     })
                     .collect(),
                 arguments: self.terms(arguments)?,
             },
             lowering::Term::List(elements) => Term::List(self.terms(elements)?),
+            lowering::Term::Alternatives { id, alternatives } => Term::Alternatives {
+                id: *id,
+                alternatives: alternatives
+                    .iter()
+                    .map(|(record, value)| Ok((self.term(record)?, self.term(value)?)))
+                    .collect::<Result<_, UnboundLocal>>()?,
+            },
             lowering::Term::Annotated { term, r#type } => Term::Annotated {
                 term: Box::new(self.term(term)?),
                 r#type: Box::new(self.term(r#type)?),
@@ -488,8 +509,15 @@ impl Scope {
 
     fn pattern(&mut self, pattern: &lowering::Pattern) -> Pattern {
         match pattern {
-            lowering::Pattern::Constructor { name, arguments } => Pattern::Constructor {
+            lowering::Pattern::Constructor {
+                name,
+                candidates,
+                id,
+                arguments,
+            } => Pattern::Constructor {
                 name: name.clone(),
+                candidates: candidates.clone(),
+                id: *id,
                 arguments: arguments
                     .iter()
                     .map(|argument| self.pattern(argument))
